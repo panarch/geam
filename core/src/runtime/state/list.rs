@@ -1472,7 +1472,8 @@ pub fn main() -> List(Counter) {
         use crate::plan::execution::runtime::RuntimeExecutionPlan;
         use crate::runtime::compiled::CompiledProgress;
         use crate::runtime::compiled::int_list::{IntListOps, IntListValues};
-        use crate::runtime::graph::{GraphExecution, GraphProgress, GraphStorage, RetainedValues};
+        use crate::runtime::graph::tests::{CanonicalProgress, canonical_progress};
+        use crate::runtime::graph::{GraphExecution, GraphStorage, RetainedValues};
         use crate::runtime::state::RuntimeState;
         use std::sync::Weak;
 
@@ -1554,8 +1555,8 @@ pub fn main() -> List(Counter) {
                 let mut progress = progress;
                 let mut advances = 0;
                 let completed = loop {
-                    match progress {
-                        GraphProgress::Continue(execution) => {
+                    match canonical_progress(progress) {
+                        CanonicalProgress::Continue(execution) => {
                             advances += 1;
                             assert!(
                                 advances <= 4,
@@ -1566,8 +1567,7 @@ pub fn main() -> List(Counter) {
                                 .advance(&plan, &mut state, &mut storage, &mut 0)
                                 .unwrap();
                         }
-                        GraphProgress::Complete(completed) => break completed,
-                        GraphProgress::Host(never) => match never {},
+                        CanonicalProgress::Complete(completed) => break completed,
                     }
                 };
                 assert_eq!(completed.exit(), BlockGraphExitId(0));

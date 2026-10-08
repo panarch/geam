@@ -4,6 +4,7 @@ mod retained;
 mod scoped;
 
 pub(in crate::runtime) use self::call::RuntimeHostCall;
+pub(in crate::runtime) use self::invoke::{SynchronousStringReturn, invoke_synchronous_string};
 pub(super) use self::invoke::{host_call_error, invoke_never, invoke_value};
 
 use self::scoped::ScopedValues;

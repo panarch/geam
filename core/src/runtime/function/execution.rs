@@ -175,47 +175,97 @@ where
                 }
             }
             Position::Graph { body, execution } => {
-                match execution.advance(plan, state, &mut storage, remaining)? {
-                    GraphProgress::Host(invoke) => {
-                        Ok(Progress::Host(Plan::map_host(invoke, move |execution| {
-                            Ok(Progress::Continue(Self {
-                                function,
-                                position: Position::Graph { body, execution },
-                                storage,
-                            }))
-                        })))
-                    }
-                    GraphProgress::Continue(next) => Ok(Progress::Continue(Self {
+                let progress = execution.advance(plan, state, &mut storage, remaining)?;
+                Self::finish_graph(function, body, storage, plan, progress)
+            }
+        }
+    }
+
+    fn finish_graph(
+        function: Id,
+        body: &'plan Id::Body,
+        mut storage: Box<GraphStorage<'plan, Plan>>,
+        plan: &'plan Plan,
+        progress: GraphProgress<'plan, Plan>,
+    ) -> ExecutionResult<Progress<'plan, Plan, Id>> {
+        match progress {
+            GraphProgress::GeneratedHost { frame, invoke } => {
+                Ok(Progress::Host(Plan::map_host(invoke, move |state| {
+                    let progress =
+                        GraphExecution::generated_ready(frame, state, plan, &mut storage)?;
+                    Self::finish_graph(function, body, storage, plan, progress)
+                })))
+            }
+
+            GraphProgress::Host(invoke) => {
+                Ok(Progress::Host(Plan::map_host(invoke, move |execution| {
+                    Ok(Progress::Continue(Self {
+                        function,
+                        position: Position::Graph { body, execution },
+                        storage,
+                    }))
+                })))
+            }
+            GraphProgress::Continue(next) => Ok(Progress::Continue(Self {
+                function,
+                storage,
+                position: Position::Graph {
+                    body,
+                    execution: next,
+                },
+            })),
+            GraphProgress::CallComplete(output) => Ok(Progress::Complete(
+                <Id::Body as FunctionBodyOwner>::Return::from_call_output(output)?,
+            )),
+            GraphProgress::CallInterpreted {
+                target,
+                point,
+                values,
+            } => {
+                let function = Id::from_call_target(target)?;
+                Ok(match function.entry(plan) {
+                    ExecutionFunctionRef::Graph(entry) => Progress::Continue(Self {
                         function,
                         storage,
                         position: Position::Graph {
-                            body,
-                            execution: next,
+                            body: entry.body(),
+                            execution: GraphExecution::interpreted(
+                                entry.body().function_body().block_graph().as_view(),
+                                point,
+                                values,
+                            ),
                         },
-                    })),
-                    GraphProgress::Complete(completed) => {
-                        Ok(match body.function_body().exit(completed.exit()) {
-                            FunctionExit::Return(value) => {
-                                Progress::Complete(completed.into_value(value))
-                            }
-                            FunctionExit::TailCall {
-                                function: target,
-                                transfer,
-                                ..
-                            } => {
-                                let (function, origin) = function.next(target);
-                                Progress::Continue(Self {
-                                    function,
-                                    position: Position::Entry {
-                                        origin,
-                                        inputs: completed.into_retained(transfer),
-                                    },
-                                    storage,
-                                })
-                            }
+                    }),
+                    ExecutionFunctionRef::Host(target) => Progress::Host(Plan::map_host(
+                        Id::prepare_host(
+                            plan,
+                            HostCallOrigin::Entry,
+                            target,
+                            values.into_retained(),
+                        ),
+                        |value| Ok(Progress::Complete(value)),
+                    )),
+                })
+            }
+            GraphProgress::Complete(completed) => {
+                Ok(match body.function_body().exit(completed.exit()) {
+                    FunctionExit::Return(value) => Progress::Complete(completed.into_value(value)),
+                    FunctionExit::TailCall {
+                        function: target,
+                        transfer,
+                        ..
+                    } => {
+                        let (function, origin) = function.next(target);
+                        Progress::Continue(Self {
+                            function,
+                            position: Position::Entry {
+                                origin,
+                                inputs: completed.into_retained(transfer),
+                            },
+                            storage,
                         })
                     }
-                }
+                })
             }
         }
     }
@@ -230,6 +280,457 @@ mod tests {
     use crate::runtime::graph::RetainedValues;
     use crate::runtime::state::RuntimeState;
     use std::num::NonZeroUsize;
+
+    #[test]
+    fn generated_handoffs_reject_other_return_families_and_resume_the_real_source_graph() {
+        use crate::plan::execution::compiled::{CallTarget, CompiledCheckpoint};
+        use crate::plan::execution::function::{BoolFunctionId, FunctionReturnFamily};
+        use crate::plan::execution::graph::BlockId;
+        use crate::runtime::compiled::calls::{CallOutput, CallValues};
+        use crate::runtime::graph::{GraphProgress, GraphStorage};
+        use crate::runtime::{ExecutionError, InvariantError};
+
+        let plan = crate::runtime::plan_src("pub fn main() { 42 }");
+        let body = plan.int_function(IntFunctionId(0)).body();
+        let point = CompiledCheckpoint {
+            block: BlockId(0),
+            instruction: 0,
+            ints: 0,
+            bools: 0,
+            bit_arrays: 0,
+            int_lists: 0,
+            strings: 0,
+            customs: 0,
+            custom_lists: 0,
+            int_functions: 0,
+            bool_functions: 0,
+        };
+        for progress in [
+            GraphProgress::CallComplete(CallOutput::Bool(true)),
+            GraphProgress::CallInterpreted {
+                target: CallTarget::Bool(BoolFunctionId(0)),
+                point,
+                values: Box::new(CallValues::default()),
+            },
+        ] {
+            let failure = Execution::finish_graph(
+                IntFunctionId(0),
+                body,
+                Box::new(GraphStorage::new()),
+                &plan,
+                progress,
+            )
+            .err()
+            .unwrap();
+            assert_eq!(
+                failure,
+                ExecutionError::Invariant(InvariantError::FunctionReturnFamilyMismatch {
+                    expected: FunctionReturnFamily::Int,
+                    actual: FunctionReturnFamily::Bool,
+                })
+            );
+        }
+        let progress = Execution::finish_graph(
+            IntFunctionId(0),
+            body,
+            Box::new(GraphStorage::new()),
+            &plan,
+            GraphProgress::CallInterpreted {
+                target: CallTarget::Int(IntFunctionId(0)),
+                point,
+                values: Box::new(CallValues::default()),
+            },
+        )
+        .unwrap();
+        let mut execution = continuing(progress);
+        let mut echo = Vec::new();
+        let mut state = RuntimeState::new(&mut echo);
+        loop {
+            match execution
+                .advance(&plan, &mut state, NonZeroUsize::MIN)
+                .unwrap()
+            {
+                Progress::Continue(next) => execution = next,
+                Progress::Complete(value) => {
+                    assert_eq!(value.into_bigint(), num_bigint::BigInt::from(42));
+                    break;
+                }
+                Progress::Host(never) => match never {},
+            }
+        }
+        assert!(echo.is_empty());
+    }
+
+    #[test]
+    fn hosted_string_handoffs_keep_the_target_family_and_native_service_boundary() {
+        use crate::plan::execution::compiled::{CallTarget, CompiledCheckpoint};
+        use crate::plan::execution::function::{
+            ExecutionFunctionEntry, ExecutionFunctionRef, FunctionReturnFamily, StringFunctionId,
+        };
+        use crate::plan::execution::graph::BlockId;
+        use crate::plan::execution::runtime::RuntimeExecutionPlan;
+        use crate::runtime::compiled::calls::{CallOutput, CallValues};
+        use crate::runtime::graph::{GraphProgress, GraphStorage};
+        use crate::runtime::{ExecutionError, InvariantError};
+        use crate::{HostProviderModule, HostProviderSet, StatelessHostProfile, StringValue};
+        let source = "@external(erlang, \"example\", \"answer\") fn answer() -> String pub fn main() { let _ = answer() \"kept\" }";
+        let typed = crate::compile_typed_host_program(
+            "example",
+            "example",
+            [crate::PackageSource::new(
+                "example",
+                Vec::<String>::new(),
+                [crate::ModuleSource::new(
+                    "example",
+                    "src/example.gleam",
+                    source,
+                )],
+            )],
+            HostProviderSet::from_providers([HostProviderModule::<StatelessHostProfile>::new(
+                "example", "example",
+            )
+            .unwrap()
+            .with_function::<(), StringValue, _>("answer", || StringValue::from("native"))
+            .unwrap()])
+            .unwrap(),
+        )
+        .unwrap();
+        let mut hosted =
+            crate::HostedExecution::try_from_module_plan(crate::plan_host_program(typed).unwrap())
+                .unwrap();
+        let (plan, _, _) = hosted.parts_mut();
+        let plan = &**plan;
+        let mut graphs = (0..2)
+            .filter_map(
+                |index| match plan.string_function(StringFunctionId(index)).as_ref() {
+                    ExecutionFunctionRef::Graph(entry) => Some(entry.body()),
+                    ExecutionFunctionRef::Host(_) => None,
+                },
+            )
+            .collect::<Vec<_>>();
+        assert_eq!(graphs.len(), 1);
+        let body = graphs.pop().unwrap();
+        let point = CompiledCheckpoint {
+            block: BlockId(0),
+            instruction: 0,
+            ints: 0,
+            bools: 0,
+            bit_arrays: 0,
+            int_lists: 0,
+            strings: 0,
+            customs: 0,
+            custom_lists: 0,
+            int_functions: 0,
+            bool_functions: 0,
+        };
+        for progress in [
+            GraphProgress::CallComplete(CallOutput::Int(42_i128.into())),
+            GraphProgress::CallInterpreted {
+                target: CallTarget::Int(IntFunctionId(0)),
+                point,
+                values: Box::default(),
+            },
+        ] {
+            assert_eq!(
+                Execution::finish_graph(
+                    StringFunctionId(0),
+                    body,
+                    Box::new(GraphStorage::new()),
+                    plan,
+                    progress
+                )
+                .err()
+                .unwrap(),
+                ExecutionError::Invariant(InvariantError::FunctionReturnFamilyMismatch {
+                    expected: FunctionReturnFamily::String,
+                    actual: FunctionReturnFamily::Int
+                })
+            );
+        }
+        for (target, native) in [(StringFunctionId(0), false), (StringFunctionId(1), true)] {
+            let progress = Execution::finish_graph(
+                StringFunctionId(0),
+                body,
+                Box::new(GraphStorage::new()),
+                plan,
+                GraphProgress::CallInterpreted {
+                    target: CallTarget::String(target),
+                    point,
+                    values: Box::<CallValues>::default(),
+                },
+            )
+            .unwrap();
+            assert_eq!(matches!(progress, Progress::Host(_)), native);
+            assert_eq!(matches!(progress, Progress::Continue(_)), !native);
+        }
+        let mut echo = Vec::new();
+        assert_eq!(
+            crate::execution_fixture::run(&mut hosted, &mut (), &mut echo).unwrap(),
+            crate::Value::String("kept".into())
+        );
+        assert!(echo.is_empty());
+    }
+
+    #[test]
+    fn generated_string_native_results_resume_the_original_function_driver() {
+        use super::Position;
+        use crate::plan::execution::function::{
+            ExecutionFunctionEntry, ExecutionFunctionRef, StringFunctionId,
+        };
+        use crate::plan::execution::runtime::RuntimeExecutionPlan;
+        use crate::plan::execution::{
+            HostedProgram,
+            compiled::{
+                CallTarget, CompiledCheckpoint, CompiledImplementation, FunctionCallsImplementation,
+            },
+        };
+        use crate::plan::{HostCallSite, SourceSpan};
+        use crate::runtime::compiled::calls::{
+            CallExecution, CallInputs, CallOps, CallOutput, CallProgress, CallStorage,
+            StringNativeExecution, StringNativeRequest,
+        };
+        use crate::runtime::graph::{
+            BlockEnvironment, GraphExecution, GraphStorage, RetainedValues,
+        };
+        use crate::{
+            HostCall, HostCallContinuation, HostCallError, HostConstructions, HostOwnedCompletion,
+            HostProvider, HostProviderModule, HostProviderSet, HostTypeListEnd,
+            StatelessHostProfile, StringValue,
+        };
+        use std::sync::{
+            Arc, Mutex, Weak,
+            atomic::{AtomicUsize, Ordering},
+        };
+        const SOURCE: &str = r#"
+@external(erlang, "example", "answer")
+fn answer() -> String
+@external(erlang, "example", "exercise")
+fn exercise() -> Nil
+fn source() { let _ = answer() "kept" }
+pub fn main() { exercise() source() }
+"#;
+        type PlanSlot = Arc<Mutex<Option<Weak<HostedProgram<StatelessHostProfile>>>>>;
+        struct Provider;
+        impl HostProvider<StatelessHostProfile> for Provider {
+            type State = ();
+            fn project(state: &mut ()) -> &mut () {
+                state
+            }
+        }
+        struct Completion {
+            requested: bool,
+        }
+        impl CallExecution for Completion {
+            fn restart(&mut self, _: CallTarget, _: usize, _: CallInputs<'_>) -> bool {
+                false
+            }
+            fn retained_bytes(&self) -> usize {
+                0
+            }
+            fn advance(
+                mut self: Box<Self>,
+                _: &mut CallOps<'_>,
+                budget: &mut usize,
+            ) -> CallProgress {
+                if *budget == 0 {
+                    return CallProgress::Yield(self);
+                }
+                *budget -= 1;
+                if !self.requested {
+                    self.requested = true;
+                    CallProgress::StringNative(StringNativeRequest {
+                        function: StringFunctionId(2),
+                        site: HostCallSite::from_static(
+                            "example",
+                            "source",
+                            SourceSpan::new(0, SOURCE.len()),
+                        ),
+                        root_tail: false,
+                        arguments: Box::default(),
+                        execution: self,
+                    })
+                } else {
+                    CallProgress::Complete {
+                        output: CallOutput::String("kept".into()),
+                        execution: self,
+                    }
+                }
+            }
+        }
+        impl StringNativeExecution for Completion {
+            fn resume_native(self: Box<Self>, value: StringValue) -> Box<dyn CallExecution> {
+                assert_eq!(value.as_str(), Ok("native"));
+                self
+            }
+        }
+        fn start(
+            _: usize,
+            _: CallInputs<'_>,
+            _: &mut CallStorage,
+        ) -> Option<Box<dyn CallExecution>> {
+            Some(Box::new(Completion { requested: false }))
+        }
+        fn exercise<'call>(
+            slot: &PlanSlot,
+            mut call: HostCall<'call, StatelessHostProfile, Provider, ()>,
+            constructions: HostConstructions<'call, HostTypeListEnd>,
+        ) -> Result<HostCallContinuation<'call, ()>, HostCallError> {
+            let _ = call.state();
+            let plan = slot.lock().unwrap().as_ref().unwrap().upgrade().unwrap();
+            Ok(call.resume(constructions, move |context| {
+                Box::pin(async move {
+                    let mut graphs = (0..3)
+                        .filter_map(|index| {
+                            match plan.string_function(StringFunctionId(index)).as_ref() {
+                                ExecutionFunctionRef::Graph(entry) if index == 1 => {
+                                    Some(entry.body())
+                                }
+                                _ => None,
+                            }
+                        })
+                        .collect::<Vec<_>>();
+                    assert_eq!(graphs.len(), 1);
+                    let body = graphs.pop().unwrap();
+                    let graph = body.block_graph().as_view();
+                    let point = CompiledCheckpoint {
+                        block: graph.entry(),
+                        instruction: 0,
+                        ints: 0,
+                        bools: 0,
+                        bit_arrays: 0,
+                        int_lists: 0,
+                        strings: 0,
+                        customs: 0,
+                        custom_lists: 0,
+                        int_functions: 0,
+                        bool_functions: 0,
+                    };
+                    // This owner supplies published protocol boundaries. Public
+                    // prepared fixtures prove generator selection and exact charges.
+                    let implementation = CompiledImplementation::FunctionCalls(
+                        Box::new(FunctionCallsImplementation {
+                            root: true,
+                            entry: 0,
+                            checkpoints: vec![point].into(),
+                            locals: Vec::new().into(),
+                            calls: Vec::new().into(),
+                            creations: Vec::new().into(),
+                            returns: Vec::new().into(),
+                            tails: Vec::new().into(),
+                            start,
+                        })
+                        .into(),
+                    );
+                    for budget in [NonZeroUsize::MIN, NonZeroUsize::new(16).unwrap()] {
+                        let execution = Execution {
+                            function: StringFunctionId(1),
+                            storage: Box::new(GraphStorage::new()),
+                            position: Position::Graph {
+                                body,
+                                execution: GraphExecution::new(
+                                    graph,
+                                    RetainedValues::empty(),
+                                    Some(&implementation),
+                                ),
+                            },
+                        };
+                        let value = execution
+                            .drive(&*plan, context.execution().services(), budget)
+                            .await
+                            .unwrap()
+                            .unwrap();
+                        assert_eq!(value.as_str(), Ok("kept"));
+                    }
+                    Ok(HostOwnedCompletion::new(
+                        |call, _| Ok(call.return_value(())),
+                    ))
+                })
+            }))
+        }
+        let empty = BlockEnvironment::from_retained(RetainedValues::empty());
+        let mut engine = Completion { requested: false };
+        assert!(!engine.restart(
+            CallTarget::String(StringFunctionId(1)),
+            0,
+            CallInputs::new(&empty)
+        ));
+        assert_eq!(engine.retained_bytes(), 0);
+        let mut numeric = Default::default();
+        let mut strings = None;
+        let mut bits = None;
+        let mut probe_echo = Vec::new();
+        let runtime = RuntimeState::new(&mut probe_echo);
+        for offered in [0, 1] {
+            let mut remaining = offered;
+            let progress = Box::new(Completion { requested: false }).advance(
+                &mut CallOps::new(
+                    runtime.captures(),
+                    &mut numeric,
+                    runtime.lists(),
+                    &mut strings,
+                    &mut bits,
+                ),
+                &mut remaining,
+            );
+            assert_eq!(matches!(progress, CallProgress::Yield(_)), offered == 0);
+            assert_eq!(remaining, 0);
+        }
+        let slot: PlanSlot = Arc::new(Mutex::new(None));
+        let observed_slot = slot.clone();
+        type ExerciseNative = dyn for<'call> Fn(
+                HostCall<'call, StatelessHostProfile, Provider, ()>,
+                HostConstructions<'call, HostTypeListEnd>,
+            ) -> Result<HostCallContinuation<'call, ()>, HostCallError>
+            + Send
+            + Sync;
+        let exercise_native: Box<ExerciseNative> =
+            Box::new(move |call, constructions| exercise(&observed_slot, call, constructions));
+        let calls = Arc::new(AtomicUsize::new(0));
+        let observed_calls = calls.clone();
+        let typed = crate::compile_typed_host_program(
+            "example",
+            "example",
+            [crate::PackageSource::new(
+                "example",
+                Vec::<String>::new(),
+                [crate::ModuleSource::new(
+                    "example",
+                    "src/example.gleam",
+                    SOURCE,
+                )],
+            )],
+            HostProviderSet::from_providers([HostProviderModule::<StatelessHostProfile>::new(
+                "example", "example",
+            )
+            .unwrap()
+            .with_function::<(), StringValue, _>("answer", move || {
+                observed_calls.fetch_add(1, Ordering::SeqCst);
+                StringValue::from("native")
+            })
+            .unwrap()
+            .with_resumable_function::<Provider, (), (), HostTypeListEnd, _>(
+                "exercise",
+                exercise_native,
+            )
+            .unwrap()])
+            .unwrap(),
+        )
+        .unwrap();
+        let mut hosted =
+            crate::HostedExecution::try_from_module_plan(crate::plan_host_program(typed).unwrap())
+                .unwrap();
+        {
+            let (plan, _, _) = hosted.parts_mut();
+            *slot.lock().unwrap() = Some(Arc::downgrade(plan));
+        }
+        let mut echo = Vec::new();
+        assert_eq!(
+            crate::execution_fixture::run(&mut hosted, &mut (), &mut echo).unwrap(),
+            crate::Value::String("kept".into())
+        );
+        assert_eq!(calls.load(Ordering::SeqCst), 3);
+        assert!(echo.is_empty());
+    }
 
     #[test]
     fn finite_entry_completes_with_unused_budget() {
@@ -851,6 +1352,280 @@ fn items(count: Int, result: List(Item)) {
             Progress::Continue(next) => next,
             Progress::Complete(_) => panic!("fixture entry must still be running"),
             Progress::Host(invoke) => match invoke {},
+        }
+    }
+    #[test]
+    fn native_grants_and_native_tail_targets_resume_in_the_original_function_owner() {
+        use super::Position;
+        use crate::plan::execution::HostedProgram;
+        use crate::plan::execution::compiled::{
+            CallTarget, CompiledCheckpoint, CompiledImplementation, FunctionCallsImplementation,
+        };
+        use crate::plan::execution::function::{
+            ExecutionFunctionEntry, ExecutionFunctionRef, StringFunctionId,
+        };
+        use crate::plan::execution::graph::BlockId;
+        use crate::plan::execution::host::HostedFunctionTarget;
+        use crate::plan::execution::runtime::RuntimeExecutionPlan;
+        use crate::plan::{HostCallSite, SourceSpan};
+        use crate::runtime::ExecutableRuntimePlan;
+        use crate::runtime::compiled::calls::{
+            CallExecution, CallInputs, CallOps, CallProgress, CallStorage, CallValues,
+            StringNativeExecution, StringNativeRequest,
+        };
+        use crate::runtime::graph::{BlockEnvironment, GraphExecution, GraphStorage};
+        use crate::{
+            HostCall, HostCallContinuation, HostCallError, HostConstructions, HostOwnedCompletion,
+            HostProfile, HostProvider, HostProviderModule, HostProviderSet, HostTypeListEnd,
+            ModuleSource, PackageSource, StringValue,
+        };
+        use num_bigint::BigInt;
+        use std::sync::Arc;
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        const SOURCE: &str = r#"
+@external(erlang, "native", "append")
+fn append(value: String) -> String
+@external(erlang, "native", "answer")
+fn answer() -> Int
+@external(erlang, "native", "exercise")
+fn exercise() -> Nil
+pub fn handoff() { let _ = append("input") answer() }
+pub fn main() { let _ = handoff exercise() True }
+"#;
+        struct State {
+            plan: Option<Arc<HostedProgram<Profile>>>,
+            native_calls: Arc<AtomicUsize>,
+        }
+        struct Profile;
+        impl HostProfile for Profile {
+            type RunState = State;
+            type ExternalStores = ();
+            type ExecutionState = ();
+        }
+        impl HostProvider<Profile> for Profile {
+            type State = State;
+            fn project(state: &mut Self::State) -> &mut Self::State {
+                state
+            }
+        }
+        // This owner models two published boundaries. Selection, generated
+        // arithmetic and full charge equivalence belong to public fixtures.
+        struct AppendThenTail {
+            delivered: bool,
+        }
+        impl CallExecution for AppendThenTail {
+            fn restart(&mut self, _: CallTarget, _: usize, _: CallInputs<'_>) -> bool {
+                false
+            }
+            fn retained_bytes(&self) -> usize {
+                0
+            }
+            fn advance(self: Box<Self>, _: &mut CallOps<'_>, budget: &mut usize) -> CallProgress {
+                if *budget == 0 {
+                    return CallProgress::Yield(self);
+                }
+                *budget -= 1;
+                if self.delivered {
+                    CallProgress::Interpreted {
+                        target: CallTarget::Int(IntFunctionId(1)),
+                        point: CHECKPOINT,
+                        values: Box::default(),
+                    }
+                } else {
+                    CallProgress::StringNative(StringNativeRequest {
+                        function: StringFunctionId(0),
+                        site: HostCallSite::from_static(
+                            "example",
+                            "handoff",
+                            SourceSpan::new(0, SOURCE.len()),
+                        ),
+                        root_tail: false,
+                        arguments: Box::new(CallValues {
+                            strings: vec!["input".into()],
+                            ..Default::default()
+                        }),
+                        execution: self,
+                    })
+                }
+            }
+        }
+        impl StringNativeExecution for AppendThenTail {
+            fn resume_native(mut self: Box<Self>, value: StringValue) -> Box<dyn CallExecution> {
+                assert_eq!(value.as_str(), Ok("input!"));
+                self.delivered = true;
+                self
+            }
+        }
+        const CHECKPOINT: CompiledCheckpoint = CompiledCheckpoint {
+            block: BlockId(0),
+            instruction: 0,
+            ints: 0,
+            bools: 0,
+            bit_arrays: 0,
+            int_lists: 0,
+            strings: 0,
+            customs: 0,
+            custom_lists: 0,
+            int_functions: 0,
+            bool_functions: 0,
+        };
+        fn start(
+            _: usize,
+            _: CallInputs<'_>,
+            _: &mut CallStorage,
+        ) -> Option<Box<dyn CallExecution>> {
+            Some(Box::new(AppendThenTail { delivered: false }))
+        }
+        fn exercise<'call>(
+            mut call: HostCall<'call, Profile, Profile, ()>,
+            constructions: HostConstructions<'call, HostTypeListEnd>,
+        ) -> Result<HostCallContinuation<'call, ()>, HostCallError> {
+            let plan = call.state().plan.as_ref().unwrap().clone();
+            Ok(call.resume(constructions, move |context| {
+                Box::pin(async move {
+                    let functions = [
+                        plan.int_function(IntFunctionId(0)),
+                        plan.int_function(IntFunctionId(1)),
+                    ];
+                    let bodies: Vec<_> = functions
+                        .iter()
+                        .filter_map(|function| match function.as_ref() {
+                            ExecutionFunctionRef::Graph(entry) => Some(entry.body()),
+                            _ => None,
+                        })
+                        .collect();
+                    assert_eq!(bodies.len(), 1);
+                    let body = bodies[0];
+                    let natives: Vec<_> = functions
+                        .iter()
+                        .filter_map(|function| match function.as_ref() {
+                            ExecutionFunctionRef::Host(HostedFunctionTarget::Value(target)) => {
+                                Some(plan.host_value_function(target).name())
+                            }
+                            _ => None,
+                        })
+                        .collect();
+                    assert_eq!(natives, ["answer"]);
+                    let mut engine = AppendThenTail { delivered: false };
+                    let empty = BlockEnvironment::from_retained(RetainedValues::empty());
+                    assert!(!engine.restart(
+                        CallTarget::Int(IntFunctionId(0)),
+                        0,
+                        CallInputs::new(&empty)
+                    ));
+                    assert_eq!(engine.retained_bytes(), 0);
+                    let implementation = CompiledImplementation::FunctionCalls(
+                        Box::new(FunctionCallsImplementation {
+                            root: true,
+                            entry: 0,
+                            checkpoints: vec![CHECKPOINT].into(),
+                            locals: Vec::new().into(),
+                            calls: Vec::new().into(),
+                            creations: Vec::new().into(),
+                            returns: Vec::new().into(),
+                            tails: Vec::new().into(),
+                            start,
+                        })
+                        .into(),
+                    );
+                    let execution = Execution {
+                        function: IntFunctionId(0),
+                        position: Position::Graph {
+                            body,
+                            execution: GraphExecution::new(
+                                body.block_graph().as_view(),
+                                RetainedValues::empty(),
+                                Some(&implementation),
+                            ),
+                        },
+                        storage: Box::new(GraphStorage::new()),
+                    };
+                    let value = execution
+                        .drive(&*plan, context.execution().services(), NonZeroUsize::MIN)
+                        .await
+                        .unwrap()
+                        .unwrap()
+                        .into_bigint();
+                    Ok(HostOwnedCompletion::new(move |call, _| {
+                        assert_eq!(value, BigInt::from(42));
+                        Ok(call.return_value(()))
+                    }))
+                })
+            }))
+        }
+        fn append_continuing<'call>(
+            mut call: HostCall<'call, Profile, Profile, StringValue>,
+            constructions: HostConstructions<'call, HostTypeListEnd>,
+            value: StringValue,
+        ) -> Result<HostCallContinuation<'call, StringValue>, HostCallError> {
+            call.state().native_calls.fetch_add(1, Ordering::SeqCst);
+            Ok(call.resume(constructions, move |_| {
+                Box::pin(async move {
+                    Ok(HostOwnedCompletion::new(move |call, _| {
+                        Ok(call.return_value(format!("{}!", value.as_str().unwrap()).into()))
+                    }))
+                })
+            }))
+        }
+        // The same published request must keep its original owner when the
+        // synchronous capability is declined and ordinary host execution resumes.
+        for continuing in [false, true] {
+            let native_calls = Arc::new(AtomicUsize::new(0));
+            let observed = native_calls.clone();
+            let provider = HostProviderModule::<Profile>::new("example", "example")
+                .unwrap()
+                .with_function::<(), BigInt, _>("answer", || 42.into())
+                .unwrap()
+                .with_resumable_function::<Profile, (), (), HostTypeListEnd, _>(
+                    "exercise", exercise,
+                )
+                .unwrap();
+            let provider = if continuing {
+                provider.with_resumable_function::<Profile, (StringValue,), StringValue, HostTypeListEnd, _>("append", append_continuing).unwrap()
+            } else {
+                provider
+                    .with_function::<(StringValue,), StringValue, _>(
+                        "append",
+                        move |value: StringValue| {
+                            observed.fetch_add(1, Ordering::SeqCst);
+                            format!("{}!", value.as_str().unwrap()).into()
+                        },
+                    )
+                    .unwrap()
+            };
+            let typed = crate::compile_typed_host_program(
+                "example",
+                "example",
+                [PackageSource::new(
+                    "example",
+                    Vec::<String>::new(),
+                    [ModuleSource::new("example", "src/example.gleam", SOURCE)],
+                )],
+                HostProviderSet::from_providers([provider]).unwrap(),
+            )
+            .unwrap();
+            let mut hosted = crate::HostedExecution::try_from_module_plan(
+                crate::plan_host_program(typed).unwrap(),
+            )
+            .unwrap();
+            let (plan, _, _) = hosted.parts_mut();
+            assert_eq!(plan.synchronous_strings(), &[!continuing]);
+            let mut state = State {
+                plan: Some(plan.clone()),
+                native_calls: native_calls.clone(),
+            };
+            let host = crate::execution_fixture::TestHost::default();
+            let mut echo = Vec::new();
+            assert_eq!(
+                host.block_on(hosted.run_main(&host, &mut state, &mut echo))
+                    .unwrap()
+                    .try_into_value()
+                    .unwrap(),
+                crate::Value::Bool(true)
+            );
+            assert_eq!(native_calls.load(Ordering::SeqCst), 1);
+            assert!(echo.is_empty());
         }
     }
 }

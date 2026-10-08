@@ -50,6 +50,148 @@ static LIST_CONSTRUCTION_ENTRY: data::HostedEntryArtifact =
 static LIST_CONSTRUCTION_HOSTED: data::HostedModuleArtifact =
     include!("fixtures/prepared/list_construction_hosted.rs");
 static LIST_NATIVE: data::HostedModuleArtifact = include!("fixtures/prepared/list_native.rs");
+static CALL_BOUNDARIES: data::HostedModuleArtifact =
+    include!("fixtures/prepared/call_boundaries.rs");
+
+#[test]
+fn call_boundaries_prepare_the_exact_maintained_artifact() {
+    let source = include_str!("fixtures/prepared/call_boundaries.gleam");
+    let typed = compile_typed_host_program(
+        "example",
+        "example",
+        [PackageSource::new(
+            "example",
+            Vec::<String>::new(),
+            [ModuleSource::new(
+                "example",
+                "src/call_boundaries.gleam",
+                source,
+            )],
+        )],
+        HostProviderSet::<StatelessHostProfile>::new([]).unwrap(),
+    )
+    .unwrap();
+    let (mut bindings, _) = HostedModuleBuilder::new(typed)
+        .unwrap()
+        .function(FunctionDeclaration::<(bool,), StringValue>::new("choose"))
+        .unwrap();
+    bindings
+        .function(FunctionDeclaration::<(), BigInt>::new("wide"))
+        .unwrap();
+    assert_eq!(
+        bindings.prepare().unwrap().emit_rust(),
+        include_str!("fixtures/prepared/call_boundaries.rs").trim()
+    );
+    let mut bindings = CALL_BOUNDARIES
+        .load(HostProviderSet::<StatelessHostProfile>::new([]).unwrap())
+        .unwrap();
+    bindings
+        .function(FunctionDeclaration::<(bool,), StringValue>::new("choose"))
+        .unwrap();
+    bindings
+        .function(FunctionDeclaration::<(), BigInt>::new("wide"))
+        .unwrap();
+    bindings.seal();
+}
+
+#[cfg(feature = "tokio")]
+#[test]
+fn prepared_calls_preserve_tail_only_and_wide_integer_boundaries() {
+    let mut bindings = CALL_BOUNDARIES
+        .load(HostProviderSet::<StatelessHostProfile>::new([]).unwrap())
+        .unwrap();
+    let choose = bindings
+        .function(FunctionDeclaration::<(bool,), StringValue>::new("choose"))
+        .unwrap();
+    let wide = bindings
+        .function(FunctionDeclaration::<(), BigInt>::new("wide"))
+        .unwrap();
+    let mut module = bindings.seal();
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    let host = TokioHost::new(runtime.handle().clone());
+    let mut echo = Vec::new();
+    let output = runtime
+        .block_on(
+            module.with_execution(&host, &mut (), &mut echo, async |scope| {
+                scope.call(&choose, (false,)).await.unwrap()
+            }),
+        )
+        .unwrap()
+        .try_into_value()
+        .unwrap();
+    assert_eq!(output.as_str(), Ok("kept"));
+    assert!(echo.is_empty());
+    let output = runtime
+        .block_on(
+            module.with_execution(&host, &mut (), &mut echo, async |scope| {
+                scope.call(&wide, ()).await.unwrap()
+            }),
+        )
+        .unwrap()
+        .try_into_value()
+        .unwrap();
+    assert_eq!(output, BigInt::from(1) << 160_usize);
+    assert!(echo.is_empty());
+}
+
+#[test]
+fn computed_boolean_calls_prepare_all_native_arithmetic_nodes() {
+    let source = r#"
+fn identity(value: Bool) { value }
+pub fn calculate(input: Int, divisor: Int) {
+  let added = input + 3
+  let subtracted = added - 7
+  let multiplied = subtracted * 2
+  let divided = multiplied / divisor
+  let remainder = divided % divisor
+  let result = -remainder
+  let checked = identity(result == 0)
+  !checked
+}
+"#;
+    let typed = compile_typed_module("example", "src/example.gleam", source).unwrap();
+    let (bindings, _) = ModuleBuilder::new(typed)
+        .unwrap()
+        .function(FunctionDeclaration::<(BigInt, BigInt), bool>::new(
+            "calculate",
+        ))
+        .unwrap();
+    let generated = bindings.prepare().emit_rust();
+    for operation in [" + ", " - ", " * ", " / ", " % ", "= -region"] {
+        assert!(
+            generated.contains(operation),
+            "missing emitted operation: {operation}"
+        );
+    }
+    let typed = compile_typed_module("example", "src/example.gleam", source).unwrap();
+    let (bindings, calculate) = ModuleBuilder::new(typed)
+        .unwrap()
+        .function(FunctionDeclaration::<(BigInt, BigInt), bool>::new(
+            "calculate",
+        ))
+        .unwrap();
+    let module = bindings.seal();
+    let mut echo = Vec::new();
+    assert!(
+        !module
+            .call(&calculate, (5.into(), 3.into()), &mut echo)
+            .unwrap()
+    );
+    assert!(
+        module
+            .call(&calculate, (10.into(), 4.into()), &mut echo)
+            .unwrap()
+    );
+    assert!(
+        !module
+            .call(&calculate, (10.into(), 0.into()), &mut echo)
+            .unwrap()
+    );
+    assert!(echo.is_empty());
+}
 
 #[test]
 fn string_checkpoint_generation_matches_assertion_plain_stop_and_hosted_list_artifacts() {
@@ -4591,7 +4733,7 @@ fn incompatible_format_never_produces_a_prepared_binding_owner() {
     let error = incompatible.load().err().unwrap();
     assert_eq!(
         error.to_string(),
-        "prepared format 6 is incompatible with format 24; regenerate the prepared program"
+        "prepared format 6 is incompatible with format 28; regenerate the prepared program"
     );
 }
 

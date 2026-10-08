@@ -47,7 +47,6 @@ impl GraphPosition {
 pub(in crate::runtime) struct CompletedGraph {
     exit: BlockGraphExitId,
     environment: BlockEnvironment,
-    direct_return: bool,
 }
 
 impl CompletedGraph {
@@ -59,7 +58,7 @@ impl CompletedGraph {
     where
         Value: GraphValue,
     {
-        value.take_return(&mut self.environment, self.direct_return)
+        value.take(&mut self.environment)
     }
 
     pub(in crate::runtime) fn into_retained(self, transfer: &Transfer) -> RetainedValues {
@@ -74,7 +73,7 @@ impl CompletedGraph {
     where
         Value: GraphValue,
     {
-        let returned = value.take_return(&mut self.environment, self.direct_return);
+        let returned = value.take(&mut self.environment);
         pool.recycle(self.environment);
         returned
     }
@@ -102,7 +101,69 @@ pub(in crate::runtime) fn evaluate_external_function_instruction<'call>(
 }
 
 #[cfg(test)]
-mod tests {
+pub(in crate::runtime) mod tests {
+    pub(in crate::runtime) enum CanonicalProgress<
+        'plan,
+        Plan: crate::runtime::ExecutableRuntimePlan,
+    > {
+        Continue(super::GraphExecution<'plan, Plan>),
+        Complete(super::CompletedGraph),
+    }
+
+    pub(in crate::runtime) fn canonical_progress<Plan: crate::runtime::ExecutableRuntimePlan>(
+        progress: super::GraphProgress<'_, Plan>,
+    ) -> CanonicalProgress<'_, Plan> {
+        match progress {
+            super::GraphProgress::Continue(next) => CanonicalProgress::Continue(next),
+            super::GraphProgress::Complete(completed) => CanonicalProgress::Complete(completed),
+            super::GraphProgress::CallComplete(_)
+            | super::GraphProgress::CallInterpreted { .. } => {
+                panic!("fixture must use canonical graph completion")
+            }
+            super::GraphProgress::Host(_) | super::GraphProgress::GeneratedHost { .. } => {
+                panic!("canonical graph fixture has no host calls")
+            }
+        }
+    }
+
+    #[test]
+    fn canonical_fixture_guard_rejects_generated_completion_and_retargeting() {
+        use crate::plan::execution::compiled::{CallTarget, CompiledCheckpoint};
+        use crate::plan::execution::graph::BlockId;
+        use crate::runtime::compiled::calls::{CallOutput, CallValues};
+        use std::panic::{AssertUnwindSafe, catch_unwind};
+
+        for progress in [
+            super::GraphProgress::<
+                crate::plan::execution::HostedProgram<crate::StatelessHostProfile>,
+            >::CallComplete(CallOutput::Bool(true)),
+            super::GraphProgress::CallInterpreted {
+                target: CallTarget::Int(IntFunctionId(0)),
+                point: CompiledCheckpoint {
+                    block: BlockId(0),
+                    instruction: 0,
+                    ints: 0,
+                    bools: 0,
+                    bit_arrays: 0,
+                    int_lists: 0,
+                    strings: 0,
+                    customs: 0,
+                    custom_lists: 0,
+                    int_functions: 0,
+                    bool_functions: 0,
+                },
+                values: Box::new(CallValues::default()),
+            },
+        ] {
+            let failure = catch_unwind(AssertUnwindSafe(|| canonical_progress(progress)))
+                .err()
+                .unwrap();
+            assert_eq!(
+                *failure.downcast::<&str>().unwrap(),
+                "fixture must use canonical graph completion"
+            );
+        }
+    }
     use super::RetainedValues;
     use crate::ValueType;
     use crate::plan::execution::function::IntFunctionId;

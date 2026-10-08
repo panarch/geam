@@ -257,10 +257,13 @@ pub mod compiled {
     }
 
     pub mod calls {
+        pub use crate::StringValue;
         pub use crate::runtime::compiled::calls::{
-            BoolCallable, CallArguments, CallCapture, CallCaptureInputs, CallCaptures,
-            CallExecution, CallInputs, CallInteger, CallNativeInput, CallOps, CallOutput,
-            CallProgress, CallResume, CallStart, CallStorage, CallValues, IntCallable,
+            BitArrayCallable, BoolCallable, CallArguments, CallBitArray, CallCapture,
+            CallCaptureInputs, CallCaptures, CallExecution, CallInputs, CallInteger,
+            CallNativeInput, CallNullary, CallOps, CallOutput, CallProgress, CallResume, CallStart,
+            CallStorage, CallValues, FloatCallable, IntCallable, NilCallable, StringCallable,
+            StringNativeExecution, StringNativeRequest, UtfCodepointCallable,
         };
         pub use crate::runtime::compiled::native_calls::{
             CallNativeFailure, CallNativeOps, CallNativeReturn,
@@ -280,6 +283,13 @@ pub mod compiled {
             BoolCallback, CallbackArguments, CallbackInputs, CallbackKernel, CallbackProgress,
             CallbackStop, CustomList, CustomListOps, CustomLoopKernel, CustomLoopProgress,
             CustomLoopValues, IntCallback,
+        };
+    }
+
+    pub mod primitive_list {
+        pub use crate::runtime::compiled::primitive_list::{
+            BitArrayList, BoolList, FloatList, NilList, PrimitiveListOps, StringList,
+            UtfCodepointList,
         };
     }
 

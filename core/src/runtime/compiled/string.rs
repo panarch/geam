@@ -38,6 +38,55 @@ impl StringValues {
         &bytes[value.start..value.end]
     }
 
+    pub(in crate::runtime) fn load_owned(
+        &mut self,
+        ints: &[i128],
+        bools: &[bool],
+        strings: impl IntoIterator<Item = StringValue>,
+    ) {
+        self.ints.clear();
+        self.ints.extend_from_slice(ints);
+        self.bools.clear();
+        self.bools.extend_from_slice(bools);
+        self.inputs.clear();
+        self.inputs.extend(strings);
+        self.strings.clear();
+        self.strings.extend(
+            self.inputs
+                .iter()
+                .enumerate()
+                .map(|(index, input)| StringRange {
+                    origin: StringOrigin::Input(index),
+                    start: 0,
+                    end: input.len(),
+                }),
+        );
+    }
+
+    /// Materialize only live checkpoint columns before another call or yield.
+    pub fn take_strings(&mut self) -> Vec<StringValue> {
+        let mut strings = Vec::with_capacity(self.strings.len());
+        self.restore_strings(&mut strings);
+        strings
+    }
+
+    /// Completion consumes just the actual result without checkpoint columns.
+    pub fn finish(&mut self, value: StringRange) -> StringValue {
+        let range = value.start..value.end;
+        let result = match value.origin {
+            StringOrigin::Input(index) => mem::take(&mut self.inputs[index]).into_slice(range),
+            StringOrigin::Literal(text) => StringValue::from(text).into_slice(range),
+        };
+        self.release_inputs();
+        result
+    }
+
+    pub fn release_inputs(&mut self) {
+        self.strings.clear();
+        self.inputs.clear();
+        self.uses.clear();
+    }
+
     pub(in crate::runtime) fn load_strings(&mut self, strings: &mut Vec<StringValue>) {
         self.strings.clear();
         self.inputs.clear();
@@ -242,5 +291,41 @@ mod tests {
         values.restore_strings(&mut inputs);
         assert_eq!(inputs[0].as_ptr(), pointer.wrapping_add(3));
         assert_eq!(inputs[0].as_bytes(), &[0xff; 63]);
+    }
+    #[test]
+    fn owned_call_checkpoints_and_completion_release_roots_and_keep_raw_slices() {
+        let raw = StringValue::from_bytes([b"tag:".as_slice(), &[0xff; 64]].concat());
+        let pointer = raw.as_ptr();
+        let mut values = StringValues::default();
+        values.load_owned(&[7], &[true], [raw, "unused root".into()]);
+        let suffix = values.strings[0].drop_prefix(4);
+        values.strings = vec![suffix, suffix, StringRange::literal("é").drop_prefix(1)];
+        let ranges_capacity = values.strings.capacity();
+        let roots_capacity = values.inputs.capacity();
+        let checkpoint = values.take_strings();
+        assert_eq!(checkpoint[0].as_ptr(), pointer.wrapping_add(4));
+        assert_eq!(checkpoint[1].as_ptr(), checkpoint[0].as_ptr());
+        assert_eq!(checkpoint[2].as_bytes(), &[0xa9]);
+        assert_eq!(values.ints, [7]);
+        assert_eq!(values.bools, [true]);
+        assert!(values.inputs.is_empty());
+        assert!(values.strings.is_empty());
+        assert_eq!(values.strings.capacity(), ranges_capacity);
+        assert_eq!(values.inputs.capacity(), roots_capacity);
+        values.load_owned(&[9], &[false], checkpoint);
+        let result = values.finish(values.strings[1].drop_prefix(1));
+        assert_eq!(result.as_ptr(), pointer.wrapping_add(5));
+        assert_eq!(result.as_bytes(), &[0xff; 63]);
+        assert!(values.inputs.is_empty());
+        assert!(values.strings.is_empty());
+        assert!(values.uses.is_empty());
+        assert_eq!(values.ints, [9]);
+        assert_eq!(values.bools, [false]);
+        assert_eq!(
+            values
+                .finish(StringRange::literal("é").drop_prefix(1))
+                .as_bytes(),
+            &[0xa9]
+        );
     }
 }

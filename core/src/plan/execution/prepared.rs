@@ -24,7 +24,7 @@ use crate::plan::ModuleId;
 use rust::{Emit, Rust};
 use std::convert::Infallible;
 
-const FORMAT_VERSION: u32 = 24;
+const FORMAT_VERSION: u32 = 28;
 
 /// A prepared plain program which can be emitted as compiler-visible Rust data.
 pub struct PreparedModule {
@@ -270,7 +270,11 @@ where
                 ("functions", functions.as_ref()),
                 (
                     "compiled",
-                    &codegen::CompiledCodegen::new(functions.as_ref(), custom_types.as_ref()),
+                    &codegen::CompiledCodegen::new(
+                        functions.as_ref(),
+                        custom_types.as_ref(),
+                        value_shapes.as_ref(),
+                    ),
                 ),
                 ("constants", constants.as_ref()),
                 ("function_parameters", function_parameters.as_ref()),

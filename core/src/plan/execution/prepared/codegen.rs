@@ -31,21 +31,27 @@ pub(in crate::plan::execution::prepared) struct CompiledCodegen<'program, Profil
 {
     functions: &'program FunctionTables<Profile>,
     custom_types: &'program CustomTypeTable,
+    value_shapes: &'program crate::plan::execution::type_::ValueShapeTable,
 }
 
-struct FunctionCodegen<'graph, Graph: ExecutionGraphProfile> {
+struct KernelCodegen<'graph, Graph: ExecutionGraphProfile> {
     name: String,
     shape: CompiledShape<'graph, Graph>,
 }
 
+struct FunctionCodegen<'codegen, 'graph, Graph: ExecutionGraphProfile> {
+    name: &'codegen str,
+    shape: &'codegen CompiledShape<'graph, Graph>,
+}
+
 struct TargetCodegen<'graph, Graph: ExecutionGraphProfile, Id> {
     function: Id,
-    body: FunctionCodegen<'graph, Graph>,
+    body: KernelCodegen<'graph, Graph>,
 }
 
 struct CallbackCodegen<'graph, Graph: ExecutionGraphProfile, Id> {
     function: Id,
-    body: FunctionCodegen<'graph, Graph>,
+    body: KernelCodegen<'graph, Graph>,
     returns: CallbackReturns,
 }
 
@@ -74,17 +80,19 @@ impl<'program, Profile: ExecutionProfile> CompiledCodegen<'program, Profile> {
     pub(in crate::plan::execution::prepared) fn new(
         functions: &'program FunctionTables<Profile>,
         custom_types: &'program CustomTypeTable,
+        value_shapes: &'program crate::plan::execution::type_::ValueShapeTable,
     ) -> Self {
         Self {
             functions,
             custom_types,
+            value_shapes,
         }
     }
 }
 
 impl<Profile: ExecutionProfile> Emit for CompiledCodegen<'_, Profile> {
     fn emit(&self, output: &mut Rust) {
-        let calls = calls::CallCodegen::new(self.functions);
+        let calls = calls::CallCodegen::new(self.functions, self.custom_types, self.value_shapes);
         let native_loops = self
             .functions
             .value_returns
@@ -182,7 +190,7 @@ impl<Profile: ExecutionProfile> Emit for CompiledCodegen<'_, Profile> {
                     })?;
                 Some(TargetCodegen {
                     function: IntFunctionId(index),
-                    body: FunctionCodegen {
+                    body: KernelCodegen {
                         name: format!("{}_int_{index}", shape.kind.name()),
                         shape,
                     },
@@ -213,7 +221,7 @@ impl<Profile: ExecutionProfile> Emit for CompiledCodegen<'_, Profile> {
                     })?;
                 Some(TargetCodegen {
                     function: BoolFunctionId(index),
-                    body: FunctionCodegen {
+                    body: KernelCodegen {
                         name: format!("{}_bool_{index}", shape.kind.name()),
                         shape,
                     },
@@ -234,7 +242,7 @@ impl<Profile: ExecutionProfile> Emit for CompiledCodegen<'_, Profile> {
                     CompiledShape::inspect_bits(FunctionBodyOwner::function_body(function.body()))?;
                 Some(TargetCodegen {
                     function: index,
-                    body: FunctionCodegen {
+                    body: KernelCodegen {
                         name: format!("{}_custom_{index}", shape.kind.name()),
                         shape,
                     },
@@ -256,7 +264,7 @@ impl<Profile: ExecutionProfile> Emit for CompiledCodegen<'_, Profile> {
                 }
                 Some(TargetCodegen {
                     function: *id,
-                    body: FunctionCodegen {
+                    body: KernelCodegen {
                         name: format!("{}_int_list_{}", shape.kind.name(), id.index),
                         shape,
                     },
@@ -320,7 +328,7 @@ impl<Profile: ExecutionProfile> Emit for CompiledCodegen<'_, Profile> {
                 let shape = CompiledShape::inspect_callback(function.body(), self.custom_types)?;
                 Some(CallbackCodegen {
                     function: IntFunctionId(index),
-                    body: FunctionCodegen {
+                    body: KernelCodegen {
                         name: format!("{}_int_{index}", shape.kind.name()),
                         shape,
                     },
@@ -357,7 +365,7 @@ impl<Profile: ExecutionProfile> Emit for CompiledCodegen<'_, Profile> {
                 let shape = CompiledShape::inspect_callback(function.body(), self.custom_types)?;
                 Some(CallbackCodegen {
                     function: BoolFunctionId(index),
-                    body: FunctionCodegen {
+                    body: KernelCodegen {
                         name: format!("{}_bool_{index}", shape.kind.name()),
                         shape,
                     },
@@ -370,15 +378,17 @@ impl<Profile: ExecutionProfile> Emit for CompiledCodegen<'_, Profile> {
         let resumes_next = ints
             .iter()
             .filter(|function| function.body.shape.kind != KernelKind::CustomLoop)
-            .any(|function| function.body.resumes_next())
+            .any(|function| function.body.renderer().resumes_next())
             || bools
                 .iter()
                 .filter(|function| function.body.shape.kind != KernelKind::CustomLoop)
-                .any(|function| function.body.resumes_next())
-            || customs.iter().any(|function| function.body.resumes_next())
+                .any(|function| function.body.renderer().resumes_next())
+            || customs
+                .iter()
+                .any(|function| function.body.renderer().resumes_next())
             || int_lists
                 .iter()
-                .any(|function| function.body.resumes_next());
+                .any(|function| function.body.renderer().resumes_next());
         let ordinary = ints
             .iter()
             .any(|function| function.body.shape.kind != KernelKind::CustomLoop)
@@ -402,35 +412,48 @@ impl<Profile: ExecutionProfile> Emit for CompiledCodegen<'_, Profile> {
             source.close("}\n");
         }
         for callback in &callback_ints {
-            callback.body.write_callback(&mut source, &callback.returns);
+            callback
+                .body
+                .renderer()
+                .write_callback(&mut source, &callback.returns);
         }
         for callback in &callback_bools {
-            callback.body.write_callback(&mut source, &callback.returns);
+            callback
+                .body
+                .renderer()
+                .write_callback(&mut source, &callback.returns);
         }
         calls.write_code(&mut source);
         for function in &ints {
-            function.body.write_code(
+            function.body.renderer().write_code(
                 &mut source,
                 resumes_next || function.body.shape.kind == KernelKind::CustomLoop,
             );
         }
         for function in &bools {
-            function.body.write_code(
+            function.body.renderer().write_code(
                 &mut source,
                 resumes_next || function.body.shape.kind == KernelKind::CustomLoop,
             );
         }
         for function in &customs {
-            function.body.write_code(&mut source, resumes_next);
+            function
+                .body
+                .renderer()
+                .write_code(&mut source, resumes_next);
         }
         for function in &int_lists {
-            function.body.write_code(&mut source, resumes_next);
+            function
+                .body
+                .renderer()
+                .write_code(&mut source, resumes_next);
         }
         source.open("data::compiled::CompiledFunctions {\n");
         source.open("ints: data::Storage::Static(&[\n");
         for function in &ints {
             function
                 .body
+                .renderer()
                 .write_target(&mut source, &Rust::expression(&function.function));
         }
         source.close("]),\n");
@@ -438,6 +461,7 @@ impl<Profile: ExecutionProfile> Emit for CompiledCodegen<'_, Profile> {
         for function in &bools {
             function
                 .body
+                .renderer()
                 .write_target(&mut source, &Rust::expression(&function.function));
         }
         source.close("]),\n");
@@ -445,6 +469,7 @@ impl<Profile: ExecutionProfile> Emit for CompiledCodegen<'_, Profile> {
         for function in &customs {
             function
                 .body
+                .renderer()
                 .write_target(&mut source, &Rust::expression(&function.function));
         }
         source.close("]),\n");
@@ -452,6 +477,7 @@ impl<Profile: ExecutionProfile> Emit for CompiledCodegen<'_, Profile> {
         for function in &int_lists {
             function
                 .body
+                .renderer()
                 .write_target(&mut source, &Rust::expression(&function.function));
         }
         source.close("]),\n");
@@ -459,7 +485,7 @@ impl<Profile: ExecutionProfile> Emit for CompiledCodegen<'_, Profile> {
             source.open("callbacks: data::compiled::CompiledCallbacks {\n");
             source.open("ints: data::Storage::Static(&[\n");
             for callback in &callback_ints {
-                callback.body.write_callback_target(
+                callback.body.renderer().write_callback_target(
                     &mut source,
                     &Rust::expression(&callback.function),
                     &callback.returns,
@@ -468,7 +494,7 @@ impl<Profile: ExecutionProfile> Emit for CompiledCodegen<'_, Profile> {
             source.close("]),\n");
             source.open("bools: data::Storage::Static(&[\n");
             for callback in &callback_bools {
-                callback.body.write_callback_target(
+                callback.body.renderer().write_callback_target(
                     &mut source,
                     &Rust::expression(&callback.function),
                     &callback.returns,
@@ -532,7 +558,16 @@ fn callback_type_matches(params: &[ParamSlot], type_: &FunctionType) -> bool {
             })
 }
 
-impl<Graph: ExecutionGraphProfile> FunctionCodegen<'_, Graph> {
+impl<Graph: ExecutionGraphProfile> KernelCodegen<'_, Graph> {
+    fn renderer(&self) -> FunctionCodegen<'_, '_, Graph> {
+        FunctionCodegen {
+            name: &self.name,
+            shape: &self.shape,
+        }
+    }
+}
+
+impl<Graph: ExecutionGraphProfile> FunctionCodegen<'_, '_, Graph> {
     fn write_code(&self, source: &mut Code, resumes_next: bool) {
         let name = &self.name;
         let resume = self.resume_type();
@@ -1901,7 +1936,8 @@ mod tests {
         assert_eq!(
             Rust::expression(&CompiledCodegen::new(
                 &prepared.program.functions,
-                &prepared.program.common.custom_types
+                &prepared.program.common.custom_types,
+                &prepared.program.common.value_shapes,
             )),
             "data::compiled::CompiledFunctions::interpreted()"
         );
@@ -1934,8 +1970,8 @@ pub fn main() { choose(3, 8) }
         let plan = crate::ExecutionPlan::from_module_plan(crate::plan_module(typed).unwrap());
         let id = IntFunctionId(1);
         let function = FunctionCodegen {
-            name: "numeric_int_1".to_owned(),
-            shape: CompiledShape::inspect(plan.int_function(id).body()).unwrap(),
+            name: "numeric_int_1",
+            shape: &CompiledShape::inspect(plan.int_function(id).body()).unwrap(),
         };
         let mut source = Code::default();
         let point = function.shape.checkpoints[0];
@@ -1996,8 +2032,8 @@ pub fn main() { choose([7], [2], True, 3) }
         assert_eq!(point.block, BlockId(0));
         assert_eq!((point.ints, point.bools, point.int_lists), (1, 1, 2));
         let function = FunctionCodegen {
-            name: "choose".into(),
-            shape,
+            name: "choose",
+            shape: &shape,
         };
         let mut inputs = Code::default();
         assert_eq!(
@@ -2052,8 +2088,8 @@ pub fn main() { walk([7], [2], 1) }
         let prefix = shape.checkpoints[shape.start(BlockId(0))];
         assert_eq!((prefix.ints, prefix.bools, prefix.int_lists), (1, 0, 2));
         let function = FunctionCodegen {
-            name: "walk".into(),
-            shape,
+            name: "walk",
+            shape: &shape,
         };
         for (lists, step, expected_inputs, expected_code) in [
             (
@@ -2127,8 +2163,8 @@ pub fn main() { same([7]) }
         .unwrap();
         let plan = crate::ExecutionPlan::from_module_plan(crate::plan_module(typed).unwrap());
         let function = FunctionCodegen {
-            name: "same".into(),
-            shape: CompiledShape::inspect(plan.bool_function(BoolFunctionId(1)).body()).unwrap(),
+            name: "same",
+            shape: &CompiledShape::inspect(plan.bool_function(BoolFunctionId(1)).body()).unwrap(),
         };
         let matches = function
             .shape
@@ -2286,8 +2322,8 @@ pub fn main() { head([7], 3) }
         .unwrap();
         let plan = crate::ExecutionPlan::from_module_plan(crate::plan_module(typed).unwrap());
         let function = FunctionCodegen {
-            name: "head".into(),
-            shape: CompiledShape::inspect(plan.int_function(IntFunctionId(1)).body()).unwrap(),
+            name: "head",
+            shape: &CompiledShape::inspect(plan.int_function(IntFunctionId(1)).body()).unwrap(),
         };
         let mut source = Code::default();
         function.path(&mut source, BlockId(0), None, ProgressOutput::Direct);
@@ -2421,8 +2457,8 @@ pub fn main() { choose(0) }
         let typed = crate::compile_typed_module("example", "src/example.gleam", source).unwrap();
         let plan = crate::ExecutionPlan::from_module_plan(crate::plan_module(typed).unwrap());
         let function = FunctionCodegen {
-            name: "choose".into(),
-            shape: CompiledShape::inspect(plan.int_function(IntFunctionId(1)).body()).unwrap(),
+            name: "choose",
+            shape: &CompiledShape::inspect(plan.int_function(IntFunctionId(1)).body()).unwrap(),
         };
         let point = function.shape.checkpoints[function.entry()];
         let mut output = Code::default();
@@ -2478,11 +2514,11 @@ pub fn main() { choose(7) }
 "#;
         let typed = crate::compile_typed_module("example", "src/example.gleam", source).unwrap();
         let plan = crate::ExecutionPlan::from_module_plan(crate::plan_module(typed).unwrap());
-        let shape = CompiledShape::inspect(plan.int_function(IntFunctionId(1)).body()).unwrap();
+        let mut shape = CompiledShape::inspect(plan.int_function(IntFunctionId(1)).body()).unwrap();
         let point = shape.checkpoints[shape.start(shape.graph.entry())];
-        let mut function = FunctionCodegen {
-            name: "selected".into(),
-            shape,
+        let function = FunctionCodegen {
+            name: "selected",
+            shape: &shape,
         };
         let edge = Edge::new(
             BlockId(1),
@@ -2540,10 +2576,14 @@ pub fn main() { choose(7) }
 
         // Drive the same structured-path edge callback as normal emission;
         // a direct formatter closure is a different generic instantiation.
-        function.shape.blocks.get_mut(&0).unwrap().terminator = CompiledTerminator::Switch {
+        shape.blocks.get_mut(&0).unwrap().terminator = CompiledTerminator::Switch {
             subject: IntLocalId(0),
             clauses: &[],
             fallback: &edge,
+        };
+        let function = FunctionCodegen {
+            name: "selected",
+            shape: &shape,
         };
         output = Code::default();
         function.path(
@@ -2805,8 +2845,8 @@ if b0_i0 == 0_i128 {
                     vec![FunctionExit::Return(IntLocalId(0))].into(),
                 );
             let function = FunctionCodegen {
-                name: "selected".into(),
-                shape: CompiledShape::inspect(&body).unwrap(),
+                name: "selected",
+                shape: &CompiledShape::inspect(&body).unwrap(),
             };
             let point = function.shape.checkpoints[function.entry()];
             let mut branch_output = Code::default();
@@ -3436,7 +3476,8 @@ let (b1_i0, b1_v0,) = {branch};
                 assert_eq!(
                     Rust::expression(&CompiledCodegen::new(
                         &prepared.program.functions,
-                        &prepared.program.common.custom_types
+                        &prepared.program.common.custom_types,
+                        &prepared.program.common.value_shapes,
                     )),
                     $expected.trim_matches('\n')
                 );
@@ -3475,7 +3516,8 @@ let (b1_i0, b1_v0,) = {branch};
                 assert_eq!(
                     Rust::expression(&CompiledCodegen::new(
                         &execution.execution.program.functions,
-                        &execution.execution.program.common.custom_types
+                        &execution.execution.program.common.custom_types,
+                        &execution.execution.program.common.value_shapes,
                     )),
                     expected
                 );
@@ -3541,7 +3583,8 @@ pub fn main() { choose(True) }
         assert_eq!(
             Rust::expression(&CompiledCodegen::new(
                 &prepared.program.functions,
-                &prepared.program.common.custom_types
+                &prepared.program.common.custom_types,
+                &prepared.program.common.value_shapes,
             )),
             "data::compiled::CompiledFunctions::interpreted()"
         );
@@ -3562,7 +3605,8 @@ pub fn main() { choose(True) }
         assert_eq!(
             Rust::expression(&CompiledCodegen::new(
                 &execution.execution.program.functions,
-                &execution.execution.program.common.custom_types
+                &execution.execution.program.common.custom_types,
+                &execution.execution.program.common.value_shapes,
             )),
             "data::compiled::CompiledFunctions::interpreted()"
         );
@@ -3653,6 +3697,7 @@ pub fn main() {
         let emitted = Rust::expression(&CompiledCodegen::new(
             &program.functions,
             &program.common.custom_types,
+            &program.common.value_shapes,
         ));
         assert!(emitted.contains("CustomLoopImplementation"));
         assert!(emitted.contains("fn callback_bool_"));
@@ -3713,6 +3758,7 @@ pub fn main() {
         let emitted = Rust::expression(&CompiledCodegen::new(
             &prepared.program.functions,
             &prepared.program.common.custom_types,
+            &prepared.program.common.value_shapes,
         ));
         let hosted_source = r#"
 fn choose(left: Int, right: Int, flag: Bool) {
@@ -3741,6 +3787,7 @@ pub fn main() { choose(7, 9, True) }
         let hosted_emitted = Rust::expression(&CompiledCodegen::new(
             &hosted.execution.program.functions,
             &hosted.execution.program.common.custom_types,
+            &hosted.execution.program.common.value_shapes,
         ));
         for emitted in [emitted, hosted_emitted] {
             assert_eq!(
@@ -3753,8 +3800,8 @@ pub fn main() { choose(7, 9, True) }
         )
         .unwrap();
         let function = FunctionCodegen {
-            name: "main".into(),
-            shape,
+            name: "main",
+            shape: &shape,
         };
         assert!(!function.resumes_next());
         let mut code = Code::default();
@@ -3905,6 +3952,7 @@ pub fn main() {
         let emitted = Rust::expression(&CompiledCodegen::new(
             &plan.program.functions,
             &plan.program.common.custom_types,
+            &plan.program.common.value_shapes,
         ));
         let typed = crate::compile_typed_host_program(
             "example",
@@ -3923,6 +3971,7 @@ pub fn main() {
         let hosted_emitted = Rust::expression(&CompiledCodegen::new(
             &hosted.execution.program.functions,
             &hosted.execution.program.common.custom_types,
+            &hosted.execution.program.common.value_shapes,
         ));
         let expected = r#"{
         ints: data::Storage::Static(&[
@@ -4140,8 +4189,8 @@ pub fn main() {
         )
         .unwrap();
         let function = FunctionCodegen {
-            name: "string_bool_0".into(),
-            shape,
+            name: "string_bool_0",
+            shape: &shape,
         };
         let mut code = Code::default();
         function.write_target(&mut code, "data::function::BoolFunctionId(0)");

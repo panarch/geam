@@ -59,6 +59,9 @@ macro_rules! functions {
             $bindings
                 .function(FunctionDeclaration::<(), BigInt>::new("main"))
                 .unwrap(),
+            $bindings
+                .function(FunctionDeclaration::<(BigInt,), BigInt>::new("markers"))
+                .unwrap(),
         )
     };
 }
@@ -118,7 +121,16 @@ fn generated_connection_preserves_actual_callbacks_captures_big_values_and_error
             caller_overflow,
             guarded,
             main,
+            markers,
         ) = handles;
+        for seed in [BigInt::from(4), big.clone()] {
+            assert_eq!(
+                module
+                    .call(&markers, (seed.clone(),), &mut Vec::new())
+                    .unwrap(),
+                seed + 6
+            );
+        }
         for (seed, value) in [
             (3.into(), 9.into()),
             (3.into(), big.clone()),
@@ -357,7 +369,7 @@ fn generated_caller_resumes_after_interrupted_callbacks_and_small_overflow() {
     use data::compiled::{CompiledFunction, CompiledImplementation, CustomLoopImplementation};
     const BASE: data::ModuleArtifact<Infallible> = include!("fixtures/prepared/custom_loop.rs");
     let mut artifact = BASE;
-    assert_eq!(artifact.program.compiled.ints.len(), 3);
+    assert_eq!(artifact.program.compiled.ints.len(), 4);
     artifact.program.compiled.ints = artifact
         .program
         .compiled
@@ -378,8 +390,10 @@ fn generated_caller_resumes_after_interrupted_callbacks_and_small_overflow() {
                             traced_int
                         } else if target.function == LOOP.program.compiled.ints[1].function {
                             traced_adjusted
-                        } else {
+                        } else if target.function == LOOP.program.compiled.ints[2].function {
                             traced_guarded
+                        } else {
+                            implementation.run
                         },
                     })
                     .into(),
@@ -430,6 +444,7 @@ fn generated_caller_resumes_after_interrupted_callbacks_and_small_overflow() {
         repeated,
         caller_overflow,
         guarded,
+        _,
         _,
     ) = functions!(bindings, run);
     let module = bindings.seal();

@@ -161,7 +161,7 @@ impl<'graph> CustomFieldPattern<'graph> {
     }
 }
 
-impl<Graph: ExecutionGraphProfile> FunctionCodegen<'_, Graph> {
+impl<Graph: ExecutionGraphProfile> FunctionCodegen<'_, '_, Graph> {
     pub(super) fn custom_preflight(
         &self,
         source: &mut Code,
@@ -323,8 +323,8 @@ pub fn main() { score(Item(7, True)) }
             Value::Int(7.into())
         );
         let function = FunctionCodegen {
-            name: "score".into(),
-            shape: CompiledShape::inspect_callback(
+            name: "score",
+            shape: &CompiledShape::inspect_callback(
                 plan.int_function(IntFunctionId(1)).body(),
                 &plan.program.common.custom_types,
             )
@@ -387,8 +387,8 @@ pub fn main() { score(Item(7, True)) }
             Value::Int(9.into())
         );
         let function = FunctionCodegen {
-            name: "score".into(),
-            shape: CompiledShape::inspect_callback(
+            name: "score",
+            shape: &CompiledShape::inspect_callback(
                 plan.int_function(IntFunctionId(1)).body(),
                 &plan.program.common.custom_types,
             )
@@ -458,8 +458,8 @@ pub fn main() { read(Item(7)) }
             Value::Int(7.into())
         );
         let function = FunctionCodegen {
-            name: "read".into(),
-            shape: CompiledShape::inspect_callback(
+            name: "read",
+            shape: &CompiledShape::inspect_callback(
                 plan.int_function(IntFunctionId(1)).body(),
                 &plan.program.common.custom_types,
             )
@@ -487,8 +487,8 @@ pub fn main() { read(Item(7, True)) }
         );
         let body = plan.bool_function(BoolFunctionId(1)).body();
         let function = FunctionCodegen {
-            name: "read".into(),
-            shape: CompiledShape::inspect_callback(body, &plan.program.common.custom_types)
+            name: "read",
+            shape: &CompiledShape::inspect_callback(body, &plan.program.common.custom_types)
                 .unwrap(),
         };
         let entry = function.shape.graph.entry();
@@ -536,8 +536,8 @@ pub fn main() { score(Item(7, True)) }
         )
         .unwrap();
         let function = FunctionCodegen {
-            name: "score".into(),
-            shape,
+            name: "score",
+            shape: &shape,
         };
         let views = function
             .shape
@@ -732,8 +732,8 @@ pub fn main() { score(Item(7, True)) }
         )
         .unwrap();
         let function = FunctionCodegen {
-            name: "score".into(),
-            shape,
+            name: "score",
+            shape: &shape,
         };
         let mut selected = Vec::new();
         for (&index, block) in &function.shape.blocks {

@@ -90,6 +90,7 @@ pub(crate) use function::{
     HostNativeViewFactory, HostNeverFunction, HostNilArgumentSlot, HostParameter,
     HostRetainedCallback, HostStringArgumentSlot, HostTupleArgumentSlot,
     HostUtfCodepointArgumentSlot, HostValueArgumentSlot, HostValueFunction,
+    SynchronousValueFunction,
 };
 pub(crate) use function::{NativeViewBinding, NativeViewImplementation};
 #[cfg(test)]

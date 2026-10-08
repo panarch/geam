@@ -580,7 +580,6 @@ pub fn main() { #(cycle, captured(7), computed(7)) }
                         .advance(&**plan, &mut state, &mut storage, &mut 0)
                         .unwrap()
                     {
-                        Progress::Continue(next) => execution = next,
                         Progress::Host(invocation) => {
                             requests += 1;
                             execution = invocation
@@ -589,9 +588,18 @@ pub fn main() { #(cycle, captured(7), computed(7)) }
                                 .unwrap()
                                 .unwrap();
                         }
-                        Progress::Complete(completed) => {
-                            assert_eq!(completed.exit(), finished);
-                            break completed.into_value(&IntLocalId(0)).into_bigint();
+                        progress => {
+                            match crate::runtime::graph::tests::canonical_progress(progress) {
+                                crate::runtime::graph::tests::CanonicalProgress::Continue(next) => {
+                                    execution = next
+                                }
+                                crate::runtime::graph::tests::CanonicalProgress::Complete(
+                                    completed,
+                                ) => {
+                                    assert_eq!(completed.exit(), finished);
+                                    break completed.into_value(&IntLocalId(0)).into_bigint();
+                                }
+                            }
                         }
                     }
                 };
@@ -5493,5 +5501,714 @@ pub fn make() { #(fn(value: Int) {
                 length: 0,
             },
         ));
+    }
+}
+
+#[cfg(test)]
+mod string_native_tests {
+    use super::Domain;
+    use crate::execution_fixture::TestHost;
+    use crate::plan::execution::function::{
+        ExecutionFunctionEntry, ExecutionFunctionRef, StringFunctionId,
+    };
+    use crate::plan::execution::graph::StringLocalId;
+    use crate::plan::execution::runtime::RuntimeExecutionPlan;
+    use crate::plan::{HostCallSite, SourceSpan};
+    use crate::runtime::ExecutableRuntimePlan;
+    use crate::runtime::compiled::calls::{
+        CallExecution, CallInputs, CallOps, CallOutput, CallProgress, CallValues,
+        GeneratedNativePhase, GeneratedNativeState, StringNativeExecution, StringNativeRequest,
+    };
+    use crate::runtime::error::HostCallOrigin;
+    use crate::runtime::graph::{BlockEnvironment, GraphValue, RetainedValues};
+    use crate::{
+        HostCall, HostCallCompletion, HostCallError, HostProfile, HostProvider, HostProviderModule,
+        HostProviderSet, ModuleSource, PackageSource, StringValue,
+    };
+    use std::num::NonZeroUsize;
+    use std::sync::Arc;
+
+    struct Profile;
+    impl HostProfile for Profile {
+        type RunState = Vec<StringValue>;
+        type ExternalStores = ();
+        type ExecutionState = ();
+    }
+    impl HostProvider<Profile> for Profile {
+        type State = Vec<StringValue>;
+        fn project(state: &mut Self::State) -> &mut Self::State {
+            state
+        }
+    }
+    fn append<'call>(
+        mut call: HostCall<'call, Profile, Profile, StringValue>,
+        value: StringValue,
+    ) -> Result<HostCallCompletion<'call, StringValue>, HostCallError> {
+        call.state().push(value.clone());
+        Ok(call.return_value(format!("{}!", value.as_str().unwrap()).into()))
+    }
+
+    // The service protocol owns an already-published Native boundary. This
+    // local engine records one subsequent call and its actual delivered value;
+    // selection of compiler-generated engines belongs to public preparation tests.
+    struct Delivery {
+        function: StringFunctionId,
+        site: HostCallSite,
+        result: StringValue,
+        next_call: bool,
+    }
+    impl CallExecution for Delivery {
+        fn restart(
+            &mut self,
+            _: crate::plan::execution::compiled::CallTarget,
+            _: usize,
+            _: CallInputs<'_>,
+        ) -> bool {
+            false
+        }
+        fn retained_bytes(&self) -> usize {
+            0
+        }
+        fn advance(mut self: Box<Self>, _: &mut CallOps<'_>, budget: &mut usize) -> CallProgress {
+            if self.next_call {
+                if *budget == 0 {
+                    return CallProgress::Yield(self);
+                }
+                *budget -= 1;
+                self.next_call = false;
+                CallProgress::StringNative(StringNativeRequest {
+                    function: self.function,
+                    site: self.site.clone(),
+                    root_tail: false,
+                    arguments: Box::new(CallValues {
+                        strings: vec![self.result.clone()],
+                        ..Default::default()
+                    }),
+                    execution: self,
+                })
+            } else {
+                CallProgress::Complete {
+                    output: CallOutput::String(self.result.clone()),
+                    execution: self,
+                }
+            }
+        }
+    }
+    impl StringNativeExecution for Delivery {
+        fn resume_native(mut self: Box<Self>, value: StringValue) -> Box<dyn CallExecution> {
+            self.result = value;
+            self
+        }
+    }
+
+    #[test]
+    fn native_service_retains_delivery_phase_and_workspace_across_single_unit_grants() {
+        let source = r#"
+@external(erlang, "native", "append")
+fn append(value: String) -> String
+pub fn main() { let first = append("input") append(first) }
+"#;
+        let typed = crate::compile_typed_host_program(
+            "application",
+            "example",
+            [PackageSource::new(
+                "application",
+                Vec::<String>::new(),
+                [ModuleSource::new("example", "src/example.gleam", source)],
+            )],
+            HostProviderSet::from_providers([HostProviderModule::new("application", "example")
+                .unwrap()
+                .with_scoped_function::<Profile, (StringValue,), StringValue, _>("append", append)
+                .unwrap()])
+            .unwrap(),
+        )
+        .unwrap();
+        let mut hosted =
+            crate::HostedExecution::try_from_module_plan(crate::plan_host_program(typed).unwrap())
+                .unwrap();
+        let (plan, stores, captures) = hosted.parts_mut();
+        let function = (0..2)
+            .map(StringFunctionId)
+            .find(|id| {
+                matches!(
+                    plan.string_function(*id).as_ref(),
+                    ExecutionFunctionRef::Host(_)
+                )
+            })
+            .unwrap();
+        let site = HostCallSite::from_static("example", "main", SourceSpan::new(0, source.len()));
+        let mut delivery = Delivery {
+            function,
+            site: site.clone(),
+            result: "".into(),
+            next_call: true,
+        };
+        let empty = BlockEnvironment::from_retained(RetainedValues::empty());
+        assert!(!delivery.restart(
+            crate::plan::execution::compiled::CallTarget::String(function),
+            0,
+            CallInputs::new(&empty),
+        ));
+        assert_eq!(delivery.retained_bytes(), 0);
+        let mut state = Box::new(GeneratedNativeState {
+            phase: GeneratedNativePhase::Progress(CallProgress::StringNative(
+                StringNativeRequest {
+                    function,
+                    site: site.clone(),
+                    root_tail: false,
+                    arguments: Box::new(CallValues {
+                        strings: vec!["input".into()],
+                        ..Default::default()
+                    }),
+                    execution: Box::new(delivery),
+                },
+            )),
+            numeric: Default::default(),
+            strings: None,
+            bit_arrays: None,
+            root_tail_entry: true,
+            domain: captures.domain(),
+            prepaid_completion: false,
+        });
+        let host = TestHost::default();
+        let mut effects = Vec::new();
+        let mut echo = Vec::new();
+        let domain = Domain::new(
+            Arc::clone(plan),
+            &host,
+            &mut effects,
+            stores,
+            &mut echo,
+            captures.clone(),
+            NonZeroUsize::MIN,
+        );
+        let context = domain.context();
+        host.block_on(domain.drive(async {
+            let original_owner = std::ptr::from_ref(&*state);
+            state = plan
+                .prepare_generated_native(state, 1)
+                .ok()
+                .unwrap()
+                .submit(context.execution.services(), NonZeroUsize::MIN)
+                .await
+                .unwrap()
+                .unwrap();
+
+            assert_eq!(
+                context
+                    .execution
+                    .with_state(|effects| effects.len())
+                    .await
+                    .unwrap(),
+                0
+            );
+            let mut grants = 0;
+            let output = loop {
+                grants += 1;
+                assert!(
+                    grants < 20,
+                    "each bounded phase must make progress without replay"
+                );
+                state = plan
+                    .prepare_generated_native(state, 1)
+                    .ok()
+                    .unwrap()
+                    .submit(context.execution.services(), NonZeroUsize::MIN)
+                    .await
+                    .unwrap()
+                    .unwrap();
+                assert_eq!(std::ptr::from_ref(&*state), original_owner);
+                state.phase = match state.phase {
+                    GeneratedNativePhase::Progress(CallProgress::Complete {
+                        output,
+                        execution,
+                    }) => {
+                        if state.prepaid_completion {
+                            break output;
+                        }
+                        GeneratedNativePhase::Progress(CallProgress::Complete { output, execution })
+                    }
+                    phase => phase,
+                };
+            };
+            assert_eq!(grants, 7);
+            assert_eq!(
+                StringLocalId::from_call_output(output).unwrap().as_str(),
+                Ok("input!!")
+            );
+        }))
+        .unwrap()
+        .try_into_value()
+        .unwrap();
+        assert_eq!(
+            effects,
+            [StringValue::from("input"), StringValue::from("input!")]
+        );
+        assert!(echo.is_empty());
+    }
+
+    #[test]
+    fn native_service_preserves_provider_failure_exit_and_terminal_checkpoints() {
+        use crate::HostFailure;
+        use crate::execution::{ExecutionOutcome, ExitStatus};
+        use crate::plan::execution::compiled::{CallTarget, CompiledCheckpoint};
+        use crate::plan::execution::graph::BlockId;
+        use std::panic::{AssertUnwindSafe, catch_unwind};
+
+        fn completed_string(phase: &GeneratedNativePhase) -> &StringValue {
+            match phase {
+                GeneratedNativePhase::Progress(CallProgress::Complete {
+                    output: CallOutput::String(value),
+                    ..
+                }) => value,
+                _ => panic!("a root tail Native must publish its delivered String completion"),
+            }
+        }
+
+        fn fail<'call>(
+            mut call: HostCall<'call, Profile, Profile, StringValue>,
+            value: StringValue,
+        ) -> Result<HostCallCompletion<'call, StringValue>, HostCallError> {
+            call.state().push(value);
+            Err(HostFailure::new("native refused").into())
+        }
+        fn stop<'call>(
+            mut call: HostCall<'call, Profile, Profile, StringValue>,
+            value: StringValue,
+        ) -> Result<HostCallCompletion<'call, StringValue>, HostCallError> {
+            call.state().push(value);
+            call.exit(ExitStatus::new(7))
+        }
+        type TerminalNative =
+            for<'call> fn(
+                HostCall<'call, Profile, Profile, StringValue>,
+                StringValue,
+            )
+                -> Result<HostCallCompletion<'call, StringValue>, HostCallError>;
+        for (name, callback) in [
+            ("fail", fail as TerminalNative),
+            ("stop", stop as TerminalNative),
+            ("append", append as TerminalNative),
+        ] {
+            let source = format!(
+                "@external(erlang, \"native\", \"{name}\") fn native(value: String) -> String pub fn main() {{ native(\"input\") }}"
+            );
+            let typed = crate::compile_typed_host_program(
+                "application",
+                "example",
+                [PackageSource::new(
+                    "application",
+                    Vec::<String>::new(),
+                    [ModuleSource::new(
+                        "example",
+                        "src/example.gleam",
+                        source.clone(),
+                    )],
+                )],
+                HostProviderSet::from_providers([HostProviderModule::new(
+                    "application",
+                    "example",
+                )
+                .unwrap()
+                .with_scoped_function::<Profile, (StringValue,), StringValue, _>("native", callback)
+                .unwrap()])
+                .unwrap(),
+            )
+            .unwrap();
+            let mut hosted = crate::HostedExecution::try_from_module_plan(
+                crate::plan_host_program(typed).unwrap(),
+            )
+            .unwrap();
+            let (plan, stores, captures) = hosted.parts_mut();
+            let function = StringFunctionId(
+                plan.synchronous_strings()
+                    .iter()
+                    .position(|enabled| *enabled)
+                    .unwrap(),
+            );
+            let host = TestHost::default();
+            let mut effects = Vec::new();
+            let mut echo = Vec::new();
+            let state = Box::new(GeneratedNativeState {
+                phase: GeneratedNativePhase::Progress(CallProgress::StringNative(
+                    StringNativeRequest {
+                        function,
+                        site: HostCallSite::from_static(
+                            "example",
+                            "main",
+                            SourceSpan::new(0, source.len()),
+                        ),
+                        root_tail: true,
+                        arguments: Box::new(CallValues {
+                            strings: vec!["input".into()],
+                            ..Default::default()
+                        }),
+                        execution: Box::new(Delivery {
+                            function,
+                            site: HostCallSite::from_static(
+                                "example",
+                                "main",
+                                SourceSpan::new(0, source.len()),
+                            ),
+                            result: "".into(),
+                            next_call: false,
+                        }),
+                    },
+                )),
+                numeric: Default::default(),
+                strings: None,
+                bit_arrays: None,
+                root_tail_entry: true,
+                domain: captures.domain(),
+                prepaid_completion: false,
+            });
+            assert!(catch_unwind(AssertUnwindSafe(|| completed_string(&state.phase))).is_err());
+            let domain = Domain::new(
+                Arc::clone(plan),
+                &host,
+                &mut effects,
+                stores,
+                &mut echo,
+                captures.clone(),
+                NonZeroUsize::new(8).unwrap(),
+            );
+            let context = domain.context();
+            let result = host
+                .block_on(domain.drive(async {
+                    plan.prepare_generated_native(state, 8)
+                        .ok()
+                        .unwrap()
+                        .submit(context.execution.services(), NonZeroUsize::new(8).unwrap())
+                        .await
+                }))
+                .unwrap();
+            if name == "stop" {
+                assert!(
+                    matches!(result, ExecutionOutcome::Exited(status) if status == ExitStatus::new(7))
+                );
+            } else if name == "append" {
+                let state = result.try_into_value().unwrap().unwrap().unwrap();
+                assert!(state.prepaid_completion);
+                assert_eq!(completed_string(&state.phase).as_str(), Ok("input!"));
+            } else {
+                let error = result.try_into_value().unwrap().unwrap().err().unwrap();
+                assert!(error.to_string().contains("native refused"));
+            }
+            assert_eq!(effects, [StringValue::from("input")]);
+            assert!(echo.is_empty());
+        }
+        let source = "pub fn main() { \"kept\" }";
+        let typed = crate::compile_typed_host_program(
+            "application",
+            "example",
+            [PackageSource::new(
+                "application",
+                Vec::<String>::new(),
+                [ModuleSource::new("example", "src/example.gleam", source)],
+            )],
+            HostProviderSet::<Profile>::new([]).unwrap(),
+        )
+        .unwrap();
+        let mut hosted =
+            crate::HostedExecution::try_from_module_plan(crate::plan_host_program(typed).unwrap())
+                .unwrap();
+        let (plan, stores, captures) = hosted.parts_mut();
+        let point = CompiledCheckpoint {
+            block: BlockId(0),
+            instruction: 0,
+            ints: 0,
+            bools: 0,
+            bit_arrays: 0,
+            int_lists: 0,
+            strings: 0,
+            customs: 0,
+            custom_lists: 0,
+            int_functions: 0,
+            bool_functions: 0,
+        };
+        let state = Box::new(GeneratedNativeState {
+            phase: GeneratedNativePhase::Progress(CallProgress::Interpreted {
+                target: CallTarget::String(StringFunctionId(0)),
+                point,
+                values: Box::default(),
+            }),
+            numeric: Default::default(),
+            strings: None,
+            bit_arrays: None,
+            root_tail_entry: true,
+            domain: captures.domain(),
+            prepaid_completion: false,
+        });
+        let owner = std::ptr::from_ref(&*state);
+        let host = TestHost::default();
+        let mut effects = Vec::new();
+        let mut echo = Vec::new();
+        let domain = Domain::new(
+            Arc::clone(plan),
+            &host,
+            &mut effects,
+            stores,
+            &mut echo,
+            captures.clone(),
+            NonZeroUsize::MIN,
+        );
+        let context = domain.context();
+        let returned = host
+            .block_on(domain.drive(async {
+                plan.prepare_generated_native(state, 1)
+                    .ok()
+                    .unwrap()
+                    .submit(context.execution.services(), NonZeroUsize::MIN)
+                    .await
+                    .unwrap()
+                    .unwrap()
+            }))
+            .unwrap()
+            .try_into_value()
+            .unwrap();
+        assert_eq!(std::ptr::from_ref(&*returned), owner);
+        assert_eq!(
+            std::mem::discriminant(&returned.phase),
+            std::mem::discriminant(&GeneratedNativePhase::Progress(CallProgress::Interpreted {
+                target: CallTarget::String(StringFunctionId(0)),
+                point,
+                values: Box::default(),
+            }))
+        );
+        assert!(effects.is_empty());
+        assert!(echo.is_empty());
+    }
+
+    #[test]
+    fn native_completion_cancelled_during_advance_is_never_published() {
+        use crate::execution::{ExecutionUnit, UnitOwner};
+        struct CancelledCompletion(ExecutionUnit);
+        impl CallExecution for CancelledCompletion {
+            fn restart(
+                &mut self,
+                _: crate::plan::execution::compiled::CallTarget,
+                _: usize,
+                _: CallInputs<'_>,
+            ) -> bool {
+                false
+            }
+            fn retained_bytes(&self) -> usize {
+                0
+            }
+            fn advance(self: Box<Self>, _: &mut CallOps<'_>, _: &mut usize) -> CallProgress {
+                assert!(self.0.cancel());
+                CallProgress::Complete {
+                    output: CallOutput::String("unpublished".into()),
+                    execution: self,
+                }
+            }
+        }
+        let typed = crate::compile_typed_host_program(
+            "application",
+            "example",
+            [PackageSource::new(
+                "application",
+                Vec::<String>::new(),
+                [ModuleSource::new(
+                    "example",
+                    "src/example.gleam",
+                    "pub fn main() { \"kept\" }",
+                )],
+            )],
+            HostProviderSet::<Profile>::new([]).unwrap(),
+        )
+        .unwrap();
+        let mut hosted =
+            crate::HostedExecution::try_from_module_plan(crate::plan_host_program(typed).unwrap())
+                .unwrap();
+        let (plan, stores, captures) = hosted.parts_mut();
+        let host = TestHost::default();
+        let mut effects = Vec::new();
+        let mut echo = Vec::new();
+        let mut domain = Domain::new(
+            Arc::clone(plan),
+            &host,
+            &mut effects,
+            stores,
+            &mut echo,
+            captures.clone(),
+            NonZeroUsize::MIN,
+        );
+        let (context, root) = domain.begin(UnitOwner::new(domain.units.completion()));
+        let mut completion = CancelledCompletion(context.unit().unwrap().clone());
+        let empty = BlockEnvironment::from_retained(RetainedValues::empty());
+        assert!(!completion.restart(
+            crate::plan::execution::compiled::CallTarget::String(StringFunctionId(0)),
+            0,
+            CallInputs::new(&empty)
+        ));
+        assert_eq!(completion.retained_bytes(), 0);
+        let state = Box::new(GeneratedNativeState {
+            phase: GeneratedNativePhase::Progress(CallProgress::Yield(Box::new(completion))),
+            numeric: Default::default(),
+            strings: None,
+            bit_arrays: None,
+            root_tail_entry: true,
+            domain: captures.domain(),
+            prepaid_completion: false,
+        });
+        let result = host
+            .block_on(domain.drive(async {
+                let result = plan
+                    .prepare_generated_native(state, 1)
+                    .ok()
+                    .unwrap()
+                    .submit(context.services(), NonZeroUsize::MIN)
+                    .await;
+                drop(root);
+                result
+            }))
+            .unwrap()
+            .try_into_value()
+            .unwrap();
+        assert!(result.is_err());
+        assert!(effects.is_empty());
+        assert!(echo.is_empty());
+    }
+
+    #[test]
+    fn a_later_unsupported_native_request_returns_its_owner_without_invoking_it() {
+        use crate::{
+            HostCallContinuation, HostConstructions, HostOwnedCompletion, HostTypeListEnd,
+        };
+        fn later<'call>(
+            mut call: HostCall<'call, Profile, Profile, StringValue>,
+            constructions: HostConstructions<'call, HostTypeListEnd>,
+            value: StringValue,
+        ) -> Result<HostCallContinuation<'call, StringValue>, HostCallError> {
+            call.state().push(value.clone());
+            Ok(call.resume(constructions, move |_| {
+                Box::pin(async move {
+                    Ok(HostOwnedCompletion::new(move |call, _| {
+                        Ok(call.return_value(value))
+                    }))
+                })
+            }))
+        }
+        let source = r#"
+@external(erlang, "native", "append")
+fn append(value: String) -> String
+@external(erlang, "native", "later")
+fn later(value: String) -> String
+pub fn main() { let first = append("input") later(first) }
+"#;
+        let typed = crate::compile_typed_host_program("application", "example",
+            [PackageSource::new("application", Vec::<String>::new(),
+                [ModuleSource::new("example", "src/example.gleam", source)])],
+            HostProviderSet::from_providers([HostProviderModule::new("application", "example").unwrap()
+                .with_scoped_function::<Profile, (StringValue,), StringValue, _>("append", append).unwrap()
+                .with_resumable_function::<Profile, (StringValue,), StringValue, HostTypeListEnd, _>("later", later).unwrap()]).unwrap()
+        ).unwrap();
+        let mut hosted =
+            crate::HostedExecution::try_from_module_plan(crate::plan_host_program(typed).unwrap())
+                .unwrap();
+        let (plan, stores, captures) = hosted.parts_mut();
+        let synchronous = plan.synchronous_strings();
+        let first = StringFunctionId(synchronous.iter().position(|enabled| *enabled).unwrap());
+        let next = (0..3)
+            .map(StringFunctionId)
+            .find(|id| {
+                !synchronous[id.0]
+                    && matches!(
+                        plan.string_function(*id).as_ref(),
+                        ExecutionFunctionRef::Host(_)
+                    )
+            })
+            .unwrap();
+        let site = HostCallSite::from_static("example", "main", SourceSpan::new(0, source.len()));
+        let state = Box::new(GeneratedNativeState {
+            phase: GeneratedNativePhase::Progress(CallProgress::StringNative(
+                StringNativeRequest {
+                    function: first,
+                    site: site.clone(),
+                    root_tail: false,
+                    arguments: Box::new(CallValues {
+                        strings: vec!["input".into()],
+                        ..Default::default()
+                    }),
+                    execution: Box::new(Delivery {
+                        function: next,
+                        site,
+                        result: "".into(),
+                        next_call: true,
+                    }),
+                },
+            )),
+            numeric: Default::default(),
+            strings: None,
+            bit_arrays: None,
+            root_tail_entry: true,
+            domain: captures.domain(),
+            prepaid_completion: false,
+        });
+        let owner = std::ptr::from_ref(&*state);
+        let host = TestHost::default();
+        let mut effects = Vec::new();
+        let mut echo = Vec::new();
+        let domain = Domain::new(
+            Arc::clone(plan),
+            &host,
+            &mut effects,
+            stores,
+            &mut echo,
+            captures.clone(),
+            NonZeroUsize::MIN,
+        );
+        let context = domain.context();
+        host.block_on(domain.drive(async {
+            let mut state = state;
+            let mut grants = 0;
+            let state = loop {
+                match plan.prepare_generated_native(state, 32) {
+                    Ok(invoke) => {
+                        grants += 1;
+                        assert!(
+                            grants < 20,
+                            "bounded phases must reach the unsupported request"
+                        );
+                        state = invoke
+                            .submit(context.execution.services(), NonZeroUsize::new(32).unwrap())
+                            .await
+                            .unwrap()
+                            .unwrap();
+                        assert_eq!(std::ptr::from_ref(&*state), owner);
+                    }
+                    Err(state) => break state,
+                }
+            };
+            assert_eq!(std::ptr::from_ref(&*state), owner);
+            drop(state);
+            assert_eq!(
+                context
+                    .execution
+                    .with_state(|effects| effects.clone())
+                    .await
+                    .unwrap(),
+                [StringValue::from("input")]
+            );
+            let mut inputs = RetainedValues::empty();
+            inputs.push_string("control".into());
+            let returned = context
+                .call(next, HostCallOrigin::Entry, inputs)
+                .await
+                .unwrap()
+                .unwrap();
+            assert_eq!(returned.as_str(), Ok("control"));
+            assert_eq!(
+                context
+                    .execution
+                    .with_state(|effects| effects.clone())
+                    .await
+                    .unwrap(),
+                [StringValue::from("input"), StringValue::from("control")]
+            );
+        }))
+        .unwrap();
+        assert!(echo.is_empty());
     }
 }

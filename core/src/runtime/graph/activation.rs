@@ -9,9 +9,9 @@ use self::native_loop::NativeLoopExecution;
 
 use super::RuntimeGraphState;
 use super::environment::{MatchResults, StoragePool};
-use super::{BlockEnvironment, CompletedGraph, GraphPosition, RetainedValues};
+use super::{BlockEnvironment, CompletedGraph, GraphPosition, GraphValue, RetainedValues};
 use crate::StringValue;
-use crate::plan::execution::compiled::CompiledImplementation;
+use crate::plan::execution::compiled::{CallTarget, CompiledCheckpoint, CompiledImplementation};
 use crate::plan::execution::constant::{ConstantId, ConstantValue, ProfiledConstantProgram};
 use crate::plan::execution::function::{
     ExecutionFunctionEntry, ExecutionFunctionRef, ExecutionNeverFunctionBody, FunctionBodyOwner,
@@ -20,7 +20,9 @@ use crate::plan::execution::function::{
 use crate::plan::execution::graph::BlockGraphView;
 use crate::runtime::compiled::CompiledProgress;
 use crate::runtime::compiled::bit_array::BitArrayValues;
-use crate::runtime::compiled::calls::{CallExecution, CallStorage};
+use crate::runtime::compiled::calls::{
+    CallExecution, CallOutput, CallStorage, CallValues, GeneratedNativeState,
+};
 use crate::runtime::compiled::int_list::{IntListOps, IntListValues};
 use crate::runtime::compiled::numeric::NumericValues;
 use crate::runtime::compiled::string::StringValues;
@@ -58,13 +60,23 @@ pub(in crate::runtime) struct Storage<'plan, Plan: ExecutableRuntimePlan> {
 pub(in crate::runtime) enum Progress<'plan, Plan: ExecutableRuntimePlan + 'plan> {
     Continue(Execution<'plan, Plan>),
     Host(Plan::HostInvocation<'plan, Execution<'plan, Plan>>),
+    GeneratedHost {
+        frame: CallFrame<'plan, Plan>,
+        invoke: Plan::HostInvocation<'plan, Box<GeneratedNativeState>>,
+    },
     Complete(CompletedGraph),
+    CallComplete(CallOutput),
+    CallInterpreted {
+        target: CallTarget,
+        point: CompiledCheckpoint,
+        values: Box<CallValues>,
+    },
 }
 
 pub(super) enum Activation<'plan, Plan: ExecutableRuntimePlan + 'plan> {
     Graph(Frame<'plan, Plan>),
     Compiled {
-        frame: Frame<'plan, Plan>,
+        frame: CallFrame<'plan, Plan>,
         implementation: &'plan CompiledImplementation,
         point: usize,
     },
@@ -72,12 +84,22 @@ pub(super) enum Activation<'plan, Plan: ExecutableRuntimePlan + 'plan> {
     NativeLoop(Box<NativeLoopExecution<'plan, Plan>>),
     NativeCalls(Box<NativeCallsExecution<'plan, Plan>>),
     FunctionCalls {
-        frame: Frame<'plan, Plan>,
+        frame: CallFrame<'plan, Plan>,
         execution: Box<dyn CallExecution>,
+    },
+    GeneratedNative {
+        frame: CallFrame<'plan, Plan>,
+        state: Box<GeneratedNativeState>,
     },
     Host(Plan::HostInvocation<'plan, Activation<'plan, Plan>>),
     Return(Return<'plan, Plan>),
     Complete(CompletedGraph),
+    CallComplete(CallOutput),
+    CallInterpreted {
+        target: CallTarget,
+        point: CompiledCheckpoint,
+        values: Box<CallValues>,
+    },
 }
 
 pub(super) struct Frame<'plan, Plan: ExecutableRuntimePlan> {
@@ -86,10 +108,46 @@ pub(super) struct Frame<'plan, Plan: ExecutableRuntimePlan> {
     exit: Box<dyn GraphExit<'plan, Plan> + 'plan>,
 }
 
+pub(in crate::runtime) struct CallFrame<'plan, Plan: ExecutableRuntimePlan> {
+    graph: BlockGraphView<'plan, RuntimeGraph<Plan>>,
+    position: GraphPosition,
+    exit: Box<dyn GeneratedExit<'plan, Plan> + 'plan>,
+}
+
+impl<'plan, Plan: ExecutableRuntimePlan> CallFrame<'plan, Plan> {
+    fn into_graph(self) -> Frame<'plan, Plan> {
+        Frame {
+            graph: self.graph,
+            position: self.position,
+            exit: self.exit,
+        }
+    }
+}
+
 trait GraphExit<'plan, Plan: ExecutableRuntimePlan>: Send {
     fn exit(
         self: Box<Self>,
         completed: CompletedGraph,
+        storage: &mut Storage<'plan, Plan>,
+    ) -> ExecutionResult<Activation<'plan, Plan>>;
+}
+
+/// This owner follows the actual generated target and result. Source exits
+/// remain the canonical executor's responsibility, including fallback tails.
+trait GeneratedExit<'plan, Plan: ExecutableRuntimePlan>: GraphExit<'plan, Plan> {
+    fn root_tail_entry(&self) -> bool;
+    fn complete(
+        self: Box<Self>,
+        output: CallOutput,
+        environment: BlockEnvironment,
+        storage: &mut Storage<'plan, Plan>,
+    ) -> ExecutionResult<Activation<'plan, Plan>>;
+    fn interpreted(
+        self: Box<Self>,
+        target: CallTarget,
+        point: CompiledCheckpoint,
+        values: Box<CallValues>,
+        environment: BlockEnvironment,
         storage: &mut Storage<'plan, Plan>,
     ) -> ExecutionResult<Activation<'plan, Plan>>;
 }
@@ -103,6 +161,38 @@ impl<'plan, Plan: ExecutableRuntimePlan> GraphExit<'plan, Plan> for RootExit {
         _storage: &mut Storage<'plan, Plan>,
     ) -> ExecutionResult<Activation<'plan, Plan>> {
         Ok(Activation::Complete(completed))
+    }
+}
+
+impl<'plan, Plan: ExecutableRuntimePlan> GeneratedExit<'plan, Plan> for RootExit {
+    fn root_tail_entry(&self) -> bool {
+        true
+    }
+
+    fn complete(
+        self: Box<Self>,
+        output: CallOutput,
+        environment: BlockEnvironment,
+        storage: &mut Storage<'plan, Plan>,
+    ) -> ExecutionResult<Activation<'plan, Plan>> {
+        storage.pool.recycle(environment);
+        Ok(Activation::CallComplete(output))
+    }
+
+    fn interpreted(
+        self: Box<Self>,
+        target: CallTarget,
+        point: CompiledCheckpoint,
+        values: Box<CallValues>,
+        environment: BlockEnvironment,
+        storage: &mut Storage<'plan, Plan>,
+    ) -> ExecutionResult<Activation<'plan, Plan>> {
+        storage.pool.recycle(environment);
+        Ok(Activation::CallInterpreted {
+            target,
+            point,
+            values,
+        })
     }
 }
 
@@ -192,13 +282,29 @@ pub(super) trait ReturnValue: Send + 'static {
 }
 
 impl<'plan, Plan: ExecutableRuntimePlan> Execution<'plan, Plan> {
+    pub(in crate::runtime) fn interpreted(
+        graph: BlockGraphView<'plan, RuntimeGraph<Plan>>,
+        point: CompiledCheckpoint,
+        values: Box<CallValues>,
+    ) -> Self {
+        let mut position = GraphPosition::new(graph.entry(), values.into_retained());
+        position.block = point.block;
+        position.instruction = point.instruction;
+        Self {
+            active: Activation::Graph(Frame {
+                graph,
+                position,
+                exit: Box::new(RootExit),
+            }),
+        }
+    }
     pub(in crate::runtime) fn new(
         graph: BlockGraphView<'plan, RuntimeGraph<Plan>>,
         inputs: RetainedValues,
         compiled: Option<&'plan CompiledImplementation>,
     ) -> Self {
         Self {
-            active: Frame {
+            active: CallFrame {
                 graph,
                 position: GraphPosition::new(graph.entry(), inputs),
                 exit: Box::new(RootExit),
@@ -229,7 +335,13 @@ impl<'plan, Plan: ExecutableRuntimePlan> Execution<'plan, Plan> {
                     );
                 }
                 CompiledImplementation::CustomLoop(loop_) => CustomLoopExecution::enter(
-                    frame, loop_, point, plan, state, storage, remaining,
+                    frame.into_graph(),
+                    loop_,
+                    point,
+                    plan,
+                    state,
+                    storage,
+                    remaining,
                 )?,
                 CompiledImplementation::Numeric(numeric) => {
                     if !frame
@@ -237,7 +349,9 @@ impl<'plan, Plan: ExecutableRuntimePlan> Execution<'plan, Plan> {
                         .environment
                         .load_numeric(&mut storage.numeric)
                     {
-                        frame.advance(plan, state, storage, remaining)?
+                        frame
+                            .into_graph()
+                            .advance(plan, state, storage, remaining)?
                     } else {
                         // The outer driver already charged the first graph step.
                         let mut budget = *remaining + 1;
@@ -250,7 +364,9 @@ impl<'plan, Plan: ExecutableRuntimePlan> Execution<'plan, Plan> {
                 CompiledImplementation::IntList(int_list) => {
                     let values = storage.int_list.get_or_insert_with(Box::default);
                     if !frame.position.environment.load_int_list(values) {
-                        frame.advance(plan, state, storage, remaining)?
+                        frame
+                            .into_graph()
+                            .advance(plan, state, storage, remaining)?
                     } else {
                         let mut budget = *remaining + 1;
                         let progress = (int_list.run)(
@@ -267,7 +383,9 @@ impl<'plan, Plan: ExecutableRuntimePlan> Execution<'plan, Plan> {
                 CompiledImplementation::String(string) => {
                     let values = storage.string.get_or_insert_with(Box::default);
                     if !frame.position.environment.load_string(values) {
-                        frame.advance(plan, state, storage, remaining)?
+                        frame
+                            .into_graph()
+                            .advance(plan, state, storage, remaining)?
                     } else {
                         let mut budget = *remaining + 1;
                         let progress = (string.run)(point, values, &mut budget);
@@ -280,7 +398,9 @@ impl<'plan, Plan: ExecutableRuntimePlan> Execution<'plan, Plan> {
                     let values = storage.bit_array_loop.get_or_insert_with(Default::default);
                     if !frame.position.environment.load_bit_array(values) {
                         values.clear();
-                        frame.advance(plan, state, storage, remaining)?
+                        frame
+                            .into_graph()
+                            .advance(plan, state, storage, remaining)?
                     } else {
                         let mut budget = *remaining + 1;
                         let progress = (bit_array.run)(point, values, &mut budget);
@@ -290,15 +410,9 @@ impl<'plan, Plan: ExecutableRuntimePlan> Execution<'plan, Plan> {
                         frame.resume_compiled(progress, implementation, storage)?
                     }
                 }
-                CompiledImplementation::FunctionCalls(_) => calls::advance(
-                    frame,
-                    implementation,
-                    point,
-                    plan,
-                    state,
-                    storage,
-                    remaining,
-                )?,
+                CompiledImplementation::FunctionCalls(calls) => {
+                    calls::advance(frame, calls, point, plan, state, storage, remaining)?
+                }
             },
             Activation::CustomLoop(execution) => {
                 execution.advance(plan, state, storage, remaining)?
@@ -312,15 +426,85 @@ impl<'plan, Plan: ExecutableRuntimePlan> Execution<'plan, Plan> {
             Activation::FunctionCalls { frame, execution } => {
                 calls::resume(frame, execution, plan, state, storage, remaining)?
             }
+            Activation::GeneratedNative { frame, state } => {
+                // Preserve the driver-prepaid step inside the bounded grant.
+                let allowance = *remaining + 1;
+                *remaining = 0;
+                match plan.prepare_generated_native(state, allowance) {
+                    Ok(invoke) => return Ok(Progress::GeneratedHost { frame, invoke }),
+                    Err(state) => {
+                        return calls::finish_native(frame, state, plan, storage, true).map(
+                            |active| match active {
+                                Activation::Host(invoke) => {
+                                    Progress::Host(Plan::map_host(invoke, Self::resumed))
+                                }
+                                active => Progress::Continue(Self { active }),
+                            },
+                        );
+                    }
+                }
+            }
             Activation::Host(invoke) => {
-                return Ok(Progress::Host(Plan::map_host(invoke, |active| {
-                    Ok(Self { active })
-                })));
+                return Ok(Progress::Host(Plan::map_host(invoke, Self::resumed)));
             }
             Activation::Return(resume) => resume(&mut storage.returns),
             Activation::Complete(completed) => return Ok(Progress::Complete(completed)),
+            Activation::CallComplete(output) => return Ok(Progress::CallComplete(output)),
+            Activation::CallInterpreted {
+                target,
+                point,
+                values,
+            } => {
+                return Ok(Progress::CallInterpreted {
+                    target,
+                    point,
+                    values,
+                });
+            }
         };
-        Ok(Progress::Continue(Self { active }))
+        // Retargeting a generated root is an ownership transfer, not another
+        // graph step. Hand the current checkpoint to its typed function owner
+        // without spending the next turn before that instruction can execute.
+        match active {
+            Activation::CallInterpreted {
+                target,
+                point,
+                values,
+            } => Ok(Progress::CallInterpreted {
+                target,
+                point,
+                values,
+            }),
+            active => Ok(Progress::Continue(Self { active })),
+        }
+    }
+
+    fn resumed(active: Activation<'plan, Plan>) -> ExecutionResult<Self> {
+        Ok(Self { active })
+    }
+}
+
+impl<'plan, Plan: ExecutableRuntimePlan> Execution<'plan, Plan> {
+    pub(in crate::runtime) fn generated_ready(
+        frame: CallFrame<'plan, Plan>,
+        state: Box<GeneratedNativeState>,
+        plan: &'plan Plan,
+        storage: &mut Storage<'plan, Plan>,
+    ) -> ExecutionResult<Progress<'plan, Plan>> {
+        let active = calls::finish_native(frame, state, plan, storage, false)?;
+        Ok(match active {
+            Activation::CallComplete(output) => Progress::CallComplete(output),
+            Activation::CallInterpreted {
+                target,
+                point,
+                values,
+            } => Progress::CallInterpreted {
+                target,
+                point,
+                values,
+            },
+            active => Progress::Continue(Self { active }),
+        })
     }
 }
 
@@ -340,7 +524,7 @@ impl<'plan, Plan: ExecutableRuntimePlan> Storage<'plan, Plan> {
     }
 }
 
-impl<'plan, Plan: ExecutableRuntimePlan> Frame<'plan, Plan> {
+impl<'plan, Plan: ExecutableRuntimePlan> CallFrame<'plan, Plan> {
     fn enter(self, compiled: Option<&'plan CompiledImplementation>) -> Activation<'plan, Plan> {
         match compiled {
             Some(implementation) => Activation::Compiled {
@@ -348,10 +532,12 @@ impl<'plan, Plan: ExecutableRuntimePlan> Frame<'plan, Plan> {
                 implementation,
                 point: implementation.entry(),
             },
-            None => Activation::Graph(self),
+            None => Activation::Graph(self.into_graph()),
         }
     }
+}
 
+impl<'plan, Plan: ExecutableRuntimePlan> Frame<'plan, Plan> {
     fn advance(
         self,
         plan: &'plan Plan,
@@ -382,14 +568,9 @@ impl<'plan, Plan: ExecutableRuntimePlan> Frame<'plan, Plan> {
                         }
                         break Activation::Graph(frame);
                     }
-                    GraphAction::Exit { exit, environment } => frame.exit.exit(
-                        CompletedGraph {
-                            exit,
-                            environment,
-                            direct_return: false,
-                        },
-                        storage,
-                    )?,
+                    GraphAction::Exit { exit, environment } => frame
+                        .exit
+                        .exit(CompletedGraph { exit, environment }, storage)?,
                     GraphAction::NeverCall {
                         function,
                         mut inputs,
@@ -423,7 +604,9 @@ impl<'plan, Plan: ExecutableRuntimePlan> Frame<'plan, Plan> {
         };
         Ok(active)
     }
+}
 
+impl<'plan, Plan: ExecutableRuntimePlan> CallFrame<'plan, Plan> {
     fn resume_compiled(
         mut self,
         progress: CompiledProgress,
@@ -442,20 +625,21 @@ impl<'plan, Plan: ExecutableRuntimePlan> Frame<'plan, Plan> {
                         point,
                     }
                 } else {
-                    Activation::Graph(self)
+                    Activation::Graph(self.into_graph())
                 }
             }
             CompiledProgress::Complete(exit) => self.exit.exit(
                 CompletedGraph {
                     exit,
                     environment: self.position.environment,
-                    direct_return: false,
                 },
                 storage,
             )?,
         })
     }
+}
 
+impl<'plan, Plan: ExecutableRuntimePlan> Frame<'plan, Plan> {
     pub(super) fn store<Value: ReturnValue>(mut self, value: Value) -> Activation<'plan, Plan> {
         value.push(&mut self.position.environment);
         Activation::Graph(self)
@@ -581,12 +765,57 @@ where
     fn enter(self: Box<Self>, inputs: RetainedValues) -> Activation<'plan, Plan> {
         let graph = self.body.function_body().block_graph().as_view();
         let compiled = self.id.compiled(self.plan);
-        Frame {
+        CallFrame {
             graph,
             position: GraphPosition::new(graph.entry(), inputs),
             exit: self,
         }
         .enter(compiled)
+    }
+
+    fn retarget(
+        mut self: Box<Self>,
+        id: Id,
+        origin: HostCallOrigin,
+        inputs: RetainedValues,
+        checkpoint: Option<CompiledCheckpoint>,
+    ) -> Activation<'plan, Plan> {
+        match id.entry(self.plan) {
+            ExecutionFunctionRef::Graph(function) => {
+                self.id = id;
+                self.body = function.body();
+                if let Some(point) = checkpoint {
+                    let graph = self.body.function_body().block_graph().as_view();
+                    let mut position = GraphPosition::new(graph.entry(), inputs);
+                    position.block = point.block;
+                    position.instruction = point.instruction;
+                    Activation::Graph(Frame {
+                        graph,
+                        position,
+                        exit: self,
+                    })
+                } else {
+                    self.enter(inputs)
+                }
+            }
+            ExecutionFunctionRef::Host(target) => {
+                let Self {
+                    plan,
+                    destination,
+                    map,
+                    ..
+                } = *self;
+                Activation::Host(Plan::map_host(
+                    Id::prepare_host(plan, origin, target, inputs),
+                    move |value| {
+                        let value = map(value)?;
+                        Ok(Activation::Return(Box::new(move |returns| {
+                            destination.resume(returns, value)
+                        })))
+                    },
+                ))
+            }
+        }
     }
 }
 
@@ -603,7 +832,7 @@ where
         + 'plan,
 {
     fn exit(
-        mut self: Box<Self>,
+        self: Box<Self>,
         completed: CompletedGraph,
         storage: &mut Storage<'plan, Plan>,
     ) -> ExecutionResult<Activation<'plan, Plan>> {
@@ -619,32 +848,52 @@ where
                 let inputs = completed.into_retained(transfer);
                 // A direct source tail transfers locals within this activation.
                 // Callable-value entry and capture-domain checks stay in enter_function.
-                match id.entry(self.plan) {
-                    ExecutionFunctionRef::Graph(function) => {
-                        self.id = id;
-                        self.body = function.body();
-                        Ok(self.enter(inputs))
-                    }
-                    ExecutionFunctionRef::Host(target) => {
-                        let Self {
-                            plan,
-                            destination,
-                            map,
-                            ..
-                        } = *self;
-                        Ok(Activation::Host(Plan::map_host(
-                            Id::prepare_host(plan, origin, target, inputs),
-                            move |value| {
-                                let value = map(value)?;
-                                Ok(Activation::Return(Box::new(move |returns| {
-                                    destination.resume(returns, value)
-                                })))
-                            },
-                        )))
-                    }
-                }
+                Ok(self.retarget(id, origin, inputs, None))
             }
         }
+    }
+}
+
+impl<'plan, Plan, Id, DestinationOwner, Map> GeneratedExit<'plan, Plan>
+    for FunctionContinuation<'plan, Plan, Id, DestinationOwner, Map>
+where
+    Plan: ExecutableRuntimePlan,
+    Id: EntryTarget<Plan> + 'plan,
+    DestinationOwner: ReturnDestination<'plan, Plan> + 'plan,
+    Map: FnOnce(
+            <<Id::Body as FunctionBodyOwner>::Return as super::GraphValue>::Evaluated,
+        ) -> ExecutionResult<DestinationOwner::Value>
+        + Send
+        + 'plan,
+{
+    fn root_tail_entry(&self) -> bool {
+        false
+    }
+
+    fn complete(
+        self: Box<Self>,
+        output: CallOutput,
+        environment: BlockEnvironment,
+        storage: &mut Storage<'plan, Plan>,
+    ) -> ExecutionResult<Activation<'plan, Plan>> {
+        storage.pool.recycle(environment);
+        let value = <Id::Body as FunctionBodyOwner>::Return::from_call_output(output)?;
+        let value = (self.map)(value)?;
+        Ok(self.destination.resume(&mut storage.returns, value))
+    }
+
+    fn interpreted(
+        self: Box<Self>,
+        target: CallTarget,
+        point: CompiledCheckpoint,
+        values: Box<CallValues>,
+        environment: BlockEnvironment,
+        storage: &mut Storage<'plan, Plan>,
+    ) -> ExecutionResult<Activation<'plan, Plan>> {
+        storage.pool.recycle(environment);
+        let id = Id::from_call_target(target)?;
+        let inputs = values.into_retained();
+        Ok(self.retarget(id, HostCallOrigin::Entry, inputs, Some(point)))
     }
 }
 
@@ -676,7 +925,7 @@ where
 impl<'plan, Plan, Local, Value, Map> GraphExit<'plan, Plan>
     for ConstantContinuation<'plan, Plan, Local, Value, Map>
 where
-    Plan: ExecutableRuntimePlan,
+    Plan: ExecutableRuntimePlan + 'plan,
     Local: ConstantValue + super::GraphValue + Sync + 'plan,
     Value: ReturnValue,
     Map: FnOnce(Local::Evaluated) -> Value + Send + 'plan,
@@ -813,6 +1062,7 @@ impl ReturnValue for () {
 
 #[cfg(test)]
 mod tests {
+    use super::CallFrame;
     use super::{
         Activation, Execution, Frame, FunctionContinuation, GraphPosition, Progress, RootExit,
         Storage, enter_function, enter_never,
@@ -831,6 +1081,8 @@ mod tests {
     use crate::runtime::compiled::bit_array::BitArrayValues;
     use crate::runtime::compiled::int_list::{IntListOps, IntListValues};
     use crate::runtime::compiled::numeric::NumericValues;
+    use crate::runtime::graph::BlockEnvironment;
+    use crate::runtime::graph::tests::{CanonicalProgress, canonical_progress};
     use crate::runtime::graph::{CompletedGraph, RetainedValues};
     use crate::runtime::integer::IntegerValue;
     use crate::runtime::state::RuntimeState;
@@ -968,24 +1220,19 @@ mod tests {
                         .advance(plan, &mut state, &mut storage, &mut 0)
                         .unwrap(),
                 );
-                let frame = if fallback <= BigInt::from(i64::MAX)
+                let position = if fallback <= BigInt::from(i64::MAX)
                     && (!hit || expected <= BigInt::from(i64::MAX))
                 {
-                    numeric_frame(&execution).0
+                    &numeric_frame(&execution).0.position
                 } else {
-                    active_frame(&execution)
+                    &active_frame(&execution).position
                 };
                 assert_eq!(
-                    (frame.position.block, frame.position.instruction),
+                    (position.block, position.instruction),
                     (BlockId(if hit { 1 } else { 2 }), 0)
                 );
                 assert_eq!(
-                    frame
-                        .position
-                        .environment
-                        .int(IntLocalId(0))
-                        .bigint()
-                        .as_ref(),
+                    position.environment.int(IntLocalId(0)).bigint().as_ref(),
                     &expected
                 );
                 let scratch = storage.bit_array_loop.as_ref().unwrap();
@@ -1277,7 +1524,7 @@ mod tests {
 
     fn numeric_frame<'run, 'plan, Plan: ExecutableRuntimePlan>(
         execution: &'run Execution<'plan, Plan>,
-    ) -> (&'run Frame<'plan, Plan>, usize) {
+    ) -> (&'run CallFrame<'plan, Plan>, usize) {
         match &execution.active {
             Activation::Compiled { frame, point, .. } => (frame, *point),
             _ => panic!("a Small yield retains generated execution"),
@@ -1363,7 +1610,7 @@ mod tests {
                 position.instruction = 1;
                 let execution = Execution {
                     active: Activation::Compiled {
-                        frame: Frame {
+                        frame: CallFrame {
                             graph: body.block_graph().as_view(),
                             position,
                             exit: Box::new(continuation),
@@ -1409,7 +1656,6 @@ mod tests {
             fn advance(self: Box<Self>, _: &mut CallOps<'_>, budget: &mut usize) -> CallProgress {
                 *budget -= 1;
                 CallProgress::Complete {
-                    exit: BlockGraphExitId(0),
                     output: CallOutput::Int(CallInteger(self.0.into())),
                     execution: self,
                 }
@@ -1478,30 +1724,29 @@ mod tests {
                 values.push_bool(true);
                 let mut position = GraphPosition::new(BlockId(1), values);
                 position.instruction = 1;
-                let mut frame = Frame {
-                    graph: body.block_graph().as_view(),
-                    position,
-                    exit: Box::new(continuation),
+                let active = if resumed {
+                    // The generated entry already owns the transferred locals.
+                    position.environment.clear_call_values();
+                    Activation::FunctionCalls {
+                        frame: CallFrame {
+                            graph: body.block_graph().as_view(),
+                            position,
+                            exit: Box::new(continuation),
+                        },
+                        execution: Box::new(ReturnOnly(8)),
+                    }
+                } else {
+                    Activation::Compiled {
+                        frame: CallFrame {
+                            graph: body.block_graph().as_view(),
+                            position,
+                            exit: Box::new(continuation),
+                        },
+                        implementation: &implementation,
+                        point: 2,
+                    }
                 };
-                if resumed {
-                    // Initial generated entry has already moved the active
-                    // columns out of its retained canonical frame.
-                    frame.position.environment.clear_call_values();
-                }
-                let execution = Execution {
-                    active: if resumed {
-                        Activation::FunctionCalls {
-                            frame,
-                            execution: Box::new(ReturnOnly(8)),
-                        }
-                    } else {
-                        Activation::Compiled {
-                            frame,
-                            implementation: &implementation,
-                            point: 2,
-                        }
-                    },
-                };
+                let execution = Execution { active };
                 let mut echo = Vec::new();
                 let mut state = RuntimeState::new(&mut echo);
                 assert_eq!(
@@ -1514,7 +1759,8 @@ mod tests {
                 assert_eq!(mapped.load(Ordering::SeqCst), 1);
                 assert!(echo.is_empty());
             }
-            let input = CallInputs::new(&[], &[], &[], &[], &[]);
+            let environment = BlockEnvironment::from_retained(RetainedValues::empty());
+            let input = CallInputs::new(&environment);
             assert!(
                 storage
                     .function_calls
@@ -1522,6 +1768,259 @@ mod tests {
                     .is_none()
             );
             assert!(start(2, input, &mut storage.function_calls).is_none());
+        });
+    }
+
+    #[test]
+    fn generated_continuations_preserve_typed_conversion_mapping_and_retarget_ownership() {
+        use super::GeneratedExit;
+        use crate::plan::execution::compiled::CallTarget;
+        use crate::plan::execution::function::{BoolFunctionId, FunctionReturnFamily};
+        use crate::runtime::compiled::calls::{CallOutput, CallValues};
+        use crate::runtime::error::{ExecutionError, InvariantError};
+        use crate::{HostProviderModule, HostProviderSet, StatelessHostProfile};
+        fn checked(value: IntegerValue) -> Result<IntegerValue, ExecutionError> {
+            if value == IntegerValue::from(0_i64) {
+                Err(ExecutionError::Invariant(
+                    InvariantError::FunctionReturnFamilyMismatch {
+                        expected: FunctionReturnFamily::Int,
+                        actual: FunctionReturnFamily::Float,
+                    },
+                ))
+            } else {
+                Ok(value)
+            }
+        }
+        let source = "@external(erlang, \"example\", \"answer\") fn answer() -> Int fn source() { answer() + 1 } pub fn main() { source() + 1 }";
+        let typed = crate::compile_typed_host_program(
+            "example",
+            "example",
+            [crate::PackageSource::new(
+                "example",
+                Vec::<String>::new(),
+                [crate::ModuleSource::new(
+                    "example",
+                    "src/example.gleam",
+                    source,
+                )],
+            )],
+            HostProviderSet::from_providers([HostProviderModule::<StatelessHostProfile>::new(
+                "example", "example",
+            )
+            .unwrap()
+            .with_function::<(), BigInt, _>("answer", || BigInt::from(41))
+            .unwrap()])
+            .unwrap(),
+        )
+        .unwrap();
+        let mut hosted =
+            crate::HostedExecution::try_from_module_plan(crate::plan_host_program(typed).unwrap())
+                .unwrap();
+        let (plan, _, _) = hosted.parts_mut();
+        let plan = &**plan;
+        let body = int_body(plan, IntFunctionId(1));
+        let graph = body.block_graph().as_view();
+        let mut storage =
+            Storage::<crate::plan::execution::HostedProgram<StatelessHostProfile>>::new();
+        type CheckedContinuation<'plan> = FunctionContinuation<
+            'plan,
+            crate::plan::execution::HostedProgram<StatelessHostProfile>,
+            IntFunctionId,
+            super::Destination<IntegerValue>,
+            fn(IntegerValue) -> Result<IntegerValue, ExecutionError>,
+        >;
+        fn continuation<'plan>(
+            plan: &'plan crate::plan::execution::HostedProgram<StatelessHostProfile>,
+            storage: &mut Storage<
+                'plan,
+                crate::plan::execution::HostedProgram<StatelessHostProfile>,
+            >,
+        ) -> Box<CheckedContinuation<'plan>> {
+            let body = int_body(plan, IntFunctionId(1));
+            let graph = int_body(plan, IntFunctionId(0)).block_graph().as_view();
+            let mut position = GraphPosition::new(graph.entry(), RetainedValues::empty());
+            // The source call is the first instruction; the typed destination
+            // resumes its caller after that instruction, with the result pushed once.
+            position.instruction = 1;
+            let destination = storage.returns.suspend(Frame {
+                graph,
+                position,
+                exit: Box::new(RootExit),
+            });
+            Box::new(FunctionContinuation {
+                plan,
+                id: IntFunctionId(1),
+                body,
+                destination,
+                map: checked,
+            })
+        }
+        for (output, expected) in [
+            (CallOutput::Bool(true), Some(FunctionReturnFamily::Bool)),
+            (
+                CallOutput::Int(0_i128.into()),
+                Some(FunctionReturnFamily::Float),
+            ),
+            (CallOutput::Int(42_i128.into()), None),
+        ] {
+            let owner = continuation(plan, &mut storage);
+            assert!(!owner.root_tail_entry());
+            let result = owner.complete(
+                output,
+                BlockEnvironment::from_retained(RetainedValues::empty()),
+                &mut storage,
+            );
+            if let Some(actual) = expected {
+                assert_eq!(
+                    result.err().unwrap(),
+                    ExecutionError::Invariant(InvariantError::FunctionReturnFamilyMismatch {
+                        expected: FunctionReturnFamily::Int,
+                        actual,
+                    })
+                );
+            } else {
+                let mut execution = Execution {
+                    active: result.unwrap(),
+                };
+                let mut echo = Vec::new();
+                let mut state = RuntimeState::new(&mut echo);
+                let finished = loop {
+                    match canonical_progress(
+                        execution
+                            .advance(plan, &mut state, &mut storage, &mut 16)
+                            .unwrap(),
+                    ) {
+                        CanonicalProgress::Continue(next) => execution = next,
+                        CanonicalProgress::Complete(completed) => break completed,
+                    }
+                };
+                assert_eq!(
+                    returned_int(plan, IntFunctionId(0), finished),
+                    BigInt::from(43)
+                );
+                assert!(echo.is_empty());
+            }
+        }
+        let point = CompiledCheckpoint {
+            block: graph.entry(),
+            instruction: 0,
+            ints: 0,
+            bools: 0,
+            bit_arrays: 0,
+            int_lists: 0,
+            strings: 0,
+            customs: 0,
+            custom_lists: 0,
+            int_functions: 0,
+            bool_functions: 0,
+        };
+        for target in [
+            CallTarget::Bool(BoolFunctionId(0)),
+            CallTarget::Int(IntFunctionId(1)),
+            CallTarget::Int(IntFunctionId(2)),
+        ] {
+            let result = continuation(plan, &mut storage).interpreted(
+                target,
+                point,
+                Box::<CallValues>::default(),
+                BlockEnvironment::from_retained(RetainedValues::empty()),
+                &mut storage,
+            );
+            if matches!(target, CallTarget::Bool(_)) {
+                assert_eq!(
+                    result.err().unwrap(),
+                    ExecutionError::Invariant(InvariantError::FunctionReturnFamilyMismatch {
+                        expected: FunctionReturnFamily::Int,
+                        actual: FunctionReturnFamily::Bool,
+                    })
+                );
+            } else {
+                let active = result.unwrap();
+                assert_eq!(
+                    matches!(&active, Activation::Graph(_)),
+                    target == CallTarget::Int(IntFunctionId(1))
+                );
+                assert_eq!(
+                    matches!(&active, Activation::Host(_)),
+                    target == CallTarget::Int(IntFunctionId(2))
+                );
+            }
+        }
+        for target in [IntFunctionId(1), IntFunctionId(2)] {
+            let active = continuation(plan, &mut storage).retarget(
+                target,
+                HostCallOrigin::Entry,
+                RetainedValues::empty(),
+                None,
+            );
+            assert_eq!(
+                matches!(&active, Activation::Graph(_)),
+                target == IntFunctionId(1)
+            );
+            assert_eq!(
+                matches!(&active, Activation::Host(_)),
+                target == IntFunctionId(2)
+            );
+        }
+        drop(storage);
+        let mut echo = Vec::new();
+        assert_eq!(
+            crate::execution_fixture::run(&mut hosted, &mut (), &mut echo).unwrap(),
+            crate::Value::Int(43.into())
+        );
+        assert!(echo.is_empty());
+    }
+
+    #[test]
+    fn generated_destinations_reject_wrong_result_and_target_families_before_mapping() {
+        use super::GeneratedExit;
+        use crate::plan::execution::compiled::CallTarget;
+        use crate::plan::execution::function::{BoolFunctionId, FunctionReturnFamily};
+        use crate::runtime::compiled::calls::{CallOutput, CallValues};
+        use crate::runtime::error::{ExecutionError, InvariantError};
+        with_source_plans!(NUMERIC_CHOOSE_SOURCE, plan, {
+            let body = int_body(plan, IntFunctionId(1));
+            for wrong_target in [false, true] {
+                let mut storage = Storage::new();
+                let destination = storage.returns.suspend(Frame {
+                    graph: body.block_graph().as_view(),
+                    position: GraphPosition::new(BlockId(1), RetainedValues::empty()),
+                    exit: Box::new(RootExit),
+                });
+                let continuation = Box::new(FunctionContinuation {
+                    plan,
+                    id: IntFunctionId(1),
+                    body,
+                    destination,
+                    map: Ok::<IntegerValue, ExecutionError>,
+                });
+                let environment = BlockEnvironment::from_retained(RetainedValues::empty());
+                let error = if wrong_target {
+                    continuation
+                        .interpreted(
+                            CallTarget::Bool(BoolFunctionId(0)),
+                            CHOOSE_POINTS[0],
+                            Box::<CallValues>::default(),
+                            environment,
+                            &mut storage,
+                        )
+                        .err()
+                        .unwrap()
+                } else {
+                    continuation
+                        .complete(CallOutput::Bool(true), environment, &mut storage)
+                        .err()
+                        .unwrap()
+                };
+                assert_eq!(
+                    error,
+                    ExecutionError::Invariant(InvariantError::FunctionReturnFamilyMismatch {
+                        expected: FunctionReturnFamily::Int,
+                        actual: FunctionReturnFamily::Bool
+                    })
+                );
+                assert_eq!(storage.returns.ints.len(), 1);
+            }
         });
     }
 
@@ -1566,7 +2065,7 @@ mod tests {
                 values.push_int(value.into());
                 let execution = Execution {
                     active: Activation::Compiled {
-                        frame: Frame {
+                        frame: CallFrame {
                             graph: body.block_graph().as_view(),
                             position: GraphPosition::new(BlockId(1), values),
                             exit: Box::new(continuation),
@@ -1661,7 +2160,7 @@ pub fn main() { choose("λ", 7) }
                 values.push_int(value.into());
                 let execution = Execution {
                     active: Activation::Compiled {
-                        frame: Frame {
+                        frame: CallFrame {
                             graph,
                             position: GraphPosition::new(BlockId(1), values),
                             exit: Box::new(continuation),
@@ -1814,7 +2313,7 @@ pub fn main() { head([7], 3) }
                 position.instruction = checkpoints[point].instruction;
                 let mut execution = Execution {
                     active: Activation::Compiled {
-                        frame: Frame {
+                        frame: CallFrame {
                             graph: body.block_graph().as_view(),
                             position,
                             exit: Box::new(continuation),
@@ -2113,7 +2612,7 @@ pub fn main() { head([7], 3) }
             .unwrap_err();
             assert_eq!(
                 *failure.downcast::<&str>().unwrap(),
-                "numeric fixture has no host calls"
+                "canonical graph fixture has no host calls"
             );
         }
         assert_eq!(called.load(Ordering::SeqCst), 0);
@@ -2147,10 +2646,9 @@ pub fn main() { head([7], 3) }
     fn continuing<Plan: ExecutableRuntimePlan>(
         progress: Progress<'_, Plan>,
     ) -> Execution<'_, Plan> {
-        match progress {
-            Progress::Continue(next) => next,
-            Progress::Complete(_) => panic!("fixture graph must still be running"),
-            Progress::Host(_) => panic!("numeric fixture has no host calls"),
+        match canonical_progress(progress) {
+            CanonicalProgress::Continue(next) => next,
+            CanonicalProgress::Complete(_) => panic!("fixture graph must still be running"),
         }
     }
 
@@ -2164,10 +2662,9 @@ pub fn main() { head([7], 3) }
     }
 
     fn completed<Plan: ExecutableRuntimePlan>(progress: Progress<'_, Plan>) -> CompletedGraph {
-        match progress {
-            Progress::Complete(completed) => completed,
-            Progress::Continue(_) => panic!("fixture graph must have completed"),
-            Progress::Host(_) => panic!("numeric fixture has no host calls"),
+        match canonical_progress(progress) {
+            CanonicalProgress::Complete(completed) => completed,
+            CanonicalProgress::Continue(_) => panic!("fixture graph must have completed"),
         }
     }
 
@@ -2430,13 +2927,13 @@ pub fn main() { left(20) + 1 }
                         observations += 1;
                     }
                 }
-                match execution
-                    .advance(&plan, &mut state, &mut storage, &mut 0)
-                    .unwrap()
-                {
-                    Progress::Continue(next) => execution = next,
-                    Progress::Complete(completed) => break completed,
-                    Progress::Host(never) => match never {},
+                match canonical_progress(
+                    execution
+                        .advance(&plan, &mut state, &mut storage, &mut 0)
+                        .unwrap(),
+                ) {
+                    CanonicalProgress::Continue(next) => execution = next,
+                    CanonicalProgress::Complete(completed) => break completed,
                 }
             };
             assert_eq!(returned_int(&plan, IntFunctionId(0), completed), 42.into());
@@ -2629,10 +3126,9 @@ pub fn main() {
                 lists = retained_lists;
                 storage = retained_storage;
                 output = retained_output;
-                match step {
-                    Progress::Continue(next) => execution = next,
-                    Progress::Host(invoke) => match invoke {},
-                    Progress::Complete(completed) => break (completed, output),
+                match canonical_progress(step) {
+                    CanonicalProgress::Continue(next) => execution = next,
+                    CanonicalProgress::Complete(completed) => break (completed, output),
                 }
             }
         });

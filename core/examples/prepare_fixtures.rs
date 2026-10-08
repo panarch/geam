@@ -35,7 +35,31 @@ mod function_value_provider;
 #[path = "../tests/fixtures/prepared/native_loop_provider.rs"]
 mod native_loop_provider;
 
+#[path = "../tests/fixtures/prepared/primitive_list_declarations.rs"]
+mod primitive_list_declarations;
+
+#[path = "../tests/fixtures/prepared/string_native_provider.rs"]
+mod string_native_provider;
+
 fn main() -> Result<(), Box<dyn Error>> {
+    let call_boundaries = geam_core::compile_typed_host_program(
+        "example",
+        "example",
+        [PackageSource::new(
+            "example",
+            Vec::<String>::new(),
+            [ModuleSource::new(
+                "example",
+                "src/call_boundaries.gleam",
+                include_str!("../tests/fixtures/prepared/call_boundaries.gleam"),
+            )],
+        )],
+        HostProviderSet::<StatelessHostProfile>::new([])?,
+    )?;
+    let (mut call_boundaries, _) = HostedModuleBuilder::new(call_boundaries)?
+        .function(FunctionDeclaration::<(bool,), StringValue>::new("choose"))?;
+    call_boundaries.function(FunctionDeclaration::<(), BigInt>::new("wide"))?;
+
     let arithmetic = geam_core::compile_typed_module(
         "example",
         "src/example.gleam",
@@ -788,6 +812,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         "guarded",
     ))?;
     custom_loop.function(FunctionDeclaration::<(), BigInt>::new("main"))?;
+    custom_loop.function(FunctionDeclaration::<(BigInt,), BigInt>::new("markers"))?;
     let custom_loop_entry = geam_core::compile_typed_host_program(
         "example",
         "example",
@@ -858,7 +883,16 @@ fn main() -> Result<(), Box<dyn Error>> {
         ("numeric.rs", numeric.prepare().emit_rust()),
         ("function_calls.rs", calls.prepare().emit_rust()),
         ("boolean_calls.rs", boolean_calls.prepare().emit_rust()),
+        ("call_boundaries.rs", call_boundaries.prepare()?.emit_rust()),
         ("int_list_calls.rs", list_calls.prepare()?.emit_rust()),
+        (
+            "primitive_list_calls.rs",
+            primitive_list_declarations::prepare().emit_rust(),
+        ),
+        (
+            "string_native_calls.rs",
+            string_native_provider::prepare().emit_rust(),
+        ),
         (
             "int_list_static_calls.rs",
             static_list_calls.prepare().emit_rust(),

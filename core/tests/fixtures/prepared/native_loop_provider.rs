@@ -152,6 +152,9 @@ pub fn prepare() -> PreparedHostedModule {
     for name in [
         "computed",
         "computed_cancellable",
+        "ordinary_computed",
+        "dynamic_computed",
+        "dynamic_computed_cancellable",
         "cancellable",
         "retained_value",
         "graph_captured",
@@ -223,6 +226,11 @@ pub fn prepare() -> PreparedHostedModule {
                 "retained_bit_array",
             ),
         )
+        .unwrap();
+    bindings
+        .function(FunctionDeclaration::<(BigInt,), BigInt>::new(
+            "producer_failure",
+        ))
         .unwrap();
     bindings.prepare().unwrap()
 }

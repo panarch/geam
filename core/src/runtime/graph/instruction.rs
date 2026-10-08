@@ -442,9 +442,9 @@ mod tests {
     use crate::runtime::error::ExecutionResult;
     use crate::runtime::execution::invocation::Waiting;
     use crate::runtime::execution::{Domain, ServiceContext};
+    use crate::runtime::graph::tests::{CanonicalProgress, canonical_progress};
     use crate::runtime::graph::{
-        BlockEnvironment, GraphExecution, GraphProgress, GraphStorage, GraphValue,
-        RuntimeGraphState,
+        BlockEnvironment, GraphExecution, GraphStorage, GraphValue, RuntimeGraphState,
     };
     use crate::runtime::state::RuntimeState;
     use crate::runtime::state::list::ListSequence;
@@ -960,13 +960,13 @@ pub fn main() { #(apply_int, apply_float, integer, floating, fn() { 1.5 }) }
             let mut echo = Vec::new();
             let mut state = RuntimeState::new(&mut echo);
             loop {
-                match graph
-                    .advance(self, &mut state, &mut storage, &mut 32)
-                    .unwrap()
-                {
-                    GraphProgress::Continue(next) => graph = next,
-                    GraphProgress::Complete(_) => return,
-                    GraphProgress::Host(never) => match never {},
+                match canonical_progress(
+                    graph
+                        .advance(self, &mut state, &mut storage, &mut 32)
+                        .unwrap(),
+                ) {
+                    CanonicalProgress::Continue(next) => graph = next,
+                    CanonicalProgress::Complete(_) => return,
                 }
             }
         }

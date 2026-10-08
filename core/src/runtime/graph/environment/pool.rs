@@ -125,7 +125,8 @@ mod tests {
     use crate::ExecutionPlan;
     use crate::plan::execution::function::IntFunctionId;
     use crate::runtime::CaptureStorage;
-    use crate::runtime::graph::{CompletedGraph, GraphExecution, GraphProgress, GraphStorage};
+    use crate::runtime::graph::tests::{CanonicalProgress, canonical_progress};
+    use crate::runtime::graph::{CompletedGraph, GraphExecution, GraphStorage};
     use crate::runtime::state::RuntimeState;
     use std::mem::size_of_val;
     use std::ptr;
@@ -410,10 +411,9 @@ mod tests {
                     checked_out = true;
                     assert_eq!(storage.pool.bytes, 0);
                 }
-                match step {
-                    GraphProgress::Continue(next) => execution = next,
-                    GraphProgress::Complete(completed) => break completed,
-                    GraphProgress::Host(invoke) => match invoke {},
+                match canonical_progress(step) {
+                    CanonicalProgress::Continue(next) => execution = next,
+                    CanonicalProgress::Complete(completed) => break completed,
                 }
             };
             assert!(pooled.is_some());
@@ -801,13 +801,13 @@ fn callback() { integer }
         let mut echo = Vec::new();
         let mut state = RuntimeState::new(&mut echo);
         loop {
-            match execution
-                .advance(plan, &mut state, &mut storage, &mut 0)
-                .unwrap()
-            {
-                GraphProgress::Continue(next) => execution = next,
-                GraphProgress::Complete(completed) => return completed,
-                GraphProgress::Host(invoke) => match invoke {},
+            match canonical_progress(
+                execution
+                    .advance(plan, &mut state, &mut storage, &mut 0)
+                    .unwrap(),
+            ) {
+                CanonicalProgress::Continue(next) => execution = next,
+                CanonicalProgress::Complete(completed) => return completed,
             }
         }
     }

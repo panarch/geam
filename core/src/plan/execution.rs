@@ -188,6 +188,7 @@ pub struct HostedExecution<Profile: HostProfile> {
 pub(crate) struct HostedProgram<Profile: HostProfile> {
     program: ExecutionProgram<host::HostedExecutionProfile>,
     host_functions: host::HostFunctionTables<Profile>,
+    pub(crate) synchronous_strings: host::SynchronousStringFunctions<Profile>,
 }
 
 pub(crate) struct ExecutionProgram<Profile: ExecutionProfile> {
@@ -305,10 +306,10 @@ impl<Profile: HostProfile> HostedExecution<Profile> {
         module_plan: HostedModulePlan<Profile>,
     ) -> Result<Self, HostSpecializationError> {
         let (program, host_functions) = lowering::lower_hosted(module_plan)?;
-        Ok(Self::from_program(HostedProgram {
+        Ok(Self::from_program(HostedProgram::new(
             program,
             host_functions,
-        }))
+        )))
     }
 
     pub(crate) fn try_from_library_plan(
@@ -366,6 +367,19 @@ impl<Profile: HostProfile> HostedExecution<Profile> {
 }
 
 impl<Profile: HostProfile> HostedProgram<Profile> {
+    pub(in crate::plan::execution) fn new(
+        program: ExecutionProgram<host::HostedExecutionProfile>,
+        host_functions: host::HostFunctionTables<Profile>,
+    ) -> Self {
+        let synchronous_strings =
+            host::SynchronousStringFunctions::new(&program.functions, &host_functions);
+        Self {
+            program,
+            host_functions,
+            synchronous_strings,
+        }
+    }
+
     pub(crate) fn from_library_plan(
         module_plan: crate::plan::HostedLibraryModulePlan<Profile>,
         first: crate::plan::LibraryEntry,
@@ -380,14 +394,7 @@ impl<Profile: HostProfile> HostedProgram<Profile> {
     > {
         let (program, host_functions, entries, callables) =
             lowering::lower_hosted_library(module_plan, first, remaining)?;
-        Ok((
-            Self {
-                program,
-                host_functions,
-            },
-            entries,
-            callables,
-        ))
+        Ok((Self::new(program, host_functions), entries, callables))
     }
 
     pub(crate) fn host_value_function<Body>(

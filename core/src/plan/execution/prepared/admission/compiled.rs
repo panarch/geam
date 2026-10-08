@@ -10,7 +10,7 @@ use crate::plan::execution::function::{
     ExecutionFunctionBody, ExecutionFunctionEntry, ExecutionFunctionRef, ExecutionProfile,
     FunctionExit, FunctionTables,
 };
-use crate::plan::execution::type_::CustomTypeTable;
+use crate::plan::execution::type_::{CustomTypeTable, ValueShapeTable};
 
 #[derive(Debug, PartialEq, Eq)]
 pub(super) struct CompiledError {
@@ -30,6 +30,16 @@ enum Family {
     BoolCallback,
     IntFunction,
     BoolFunction,
+    Float,
+    FloatFunction,
+    String,
+    StringFunction,
+    BitArray,
+    BitArrayFunction,
+    UtfCodepoint,
+    UtfCodepointFunction,
+    Nil,
+    NilFunction,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -58,8 +68,9 @@ pub(super) fn admit<'data, Profile: ExecutionProfile>(
     compiled: &'data CompiledFunctions,
     functions: &'data FunctionTables<Profile>,
     custom_types: &CustomTypeTable,
+    value_shapes: &ValueShapeTable,
 ) -> Result<CompiledCallbackBodies<'data, Profile>, CompiledError> {
-    calls::all(compiled, functions)?;
+    calls::all(compiled, functions, custom_types, value_shapes)?;
     native_loops(&compiled.native_loops, functions)?;
     targets(
         &compiled.ints,
@@ -405,7 +416,7 @@ mod tests {
     use crate::plan::execution::host::{
         HostFunctionId, HostedExecutionProfile, HostedFunctionTarget,
     };
-    use crate::plan::execution::type_::CustomTypeTable;
+    use crate::plan::execution::type_::{CustomTypeTable, ValueShapeTable};
     use crate::runtime::compiled::tests::{
         metadata_bit_array, metadata_custom_loop, metadata_int_list, metadata_numeric,
         metadata_string,
@@ -420,8 +431,9 @@ mod tests {
         compiled: &CompiledFunctions,
         functions: &super::FunctionTables<Profile>,
         custom_types: &CustomTypeTable,
+        value_shapes: &ValueShapeTable,
     ) -> Result<(), CompiledError> {
-        admit(compiled, functions, custom_types).map(|_| ())
+        admit(compiled, functions, custom_types, value_shapes).map(|_| ())
     }
 
     fn source_plan(source: &str) -> crate::ExecutionPlan {
@@ -540,7 +552,8 @@ pub fn main() { cycle(3, fn() { 7 }) }
                 all(
                     &compiled,
                     functions,
-                    &execution.execution.program.common.custom_types
+                    &execution.execution.program.common.custom_types,
+                    &execution.execution.program.common.value_shapes,
                 ),
                 expected.map_err(|reason| CompiledError {
                     family: Family::NativeLoop,
@@ -622,7 +635,8 @@ pub fn main() { cycle(3, fn() { 7 }) }
                 all(
                     &compiled,
                     functions,
-                    &execution.execution.program.common.custom_types
+                    &execution.execution.program.common.custom_types,
+                    &execution.execution.program.common.value_shapes,
                 ),
                 Err(CompiledError {
                     family: Family::NativeLoop,
@@ -654,7 +668,8 @@ pub fn main() { cycle(3, fn() { 7 }) }
             all(
                 &compiled,
                 functions,
-                &execution.execution.program.common.custom_types
+                &execution.execution.program.common.custom_types,
+                &execution.execution.program.common.value_shapes,
             ),
             Err(CompiledError {
                 family: Family::NativeLoop,
@@ -678,7 +693,8 @@ pub fn main() { cycle(3, fn() { 7 }) }
             all(
                 &compiled,
                 functions,
-                &execution.execution.program.common.custom_types
+                &execution.execution.program.common.custom_types,
+                &execution.execution.program.common.value_shapes,
             ),
             Err(CompiledError {
                 family: Family::NativeLoop,
@@ -745,7 +761,8 @@ pub fn main() { walk("λλ", 3) }
                 all(
                     &compiled,
                     functions,
-                    &execution.execution.program.common.custom_types
+                    &execution.execution.program.common.custom_types,
+                    &execution.execution.program.common.value_shapes,
                 ),
                 expected.map_err(|reason| CompiledError {
                     family: Family::Int,
@@ -840,7 +857,12 @@ pub fn main() { walk("λλ", 3) }
                 callbacks: CompiledCallbacks::interpreted(),
             };
             assert_eq!(
-                all(&compiled, functions, &plan.program.common.custom_types),
+                all(
+                    &compiled,
+                    functions,
+                    &plan.program.common.custom_types,
+                    &plan.program.common.value_shapes,
+                ),
                 expected.map_or(Ok(()), |reason| Err(CompiledError {
                     family: Family::IntList,
                     function: function.index,
@@ -899,7 +921,8 @@ pub fn main() { scan(<<1, 2>>, 0) }
             all(
                 &compiled,
                 functions,
-                &execution.execution.program.common.custom_types
+                &execution.execution.program.common.custom_types,
+                &execution.execution.program.common.value_shapes,
             ),
             Ok(())
         );
@@ -915,7 +938,8 @@ pub fn main() { scan(<<1, 2>>, 0) }
             all(
                 &compiled,
                 functions,
-                &execution.execution.program.common.custom_types
+                &execution.execution.program.common.custom_types,
+                &execution.execution.program.common.value_shapes,
             ),
             Err(CompiledError {
                 family: Family::Custom,
@@ -934,7 +958,8 @@ pub fn main() { scan(<<1, 2>>, 0) }
             all(
                 &compiled,
                 functions,
-                &execution.execution.program.common.custom_types
+                &execution.execution.program.common.custom_types,
+                &execution.execution.program.common.value_shapes,
             ),
             Err(CompiledError {
                 family: Family::Custom,
@@ -990,7 +1015,8 @@ pub fn main() { scalar(scan(<<1, 2>>, 0)) }
             all(
                 &compiled,
                 functions,
-                &execution.execution.program.common.custom_types
+                &execution.execution.program.common.custom_types,
+                &execution.execution.program.common.value_shapes,
             ),
             Ok(())
         );
@@ -1005,7 +1031,8 @@ pub fn main() { scalar(scan(<<1, 2>>, 0)) }
             all(
                 &compiled,
                 functions,
-                &execution.execution.program.common.custom_types
+                &execution.execution.program.common.custom_types,
+                &execution.execution.program.common.value_shapes,
             ),
             Err(CompiledError {
                 family: Family::Int,
@@ -1089,7 +1116,8 @@ pub fn main() { scalar(scan(<<1, 2>>, 0)) }
                 all(
                     &compiled,
                     functions,
-                    &execution.execution.program.common.custom_types
+                    &execution.execution.program.common.custom_types,
+                    &execution.execution.program.common.value_shapes,
                 ),
                 expected.map_or(Ok(()), |(function, reason)| Err(CompiledError {
                     family: Family::Int,
@@ -1102,7 +1130,8 @@ pub fn main() { scalar(scan(<<1, 2>>, 0)) }
             all(
                 &CompiledFunctions::interpreted(),
                 functions,
-                &execution.execution.program.common.custom_types
+                &execution.execution.program.common.custom_types,
+                &execution.execution.program.common.value_shapes,
             ),
             Ok(())
         );
@@ -1196,7 +1225,8 @@ pub fn main() { #(head([1]), same([1], [1])) }
                 all(
                     &compiled,
                     functions,
-                    &execution.execution.program.common.custom_types
+                    &execution.execution.program.common.custom_types,
+                    &execution.execution.program.common.value_shapes,
                 ),
                 expected
             );
@@ -1232,7 +1262,8 @@ pub fn main() { #(head([1]), same([1], [1])) }
             all(
                 &compiled,
                 &plan.program.functions,
-                &plan.program.common.custom_types
+                &plan.program.common.custom_types,
+                &plan.program.common.value_shapes,
             ),
             Ok(())
         );
@@ -1241,7 +1272,8 @@ pub fn main() { #(head([1]), same([1], [1])) }
             all(
                 &compiled,
                 &plan.program.functions,
-                &plan.program.common.custom_types
+                &plan.program.common.custom_types,
+                &plan.program.common.value_shapes,
             ),
             Err(CompiledError {
                 family: Family::Bool,
@@ -1291,6 +1323,7 @@ pub fn main() { #(head([1]), same([1], [1])) }
                 },
                 tables,
                 &program.program.common.custom_types,
+                &program.program.common.value_shapes,
             ),
             Err(CompiledError {
                 family: Family::Int,
@@ -1455,8 +1488,13 @@ pub fn main() { #(amount(Item(7, True)), enabled(Item(7, True))) }
                 }),
             };
             if change == 0 {
-                let bodies =
-                    admit(&compiled, &program.functions, &program.common.custom_types).unwrap();
+                let bodies = admit(
+                    &compiled,
+                    &program.functions,
+                    &program.common.custom_types,
+                    &program.common.value_shapes,
+                )
+                .unwrap();
                 assert_eq!((bodies.ints.len(), bodies.bools.len()), (1, 1));
                 assert!(std::ptr::eq(bodies.ints[0].body, int_body));
                 assert!(std::ptr::eq(bodies.bools[0].body, bool_body));
@@ -1470,7 +1508,12 @@ pub fn main() { #(amount(Item(7, True)), enabled(Item(7, True))) }
                 ));
             }
             assert_eq!(
-                all(&compiled, &program.functions, &program.common.custom_types),
+                all(
+                    &compiled,
+                    &program.functions,
+                    &program.common.custom_types,
+                    &program.common.value_shapes,
+                ),
                 expected
             );
         }
@@ -1552,7 +1595,12 @@ pub fn main() { fold([Item(2)], 0, add) }
                 }),
             };
             assert_eq!(
-                all(&compiled, &program.functions, &program.common.custom_types),
+                all(
+                    &compiled,
+                    &program.functions,
+                    &program.common.custom_types,
+                    &program.common.value_shapes,
+                ),
                 expected
             );
         }
@@ -1608,7 +1656,12 @@ pub fn main() { fold([Item(2)], 0, add) }
                 ..CompiledFunctions::interpreted()
             };
             assert_eq!(
-                all(&compiled, &program.functions, &program.common.custom_types),
+                all(
+                    &compiled,
+                    &program.functions,
+                    &program.common.custom_types,
+                    &program.common.value_shapes,
+                ),
                 expected.map_err(|reason| CompiledError {
                     family: Family::Int,
                     function,
@@ -1649,7 +1702,12 @@ pub fn main() { fold([Item(2)], 0, add) }
                 ..CompiledFunctions::interpreted()
             };
             assert_eq!(
-                all(&compiled, &program.functions, &program.common.custom_types),
+                all(
+                    &compiled,
+                    &program.functions,
+                    &program.common.custom_types,
+                    &program.common.value_shapes,
+                ),
                 Err(CompiledError {
                     family: Family::IntList,
                     function: function.index,
@@ -1698,7 +1756,8 @@ pub fn main() { fold([Item(2)], 0, add) }
                 all(
                     &compiled,
                     &program.program.functions,
-                    &program.program.common.custom_types
+                    &program.program.common.custom_types,
+                    &program.program.common.value_shapes,
                 ),
                 Err(CompiledError {
                     family: Family::IntCallback,

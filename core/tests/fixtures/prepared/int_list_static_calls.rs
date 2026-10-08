@@ -1,5 +1,5 @@
 data::ModuleArtifact {
-    format: 24,
+    format: 28,
     program: data::ProgramTables {
         root: data::source::module_id(0),
         modules: data::Storage::Static(&[
@@ -321,228 +321,302 @@ data::ModuleArtifact {
             },
         },
         compiled: {
-            use data::compiled::calls::{CallExecution, CallInputs, CallOps, CallOutput, CallProgress, CallStorage};
-            use data::compiled::int_list::IntList;
-            enum FunctionState {
-                Bool0Point0 { int_list0: IntList },
-                Bool0Point1 {  },
-                Bool0Point2 { bool0: bool },
-                Bool0Point3 { bool0: bool },
-                Bool0Point4 {  },
-                Bool0Point5 { bool0: bool },
-                Bool0Point6 { bool0: bool },
-                Bool0Point7 { bool0: bool, bool1: bool },
-                Bool0Point8 { bool0: bool, bool1: bool, bool2: bool },
-                Bool0Point9 {  },
-                Bool0Point10 { bool0: bool },
-                Bool0Point11 {  },
-                Bool0Point12 { bool0: bool },
-                Bool1Point0 { bool0: bool },
-            }
-            enum IntReturn {
-            }
-            enum BoolReturn {
-                Bool0Call6 { bool0: bool },
-            }
-            impl BoolReturn {
-                fn small(self, result: bool) -> FunctionState {
-                    match self {
-                        Self::Bool0Call6 { bool0 } => {
-                            let bool1 = result;
-                            FunctionState::Bool0Point7 { bool0, bool1 }
-                        },
-                    }
+            const CALL_GROUP_0: [data::compiled::calls::CallStart; 2] = {
+                use data::compiled::calls::{CallExecution, CallInputs, CallOps, CallOutput, CallProgress, CallStorage};
+                use data::compiled::int_list::IntList;
+                enum FunctionState {
+                    Bool0Point0 { int_list0: IntList },
+                    Bool0Point1 {  },
+                    Bool0Point2 { bool0: bool },
+                    Bool0Point3 { bool0: bool },
+                    Bool0Point4 {  },
+                    Bool0Point5 { bool0: bool },
+                    Bool0Point6 { bool0: bool },
+                    Bool0Point7 { bool0: bool, bool1: bool },
+                    Bool0Point8 { bool0: bool, bool1: bool, bool2: bool },
+                    Bool0Point9 {  },
+                    Bool0Point10 { bool0: bool },
+                    Bool0Point11 {  },
+                    Bool0Point12 { bool0: bool },
+                    Bool1Point0 { bool0: bool },
                 }
-            }
-            enum IntFunctionReturn {
-            }
-            enum BoolFunctionReturn {
-            }
-            #[allow(clippy::large_enum_variant, reason = "Typed locals stay inline to avoid allocating at each generated step.")]
-            enum FunctionStep {
-                Next(FunctionState),
-                Yield(FunctionState),
-                BoolCall { callee: FunctionState, caller: BoolReturn },
-                Bool { value: bool, exit: data::graph::BlockGraphExitId },
-            }
-            struct FunctionExecution {
-                active: Option<FunctionState>,
-                integer_returns: Vec<IntReturn>,
-                boolean_returns: Vec<BoolReturn>,
-                integer_function_returns: Vec<IntFunctionReturn>,
-                boolean_function_returns: Vec<BoolFunctionReturn>,
-            }
-            impl FunctionExecution {
-                fn new(active: FunctionState) -> Self {
-                    Self {
-                        active: Some(active),
-                        integer_returns: Vec::new(),
-                        boolean_returns: Vec::new(),
-                        integer_function_returns: Vec::new(),
-                        boolean_function_returns: Vec::new(),
-                    }
+                enum BoolReturn {
+                    Bool0Call6 { bool0: bool },
                 }
-            }
-            impl CallExecution for FunctionExecution {
-                fn restart(&mut self, target: data::compiled::CallTarget, point: usize, values: CallInputs<'_>) -> bool {
-                    if self.active.is_some() { return false; }
-                    let active = match target {
-                        data::compiled::CallTarget::Bool(data::function::BoolFunctionId(0)) => calls_bool_0_state(point, values),
-                        data::compiled::CallTarget::Bool(data::function::BoolFunctionId(1)) => calls_bool_1_state(point, values),
-                        _ => None,
-                    };
-                    let Some(active) = active else { return false; };
-                    self.active = Some(active);
-                    true
-                }
-                fn retained_bytes(&self) -> usize {
-                    std::mem::size_of::<Self>() + self.integer_returns.capacity() * std::mem::size_of::<IntReturn>() + self.boolean_returns.capacity() * std::mem::size_of::<BoolReturn>() + self.integer_function_returns.capacity() * std::mem::size_of::<IntFunctionReturn>() + self.boolean_function_returns.capacity() * std::mem::size_of::<BoolFunctionReturn>()
-                }
-                fn advance(mut self: Box<Self>, ops: &mut CallOps<'_>, budget: &mut usize) -> CallProgress {
-                    let Some(mut active) = self.active.take() else { return CallProgress::Yield(self); };
-                    loop {
-                        match function_step(active, ops, budget) {
-                            FunctionStep::Next(next) => active = next,
-                            FunctionStep::Yield(active) => {
-                                self.active = Some(active);
-                                return CallProgress::Yield(self);
-                            },
-                            FunctionStep::BoolCall { callee, caller } => {
-                                self.boolean_returns.push(caller);
-                                active = callee;
-                            },
-                            FunctionStep::Bool { value, exit } => {
-                                if let Some(caller) = self.boolean_returns.pop() {
-                                    active = caller.small(value);
-                                } else {
-                                    self.integer_returns.clear();
-                                    self.boolean_returns.clear();
-                                    self.integer_function_returns.clear();
-                                    self.boolean_function_returns.clear();
-                                    return CallProgress::Complete { exit, output: CallOutput::Bool(value), execution: self };
-                                }
+                impl BoolReturn {
+                    fn small(self, result: bool) -> FunctionState {
+                        match self {
+                            Self::Bool0Call6 { bool0 } => {
+                                let bool1 = result;
+                                FunctionState::Bool0Point7 { bool0, bool1 }
                             },
                         }
                     }
                 }
-            }
-            fn function_step(active: FunctionState, _ops: &mut CallOps<'_>, budget: &mut usize) -> FunctionStep {
-                match active {
-                    FunctionState::Bool0Point0 { int_list0 } => {
-                        if *budget == 0 { return FunctionStep::Yield(FunctionState::Bool0Point0 { int_list0 }); }
-                        *budget -= 1;
-                        if int_list0.is_empty() { FunctionStep::Next(FunctionState::Bool0Point1 {  }) } else { FunctionStep::Next(FunctionState::Bool0Point11 {  }) }
-                    },
-                    FunctionState::Bool0Point1 {  } => {
-                        if *budget == 0 { return FunctionStep::Yield(FunctionState::Bool0Point1 {  }); }
-                        *budget -= 1;
-                        let bool0 = true;
-                        FunctionStep::Next(FunctionState::Bool0Point2 { bool0 })
-                    },
-                    FunctionState::Bool0Point2 { bool0 } => {
-                        if *budget == 0 { return FunctionStep::Yield(FunctionState::Bool0Point2 { bool0 }); }
-                        *budget -= 1;
-                        FunctionStep::Next(FunctionState::Bool0Point3 { bool0 })
-                    },
-                    FunctionState::Bool0Point3 { bool0 } => {
-                        if *budget == 0 { return FunctionStep::Yield(FunctionState::Bool0Point3 { bool0 }); }
-                        *budget -= 1;
-                        if bool0 { FunctionStep::Next(FunctionState::Bool0Point4 {  }) } else { FunctionStep::Next(FunctionState::Bool0Point9 {  }) }
-                    },
-                    FunctionState::Bool0Point4 {  } => {
-                        if *budget == 0 { return FunctionStep::Yield(FunctionState::Bool0Point4 {  }); }
-                        *budget -= 1;
-                        let bool0 = true;
-                        FunctionStep::Next(FunctionState::Bool0Point5 { bool0 })
-                    },
-                    FunctionState::Bool0Point5 { bool0 } => {
-                        if *budget == 0 { return FunctionStep::Yield(FunctionState::Bool0Point5 { bool0 }); }
-                        *budget -= 1;
-                        FunctionStep::Next(FunctionState::Bool0Point6 { bool0 })
-                    },
-                    FunctionState::Bool0Point6 { bool0 } => {
-                        if *budget == 0 { return FunctionStep::Yield(FunctionState::Bool0Point6 { bool0 }); }
-                        *budget -= 1;
-                        FunctionStep::BoolCall { callee: FunctionState::Bool1Point0 { bool0 }, caller: BoolReturn::Bool0Call6 { bool0 } }
-                    },
-                    FunctionState::Bool0Point7 { bool0, bool1 } => {
-                        if *budget == 0 { return FunctionStep::Yield(FunctionState::Bool0Point7 { bool0, bool1 }); }
-                        *budget -= 1;
-                        let bool2 = !bool1;
-                        if *budget == 0 { return FunctionStep::Yield(FunctionState::Bool0Point8 { bool0, bool1, bool2 }); }
-                        *budget -= 1;
-                        FunctionStep::Bool { value: bool2, exit: data::graph::BlockGraphExitId(0) }
-                    },
-                    FunctionState::Bool0Point8 { bool0, bool1, bool2 } => {
-                        if *budget == 0 { return FunctionStep::Yield(FunctionState::Bool0Point8 { bool0, bool1, bool2 }); }
-                        *budget -= 1;
-                        FunctionStep::Bool { value: bool2, exit: data::graph::BlockGraphExitId(0) }
-                    },
-                    FunctionState::Bool0Point9 {  } => {
-                        if *budget == 0 { return FunctionStep::Yield(FunctionState::Bool0Point9 {  }); }
-                        *budget -= 1;
-                        let bool0 = false;
-                        FunctionStep::Next(FunctionState::Bool0Point10 { bool0 })
-                    },
-                    FunctionState::Bool0Point10 { bool0 } => {
-                        if *budget == 0 { return FunctionStep::Yield(FunctionState::Bool0Point10 { bool0 }); }
-                        *budget -= 1;
-                        FunctionStep::Next(FunctionState::Bool0Point6 { bool0 })
-                    },
-                    FunctionState::Bool0Point11 {  } => {
-                        if *budget == 0 { return FunctionStep::Yield(FunctionState::Bool0Point11 {  }); }
-                        *budget -= 1;
-                        let bool0 = false;
-                        FunctionStep::Next(FunctionState::Bool0Point12 { bool0 })
-                    },
-                    FunctionState::Bool0Point12 { bool0 } => {
-                        if *budget == 0 { return FunctionStep::Yield(FunctionState::Bool0Point12 { bool0 }); }
-                        *budget -= 1;
-                        FunctionStep::Next(FunctionState::Bool0Point3 { bool0 })
-                    },
-                    FunctionState::Bool1Point0 { bool0 } => {
-                        if *budget == 0 { return FunctionStep::Yield(FunctionState::Bool1Point0 { bool0 }); }
-                        *budget -= 1;
-                        FunctionStep::Bool { value: bool0, exit: data::graph::BlockGraphExitId(0) }
-                    },
+                #[allow(clippy::large_enum_variant, reason = "Typed locals stay inline to avoid allocating at each generated step.")]
+                enum FunctionStep {
+                    Yield(FunctionState),
+                    BoolCall { callee: FunctionState, caller: BoolReturn },
+                    Bool { value: bool },
                 }
-            }
-            fn calls_bool_0_state(point: usize, values: CallInputs<'_>) -> Option<FunctionState> {
-                let active = match point {
-                    0 => FunctionState::Bool0Point0 { int_list0: values.int_list(0)? },
-                    1 => FunctionState::Bool0Point1 {  },
-                    2 => FunctionState::Bool0Point2 { bool0: values.bool(0)? },
-                    3 => FunctionState::Bool0Point3 { bool0: values.bool(0)? },
-                    4 => FunctionState::Bool0Point4 {  },
-                    5 => FunctionState::Bool0Point5 { bool0: values.bool(0)? },
-                    6 => FunctionState::Bool0Point6 { bool0: values.bool(0)? },
-                    7 => FunctionState::Bool0Point7 { bool0: values.bool(0)?, bool1: values.bool(1)? },
-                    8 => FunctionState::Bool0Point8 { bool0: values.bool(0)?, bool1: values.bool(1)?, bool2: values.bool(2)? },
-                    9 => FunctionState::Bool0Point9 {  },
-                    10 => FunctionState::Bool0Point10 { bool0: values.bool(0)? },
-                    11 => FunctionState::Bool0Point11 {  },
-                    12 => FunctionState::Bool0Point12 { bool0: values.bool(0)? },
-                    _ => return None,
-                };
-                Some(active)
-            }
-            fn calls_bool_0_start(point: usize, values: CallInputs<'_>, storage: &mut CallStorage) -> Option<Box<dyn CallExecution>> {
-                if let Some(execution) = storage.reuse(data::compiled::CallTarget::Bool(data::function::BoolFunctionId(0)), point, values) { return Some(execution); }
-                let active = calls_bool_0_state(point, values)?;
-                Some(Box::new(FunctionExecution::new(active)))
-            }
-            fn calls_bool_1_state(point: usize, values: CallInputs<'_>) -> Option<FunctionState> {
-                let active = match point {
-                    0 => FunctionState::Bool1Point0 { bool0: values.bool(0)? },
-                    _ => return None,
-                };
-                Some(active)
-            }
-            fn calls_bool_1_start(point: usize, values: CallInputs<'_>, storage: &mut CallStorage) -> Option<Box<dyn CallExecution>> {
-                if let Some(execution) = storage.reuse(data::compiled::CallTarget::Bool(data::function::BoolFunctionId(1)), point, values) { return Some(execution); }
-                let active = calls_bool_1_state(point, values)?;
-                Some(Box::new(FunctionExecution::new(active)))
-            }
+                struct FunctionExecution {
+                    active: Option<FunctionState>,
+                    boolean_returns: Vec<BoolReturn>,
+                }
+                impl FunctionExecution {
+                    fn new(active: FunctionState) -> Self {
+                        Self {
+                            active: Some(active),
+                            boolean_returns: Vec::new(),
+                        }
+                    }
+                }
+                impl CallExecution for FunctionExecution {
+                    fn restart(&mut self, target: data::compiled::CallTarget, point: usize, values: CallInputs<'_>) -> bool {
+                        if self.active.is_some() { return false; }
+                        let active = match target {
+                            data::compiled::CallTarget::Bool(data::function::BoolFunctionId(0)) => calls_bool_0_state(point, values),
+                            data::compiled::CallTarget::Bool(data::function::BoolFunctionId(1)) => calls_bool_1_state(point, values),
+                            _ => None,
+                        };
+                        let Some(active) = active else { return false; };
+                        self.active = Some(active);
+                        true
+                    }
+                    fn retained_bytes(&self) -> usize {
+                        std::mem::size_of::<Self>() + self.boolean_returns.capacity() * std::mem::size_of::<BoolReturn>()
+                    }
+                    fn advance(mut self: Box<Self>, ops: &mut CallOps<'_>, budget: &mut usize) -> CallProgress {
+                        let Some(mut active) = self.active.take() else { return CallProgress::Yield(self); };
+                        loop {
+                            match function_step(active, ops, budget) {
+                                FunctionStep::Yield(active) => {
+                                    self.active = Some(active);
+                                    return CallProgress::Yield(self);
+                                },
+                                FunctionStep::BoolCall { callee, caller } => {
+                                    self.boolean_returns.push(caller);
+                                    active = callee;
+                                },
+                                FunctionStep::Bool { value } => {
+                                    if let Some(caller) = self.boolean_returns.pop() {
+                                        active = caller.small(value);
+                                    } else {
+                                        self.boolean_returns.clear();
+                                        return CallProgress::Complete { output: CallOutput::Bool(value), execution: self };
+                                    }
+                                },
+                            }
+                        }
+                    }
+                }
+                fn function_step(active: FunctionState, ops: &mut CallOps<'_>, budget: &mut usize) -> FunctionStep {
+                    match active {
+                        FunctionState::Bool0Point0 { int_list0 } => calls_bool_0_run(Bool0State::Point0 { int_list0 }, ops, budget),
+                        FunctionState::Bool0Point1 {  } => calls_bool_0_run(Bool0State::Point1 {  }, ops, budget),
+                        FunctionState::Bool0Point2 { bool0 } => calls_bool_0_run(Bool0State::Point2 { bool0 }, ops, budget),
+                        FunctionState::Bool0Point3 { bool0 } => calls_bool_0_run(Bool0State::Point3 { bool0 }, ops, budget),
+                        FunctionState::Bool0Point4 {  } => calls_bool_0_run(Bool0State::Point4 {  }, ops, budget),
+                        FunctionState::Bool0Point5 { bool0 } => calls_bool_0_run(Bool0State::Point5 { bool0 }, ops, budget),
+                        FunctionState::Bool0Point6 { bool0 } => calls_bool_0_run(Bool0State::Point6 { bool0 }, ops, budget),
+                        FunctionState::Bool0Point7 { bool0, bool1 } => calls_bool_0_run(Bool0State::Point7 { bool0, bool1 }, ops, budget),
+                        FunctionState::Bool0Point8 { bool0, bool1, bool2 } => calls_bool_0_run(Bool0State::Point8 { bool0, bool1, bool2 }, ops, budget),
+                        FunctionState::Bool0Point9 {  } => calls_bool_0_run(Bool0State::Point9 {  }, ops, budget),
+                        FunctionState::Bool0Point10 { bool0 } => calls_bool_0_run(Bool0State::Point10 { bool0 }, ops, budget),
+                        FunctionState::Bool0Point11 {  } => calls_bool_0_run(Bool0State::Point11 {  }, ops, budget),
+                        FunctionState::Bool0Point12 { bool0 } => calls_bool_0_run(Bool0State::Point12 { bool0 }, ops, budget),
+                        FunctionState::Bool1Point0 { bool0 } => calls_bool_1_run(Bool1State::Point0 { bool0 }, ops, budget),
+                    }
+                }
+                enum Bool0State {
+                    Point0 { int_list0: IntList },
+                    Point1 {  },
+                    Point2 { bool0: bool },
+                    Point3 { bool0: bool },
+                    Point4 {  },
+                    Point5 { bool0: bool },
+                    Point6 { bool0: bool },
+                    Point7 { bool0: bool, bool1: bool },
+                    Point8 { bool0: bool, bool1: bool, bool2: bool },
+                    Point9 {  },
+                    Point10 { bool0: bool },
+                    Point11 {  },
+                    Point12 { bool0: bool },
+                }
+                fn calls_bool_0_run(mut active: Bool0State, _ops: &mut CallOps<'_>, budget: &mut usize) -> FunctionStep {
+                    loop {
+                        match active {
+                            Bool0State::Point0 { int_list0 } => {
+                                if *budget == 0 { return FunctionStep::Yield(FunctionState::Bool0Point0 { int_list0 }); }
+                                *budget -= 1;
+                                active = {
+                                    if int_list0.is_empty() { Bool0State::Point1 {  } } else { Bool0State::Point11 {  } }
+                                };
+                                continue;
+                            },
+                            Bool0State::Point1 {  } => {
+                                if *budget == 0 { return FunctionStep::Yield(FunctionState::Bool0Point1 {  }); }
+                                *budget -= 1;
+                                let bool0 = true;
+                                if *budget == 0 { return FunctionStep::Yield(FunctionState::Bool0Point2 { bool0 }); }
+                                *budget -= 1;
+                                active = {
+                                    Bool0State::Point3 { bool0 }
+                                };
+                                continue;
+                            },
+                            Bool0State::Point2 { bool0 } => {
+                                if *budget == 0 { return FunctionStep::Yield(FunctionState::Bool0Point2 { bool0 }); }
+                                *budget -= 1;
+                                active = {
+                                    Bool0State::Point3 { bool0 }
+                                };
+                                continue;
+                            },
+                            Bool0State::Point3 { bool0 } => {
+                                if *budget == 0 { return FunctionStep::Yield(FunctionState::Bool0Point3 { bool0 }); }
+                                *budget -= 1;
+                                active = {
+                                    if bool0 { Bool0State::Point4 {  } } else { Bool0State::Point9 {  } }
+                                };
+                                continue;
+                            },
+                            Bool0State::Point4 {  } => {
+                                if *budget == 0 { return FunctionStep::Yield(FunctionState::Bool0Point4 {  }); }
+                                *budget -= 1;
+                                let bool0 = true;
+                                if *budget == 0 { return FunctionStep::Yield(FunctionState::Bool0Point5 { bool0 }); }
+                                *budget -= 1;
+                                active = {
+                                    Bool0State::Point6 { bool0 }
+                                };
+                                continue;
+                            },
+                            Bool0State::Point5 { bool0 } => {
+                                if *budget == 0 { return FunctionStep::Yield(FunctionState::Bool0Point5 { bool0 }); }
+                                *budget -= 1;
+                                active = {
+                                    Bool0State::Point6 { bool0 }
+                                };
+                                continue;
+                            },
+                            Bool0State::Point6 { bool0 } => {
+                                if *budget == 0 { return FunctionStep::Yield(FunctionState::Bool0Point6 { bool0 }); }
+                                *budget -= 1;
+                                return {
+                                    FunctionStep::BoolCall { callee: FunctionState::Bool1Point0 { bool0 }, caller: BoolReturn::Bool0Call6 { bool0 } }
+                                };
+                            },
+                            Bool0State::Point7 { bool0, bool1 } => {
+                                if *budget == 0 { return FunctionStep::Yield(FunctionState::Bool0Point7 { bool0, bool1 }); }
+                                *budget -= 1;
+                                let bool2 = !bool1;
+                                if *budget == 0 { return FunctionStep::Yield(FunctionState::Bool0Point8 { bool0, bool1, bool2 }); }
+                                *budget -= 1;
+                                return {
+                                    FunctionStep::Bool { value: bool2 }
+                                };
+                            },
+                            Bool0State::Point8 { bool0, bool1, bool2 } => {
+                                if *budget == 0 { return FunctionStep::Yield(FunctionState::Bool0Point8 { bool0, bool1, bool2 }); }
+                                *budget -= 1;
+                                return {
+                                    FunctionStep::Bool { value: bool2 }
+                                };
+                            },
+                            Bool0State::Point9 {  } => {
+                                if *budget == 0 { return FunctionStep::Yield(FunctionState::Bool0Point9 {  }); }
+                                *budget -= 1;
+                                let bool0 = false;
+                                if *budget == 0 { return FunctionStep::Yield(FunctionState::Bool0Point10 { bool0 }); }
+                                *budget -= 1;
+                                active = {
+                                    Bool0State::Point6 { bool0 }
+                                };
+                                continue;
+                            },
+                            Bool0State::Point10 { bool0 } => {
+                                if *budget == 0 { return FunctionStep::Yield(FunctionState::Bool0Point10 { bool0 }); }
+                                *budget -= 1;
+                                active = {
+                                    Bool0State::Point6 { bool0 }
+                                };
+                                continue;
+                            },
+                            Bool0State::Point11 {  } => {
+                                if *budget == 0 { return FunctionStep::Yield(FunctionState::Bool0Point11 {  }); }
+                                *budget -= 1;
+                                let bool0 = false;
+                                if *budget == 0 { return FunctionStep::Yield(FunctionState::Bool0Point12 { bool0 }); }
+                                *budget -= 1;
+                                active = {
+                                    Bool0State::Point3 { bool0 }
+                                };
+                                continue;
+                            },
+                            Bool0State::Point12 { bool0 } => {
+                                if *budget == 0 { return FunctionStep::Yield(FunctionState::Bool0Point12 { bool0 }); }
+                                *budget -= 1;
+                                active = {
+                                    Bool0State::Point3 { bool0 }
+                                };
+                                continue;
+                            },
+                        }
+                    }
+                }
+                enum Bool1State {
+                    Point0 { bool0: bool },
+                }
+                fn calls_bool_1_run(active: Bool1State, _ops: &mut CallOps<'_>, budget: &mut usize) -> FunctionStep {
+                    match active {
+                        Bool1State::Point0 { bool0 } => {
+                            if *budget == 0 { return FunctionStep::Yield(FunctionState::Bool1Point0 { bool0 }); }
+                            *budget -= 1;
+                            {
+                                FunctionStep::Bool { value: bool0 }
+                            }
+                        },
+                    }
+                }
+                fn calls_bool_0_state(point: usize, values: CallInputs<'_>) -> Option<FunctionState> {
+                    let active = match point {
+                        0 => FunctionState::Bool0Point0 { int_list0: values.int_list(0)? },
+                        1 => FunctionState::Bool0Point1 {  },
+                        2 => FunctionState::Bool0Point2 { bool0: values.bool(0)? },
+                        3 => FunctionState::Bool0Point3 { bool0: values.bool(0)? },
+                        4 => FunctionState::Bool0Point4 {  },
+                        5 => FunctionState::Bool0Point5 { bool0: values.bool(0)? },
+                        6 => FunctionState::Bool0Point6 { bool0: values.bool(0)? },
+                        7 => FunctionState::Bool0Point7 { bool0: values.bool(0)?, bool1: values.bool(1)? },
+                        8 => FunctionState::Bool0Point8 { bool0: values.bool(0)?, bool1: values.bool(1)?, bool2: values.bool(2)? },
+                        9 => FunctionState::Bool0Point9 {  },
+                        10 => FunctionState::Bool0Point10 { bool0: values.bool(0)? },
+                        11 => FunctionState::Bool0Point11 {  },
+                        12 => FunctionState::Bool0Point12 { bool0: values.bool(0)? },
+                        _ => return None,
+                    };
+                    Some(active)
+                }
+                fn calls_bool_0_start(point: usize, values: CallInputs<'_>, storage: &mut CallStorage) -> Option<Box<dyn CallExecution>> {
+                    if let Some(execution) = storage.reuse(data::compiled::CallTarget::Bool(data::function::BoolFunctionId(0)), point, values) { return Some(execution); }
+                    let active = calls_bool_0_state(point, values)?;
+                    Some(Box::new(FunctionExecution::new(active)))
+                }
+                fn calls_bool_1_state(point: usize, values: CallInputs<'_>) -> Option<FunctionState> {
+                    let active = match point {
+                        0 => FunctionState::Bool1Point0 { bool0: values.bool(0)? },
+                        _ => return None,
+                    };
+                    Some(active)
+                }
+                fn calls_bool_1_start(point: usize, values: CallInputs<'_>, storage: &mut CallStorage) -> Option<Box<dyn CallExecution>> {
+                    if let Some(execution) = storage.reuse(data::compiled::CallTarget::Bool(data::function::BoolFunctionId(1)), point, values) { return Some(execution); }
+                    let active = calls_bool_1_state(point, values)?;
+                    Some(Box::new(FunctionExecution::new(active)))
+                }
+                [calls_bool_0_start, calls_bool_1_start]
+            };
             data::compiled::CompiledFunctions {
                 ints: data::Storage::Static(&[
                 ]),
@@ -792,7 +866,7 @@ data::ModuleArtifact {
                                 },
                             ]),
                             tails: data::Storage::Static(&[]),
-                            start: calls_bool_0_start,
+                            start: CALL_GROUP_0[0],
                         })),
                     },
                     data::compiled::CompiledFunction {
@@ -829,7 +903,7 @@ data::ModuleArtifact {
                                 },
                             ]),
                             tails: data::Storage::Static(&[]),
-                            start: calls_bool_1_start,
+                            start: CALL_GROUP_0[1],
                         })),
                     },
                 ]),

@@ -3,6 +3,7 @@ use crate::host::{HostCallError, HostCallErrorKind, HostCallReturn, HostCallRunt
 use crate::plan::execution::HostedProgram;
 use crate::plan::execution::function::{ExecutionFunctionBody, FunctionBodyOwner};
 use crate::plan::execution::host::HostedFunctionMetadata;
+use crate::plan::execution::host::SynchronousStringBinding;
 use crate::runtime::ExecutionError;
 use crate::runtime::error::{ExecutionResult, HostCallOrigin};
 use crate::runtime::execution::ExecutionContext;
@@ -94,6 +95,16 @@ pub(in crate::runtime) fn host_call_error<Profile: HostProfile, Output>(
     function: &HostedFunctionMetadata,
     error: HostCallError,
 ) -> ExecutionResult<NativeReturn<Output>> {
+    resolve_host_call_error(plan, execution, origin, function, error).map(|()| NativeReturn::Exited)
+}
+
+fn resolve_host_call_error<Profile: HostProfile>(
+    plan: &HostedProgram<Profile>,
+    execution: &ExecutionContext<Profile>,
+    origin: HostCallOrigin,
+    function: &HostedFunctionMetadata,
+    error: HostCallError,
+) -> ExecutionResult<()> {
     match error.into_kind() {
         HostCallErrorKind::Nested(error) => Err(error),
         HostCallErrorKind::Failure(failure) => Err(ExecutionError::host_failure(
@@ -101,7 +112,34 @@ pub(in crate::runtime) fn host_call_error<Profile: HostProfile, Output>(
         )),
         HostCallErrorKind::Exited(status) => {
             execution.services().request_exit(status);
-            Ok(NativeReturn::Exited)
+            Ok(())
+        }
+    }
+}
+
+pub(in crate::runtime) enum SynchronousStringReturn {
+    Value(crate::StringValue),
+    Exited,
+}
+
+pub(in crate::runtime) fn invoke_synchronous_string<Profile: HostProfile>(
+    plan: &HostedProgram<Profile>,
+    state: &mut RuntimeStateFor<'_, HostedProgram<Profile>>,
+    binding: &SynchronousStringBinding<Profile>,
+    origin: HostCallOrigin,
+    inputs: RetainedValues,
+) -> ExecutionResult<SynchronousStringReturn> {
+    let function = &binding.function;
+    let mut call = RuntimeHostCall::new(plan, state, function, inputs, origin.clone());
+    match function.implementation().start(&mut call) {
+        Ok(value) => Ok(SynchronousStringReturn::Value(
+            call.finish(value, binding.target.return_()),
+        )),
+        Err(error) => {
+            let execution = call.execution();
+            drop(call);
+            resolve_host_call_error(plan, &execution, origin, function.metadata(), error)?;
+            Ok(SynchronousStringReturn::Exited)
         }
     }
 }

@@ -1,46 +1,78 @@
+mod callable;
+mod capture;
+mod native;
+mod nullary;
+
+pub(in crate::runtime) use native::{GeneratedNativePhase, GeneratedNativeState};
+pub use native::{StringNativeExecution, StringNativeRequest};
+pub use nullary::CallNullary;
+
+pub use callable::{
+    BitArrayCallable, BoolCallable, FloatCallable, IntCallable, NilCallable, StringCallable,
+    UtfCodepointCallable,
+};
+
+use crate::StringValue;
 use crate::plan::HostCallSite;
 use crate::plan::execution::compiled::{CallTarget, CompiledCheckpoint};
+use crate::plan::execution::function::FunctionReturnFamily;
 use crate::plan::execution::function::{
-    BoolFunctionFunctionId, BoolFunctionId, IntFunctionFunctionId, IntFunctionId,
+    BitArrayFunctionFunctionId, BitArrayFunctionId, BoolFunctionFunctionId, BoolFunctionId,
+    FloatFunctionFunctionId, FloatFunctionId, IntFunctionFunctionId, IntFunctionId,
+    NilFunctionFunctionId, NilFunctionId, StringFunctionFunctionId, StringFunctionId,
+    UtfCodepointFunctionFunctionId, UtfCodepointFunctionId,
 };
-use crate::plan::execution::graph::{
-    BlockGraphExitId, BoolFunctionLocalId, BoolLocalId, IntFunctionLocalId, IntListLocalId,
-    IntLocalId,
-};
-use crate::plan::execution::type_::FunctionType;
 use crate::runtime::CaptureStorage;
 use crate::runtime::captures::Captures;
+use crate::runtime::compiled::bit_array::BitArrayValues;
 use crate::runtime::compiled::int_list::{IntList, IntListOps};
 use crate::runtime::compiled::native_calls::{CallNativeFailure, CallNativeOps};
 use crate::runtime::compiled::numeric::NumericValues;
-use crate::runtime::evaluated::{
-    EvaluatedBoolFunction, EvaluatedCapture, EvaluatedCaptureKind, EvaluatedFunction,
-    EvaluatedIntFunction, EvaluatedListCapture,
+use crate::runtime::compiled::primitive_list::{
+    BitArrayList, BoolList, FloatList, NilList, PrimitiveListOps, StringList, UtfCodepointList,
 };
+use crate::runtime::compiled::string::StringValues;
+use crate::runtime::evaluated::{EvaluatedBitArray, EvaluatedCapture};
+use crate::runtime::graph::BlockEnvironment;
 use crate::runtime::integer::IntegerValue;
-use crate::runtime::state::list::{IntListValueId, RuntimeListStorage};
+use crate::runtime::state::list::RuntimeListStorage;
 
-/// Opaque canonical values at generated/canonical boundaries. Inside a
-/// generated body, Small integers and callable locals remain concrete Rust
-/// values; these columns are used only to enter or leave that body.
+/// Canonical-boundary columns. Ordinary generated steps keep concrete locals
+/// and carry only the actual result on completion.
 #[derive(Default)]
 pub struct CallValues {
+    pub nullaries: Vec<CallNullary>,
     pub ints: Vec<CallInteger>,
     pub bools: Vec<bool>,
+    pub floats: Vec<f64>,
+    pub strings: Vec<StringValue>,
+    pub bit_arrays: Vec<CallBitArray>,
+    pub utf_codepoints: Vec<char>,
     pub int_lists: Vec<IntList>,
+    pub bool_lists: Vec<BoolList>,
+    pub float_lists: Vec<FloatList>,
+    pub string_lists: Vec<StringList>,
+    pub bit_array_lists: Vec<BitArrayList>,
+    pub utf_codepoint_lists: Vec<UtfCodepointList>,
+    pub nil_lists: Vec<NilList>,
     pub int_functions: Vec<IntCallable>,
     pub bool_functions: Vec<BoolCallable>,
+    pub float_functions: Vec<FloatCallable>,
+    pub string_functions: Vec<StringCallable>,
+    pub bit_array_functions: Vec<BitArrayCallable>,
+    pub utf_codepoint_functions: Vec<UtfCodepointCallable>,
+    pub nil_functions: Vec<NilCallable>,
 }
 
-/// Borrowed canonical inputs used only while selecting and constructing a
-/// generated entry. A rejected entry leaves the original columns untouched.
+/// Borrowed only while selecting or constructing an entry. A rejected entry
+/// leaves every original canonical column untouched.
 #[derive(Clone, Copy)]
-pub struct CallInputs<'values> {
-    ints: &'values [IntegerValue],
-    bools: &'values [bool],
-    int_lists: &'values [IntListValueId],
-    int_functions: &'values [EvaluatedIntFunction],
-    bool_functions: &'values [EvaluatedBoolFunction],
+pub struct CallInputs<'values>(pub(in crate::runtime) &'values BlockEnvironment);
+
+impl<'values> CallInputs<'values> {
+    pub(in crate::runtime) fn new(environment: &'values BlockEnvironment) -> Self {
+        Self(environment)
+    }
 }
 
 #[derive(Clone)]
@@ -58,27 +90,31 @@ impl From<i128> for CallInteger {
     }
 }
 
-#[derive(Clone)]
-pub struct IntCallable(pub(in crate::runtime) EvaluatedIntFunction);
+#[derive(Clone, PartialEq, Eq)]
+pub struct CallBitArray(pub(in crate::runtime) EvaluatedBitArray);
 
-#[derive(Clone)]
-pub struct BoolCallable(pub(in crate::runtime) EvaluatedBoolFunction);
+impl From<crate::BitArrayValue> for CallBitArray {
+    fn from(value: crate::BitArrayValue) -> Self {
+        Self(EvaluatedBitArray::from_value(value))
+    }
+}
 
 #[derive(Clone)]
 pub struct CallCaptures(pub(in crate::runtime) Captures);
 
-/// A callee's captures borrowed only while building its generated state.
-/// Canonical suspension explicitly retains the original payload instead.
-pub struct CallCaptureInputs<'captures>(&'captures Captures);
-
+pub struct CallCaptureInputs<'captures>(pub(in crate::runtime) &'captures Captures);
 pub struct CallCapture(EvaluatedCapture);
 
-/// Borrowed only for the current advance. Captures retain the existing
-/// execution domain and release queue, never this borrow across a yield.
+/// These borrows end before a callback, checkpoint, re-entry, or yield.
 pub struct CallOps<'execution> {
     captures: &'execution CaptureStorage,
     numeric: &'execution mut NumericValues,
+    strings: &'execution mut Option<Box<StringValues>>,
+    bit_arrays: &'execution mut Option<Box<BitArrayValues>>,
     lists: IntListOps<'execution>,
+    primitive_lists: PrimitiveListOps<'execution>,
+    root_tail_entry: bool,
+    synchronous_strings: &'execution [bool],
 }
 
 pub trait CallExecution: Send {
@@ -132,17 +168,47 @@ impl CallStorage {
 pub type CallStart = fn(usize, CallInputs<'_>, &mut CallStorage) -> Option<Box<dyn CallExecution>>;
 pub type CallResume<Value> = Box<dyn FnOnce(Value) -> Box<dyn CallExecution> + Send>;
 
-/// A normal generated Return carries only its actual result. Canonical
-/// checkpoints still use CallValues to restore the complete live environment.
+/// A normal return carries only its actual typed result.
 pub enum CallOutput {
     Int(CallInteger),
     Bool(bool),
     IntFunction(IntCallable),
     BoolFunction(BoolCallable),
+    Float(f64),
+    String(StringValue),
+    BitArray(CallBitArray),
+    UtfCodepoint(char),
+    Nil(()),
+    FloatFunction(FloatCallable),
+    StringFunction(StringCallable),
+    BitArrayFunction(BitArrayCallable),
+    UtfCodepointFunction(UtfCodepointCallable),
+    NilFunction(NilCallable),
+}
+
+impl CallOutput {
+    pub(in crate::runtime) fn family(&self) -> FunctionReturnFamily {
+        match self {
+            Self::Int(_) => FunctionReturnFamily::Int,
+            Self::Float(_) => FunctionReturnFamily::Float,
+            Self::String(_) => FunctionReturnFamily::String,
+            Self::BitArray(_) => FunctionReturnFamily::BitArray,
+            Self::UtfCodepoint(_) => FunctionReturnFamily::UtfCodepoint,
+            Self::Bool(_) => FunctionReturnFamily::Bool,
+            Self::Nil(()) => FunctionReturnFamily::Nil,
+            Self::IntFunction(_)
+            | Self::FloatFunction(_)
+            | Self::StringFunction(_)
+            | Self::BitArrayFunction(_)
+            | Self::UtfCodepointFunction(_)
+            | Self::BoolFunction(_)
+            | Self::NilFunction(_) => FunctionReturnFamily::Function,
+        }
+    }
 }
 
 pub struct CallArguments {
-    pub values: CallValues,
+    pub values: Box<CallValues>,
     pub captures: Option<CallCaptures>,
 }
 
@@ -165,24 +231,25 @@ impl CallNativeInput {
             },
         };
         CallArguments {
-            values,
+            values: Box::new(values),
             captures: None,
         }
     }
 }
 
-/// Only a canonical boundary allocates a typed resume closure. Ordinary
-/// generated calls use their generated, family-specific heap stacks.
+/// The full live columns are boxed only at canonical handoffs. Their width
+/// does not enlarge the ordinary generated step or return representation.
 pub enum CallProgress {
+    StringNative(StringNativeRequest),
     Yield(Box<dyn CallExecution>),
     Complete {
-        exit: BlockGraphExitId,
         output: CallOutput,
         execution: Box<dyn CallExecution>,
     },
     Interpreted {
+        target: CallTarget,
         point: CompiledCheckpoint,
-        values: CallValues,
+        values: Box<CallValues>,
     },
     Int {
         function: IntFunctionId,
@@ -190,10 +257,23 @@ pub enum CallProgress {
         arguments: CallArguments,
         resume: CallResume<CallInteger>,
     },
+    /// An owned scalar enters the original dispatcher without a full value pack.
+    IntScalar {
+        function: IntFunctionId,
+        site: HostCallSite,
+        input: CallNativeInput,
+        resume: CallResume<CallInteger>,
+    },
     Bool {
         function: BoolFunctionId,
         site: HostCallSite,
         arguments: CallArguments,
+        resume: CallResume<bool>,
+    },
+    BoolScalar {
+        function: BoolFunctionId,
+        site: HostCallSite,
+        input: CallNativeInput,
         resume: CallResume<bool>,
     },
     IntFunction {
@@ -208,222 +288,164 @@ pub enum CallProgress {
         arguments: CallArguments,
         resume: CallResume<BoolCallable>,
     },
+    Float {
+        function: FloatFunctionId,
+        site: HostCallSite,
+        arguments: CallArguments,
+        resume: CallResume<f64>,
+    },
+    String {
+        function: StringFunctionId,
+        site: HostCallSite,
+        arguments: CallArguments,
+        resume: CallResume<StringValue>,
+    },
+    BitArray {
+        function: BitArrayFunctionId,
+        site: HostCallSite,
+        arguments: CallArguments,
+        resume: CallResume<CallBitArray>,
+    },
+    UtfCodepoint {
+        function: UtfCodepointFunctionId,
+        site: HostCallSite,
+        arguments: CallArguments,
+        resume: CallResume<char>,
+    },
+    Nil {
+        function: NilFunctionId,
+        site: HostCallSite,
+        arguments: CallArguments,
+        resume: CallResume<()>,
+    },
+    FloatFunction {
+        function: FloatFunctionFunctionId,
+        site: HostCallSite,
+        arguments: CallArguments,
+        resume: CallResume<FloatCallable>,
+    },
+    StringFunction {
+        function: StringFunctionFunctionId,
+        site: HostCallSite,
+        arguments: CallArguments,
+        resume: CallResume<StringCallable>,
+    },
+    BitArrayFunction {
+        function: BitArrayFunctionFunctionId,
+        site: HostCallSite,
+        arguments: CallArguments,
+        resume: CallResume<BitArrayCallable>,
+    },
+    UtfCodepointFunction {
+        function: UtfCodepointFunctionFunctionId,
+        site: HostCallSite,
+        arguments: CallArguments,
+        resume: CallResume<UtfCodepointCallable>,
+    },
+    NilFunction {
+        function: NilFunctionFunctionId,
+        site: HostCallSite,
+        arguments: CallArguments,
+        resume: CallResume<NilCallable>,
+    },
     InterpretedInt {
         function: IntFunctionId,
         site: HostCallSite,
         point: CompiledCheckpoint,
-        values: CallValues,
+        values: Box<CallValues>,
         resume: CallResume<CallInteger>,
     },
     InterpretedBool {
         function: BoolFunctionId,
         site: HostCallSite,
         point: CompiledCheckpoint,
-        values: CallValues,
+        values: Box<CallValues>,
         resume: CallResume<bool>,
     },
     InterpretedIntFunction {
         function: IntFunctionFunctionId,
         site: HostCallSite,
         point: CompiledCheckpoint,
-        values: CallValues,
+        values: Box<CallValues>,
         resume: CallResume<IntCallable>,
     },
     InterpretedBoolFunction {
         function: BoolFunctionFunctionId,
         site: HostCallSite,
         point: CompiledCheckpoint,
-        values: CallValues,
+        values: Box<CallValues>,
         resume: CallResume<BoolCallable>,
     },
-}
-
-impl<'values> CallInputs<'values> {
-    pub(in crate::runtime) fn new(
-        ints: &'values [IntegerValue],
-        bools: &'values [bool],
-        int_lists: &'values [IntListValueId],
-        int_functions: &'values [EvaluatedIntFunction],
-        bool_functions: &'values [EvaluatedBoolFunction],
-    ) -> Self {
-        Self {
-            ints,
-            bools,
-            int_lists,
-            int_functions,
-            bool_functions,
-        }
-    }
-
-    pub fn int(&self, index: usize) -> Option<i128> {
-        self.ints.get(index)?.small().map(i128::from)
-    }
-
-    pub fn bool(&self, index: usize) -> Option<bool> {
-        self.bools.get(index).copied()
-    }
-
-    pub fn int_list(&self, index: usize) -> Option<IntList> {
-        self.int_lists.get(index).cloned().map(IntList)
-    }
-
-    pub fn int_function(&self, index: usize) -> Option<IntCallable> {
-        self.int_functions.get(index).cloned().map(IntCallable)
-    }
-
-    pub fn bool_function(&self, index: usize) -> Option<BoolCallable> {
-        self.bool_functions.get(index).cloned().map(BoolCallable)
-    }
-
-    pub fn int_function_target(&self, index: usize) -> Option<IntFunctionId> {
-        self.int_functions
-            .get(index)
-            .map(EvaluatedFunction::runtime_id)
-    }
-
-    pub fn bool_function_target(&self, index: usize) -> Option<BoolFunctionId> {
-        self.bool_functions
-            .get(index)
-            .map(EvaluatedFunction::runtime_id)
-    }
-}
-
-impl IntCallable {
-    pub fn with_type(self, type_: FunctionType) -> Self {
-        Self(self.0.with_type(type_))
-    }
-    pub fn target(&self) -> IntFunctionId {
-        self.0.runtime_id()
-    }
-
-    pub fn captures(&self) -> CallCaptureInputs<'_> {
-        CallCaptureInputs(self.0.capture_frame())
-    }
-}
-
-impl BoolCallable {
-    pub fn with_type(self, type_: FunctionType) -> Self {
-        Self(self.0.with_type(type_))
-    }
-    pub fn target(&self) -> BoolFunctionId {
-        self.0.runtime_id()
-    }
-
-    pub fn captures(&self) -> CallCaptureInputs<'_> {
-        CallCaptureInputs(self.0.capture_frame())
-    }
-}
-
-impl CallCaptureInputs<'_> {
-    pub fn retain(&self) -> CallCaptures {
-        CallCaptures(self.0.clone())
-    }
-
-    pub fn int(&self, local: IntLocalId) -> Option<i128> {
-        self.0
-            .values()
-            .iter()
-            .find_map(|capture| match capture.kind() {
-                EvaluatedCaptureKind::Int {
-                    local: target,
-                    value,
-                } if *target == local => value.small().map(i128::from),
-                _ => None,
-            })
-    }
-
-    pub fn bool(&self, local: BoolLocalId) -> Option<bool> {
-        self.0
-            .values()
-            .iter()
-            .find_map(|capture| match capture.kind() {
-                EvaluatedCaptureKind::Bool {
-                    local: target,
-                    value,
-                } if *target == local => Some(*value),
-                _ => None,
-            })
-    }
-
-    pub fn int_list(&self, local: IntListLocalId) -> Option<IntList> {
-        self.0
-            .values()
-            .iter()
-            .find_map(|capture| match capture.kind() {
-                EvaluatedCaptureKind::List(EvaluatedListCapture::Int {
-                    local: target,
-                    value,
-                }) if *target == local => Some(IntList(value.clone())),
-                _ => None,
-            })
-    }
-
-    pub fn int_function(&self, local: IntFunctionLocalId) -> Option<IntCallable> {
-        self.0
-            .values()
-            .iter()
-            .find_map(|capture| match capture.kind() {
-                EvaluatedCaptureKind::IntFunction {
-                    local: target,
-                    value,
-                } if *target == local => Some(IntCallable(value.clone())),
-                _ => None,
-            })
-    }
-
-    pub fn bool_function(&self, local: BoolFunctionLocalId) -> Option<BoolCallable> {
-        self.0
-            .values()
-            .iter()
-            .find_map(|capture| match capture.kind() {
-                EvaluatedCaptureKind::BoolFunction {
-                    local: target,
-                    value,
-                } if *target == local => Some(BoolCallable(value.clone())),
-                _ => None,
-            })
-    }
-}
-
-impl CallCapture {
-    pub fn int(local: IntLocalId, value: i128) -> Self {
-        Self(EvaluatedCapture::from_kind(EvaluatedCaptureKind::Int {
-            local,
-            value: value.into(),
-        }))
-    }
-
-    pub fn bool(local: BoolLocalId, value: bool) -> Self {
-        Self(EvaluatedCapture::from_kind(EvaluatedCaptureKind::Bool {
-            local,
-            value,
-        }))
-    }
-
-    pub fn int_list(local: IntListLocalId, value: IntList) -> Self {
-        Self(EvaluatedCapture::list(EvaluatedListCapture::Int {
-            local,
-            value: value.0,
-        }))
-    }
-
-    pub fn int_function(local: IntFunctionLocalId, value: IntCallable) -> Self {
-        Self(EvaluatedCapture::from_kind(
-            EvaluatedCaptureKind::IntFunction {
-                local,
-                value: value.0,
-            },
-        ))
-    }
-
-    pub fn bool_function(local: BoolFunctionLocalId, value: BoolCallable) -> Self {
-        Self(EvaluatedCapture::from_kind(
-            EvaluatedCaptureKind::BoolFunction {
-                local,
-                value: value.0,
-            },
-        ))
-    }
+    InterpretedFloat {
+        function: FloatFunctionId,
+        site: HostCallSite,
+        point: CompiledCheckpoint,
+        values: Box<CallValues>,
+        resume: CallResume<f64>,
+    },
+    InterpretedString {
+        function: StringFunctionId,
+        site: HostCallSite,
+        point: CompiledCheckpoint,
+        values: Box<CallValues>,
+        resume: CallResume<StringValue>,
+    },
+    InterpretedBitArray {
+        function: BitArrayFunctionId,
+        site: HostCallSite,
+        point: CompiledCheckpoint,
+        values: Box<CallValues>,
+        resume: CallResume<CallBitArray>,
+    },
+    InterpretedUtfCodepoint {
+        function: UtfCodepointFunctionId,
+        site: HostCallSite,
+        point: CompiledCheckpoint,
+        values: Box<CallValues>,
+        resume: CallResume<char>,
+    },
+    InterpretedNil {
+        function: NilFunctionId,
+        site: HostCallSite,
+        point: CompiledCheckpoint,
+        values: Box<CallValues>,
+        resume: CallResume<()>,
+    },
+    InterpretedFloatFunction {
+        function: FloatFunctionFunctionId,
+        site: HostCallSite,
+        point: CompiledCheckpoint,
+        values: Box<CallValues>,
+        resume: CallResume<FloatCallable>,
+    },
+    InterpretedStringFunction {
+        function: StringFunctionFunctionId,
+        site: HostCallSite,
+        point: CompiledCheckpoint,
+        values: Box<CallValues>,
+        resume: CallResume<StringCallable>,
+    },
+    InterpretedBitArrayFunction {
+        function: BitArrayFunctionFunctionId,
+        site: HostCallSite,
+        point: CompiledCheckpoint,
+        values: Box<CallValues>,
+        resume: CallResume<BitArrayCallable>,
+    },
+    InterpretedUtfCodepointFunction {
+        function: UtfCodepointFunctionFunctionId,
+        site: HostCallSite,
+        point: CompiledCheckpoint,
+        values: Box<CallValues>,
+        resume: CallResume<UtfCodepointCallable>,
+    },
+    InterpretedNilFunction {
+        function: NilFunctionFunctionId,
+        site: HostCallSite,
+        point: CompiledCheckpoint,
+        values: Box<CallValues>,
+        resume: CallResume<NilCallable>,
+    },
 }
 
 impl<'execution> CallOps<'execution> {
@@ -431,12 +453,45 @@ impl<'execution> CallOps<'execution> {
         captures: &'execution CaptureStorage,
         numeric: &'execution mut NumericValues,
         lists: &'execution RuntimeListStorage,
+        strings: &'execution mut Option<Box<StringValues>>,
+        bit_arrays: &'execution mut Option<Box<BitArrayValues>>,
     ) -> Self {
         Self {
             captures,
             numeric,
+            strings,
+            bit_arrays,
             lists: IntListOps::new(lists),
+            primitive_lists: PrimitiveListOps::new(lists),
+            root_tail_entry: false,
+            synchronous_strings: &[],
         }
+    }
+
+    pub(in crate::runtime) fn with_root_tail_entry(mut self, charge: bool) -> Self {
+        self.root_tail_entry = charge;
+        self
+    }
+
+    pub(in crate::runtime) fn with_synchronous_strings(
+        mut self,
+        enabled: &'execution [bool],
+    ) -> Self {
+        self.synchronous_strings = enabled;
+        self
+    }
+
+    pub fn supports_string_native(&self, function: StringFunctionId) -> bool {
+        self.synchronous_strings
+            .get(function.0)
+            .copied()
+            .unwrap_or(false)
+    }
+
+    /// A root source tail visits FunctionExecution::Entry. An ordinary callee
+    /// tail stays within its activation and must not acquire that extra charge.
+    pub fn root_tail_entry(&self) -> bool {
+        self.root_tail_entry
     }
 
     /// Existing execution-owned numeric storage. Generated calls pass their
@@ -444,6 +499,40 @@ impl<'execution> CallOps<'execution> {
     /// result of the shared structured numeric body.
     pub fn numeric(&mut self) -> &mut NumericValues {
         self.numeric
+    }
+
+    pub fn strings(
+        &mut self,
+        ints: &[i128],
+        bools: &[bool],
+        inputs: impl IntoIterator<Item = StringValue>,
+    ) -> Box<StringValues> {
+        let mut values = self.strings.take().unwrap_or_default();
+        values.load_owned(ints, bools, inputs);
+        values
+    }
+
+    pub fn bit_arrays(
+        &mut self,
+        ints: &[i128],
+        bools: &[bool],
+        inputs: impl IntoIterator<Item = CallBitArray>,
+    ) -> Box<BitArrayValues> {
+        let mut values = self.bit_arrays.take().unwrap_or_default();
+        values.load_owned(ints, bools, inputs.into_iter().map(|input| input.0.value()));
+        values
+    }
+
+    /// Return inactive scratch after completion or a real canonical handoff.
+    /// Yielded kernels retain their own box and do not publish it to this cache.
+    pub fn recycle_strings(&mut self, mut values: Box<StringValues>) {
+        values.release_inputs();
+        *self.strings = Some(values);
+    }
+
+    pub fn recycle_bit_arrays(&mut self, mut values: Box<BitArrayValues>) {
+        values.release_inputs();
+        *self.bit_arrays = Some(values);
     }
 
     pub fn lists(&self) -> &IntListOps<'_> {
@@ -454,46 +543,8 @@ impl<'execution> CallOps<'execution> {
         captures.0.domain().is_none() || captures.0.domain() == Some(self.captures.domain())
     }
 
-    pub fn int_reference(&self, target: IntFunctionId, type_: FunctionType) -> IntCallable {
-        IntCallable(EvaluatedFunction::reference(
-            target,
-            self.captures.capture(Vec::new()),
-            type_,
-        ))
-    }
-
-    pub fn bool_reference(&self, target: BoolFunctionId, type_: FunctionType) -> BoolCallable {
-        BoolCallable(EvaluatedFunction::reference(
-            target,
-            self.captures.capture(Vec::new()),
-            type_,
-        ))
-    }
-
-    pub fn int_closure(
-        &self,
-        target: IntFunctionId,
-        type_: FunctionType,
-        captures: Vec<CallCapture>,
-    ) -> IntCallable {
-        IntCallable(EvaluatedFunction::closure(
-            target,
-            self.capture(captures),
-            type_,
-        ))
-    }
-
-    pub fn bool_closure(
-        &self,
-        target: BoolFunctionId,
-        type_: FunctionType,
-        captures: Vec<CallCapture>,
-    ) -> BoolCallable {
-        BoolCallable(EvaluatedFunction::closure(
-            target,
-            self.capture(captures),
-            type_,
-        ))
+    pub fn primitive_lists(&self) -> &PrimitiveListOps<'_> {
+        &self.primitive_lists
     }
 
     fn capture(&self, captures: Vec<CallCapture>) -> Captures {
@@ -518,16 +569,155 @@ mod tests {
     use crate::runtime::captures::Captures;
     use crate::runtime::compiled::numeric::NumericValues;
     use crate::runtime::evaluated::{EvaluatedCapture, EvaluatedCaptureKind};
+    use crate::runtime::graph::{BlockEnvironment, RetainedValues};
     use crate::runtime::integer::IntegerValue;
     use crate::runtime::plan_src;
     use crate::runtime::state::list::RuntimeListStorage;
+    use crate::{BitArrayValue, StringValue};
     use std::sync::Arc;
     use std::sync::atomic::{AtomicUsize, Ordering};
+
+    #[test]
+    fn completed_outputs_preserve_each_exact_return_family() {
+        use super::{CallBitArray, CallOutput};
+        use crate::plan::execution::function::{
+            BitArrayFunctionId, FloatFunctionId, FunctionReturnFamily, NilFunctionId,
+            StringFunctionId, UtfCodepointFunctionId,
+        };
+        let captures = CaptureStorage::default();
+        let lists = RuntimeListStorage::default();
+        let mut numeric = NumericValues::default();
+        let mut strings = None;
+        let mut bits = None;
+        let ops = CallOps::new(&captures, &mut numeric, &lists, &mut strings, &mut bits);
+        for (output, expected) in [
+            (CallOutput::Int(42_i128.into()), FunctionReturnFamily::Int),
+            (CallOutput::Bool(true), FunctionReturnFamily::Bool),
+            (CallOutput::Float(4.5), FunctionReturnFamily::Float),
+            (
+                CallOutput::String("typed".into()),
+                FunctionReturnFamily::String,
+            ),
+            (
+                CallOutput::BitArray(CallBitArray::from(BitArrayValue::from_bytes(vec![7]))),
+                FunctionReturnFamily::BitArray,
+            ),
+            (
+                CallOutput::UtfCodepoint('λ'),
+                FunctionReturnFamily::UtfCodepoint,
+            ),
+            (CallOutput::Nil(()), FunctionReturnFamily::Nil),
+            (
+                CallOutput::IntFunction(ops.int_reference(
+                    IntFunctionId(3),
+                    FunctionType::new(Vec::new(), ValueType::Int),
+                )),
+                FunctionReturnFamily::Function,
+            ),
+            (
+                CallOutput::BoolFunction(ops.bool_reference(
+                    BoolFunctionId(3),
+                    FunctionType::new(Vec::new(), ValueType::Bool),
+                )),
+                FunctionReturnFamily::Function,
+            ),
+            (
+                CallOutput::FloatFunction(ops.float_reference(
+                    FloatFunctionId(3),
+                    FunctionType::new(Vec::new(), ValueType::Float),
+                )),
+                FunctionReturnFamily::Function,
+            ),
+            (
+                CallOutput::StringFunction(ops.string_reference(
+                    StringFunctionId(3),
+                    FunctionType::new(Vec::new(), ValueType::String),
+                )),
+                FunctionReturnFamily::Function,
+            ),
+            (
+                CallOutput::BitArrayFunction(ops.bit_array_reference(
+                    BitArrayFunctionId(3),
+                    FunctionType::new(Vec::new(), ValueType::BitArray),
+                )),
+                FunctionReturnFamily::Function,
+            ),
+            (
+                CallOutput::UtfCodepointFunction(ops.utf_codepoint_reference(
+                    UtfCodepointFunctionId(3),
+                    FunctionType::new(Vec::new(), ValueType::UtfCodepoint),
+                )),
+                FunctionReturnFamily::Function,
+            ),
+            (
+                CallOutput::NilFunction(ops.nil_reference(
+                    NilFunctionId(3),
+                    FunctionType::new(Vec::new(), ValueType::Nil),
+                )),
+                FunctionReturnFamily::Function,
+            ),
+        ] {
+            assert_eq!(output.family(), expected);
+        }
+    }
 
     struct IdleWorkspace {
         capacity: Vec<[u8; 1024]>,
         dropped: Arc<AtomicUsize>,
         input: Option<i128>,
+    }
+
+    #[test]
+    fn range_kernels_keep_owned_scratch_across_yields_and_recycle_the_same_box() {
+        let captures = CaptureStorage::default();
+        let lists = RuntimeListStorage::default();
+        let mut numeric = NumericValues::default();
+        let mut strings = None;
+        let mut bits = None;
+        let raw = StringValue::from_bytes([b"tag:".as_slice(), &[0xff; 64]].concat());
+        let backing = raw.as_ptr();
+        let input = BitArrayValue::try_from_parts(vec![0xE5, 0x58], 13).unwrap();
+        let (mut string_kernel, mut bit_kernel) = {
+            let mut ops = CallOps::new(&captures, &mut numeric, &lists, &mut strings, &mut bits);
+            (
+                ops.strings(&[7], &[true], [raw]),
+                ops.bit_arrays(&[9], &[false], [input.clone().into()]),
+            )
+        };
+        let string_owner = std::ptr::from_ref(&*string_kernel);
+        let bit_owner = std::ptr::from_ref(&*bit_kernel);
+        string_kernel.strings[0] = string_kernel.strings[0].drop_prefix(4);
+        bit_kernel.bit_arrays[0] = bit_kernel.bit_arrays[0].slice(2, 11).unwrap();
+        assert!(strings.is_none());
+        assert!(bits.is_none());
+
+        // Another activation may use the ordinary cache while these kernels yield.
+        {
+            let mut ops = CallOps::new(&captures, &mut numeric, &lists, &mut strings, &mut bits);
+            let other_strings = ops.strings(&[], &[], [StringValue::from("other")]);
+            let other_bits = ops.bit_arrays(&[], &[], [BitArrayValue::from_bytes(vec![0]).into()]);
+            ops.recycle_strings(other_strings);
+            ops.recycle_bit_arrays(other_bits);
+        }
+        assert_eq!(string_kernel.ints, [7]);
+        assert_eq!(string_kernel.bools, [true]);
+        assert_eq!(bit_kernel.ints, [9]);
+        assert_eq!(bit_kernel.bools, [false]);
+        let result = string_kernel.finish(string_kernel.strings[0]);
+        assert_eq!(result.as_ptr(), backing.wrapping_add(4));
+        assert_eq!(result.as_bytes(), &[0xff; 64]);
+        let result = bit_kernel.finish(bit_kernel.bit_arrays[0]);
+        assert_eq!(result, input.bit_slice(2, 11).unwrap());
+
+        let mut ops = CallOps::new(&captures, &mut numeric, &lists, &mut strings, &mut bits);
+        ops.recycle_strings(string_kernel);
+        ops.recycle_bit_arrays(bit_kernel);
+        let reused_strings = ops.strings(&[], &[], []);
+        let reused_bits = ops.bit_arrays(&[], &[], []);
+        assert_eq!(std::ptr::from_ref(&*reused_strings), string_owner);
+        assert_eq!(std::ptr::from_ref(&*reused_bits), bit_owner);
+        assert!(reused_strings.strings.is_empty());
+        assert!(reused_bits.bit_arrays.is_empty());
     }
 
     impl CallExecution for IdleWorkspace {
@@ -582,7 +772,10 @@ mod tests {
         let dropped = Arc::new(AtomicUsize::new(0));
         let mut cache = CallStorage::default();
         let ints = [IntegerValue::from(7)];
-        let inputs = CallInputs::new(&ints, &[], &[], &[], &[]);
+        let mut retained = RetainedValues::empty();
+        retained.push_int(ints[0].clone());
+        let environment = BlockEnvironment::from_retained(retained);
+        let inputs = CallInputs::new(&environment);
         let target = CallTarget::Int(IntFunctionId(2));
         assert!(cache.reuse(target, 3, inputs).is_none());
         let idle = Box::new(IdleWorkspace {
@@ -599,9 +792,12 @@ mod tests {
         );
         assert!(cache.reuse(target, 2, inputs).is_none());
         let big = [IntegerValue::from(1_i128 << 100)];
+        let mut retained = RetainedValues::empty();
+        retained.push_int(big[0].clone());
+        let big_environment = BlockEnvironment::from_retained(retained);
         assert!(
             cache
-                .reuse(target, 3, CallInputs::new(&big, &[], &[], &[], &[]))
+                .reuse(target, 3, CallInputs::new(&big_environment))
                 .is_none()
         );
         assert_eq!(dropped.load(Ordering::SeqCst), 0);
@@ -616,10 +812,18 @@ mod tests {
         );
         let captures = CaptureStorage::default();
         let mut numeric = NumericValues::default();
+        let mut string_scratch = None;
+        let mut bit_scratch = None;
         let lists = RuntimeListStorage::default();
         let mut budget = 0;
         let progress = execution.advance(
-            &mut CallOps::new(&captures, &mut numeric, &lists),
+            &mut CallOps::new(
+                &captures,
+                &mut numeric,
+                &lists,
+                &mut string_scratch,
+                &mut bit_scratch,
+            ),
             &mut budget,
         );
         drop(progress);
@@ -668,76 +872,20 @@ mod tests {
     }
 
     #[test]
-    fn entry_inputs_borrow_original_columns_and_clone_only_selected_handles() {
-        let storage = CaptureStorage::default();
-        let mut numeric = NumericValues::default();
-        let lists = RuntimeListStorage::default();
-        let ops = CallOps::new(&storage, &mut numeric, &lists);
-        let integer = ops.int_reference(
-            IntFunctionId(2),
-            FunctionType::new(vec![ValueType::Int], ValueType::Int),
-        );
-        let boolean = ops.bool_reference(
-            BoolFunctionId(3),
-            FunctionType::new(vec![ValueType::Bool], ValueType::Bool),
-        );
-        let ints = [IntegerValue::from(7), IntegerValue::from(1_i128 << 100)];
-        let bools = [false, true];
-        let int_functions = [integer.0];
-        let bool_functions = [boolean.0];
-        let plan = plan_src("pub fn main() { [1] }");
-        let int_lists = [ops
-            .lists()
-            .value(plan.int_list_function_id(0).type_id(), &[3, 4])
-            .0];
-        let inputs = CallInputs::new(&ints, &bools, &int_lists, &int_functions, &bool_functions);
-        assert!(std::ptr::eq(inputs.ints.as_ptr(), ints.as_ptr()));
-        assert!(std::ptr::eq(inputs.bools.as_ptr(), bools.as_ptr()));
-        assert!(std::ptr::eq(inputs.int_lists.as_ptr(), int_lists.as_ptr()));
-        let selected_list = inputs.int_list(0).unwrap();
-        assert_eq!(selected_list.0, int_lists[0]);
-        assert!(std::ptr::eq(
-            selected_list.0.values(),
-            int_lists[0].values()
-        ));
-        assert_eq!(ops.lists().index(&selected_list, 1), Some(4));
-        assert!(inputs.int_list(1).is_none());
-        assert!(std::ptr::eq(
-            inputs.int_functions.as_ptr(),
-            int_functions.as_ptr()
-        ));
-        assert!(std::ptr::eq(
-            inputs.bool_functions.as_ptr(),
-            bool_functions.as_ptr()
-        ));
-        assert_eq!(inputs.int(0), Some(7));
-        assert_eq!(inputs.int(1), None);
-        assert_eq!(inputs.int(2), None);
-        assert_eq!(inputs.bool(0), Some(false));
-        assert_eq!(inputs.bool(1), Some(true));
-        assert_eq!(inputs.bool(2), None);
-        assert_eq!(inputs.int_function_target(0), Some(IntFunctionId(2)));
-        assert_eq!(inputs.bool_function_target(0), Some(BoolFunctionId(3)));
-        assert_eq!(inputs.int_function_target(1), None);
-        assert_eq!(inputs.bool_function_target(1), None);
-        assert_eq!(inputs.int_function(0).unwrap().0, int_functions[0]);
-        assert_eq!(inputs.bool_function(0).unwrap().0, bool_functions[0]);
-        assert!(inputs.int_function(1).is_none());
-        assert!(inputs.bool_function(1).is_none());
-        assert_eq!(
-            ints,
-            [IntegerValue::from(7), IntegerValue::from(1_i128 << 100)]
-        );
-        assert_eq!(bools, [false, true]);
-    }
-
-    #[test]
     fn canonical_callable_ops_keep_types_targets_identity_captures_and_execution_ownership() {
         let storage = CaptureStorage::default();
         let other_storage = storage.for_execution();
         let mut numeric = NumericValues::default();
+        let mut string_scratch = None;
+        let mut bit_scratch = None;
         let lists = RuntimeListStorage::default();
-        let ops = CallOps::new(&storage, &mut numeric, &lists);
+        let ops = CallOps::new(
+            &storage,
+            &mut numeric,
+            &lists,
+            &mut string_scratch,
+            &mut bit_scratch,
+        );
         let int_type = FunctionType::new(vec![ValueType::Int], ValueType::Int);
         let bool_type = FunctionType::new(vec![ValueType::Bool], ValueType::Bool);
         let int = ops.int_reference(IntFunctionId(2), int_type.clone());
@@ -830,7 +978,13 @@ mod tests {
             },
         )]);
         assert_eq!(CallCaptureInputs(&big).int(IntLocalId(0)), None);
-        let mut ops = CallOps::new(&storage, &mut numeric, &lists);
+        let mut ops = CallOps::new(
+            &storage,
+            &mut numeric,
+            &lists,
+            &mut string_scratch,
+            &mut bit_scratch,
+        );
         ops.numeric().ints.push(42);
         assert_eq!(numeric.ints, vec![42]);
         let retained = captures.retain();
