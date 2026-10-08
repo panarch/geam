@@ -708,6 +708,14 @@ fn main() -> Result<(), Box<dyn Error>> {
     let (boolean_calls, _) = ModuleBuilder::new(boolean_calls)?
         .function(FunctionDeclaration::<(bool,), bool>::new("flip"))?;
 
+    let boolean_bridge = geam_core::compile_typed_module(
+        "example",
+        "src/example.gleam",
+        include_str!("../tests/fixtures/prepared/boolean_bridge.gleam"),
+    )?;
+    let (boolean_bridge, _) = ModuleBuilder::new(boolean_bridge)?
+        .function(FunctionDeclaration::<(), bool>::new("verify"))?;
+
     let custom_source = include_str!("../tests/fixtures/prepared/custom_scalars.gleam");
     let custom =
         geam_core::compile_typed_module("example", "src/custom_scalars.gleam", custom_source)?;
@@ -858,6 +866,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         ("numeric.rs", numeric.prepare().emit_rust()),
         ("function_calls.rs", calls.prepare().emit_rust()),
         ("boolean_calls.rs", boolean_calls.prepare().emit_rust()),
+        ("boolean_bridge.rs", boolean_bridge.prepare().emit_rust()),
         ("int_list_calls.rs", list_calls.prepare()?.emit_rust()),
         (
             "int_list_static_calls.rs",

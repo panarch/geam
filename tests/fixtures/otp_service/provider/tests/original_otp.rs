@@ -31,7 +31,8 @@ fn original_warning_boundary_rejects_foreign_character_storage_before_emitting_a
     type Completion<'call> = Result<HostCallCompletion<'call, Charlist>, HostCallError>;
     fn retained(
         previous: Arc<Mutex<Option<HostStoredValue<HostListType<char>>>>>,
-    ) -> impl for<'call> Fn(Call<'call>, HostConstructions<'call, Constructions>) -> Completion<'call> {
+    ) -> impl for<'call> Fn(Call<'call>, HostConstructions<'call, Constructions>) -> Completion<'call>
+    {
         move |mut call, constructions| {
             let saved = previous.lock().unwrap().take();
             let construction = constructions.at::<HostTypeIndex0>();

@@ -19,6 +19,9 @@ mod int_list;
 #[path = "prepared_embedding/numeric.rs"]
 mod numeric;
 
+#[path = "prepared_embedding/calls.rs"]
+mod calls;
+
 #[path = "prepared_embedding/bit_array.rs"]
 mod bit_array;
 #[path = "prepared_embedding/large_customs.rs"]

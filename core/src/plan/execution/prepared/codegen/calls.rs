@@ -390,6 +390,17 @@ impl<'graph, Graph: ExecutionGraphProfile> CallCodegen<'graph, Graph> {
     }
 
     fn write_advance(&self, source: &mut Code, native: bool) {
+        let has_next = self.has_next_step();
+        let loops = has_next
+            || return_families().into_iter().any(|family| {
+                [StepKind::Call, StepKind::Tail, StepKind::Return]
+                    .into_iter()
+                    .any(|kind| self.has_step(family, kind))
+            })
+            || (native && self.has_native_calls());
+        let mutable = if loops { "mut " } else { "" };
+        let return_prefix = if loops { "return " } else { "" };
+        let return_suffix = if loops { ";" } else { "" };
         let progress = |expression: &str| {
             if native {
                 format!("Ok(Some({expression}))")
@@ -403,20 +414,20 @@ impl<'graph, Graph: ExecutionGraphProfile> CallCodegen<'graph, Graph> {
         } else {
             source.open("fn advance(mut self: Box<Self>, ops: &mut CallOps<'_>, budget: &mut usize) -> CallProgress {\n");
         }
-        let mutable = if self.has_native_calls() { "" } else { "mut " };
+        let initial_mutable = if self.has_native_calls() { "" } else { mutable };
         source.push_str(&format!(
-            "let Some({mutable}active) = self.active.take() else {{ return {}; }};\n",
+            "let Some({initial_mutable}active) = self.active.take() else {{ return {}; }};\n",
             progress("CallProgress::Yield(self)")
         ));
         if self.has_native_calls() {
-            source.open("let mut active = match active {\n");
+            source.open(&format!("let {mutable}active = match active {{\n"));
             source.push_str("FunctionActive::Running(active) => active,\n");
             for family in [CallFamily::Int, CallFamily::Bool] {
                 if self.has_native_bridge(family) {
                     source.open(&format!(
                         "FunctionActive::{family}Call {{ function, site, input, caller }} => {{\n"
                     ));
-                    self.write_native_bridge(source, family, native, prefix, suffix);
+                    self.write_native_bridge(source, family, native, true);
                     source.close("},\n");
                     source.open(&format!(
                         "FunctionActive::{family}Return {{ caller, returned }} => {{\n"
@@ -430,14 +441,16 @@ impl<'graph, Graph: ExecutionGraphProfile> CallCodegen<'graph, Graph> {
             }
             source.close("};\n");
         }
-        source.open("loop {\n");
+        if loops {
+            source.open("loop {\n");
+        }
         source.open("match function_step(active, ops, budget) {\n");
-        if self.has_next_step() {
+        if has_next {
             source.push_str("FunctionStep::Next(next) => active = next,\n");
         }
         source.open("FunctionStep::Yield(active) => {\n");
         source.push_str(&format!(
-            "self.active = Some({});\nreturn {};\n",
+            "self.active = Some({});\n{return_prefix}{}{return_suffix}\n",
             self.active("active"),
             progress("CallProgress::Yield(self)")
         ));
@@ -482,7 +495,7 @@ impl<'graph, Graph: ExecutionGraphProfile> CallCodegen<'graph, Graph> {
                 source.close("},\n");
             }
             if self.has_step(family, StepKind::Bridge) {
-                source.open(&format!("FunctionStep::{family}Bridge {{ function, site, arguments, caller }} => return {prefix}CallProgress::{family} {{\n"));
+                source.open(&format!("FunctionStep::{family}Bridge {{ function, site, arguments, caller }} => {return_prefix}{prefix}CallProgress::{family} {{\n"));
                 source.push_str("function, site, arguments,\n");
                 source.open("resume: Box::new(move |value| {\n");
                 source.push_str(&format!(
@@ -499,7 +512,7 @@ impl<'graph, Graph: ExecutionGraphProfile> CallCodegen<'graph, Graph> {
                 if native {
                     source.open("active = {\n");
                 }
-                self.write_native_bridge(source, family, native, prefix, suffix);
+                self.write_native_bridge(source, family, native, loops);
                 if native {
                     source.close("};\n");
                 }
@@ -529,7 +542,7 @@ impl<'graph, Graph: ExecutionGraphProfile> CallCodegen<'graph, Graph> {
                 source.close(&format!("}}{suffix};\n"));
                 source.close("}\n");
                 source.push_str(&format!(
-                    "return {};\n",
+                    "{return_prefix}{}{return_suffix}\n",
                     progress("CallProgress::Interpreted { point, values }")
                 ));
                 source.close("},\n");
@@ -538,7 +551,9 @@ impl<'graph, Graph: ExecutionGraphProfile> CallCodegen<'graph, Graph> {
             source.close("},\n");
         }
         source.close("}\n");
-        source.close("}\n");
+        if loops {
+            source.close("}\n");
+        }
         source.close("}\n");
     }
 
@@ -547,9 +562,11 @@ impl<'graph, Graph: ExecutionGraphProfile> CallCodegen<'graph, Graph> {
         source: &mut Code,
         family: CallFamily,
         native: bool,
-        prefix: &str,
-        suffix: &str,
+        returning: bool,
     ) {
+        let (prefix, suffix) = if native { ("Ok(Some(", "))") } else { ("", "") };
+        let return_prefix = if returning { "return " } else { "" };
+        let return_suffix = if returning { ";" } else { "" };
         if native {
             source.open(&format!("if let CallNativeOps::{family} {{ function: target, native }} = native && *target == function {{\n"));
             source.open("if *budget == 0 {\n");
@@ -562,7 +579,9 @@ impl<'graph, Graph: ExecutionGraphProfile> CallCodegen<'graph, Graph> {
             source.push_str("*budget -= 1;\ncaller.resume(returned.into_value())\n");
             source.alternative("} else {\n");
         }
-        source.open(&format!("return {prefix}CallProgress::{family} {{\n"));
+        source.open(&format!(
+            "{return_prefix}{prefix}CallProgress::{family} {{\n"
+        ));
         source.push_str("function, site, arguments: input.arguments(),\n");
         source.open("resume: Box::new(move |value| {\n");
         source.push_str(&format!(
@@ -570,7 +589,7 @@ impl<'graph, Graph: ExecutionGraphProfile> CallCodegen<'graph, Graph> {
             self.active("caller.resume(value)")
         ));
         source.close("}),\n");
-        source.close(&format!("}}{suffix};\n"));
+        source.close(&format!("}}{suffix}{return_suffix}\n"));
         if native {
             source.close("}\n");
         }
@@ -694,7 +713,10 @@ impl<'graph, Graph: ExecutionGraphProfile> CallCodegen<'graph, Graph> {
                 };
                 match kind {
                     StepKind::Call => direct,
-                    _ => !matches!(call.target, CallContractTarget::Static(_)) || !direct,
+                    _ => {
+                        (!matches!(call.target, CallContractTarget::Static(_)) || !direct)
+                            && Self::native_input(call).is_none()
+                    }
                 }
             }),
         })
@@ -2185,7 +2207,7 @@ pub fn main() -> Int { let _ = fail(7) panic as "caller must not resume" }
         codegen.write_code(&mut generated);
         assert_eq!(
             generated.as_str().lines().next().unwrap(),
-            "use data::compiled::calls::{BoolCallable, CallArguments, CallExecution, CallInputs, CallInteger, CallNativeFailure, CallNativeInput, CallNativeOps, CallNativeReturn, CallOps, CallProgress, CallStorage, CallValues, IntCallable};"
+            "use data::compiled::calls::{BoolCallable, CallExecution, CallInputs, CallInteger, CallNativeFailure, CallNativeInput, CallNativeOps, CallNativeReturn, CallOps, CallProgress, CallStorage, CallValues, IntCallable};"
         );
         let mut echo = Vec::new();
         let error = crate::run_main(&plan, &mut echo).unwrap_err();
@@ -2476,6 +2498,414 @@ let int3 = region5;
     }
 
     #[test]
+    fn interpreted_boolean_bridge_advances_once_without_mutating_the_active_local() {
+        let input = r#"
+pub fn verify() -> Bool {
+  let assert True = accepted()
+  accepted()
+}
+fn accepted() -> Bool {
+  let value = "ok"
+  value == "ok"
+}
+pub fn main() { let _ = verify() Nil }
+"#;
+        let typed = crate::compile_typed_module("example", "src/example.gleam", input).unwrap();
+        let plan = crate::ExecutionPlan::from_module_plan(crate::plan_module(typed).unwrap());
+        let codegen = CallCodegen::new(&plan.program.functions);
+        let mut protocol = Code::default();
+        codegen.write_protocol(&mut protocol);
+        assert_eq!(
+            protocol.as_str(),
+            r#"#[allow(clippy::large_enum_variant, reason = "Typed locals stay inline to avoid allocating at each generated step.")]
+enum FunctionStep {
+    Yield(FunctionState),
+    Canonical { target: data::compiled::CallTarget, point: data::compiled::CompiledCheckpoint, values: CallValues },
+    BoolBridge { function: data::function::BoolFunctionId, site: data::source::HostCallSite, arguments: CallArguments, caller: BoolReturn },
+}
+"#
+        );
+        let mut advance = Code::default();
+        codegen.write_advance(&mut advance, false);
+        assert_eq!(
+            advance.as_str(),
+            r#"fn advance(mut self: Box<Self>, ops: &mut CallOps<'_>, budget: &mut usize) -> CallProgress {
+    let Some(active) = self.active.take() else { return CallProgress::Yield(self); };
+    match function_step(active, ops, budget) {
+        FunctionStep::Yield(active) => {
+            self.active = Some(active);
+            CallProgress::Yield(self)
+        },
+        FunctionStep::BoolBridge { function, site, arguments, caller } => CallProgress::Bool {
+            function, site, arguments,
+            resume: Box::new(move |value| {
+                self.active = Some(caller.resume(value));
+                self
+            }),
+        },
+        FunctionStep::Canonical { target, point, values } => {
+            match target {
+                data::compiled::CallTarget::Int(function) => {
+                    if let Some(caller) = self.integer_returns.pop() {
+                        let site = caller.site();
+                        return CallProgress::InterpretedInt {
+                            function, site, point, values,
+                            resume: Box::new(move |value| {
+                                self.active = Some(caller.resume(value));
+                                self
+                            }),
+                        };
+                    }
+                    CallProgress::Interpreted { point, values }
+                },
+                data::compiled::CallTarget::Bool(function) => {
+                    if let Some(caller) = self.boolean_returns.pop() {
+                        let site = caller.site();
+                        return CallProgress::InterpretedBool {
+                            function, site, point, values,
+                            resume: Box::new(move |value| {
+                                self.active = Some(caller.resume(value));
+                                self
+                            }),
+                        };
+                    }
+                    CallProgress::Interpreted { point, values }
+                },
+                data::compiled::CallTarget::IntFunction(function) => {
+                    if let Some(caller) = self.integer_function_returns.pop() {
+                        let site = caller.site();
+                        return CallProgress::InterpretedIntFunction {
+                            function, site, point, values,
+                            resume: Box::new(move |value| {
+                                self.active = Some(caller.resume(value));
+                                self
+                            }),
+                        };
+                    }
+                    CallProgress::Interpreted { point, values }
+                },
+                data::compiled::CallTarget::BoolFunction(function) => {
+                    if let Some(caller) = self.boolean_function_returns.pop() {
+                        let site = caller.site();
+                        return CallProgress::InterpretedBoolFunction {
+                            function, site, point, values,
+                            resume: Box::new(move |value| {
+                                self.active = Some(caller.resume(value));
+                                self
+                            }),
+                        };
+                    }
+                    CallProgress::Interpreted { point, values }
+                },
+            }
+        },
+    }
+}
+"#
+        );
+    }
+
+    #[test]
+    fn terminal_native_bridge_only_loops_when_resuming_native_calls_locally() {
+        use crate::{
+            ExecutionPlan, HostProviderModule, HostProviderSet, HostedExecution, ModuleSource,
+            PackageSource, StatelessHostProfile, compile_typed_host_program, compile_typed_module,
+            plan_host_program, plan_module,
+        };
+        let input = r#"
+@external(erlang, "native", "accepted")
+fn accepted(flag: Bool) -> Bool
+pub fn verify(flag: Bool) -> Bool {
+  let assert True = accepted(flag)
+  accepted(flag)
+}
+pub fn main() { let _ = verify(True) Nil }
+"#;
+        let native = HostProviderModule::<StatelessHostProfile>::new("example", "example")
+            .unwrap()
+            .with_function::<(bool,), bool, _>("accepted", |value| value)
+            .unwrap();
+        let typed = compile_typed_host_program(
+            "example",
+            "example",
+            [PackageSource::new(
+                "example",
+                Vec::<String>::new(),
+                [ModuleSource::new("example", "src/example.gleam", input)],
+            )],
+            HostProviderSet::from_providers([native]).unwrap(),
+        )
+        .unwrap();
+        let plan =
+            HostedExecution::try_from_module_plan(plan_host_program(typed).unwrap()).unwrap();
+        let codegen = CallCodegen::new(&plan.execution().program.functions);
+        let mut protocol = Code::default();
+        codegen.write_protocol(&mut protocol);
+        let expected_protocol = r#"#[allow(clippy::large_enum_variant, reason = "Typed locals stay inline to avoid allocating at each generated step.")]
+enum FunctionStep {
+    Yield(FunctionState),
+    Canonical { target: data::compiled::CallTarget, point: data::compiled::CompiledCheckpoint, values: CallValues },
+    BoolScalarBridge { function: data::function::BoolFunctionId, site: data::source::HostCallSite, input: CallNativeInput, caller: BoolReturn },
+}
+"#;
+        assert_eq!(protocol.as_str(), expected_protocol);
+        let mut ordinary = Code::default();
+        codegen.write_advance(&mut ordinary, false);
+        let expected_ordinary = r#"fn advance(mut self: Box<Self>, ops: &mut CallOps<'_>, budget: &mut usize) -> CallProgress {
+    let Some(active) = self.active.take() else { return CallProgress::Yield(self); };
+    let active = match active {
+        FunctionActive::Running(active) => active,
+        FunctionActive::BoolCall { function, site, input, caller } => {
+            return CallProgress::Bool {
+                function, site, arguments: input.arguments(),
+                resume: Box::new(move |value| {
+                    self.active = Some(FunctionActive::Running(caller.resume(value)));
+                    self
+                }),
+            };
+        },
+        FunctionActive::BoolReturn { caller, returned } => {
+            if *budget == 0 {
+                self.active = Some(FunctionActive::BoolReturn { caller, returned });
+                return CallProgress::Yield(self);
+            }
+            *budget -= 1;
+            caller.resume(returned.into_value())
+        },
+    };
+    match function_step(active, ops, budget) {
+        FunctionStep::Yield(active) => {
+            self.active = Some(FunctionActive::Running(active));
+            CallProgress::Yield(self)
+        },
+        FunctionStep::BoolScalarBridge { function, site, input, caller } => {
+            CallProgress::Bool {
+                function, site, arguments: input.arguments(),
+                resume: Box::new(move |value| {
+                    self.active = Some(FunctionActive::Running(caller.resume(value)));
+                    self
+                }),
+            }
+        },
+        FunctionStep::Canonical { target, point, values } => {
+            match target {
+                data::compiled::CallTarget::Int(function) => {
+                    if let Some(caller) = self.integer_returns.pop() {
+                        let site = caller.site();
+                        return CallProgress::InterpretedInt {
+                            function, site, point, values,
+                            resume: Box::new(move |value| {
+                                self.active = Some(FunctionActive::Running(caller.resume(value)));
+                                self
+                            }),
+                        };
+                    }
+                    CallProgress::Interpreted { point, values }
+                },
+                data::compiled::CallTarget::Bool(function) => {
+                    if let Some(caller) = self.boolean_returns.pop() {
+                        let site = caller.site();
+                        return CallProgress::InterpretedBool {
+                            function, site, point, values,
+                            resume: Box::new(move |value| {
+                                self.active = Some(FunctionActive::Running(caller.resume(value)));
+                                self
+                            }),
+                        };
+                    }
+                    CallProgress::Interpreted { point, values }
+                },
+                data::compiled::CallTarget::IntFunction(function) => {
+                    if let Some(caller) = self.integer_function_returns.pop() {
+                        let site = caller.site();
+                        return CallProgress::InterpretedIntFunction {
+                            function, site, point, values,
+                            resume: Box::new(move |value| {
+                                self.active = Some(FunctionActive::Running(caller.resume(value)));
+                                self
+                            }),
+                        };
+                    }
+                    CallProgress::Interpreted { point, values }
+                },
+                data::compiled::CallTarget::BoolFunction(function) => {
+                    if let Some(caller) = self.boolean_function_returns.pop() {
+                        let site = caller.site();
+                        return CallProgress::InterpretedBoolFunction {
+                            function, site, point, values,
+                            resume: Box::new(move |value| {
+                                self.active = Some(FunctionActive::Running(caller.resume(value)));
+                                self
+                            }),
+                        };
+                    }
+                    CallProgress::Interpreted { point, values }
+                },
+            }
+        },
+    }
+}
+"#;
+        assert_eq!(ordinary.as_str(), expected_ordinary);
+        let mut native = Code::default();
+        codegen.write_advance(&mut native, true);
+        let expected_native = r#"fn advance_native(mut self: Box<Self>, ops: &mut CallOps<'_>, budget: &mut usize, native: &mut CallNativeOps<'_>) -> Result<Option<CallProgress>, CallNativeFailure> {
+    let Some(active) = self.active.take() else { return Ok(Some(CallProgress::Yield(self))); };
+    let mut active = match active {
+        FunctionActive::Running(active) => active,
+        FunctionActive::BoolCall { function, site, input, caller } => {
+            if let CallNativeOps::Bool { function: target, native } = native && *target == function {
+                if *budget == 0 {
+                    self.active = Some(FunctionActive::BoolCall { function, site, input, caller });
+                    return Ok(Some(CallProgress::Yield(self)));
+                }
+                *budget -= 1;
+                let Some(returned) = native.call(input, site)? else { return Ok(None); };
+                if *budget == 0 {
+                    self.active = Some(FunctionActive::BoolReturn { caller, returned });
+                    return Ok(Some(CallProgress::Yield(self)));
+                }
+                *budget -= 1;
+                caller.resume(returned.into_value())
+            } else {
+                return Ok(Some(CallProgress::Bool {
+                    function, site, arguments: input.arguments(),
+                    resume: Box::new(move |value| {
+                        self.active = Some(FunctionActive::Running(caller.resume(value)));
+                        self
+                    }),
+                }));
+            }
+        },
+        FunctionActive::BoolReturn { caller, returned } => {
+            if *budget == 0 {
+                self.active = Some(FunctionActive::BoolReturn { caller, returned });
+                return Ok(Some(CallProgress::Yield(self)));
+            }
+            *budget -= 1;
+            caller.resume(returned.into_value())
+        },
+    };
+    loop {
+        match function_step(active, ops, budget) {
+            FunctionStep::Yield(active) => {
+                self.active = Some(FunctionActive::Running(active));
+                return Ok(Some(CallProgress::Yield(self)));
+            },
+            FunctionStep::BoolScalarBridge { function, site, input, caller } => {
+                active = {
+                    if let CallNativeOps::Bool { function: target, native } = native && *target == function {
+                        if *budget == 0 {
+                            self.active = Some(FunctionActive::BoolCall { function, site, input, caller });
+                            return Ok(Some(CallProgress::Yield(self)));
+                        }
+                        *budget -= 1;
+                        let Some(returned) = native.call(input, site)? else { return Ok(None); };
+                        if *budget == 0 {
+                            self.active = Some(FunctionActive::BoolReturn { caller, returned });
+                            return Ok(Some(CallProgress::Yield(self)));
+                        }
+                        *budget -= 1;
+                        caller.resume(returned.into_value())
+                    } else {
+                        return Ok(Some(CallProgress::Bool {
+                            function, site, arguments: input.arguments(),
+                            resume: Box::new(move |value| {
+                                self.active = Some(FunctionActive::Running(caller.resume(value)));
+                                self
+                            }),
+                        }));
+                    }
+                };
+            },
+            FunctionStep::Canonical { target, point, values } => {
+                match target {
+                    data::compiled::CallTarget::Int(function) => {
+                        if let Some(caller) = self.integer_returns.pop() {
+                            let site = caller.site();
+                            return Ok(Some(CallProgress::InterpretedInt {
+                                function, site, point, values,
+                                resume: Box::new(move |value| {
+                                    self.active = Some(FunctionActive::Running(caller.resume(value)));
+                                    self
+                                }),
+                            }));
+                        }
+                        return Ok(Some(CallProgress::Interpreted { point, values }));
+                    },
+                    data::compiled::CallTarget::Bool(function) => {
+                        if let Some(caller) = self.boolean_returns.pop() {
+                            let site = caller.site();
+                            return Ok(Some(CallProgress::InterpretedBool {
+                                function, site, point, values,
+                                resume: Box::new(move |value| {
+                                    self.active = Some(FunctionActive::Running(caller.resume(value)));
+                                    self
+                                }),
+                            }));
+                        }
+                        return Ok(Some(CallProgress::Interpreted { point, values }));
+                    },
+                    data::compiled::CallTarget::IntFunction(function) => {
+                        if let Some(caller) = self.integer_function_returns.pop() {
+                            let site = caller.site();
+                            return Ok(Some(CallProgress::InterpretedIntFunction {
+                                function, site, point, values,
+                                resume: Box::new(move |value| {
+                                    self.active = Some(FunctionActive::Running(caller.resume(value)));
+                                    self
+                                }),
+                            }));
+                        }
+                        return Ok(Some(CallProgress::Interpreted { point, values }));
+                    },
+                    data::compiled::CallTarget::BoolFunction(function) => {
+                        if let Some(caller) = self.boolean_function_returns.pop() {
+                            let site = caller.site();
+                            return Ok(Some(CallProgress::InterpretedBoolFunction {
+                                function, site, point, values,
+                                resume: Box::new(move |value| {
+                                    self.active = Some(FunctionActive::Running(caller.resume(value)));
+                                    self
+                                }),
+                            }));
+                        }
+                        return Ok(Some(CallProgress::Interpreted { point, values }));
+                    },
+                }
+            },
+        }
+    }
+}
+"#;
+        assert_eq!(native.as_str(), expected_native);
+
+        let plain_input = r#"
+fn accepted(_flag: Bool) -> Bool {
+  let value = "ok"
+  value == "ok"
+}
+pub fn verify(flag: Bool) -> Bool {
+  let assert True = accepted(flag)
+  accepted(flag)
+}
+pub fn main() { let _ = verify(True) Nil }
+"#;
+        let typed = compile_typed_module("example", "src/example.gleam", plain_input).unwrap();
+        let plain = ExecutionPlan::from_module_plan(plan_module(typed).unwrap());
+        let codegen = CallCodegen::new(&plain.program.functions);
+        let mut protocol = Code::default();
+        codegen.write_protocol(&mut protocol);
+        assert_eq!(protocol.as_str(), expected_protocol);
+        let mut ordinary = Code::default();
+        codegen.write_advance(&mut ordinary, false);
+        assert_eq!(ordinary.as_str(), expected_ordinary);
+        let mut native = Code::default();
+        codegen.write_advance(&mut native, true);
+        assert_eq!(native.as_str(), expected_native);
+    }
+
+    #[test]
     fn scalar_native_bridges_seal_the_caller_and_charge_call_and_return_separately() {
         use crate::{
             HostProviderModule, HostProviderSet, HostedExecution, ModuleSource, PackageSource,
@@ -2515,7 +2945,7 @@ pub fn main() { let _ = integer(7) let _ = boolean(True) Nil }
         assert!(codegen.has_native_bridge(CallFamily::Bool));
         for (family, name) in [(CallFamily::Int, "Int"), (CallFamily::Bool, "Bool")] {
             let mut native = Code::default();
-            codegen.write_native_bridge(&mut native, family, true, "Ok(Some(", "))");
+            codegen.write_native_bridge(&mut native, family, true, true);
             assert_eq!(
                 native.as_str(),
                 r#"if let CallNativeOps::FAMILY { function: target, native } = native && *target == function {
@@ -2543,7 +2973,7 @@ pub fn main() { let _ = integer(7) let _ = boolean(True) Nil }
 "#.replace("FAMILY", name)
             );
             let mut ordinary = Code::default();
-            codegen.write_native_bridge(&mut ordinary, family, false, "", "");
+            codegen.write_native_bridge(&mut ordinary, family, false, true);
             assert_eq!(
                 ordinary.as_str(),
                 r#"return CallProgress::FAMILY {
@@ -2553,6 +2983,20 @@ pub fn main() { let _ = integer(7) let _ = boolean(True) Nil }
         self
     }),
 };
+"#
+                .replace("FAMILY", name)
+            );
+            let mut terminal = Code::default();
+            codegen.write_native_bridge(&mut terminal, family, false, false);
+            assert_eq!(
+                terminal.as_str(),
+                r#"CallProgress::FAMILY {
+    function, site, arguments: input.arguments(),
+    resume: Box::new(move |value| {
+        self.active = Some(FunctionActive::Running(caller.resume(value)));
+        self
+    }),
+}
 "#
                 .replace("FAMILY", name)
             );
@@ -2618,9 +3062,37 @@ FunctionState::Bool0Point2 { bool0, bool1, bool2 } => {
 "#
         );
         let mut execution = Code::default();
-        codegen.write_execution(&mut execution);
-        assert!(!execution.as_str().contains("FunctionStep::Next"));
-        assert!(!execution.as_str().contains("FunctionStep::Canonical"));
+        codegen.write_advance(&mut execution, false);
+        assert_eq!(
+            execution.as_str(),
+            r#"fn advance(mut self: Box<Self>, ops: &mut CallOps<'_>, budget: &mut usize) -> CallProgress {
+    let Some(mut active) = self.active.take() else { return CallProgress::Yield(self); };
+    loop {
+        match function_step(active, ops, budget) {
+            FunctionStep::Yield(active) => {
+                self.active = Some(active);
+                return CallProgress::Yield(self);
+            },
+            FunctionStep::BoolCall { callee, caller } => {
+                self.boolean_returns.push(caller);
+                active = callee;
+            },
+            FunctionStep::Bool { value, exit } => {
+                if let Some(caller) = self.boolean_returns.pop() {
+                    active = caller.small(value);
+                } else {
+                    self.integer_returns.clear();
+                    self.boolean_returns.clear();
+                    self.integer_function_returns.clear();
+                    self.boolean_function_returns.clear();
+                    return CallProgress::Complete { exit, output: CallOutput::Bool(value), execution: self };
+                }
+            },
+        }
+    }
+}
+"#
+        );
         let mut continuation = Code::default();
         codegen.write_continuations(&mut continuation, CallFamily::Bool);
         assert_eq!(
@@ -2895,6 +3367,68 @@ enum FunctionStep {
     Bool { value: bool, exit: data::graph::BlockGraphExitId },
     IntFunction { value: IntCallable, exit: data::graph::BlockGraphExitId },
     BoolFunction { value: BoolCallable, exit: data::graph::BlockGraphExitId },
+}
+"#
+        );
+        let mut advance = Code::default();
+        codegen.write_advance(&mut advance, false);
+        assert_eq!(
+            advance.as_str(),
+            r#"fn advance(mut self: Box<Self>, ops: &mut CallOps<'_>, budget: &mut usize) -> CallProgress {
+    let Some(mut active) = self.active.take() else { return CallProgress::Yield(self); };
+    loop {
+        match function_step(active, ops, budget) {
+            FunctionStep::Next(next) => active = next,
+            FunctionStep::Yield(active) => {
+                self.active = Some(active);
+                return CallProgress::Yield(self);
+            },
+            FunctionStep::Int { value, exit } => {
+                if let Some(caller) = self.integer_returns.pop() {
+                    active = caller.small(value);
+                } else {
+                    self.integer_returns.clear();
+                    self.boolean_returns.clear();
+                    self.integer_function_returns.clear();
+                    self.boolean_function_returns.clear();
+                    return CallProgress::Complete { exit, output: CallOutput::Int(value.into()), execution: self };
+                }
+            },
+            FunctionStep::Bool { value, exit } => {
+                if let Some(caller) = self.boolean_returns.pop() {
+                    active = caller.small(value);
+                } else {
+                    self.integer_returns.clear();
+                    self.boolean_returns.clear();
+                    self.integer_function_returns.clear();
+                    self.boolean_function_returns.clear();
+                    return CallProgress::Complete { exit, output: CallOutput::Bool(value), execution: self };
+                }
+            },
+            FunctionStep::IntFunction { value, exit } => {
+                if let Some(caller) = self.integer_function_returns.pop() {
+                    active = caller.small(value);
+                } else {
+                    self.integer_returns.clear();
+                    self.boolean_returns.clear();
+                    self.integer_function_returns.clear();
+                    self.boolean_function_returns.clear();
+                    return CallProgress::Complete { exit, output: CallOutput::IntFunction(value), execution: self };
+                }
+            },
+            FunctionStep::BoolFunction { value, exit } => {
+                if let Some(caller) = self.boolean_function_returns.pop() {
+                    active = caller.small(value);
+                } else {
+                    self.integer_returns.clear();
+                    self.boolean_returns.clear();
+                    self.integer_function_returns.clear();
+                    self.boolean_function_returns.clear();
+                    return CallProgress::Complete { exit, output: CallOutput::BoolFunction(value), execution: self };
+                }
+            },
+        }
+    }
 }
 "#
         );

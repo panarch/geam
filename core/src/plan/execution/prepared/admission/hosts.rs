@@ -792,115 +792,123 @@ pub fn main() {
 
     #[test]
     fn never_native_targets_are_checked_and_preserve_their_source_failure() {
-        use std::convert::Infallible;
-        let hosts = || {
-            HostProviderSet::<NativeProfile>::from_providers([HostProviderModule::new(
-                "app", "main",
-            )
-            .unwrap()
-            .with_fallible_function("stop", || -> Result<Infallible, crate::HostFailure> {
-                Err(crate::HostFailure::new("native stopped"))
-            })
-            .unwrap()])
-            .unwrap()
-        };
-        for source in [
-            "@external(erlang, \"native\", \"stop\") fn stop() -> a pub fn main() { stop() }",
-            "@external(erlang, \"native\", \"stop\") fn stop() -> a pub fn main() -> Int { stop() + 1 }",
-        ] {
-            let (program, values, nevers) = lowered(source, hosts());
-            let common = &program.common;
-            let types = Types::admit(
-                &common.list_types,
-                &common.custom_types,
-                &common.external_types,
-                &common.value_shapes,
-            )
-            .unwrap();
-            let catalog =
-                Catalog::admit(&common.function_parameters, &program.functions, &types).unwrap();
-            let sources = Sources::admit(common.root, &common.modules).unwrap();
-            let context = Instructions {
-                types: &types,
-                sources: &sources,
-                catalog: &catalog,
-                constants: &common.constants,
+        use crate::host::HostProfile;
+
+        check_profile::<NativeProfile>();
+        check_profile::<StatelessHostProfile>();
+
+        fn check_profile<Profile: HostProfile<RunState = ()>>() {
+            use std::convert::Infallible;
+            let hosts = || {
+                HostProviderSet::<Profile>::from_providers([HostProviderModule::new("app", "main")
+                    .unwrap()
+                    .with_fallible_function("stop", || -> Result<Infallible, crate::HostFailure> {
+                        Err(crate::HostFailure::new("native stopped"))
+                    })
+                    .unwrap()])
+                .unwrap()
             };
-            assert_eq!(nevers.len(), 1);
-            let linked = NativeFunctions::new(&values, &nevers, hosts()).unwrap();
-            assert_eq!(linked.tables(&context), Ok(()));
-            assert_eq!(
-                functions::all(&program.functions, &context, &linked),
-                Ok(())
-            );
-            use super::super::call::Target;
-            let declaration = common.main.resolve(&catalog, &types).unwrap();
-            assert_eq!(
-                linked.never(
-                    &crate::plan::execution::host::HostNeverFunctionId(999),
-                    &declaration,
-                    &context
-                ),
-                Err(NativeError::MissingNever(999)),
-            );
-            let mut changed = common.main.resolve(&catalog, &types).unwrap();
-            changed.return_type = &crate::plan::execution::type_::ValueType::Bool;
-            assert_eq!(
-                linked.never(
-                    &crate::plan::execution::host::HostNeverFunctionId(0),
-                    &changed,
-                    &context
-                ),
-                Err(NativeError::Call(ContractError::Signature)),
-            );
-            drop(linked);
-            let mut invalid = nevers;
-            invalid[0].signature.arguments = Table::Static(&[TypeMetadata::Int]);
-            let invalid_link = NativeFunctions::new(&values, &invalid, hosts()).unwrap();
-            assert_eq!(
-                invalid_link.tables(&context),
-                Err(NativeError::Contract {
-                    value: false,
-                    index: 0,
-                    reason: ContractError::Signature,
-                })
-            );
-            drop(invalid_link);
-            invalid[0].signature.arguments = Table::Static(&[]);
-            let span = crate::plan::SourceSpan::new(source.len() + 1, source.len() + 2);
-            invalid[0].site = crate::plan::HostCallSite::from_static("main", "stop", span);
-            let invalid_link = NativeFunctions::new(&values, &invalid, hosts()).unwrap();
-            assert_eq!(
-                invalid_link.tables(&context),
-                Err(NativeError::Contract {
-                    value: false,
-                    index: 0,
-                    reason: ContractError::Source(super::super::source::SourceError::SpanBounds {
-                        module: "main".into(),
-                        span,
-                    }),
-                })
-            );
-            let typed = crate::compile_typed_host_program(
-                "app",
-                "main",
-                [PackageSource::new(
+            for source in [
+                "@external(erlang, \"native\", \"stop\") fn stop() -> a pub fn main() { stop() }",
+                "@external(erlang, \"native\", \"stop\") fn stop() -> a pub fn main() -> Int { stop() + 1 }",
+            ] {
+                let (program, values, nevers) = lowered(source, hosts());
+                let common = &program.common;
+                let types = Types::admit(
+                    &common.list_types,
+                    &common.custom_types,
+                    &common.external_types,
+                    &common.value_shapes,
+                )
+                .unwrap();
+                let catalog =
+                    Catalog::admit(&common.function_parameters, &program.functions, &types)
+                        .unwrap();
+                let sources = Sources::admit(common.root, &common.modules).unwrap();
+                let context = Instructions {
+                    types: &types,
+                    sources: &sources,
+                    catalog: &catalog,
+                    constants: &common.constants,
+                };
+                assert_eq!(nevers.len(), 1);
+                let linked = NativeFunctions::new(&values, &nevers, hosts()).unwrap();
+                assert_eq!(linked.tables(&context), Ok(()));
+                assert_eq!(
+                    functions::all(&program.functions, &context, &linked),
+                    Ok(())
+                );
+                use super::super::call::Target;
+                let declaration = common.main.resolve(&catalog, &types).unwrap();
+                assert_eq!(
+                    linked.never(
+                        &crate::plan::execution::host::HostNeverFunctionId(999),
+                        &declaration,
+                        &context
+                    ),
+                    Err(NativeError::MissingNever(999)),
+                );
+                let mut changed = common.main.resolve(&catalog, &types).unwrap();
+                changed.return_type = &crate::plan::execution::type_::ValueType::Bool;
+                assert_eq!(
+                    linked.never(
+                        &crate::plan::execution::host::HostNeverFunctionId(0),
+                        &changed,
+                        &context
+                    ),
+                    Err(NativeError::Call(ContractError::Signature)),
+                );
+                drop(linked);
+                let mut invalid = nevers;
+                invalid[0].signature.arguments = Table::Static(&[TypeMetadata::Int]);
+                let invalid_link = NativeFunctions::new(&values, &invalid, hosts()).unwrap();
+                assert_eq!(
+                    invalid_link.tables(&context),
+                    Err(NativeError::Contract {
+                        value: false,
+                        index: 0,
+                        reason: ContractError::Signature,
+                    })
+                );
+                drop(invalid_link);
+                invalid[0].signature.arguments = Table::Static(&[]);
+                let span = crate::plan::SourceSpan::new(source.len() + 1, source.len() + 2);
+                invalid[0].site = crate::plan::HostCallSite::from_static("main", "stop", span);
+                let invalid_link = NativeFunctions::new(&values, &invalid, hosts()).unwrap();
+                assert_eq!(
+                    invalid_link.tables(&context),
+                    Err(NativeError::Contract {
+                        value: false,
+                        index: 0,
+                        reason: ContractError::Source(
+                            super::super::source::SourceError::SpanBounds {
+                                module: "main".into(),
+                                span,
+                            }
+                        ),
+                    })
+                );
+                let typed = crate::compile_typed_host_program(
                     "app",
-                    Vec::<&str>::new(),
-                    [ModuleSource::new("main", "src/main.gleam", source)],
-                )],
-                hosts(),
-            )
-            .unwrap();
-            let mut execution = crate::HostedExecution::try_from_module_plan(
-                crate::plan_host_program(typed).unwrap(),
-            )
-            .unwrap();
-            let error = crate::execution_fixture::run(&mut execution, &mut (), &mut Vec::new())
-                .unwrap_err();
-            assert!(matches!(error, crate::ExecutionError::Host(error)
-                if error.package() == "app" && error.module() == "main"
-                    && error.function() == "stop" && error.failure().message() == "native stopped"));
+                    "main",
+                    [PackageSource::new(
+                        "app",
+                        Vec::<&str>::new(),
+                        [ModuleSource::new("main", "src/main.gleam", source)],
+                    )],
+                    hosts(),
+                )
+                .unwrap();
+                let mut execution = crate::HostedExecution::try_from_module_plan(
+                    crate::plan_host_program(typed).unwrap(),
+                )
+                .unwrap();
+                let error = crate::execution_fixture::run(&mut execution, &mut (), &mut Vec::new())
+                    .unwrap_err();
+                assert!(matches!(error, crate::ExecutionError::Host(error)
+                    if error.package() == "app" && error.module() == "main"
+                        && error.function() == "stop" && error.failure().message() == "native stopped"));
+            }
         }
     }
 
