@@ -1,5 +1,5 @@
 use super::same;
-use crate::host::{HostCustomTypeSchema, HostExternalTypeSchema, HostSchemaType};
+use crate::host::{HostCustomAccess, HostCustomTypeSchema, HostExternalTypeSchema, HostSchemaType};
 use crate::plan::Text;
 use crate::plan::execution::prepared::rust::{Emit, Rust};
 use crate::plan::execution::storage::{Node, Table};
@@ -10,6 +10,7 @@ pub struct ExternalSchema {
     pub module: Text,
     pub name: Text,
     pub parameter_count: usize,
+    pub lifetime: crate::host::HostValueLifetime,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -19,7 +20,8 @@ pub struct CustomSchema {
     pub name: Text,
     pub parameter_count: usize,
     pub constructors: Table<ConstructorSchema>,
-    pub shared: bool,
+    pub access: HostCustomAccess,
+    pub lifetime: crate::host::HostValueLifetime,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -71,20 +73,22 @@ pub enum SchemaType {
 }
 
 impl ExternalSchema {
-    pub(super) fn from_schema(schema: &HostExternalTypeSchema) -> Self {
+    pub(in crate::plan::execution) fn from_schema(schema: &HostExternalTypeSchema) -> Self {
         Self {
             package: schema.package().clone().into(),
             module: schema.module().clone().into(),
             name: schema.name().clone().into(),
             parameter_count: schema.parameter_count(),
+            lifetime: schema.lifetime(),
         }
     }
 
-    pub(super) fn matches(&self, schema: &HostExternalTypeSchema) -> bool {
+    pub(in crate::plan::execution) fn matches(&self, schema: &HostExternalTypeSchema) -> bool {
         self.package.as_str() == schema.package().as_str()
             && self.module.as_str() == schema.module().as_str()
             && self.name.as_str() == schema.name().as_str()
             && self.parameter_count == schema.parameter_count()
+            && self.lifetime == schema.lifetime()
     }
 }
 
@@ -95,7 +99,8 @@ impl CustomSchema {
             module: schema.module().clone().into(),
             name: schema.name().clone().into(),
             parameter_count: schema.parameter_count(),
-            shared: schema.requires_shared_access(),
+            access: schema.access(),
+            lifetime: schema.lifetime(),
             constructors: schema
                 .constructors()
                 .iter()
@@ -119,7 +124,8 @@ impl CustomSchema {
             && self.module.as_str() == schema.module().as_str()
             && self.name.as_str() == schema.name().as_str()
             && self.parameter_count == schema.parameter_count()
-            && self.shared == schema.requires_shared_access()
+            && self.lifetime == schema.lifetime()
+            && self.access == schema.access()
             && same(&self.constructors, schema.constructors(), |left, right| {
                 left.name.as_str() == right.name().as_str()
                     && same(&left.fields, right.fields(), |left, right| {
@@ -256,6 +262,7 @@ impl Emit for ExternalSchema {
             module,
             name,
             parameter_count,
+            lifetime,
         } = self;
         output.structure(
             "host::ExternalSchema",
@@ -264,6 +271,7 @@ impl Emit for ExternalSchema {
                 ("module", module),
                 ("name", name),
                 ("parameter_count", parameter_count),
+                ("lifetime", lifetime),
             ],
         );
     }
@@ -277,7 +285,8 @@ impl Emit for CustomSchema {
             name,
             parameter_count,
             constructors,
-            shared,
+            access,
+            lifetime,
         } = self;
         output.structure(
             "host::CustomSchema",
@@ -286,8 +295,9 @@ impl Emit for CustomSchema {
                 ("module", module),
                 ("name", name),
                 ("parameter_count", parameter_count),
+                ("lifetime", lifetime),
                 ("constructors", constructors),
-                ("shared", shared),
+                ("access", access),
             ],
         );
     }
@@ -481,6 +491,7 @@ data::host::SchemaType::Custom {
                 },
                 S::External {
                     schema: ExternalSchema {
+                        lifetime: crate::HostValueLifetime::Execution,
                         package: "app".into(),
                         module: "types".into(),
                         name: "Token".into(),
@@ -495,6 +506,7 @@ data::host::SchemaType::External {
         module: data::Text::Static("types"),
         name: data::Text::Static("Token"),
         parameter_count: 1,
+        lifetime: data::host::HostValueLifetime::Execution,
     },
     arguments: data::Storage::Static(&[
         data::host::SchemaType::Int,
@@ -578,6 +590,7 @@ data::host::SchemaType::External {
         }
         let external = S::External {
             schema: ExternalSchema {
+                lifetime: crate::HostValueLifetime::Execution,
                 package: "app".into(),
                 module: "types".into(),
                 name: "Token".into(),
@@ -619,7 +632,8 @@ data::host::SchemaType::External {
             ],
         );
         let expected = CustomSchema {
-            shared: false,
+            lifetime: crate::HostValueLifetime::LoadedOwner,
+            access: crate::host::HostCustomAccess::Declared,
             package: "app".into(),
             module: "types".into(),
             name: "Box".into(),
@@ -660,6 +674,7 @@ data::host::CustomSchema {
     module: data::Text::Static("types"),
     name: data::Text::Static("Box"),
     parameter_count: 1,
+    lifetime: data::host::HostValueLifetime::LoadedOwner,
     constructors: data::Storage::Static(&[
         data::host::ConstructorSchema {
             name: data::Text::Static("Box"),
@@ -679,13 +694,13 @@ data::host::CustomSchema {
             fields: data::Storage::Static(&[]),
         },
     ]),
-    shared: false,
+    access: data::host::HostCustomAccess::Declared,
 }"#
         .trim_start_matches('\n');
         assert_eq!(Rust::expression(&expected), expression);
         assert_eq!(
             Rust::expression(&required),
-            expression.replace("shared: false", "shared: true")
+            expression.replace("HostCustomAccess::Declared", "HostCustomAccess::Shared")
         );
         for (package, module, name, count) in [
             ("other", "types", "Box", 1),

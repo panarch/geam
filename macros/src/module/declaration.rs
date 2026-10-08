@@ -500,6 +500,7 @@ pub(super) fn generate_custom_declaration(
                 #(#nested_requirement_bounds,)*
             {
                 type Error = #support::HostCallError;
+                type Storage = #support::ProviderConvertedStorage;
 
                 fn into_host<'__geam_call>(
                     self,

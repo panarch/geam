@@ -20,7 +20,7 @@ mod selection {
     use geam::provider::advanced::{
         Equality, Hashing, Inspection, NativeKind, NativeValue, RetainedExternalPayload,
     };
-    use geam::provider::{BigInt, Call, EcoString, HostResult, StringValue, Value};
+    use geam::provider::{BigInt, Call, EcoString, HostResult, Restore, StringValue, Value};
     use std::cell::Cell;
     use std::time::Duration;
 
@@ -55,13 +55,14 @@ mod selection {
         #[geam::call] call: &mut Call<()>,
         target: service::Pid,
         message: Value<Message>,
-    ) -> () {
-        call.send(&target, message);
+    ) -> HostResult<()> {
+        call.send(&target, message)
     }
 
     #[geam::function(await, profile = Profile)]
     async fn receive<Identity>(
         #[geam::call] call: &mut Call<()>,
+        #[geam::restore] restore: Restore<service::Reference>,
         identity: Value<Identity>,
         forever: bool,
     ) -> HostResult<Result<(StringValue, service::Reference, BigInt), ()>> {
@@ -87,7 +88,7 @@ mod selection {
             Some(selected) => Ok((|| {
                 Some((
                     selected.tag,
-                    call.restore_native::<service::Reference>(&selected.identity)?,
+                    call.restore_native::<service::Reference>(&restore, &selected.identity)?,
                     selected.payload.as_int()?,
                 ))
             })()
@@ -100,6 +101,7 @@ mod selection {
     #[geam::function(await, profile = Profile)]
     async fn next(
         #[geam::call] call: &mut Call<()>,
+        #[geam::restore] restore: Restore<service::Reference>,
     ) -> HostResult<Result<(StringValue, service::Reference, BigInt), ()>> {
         let receive = call
             .with_call(|call| call.receive_any(Some(Duration::ZERO)))
@@ -112,7 +114,7 @@ mod selection {
             Some(selected) => Ok((|| {
                 Some((
                     selected.tag,
-                    call.restore_native::<service::Reference>(&selected.identity)?,
+                    call.restore_native::<service::Reference>(&restore, &selected.identity)?,
                     selected.payload.as_int()?,
                 ))
             })()
@@ -221,6 +223,7 @@ pub fn receive(
                 project.join("src/selective_receive_service_fixture.gleam"),
                 r#"
 import gleam/dict
+import gleam/erlang/process
 import gleam/erlang/reference
 import selective_receive_service_fixture/native
 pub fn main() {
@@ -231,6 +234,8 @@ pub fn main() {
   let other = native.key(b)
   let keys = dict.from_list([#(key, 11), #(other, 22)])
   let strings = dict.from_list([#(native.key("key"), 33)])
+  native.send(process.self(), #("tcp", a, 42))
+  let assert Ok(#("tcp", delivered, payload)) = native.next()
   echo native.key("key")
   #(
     key == alias,
@@ -238,6 +243,8 @@ pub fn main() {
     dict.get(keys, alias),
     dict.get(keys, other),
     dict.get(strings, native.key("key")),
+    native.key(delivered) == key,
+    payload,
   )
 }
 "#,
@@ -275,7 +282,7 @@ pub fn main() {
                 .unwrap();
             assert_eq!(
                 value.inspect().to_string(),
-                "#(True, False, Ok(11), Ok(22), Ok(33))"
+                "#(True, False, Ok(11), Ok(22), Ok(33), True, 42)"
             );
             drop(execution);
             drop(state);

@@ -114,6 +114,7 @@ pub struct ListTypeTable {
     pub types: Table<ListStorageTypeId>,
     pub tuple_items: Table<Table<ValueType>>,
     pub function_items: Table<FunctionType>,
+    pub lifetimes: Table<crate::host::HostValueLifetime>,
 }
 
 impl ListStorageTypeId {
@@ -342,6 +343,7 @@ impl ListTypeTable {
         function_items: Vec<FunctionType>,
     ) -> Self {
         Self {
+            lifetimes: vec![crate::host::HostValueLifetime::LoadedOwner; types.len()].into(),
             types: types.into(),
             tuple_items: tuple_items.into_iter().map(Table::from).collect(),
             function_items: function_items.into(),
@@ -702,6 +704,7 @@ impl Emit for ListTypeTable {
             types,
             tuple_items,
             function_items,
+            lifetimes,
         } = self;
         output.structure(
             "type_::ListTypeTable",
@@ -709,6 +712,7 @@ impl Emit for ListTypeTable {
                 ("types", types),
                 ("tuple_items", tuple_items),
                 ("function_items", function_items),
+                ("lifetimes", lifetimes),
             ],
         );
     }

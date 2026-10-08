@@ -20,7 +20,8 @@ pub(super) struct LinkedModule {
     pub(super) module_name: EcoString,
     pub(super) source_context: Option<SourceContext>,
     pub(super) custom_types: Vec<crate::plan::CustomTypeDefinition>,
-    pub(super) shared_custom_types: Vec<crate::plan::CustomTypeName>,
+    pub(super) shared_custom_types:
+        Vec<(crate::plan::CustomTypeName, crate::host::HostCustomAccess)>,
     pub(super) external_types: Vec<crate::plan::ExternalTypeDefinition>,
     pub(super) functions_by_name: HashMap<EcoString, FunctionInfo>,
     pub(super) functions: Vec<LinkedFunction>,

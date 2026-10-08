@@ -171,13 +171,15 @@ where
 
 /// Conversion from an owned provider value into transferable execution.
 #[doc(hidden)]
-pub trait ProviderOutputValue<Profile, Provider, Return>: ProviderTypedValue<Profile>
+pub trait ProviderOutputValue<Profile, Provider, Return>:
+    ProviderTypedValue<Profile> + Sized
 where
     Profile: HostProfile,
     Provider: HostProvider<Profile>,
     Return: HostType,
 {
     type Error: Into<HostCallError>;
+    type Storage: ProviderOutputStorage<Self, Profile, Provider, Return>;
 
     fn into_host<'call>(
         self,
@@ -189,14 +191,11 @@ where
         self,
         call: &mut HostCall<'call, Profile, Provider, Return>,
         constructions: &ProviderConstructions<'call, Self::OutputRequirements>,
-    ) -> Result<super::advanced::StoredDynamic<Owner>, Self::Error>
-    where
-        Self: Sized,
-    {
-        let value = self.into_host(call, constructions)?;
-        Ok(super::advanced::StoredDynamic::from_runtime_value(
-            call.retain_value::<Self::Host>(value),
-        ))
+    ) -> Result<
+        super::advanced::StoredDynamic<Owner>,
+        ProviderStorageError<Self, Profile, Provider, Return>,
+    > {
+        Self::Storage::store(self, call, constructions)
     }
 
     fn into_host_infallible<'call>(
@@ -210,6 +209,59 @@ where
     {
         self.into_host(call, constructions)
             .unwrap_or_else(|never| match never {})
+    }
+}
+
+/// Static storage conversion selected by one provider output family.
+#[doc(hidden)]
+pub trait ProviderOutputStorage<Type, Profile, Provider, Return>
+where
+    Profile: HostProfile,
+    Provider: HostProvider<Profile>,
+    Return: HostType,
+    Type: ProviderTypedValue<Profile>,
+{
+    type Error: Into<HostCallError>;
+
+    fn store<'call, Owner: super::ProviderStoredOwner>(
+        value: Type,
+        call: &mut HostCall<'call, Profile, Provider, Return>,
+        constructions: &ProviderConstructions<'call, Type::OutputRequirements>,
+    ) -> Result<super::advanced::StoredDynamic<Owner>, Self::Error>;
+}
+
+#[doc(hidden)]
+pub type ProviderStorageError<Type, Profile, Provider, Return> =
+    <<Type as ProviderOutputValue<Profile, Provider, Return>>::Storage as ProviderOutputStorage<
+        Type,
+        Profile,
+        Provider,
+        Return,
+    >>::Error;
+
+/// Storage of a new output uses its ordinary checked conversion.
+#[doc(hidden)]
+pub struct ProviderConvertedStorage;
+
+impl<Type, Profile, Provider, Return> ProviderOutputStorage<Type, Profile, Provider, Return>
+    for ProviderConvertedStorage
+where
+    Profile: HostProfile,
+    Provider: HostProvider<Profile>,
+    Return: HostType,
+    Type: ProviderOutputValue<Profile, Provider, Return>,
+{
+    type Error = Type::Error;
+
+    fn store<'call, Owner: super::ProviderStoredOwner>(
+        value: Type,
+        call: &mut HostCall<'call, Profile, Provider, Return>,
+        constructions: &ProviderConstructions<'call, Type::OutputRequirements>,
+    ) -> Result<super::advanced::StoredDynamic<Owner>, Self::Error> {
+        let value = value.into_host(call, constructions)?;
+        Ok(super::advanced::StoredDynamic::from_runtime_value(
+            call.retain_value::<Type::Host>(value),
+        ))
     }
 }
 
@@ -303,7 +355,7 @@ where
     fn immediate_output<'call, Provider, Return>(
         call: &mut HostCall<'call, Profile, Provider, Return>,
         value: super::ProviderExternalView<Self>,
-    ) -> <Self::Host as HostType>::Value<'call>
+    ) -> Result<<Self::Host as HostType>::Value<'call>, HostCallError>
     where
         Provider: HostProvider<Profile>,
         Return: HostType;
@@ -311,7 +363,7 @@ where
     fn owned_output<'call, Provider, Return>(
         call: &mut HostCall<'call, Profile, Provider, Return>,
         value: super::ProviderOwnedExternal<Self>,
-    ) -> <Self::Host as HostType>::Value<'call>
+    ) -> Result<<Self::Host as HostType>::Value<'call>, HostCallError>
     where
         Provider: HostProvider<Profile>,
         Return: HostType;
@@ -616,6 +668,7 @@ macro_rules! provider_scalar {
             Return: HostType,
         {
             type Error = std::convert::Infallible;
+            type Storage = ProviderConvertedStorage;
 
             fn into_host<'call>(
                 self,
@@ -830,14 +883,15 @@ where
     Return: HostType,
     Payload: ProviderExternalCodec<Profile>,
 {
-    type Error = std::convert::Infallible;
+    type Error = HostCallError;
+    type Storage = ProviderConvertedStorage;
 
     fn into_host<'call>(
         self,
         call: &mut HostCall<'call, Profile, Provider, Return>,
         _constructions: &ProviderConstructions<'call, Self::OutputRequirements>,
     ) -> Result<<Self::Host as HostType>::Value<'call>, Self::Error> {
-        Ok(Payload::immediate_output(call, self))
+        Payload::immediate_output(call, self)
     }
 }
 
@@ -849,14 +903,15 @@ where
     Return: HostType,
     Payload: ProviderExternalCodec<Profile>,
 {
-    type Error = std::convert::Infallible;
+    type Error = HostCallError;
+    type Storage = ProviderConvertedStorage;
 
     fn into_host<'call>(
         self,
         call: &mut HostCall<'call, Profile, Provider, Return>,
         _constructions: &ProviderConstructions<'call, Self::OutputRequirements>,
     ) -> Result<<Self::Host as HostType>::Value<'call>, Self::Error> {
-        Ok(Payload::owned_output(call, self))
+        Payload::owned_output(call, self)
     }
 }
 
@@ -872,7 +927,7 @@ where
         mut call: HostCall<'call, Profile, Provider, Self::Host>,
         _constructions: &ProviderConstructions<'call, Self::RootRequirements>,
     ) -> Result<HostCallCompletion<'call, Self::Host>, HostCallError> {
-        let value = Payload::immediate_output(&mut call, self);
+        let value = Payload::immediate_output(&mut call, self)?;
         Ok(call.return_value(value))
     }
 }
@@ -889,7 +944,7 @@ where
         mut call: HostCall<'call, Profile, Provider, Self::Host>,
         _constructions: &ProviderConstructions<'call, Self::RootRequirements>,
     ) -> Result<HostCallCompletion<'call, Self::Host>, HostCallError> {
-        let value = Payload::owned_output(&mut call, self);
+        let value = Payload::owned_output(&mut call, self)?;
         Ok(call.return_value(value))
     }
 }
@@ -1316,6 +1371,8 @@ pub fn main() { #(immediate(5)(), resumable(6)(), retained(fn(next) { next() + 1
         }
         impl<Return: HostType> ProviderOutputValue<TestHostProfile, Provider, Return> for Converted {
             type Error = HostCallError;
+            type Storage = super::ProviderConvertedStorage;
+
             fn into_host<'call>(
                 self,
                 call: &mut HostCall<'call, TestHostProfile, Provider, Return>,
@@ -1335,7 +1392,14 @@ pub fn main() { #(immediate(5)(), resumable(6)(), retained(fn(next) { next() + 1
         ) -> Result<HostCallCompletion<'call, BigInt>, HostCallError> {
             let stored = Converted(fails)
                 .store_dynamic::<Owner>(&mut call, &ProviderConstructions::none())?;
-            let value = call.restore_value::<BigInt>(stored.stored());
+            let value = call
+                .restore_value::<BigInt>(stored.stored())
+                .expect("stored Int belongs to this call");
+            let value = <BigInt as ProviderOutputValue<TestHostProfile, Provider, BigInt>>::into_host_infallible(
+                value,
+                &mut call,
+                &ProviderConstructions::none(),
+            );
             Ok(call.return_value(value))
         }
         for (argument, expected) in [

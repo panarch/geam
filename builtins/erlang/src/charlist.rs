@@ -44,7 +44,7 @@ fn to_string<'call, Profile: GleamErlangHostProfile>(
     mut call: HostCall<'call, Profile, Component<Profile>, StringValue>,
     characters: HostExternal<'call, Charlist>,
 ) -> Result<HostCallCompletion<'call, StringValue>, HostCallError> {
-    let output = crate::service::charlist_string(&mut call, characters);
+    let output = crate::service::charlist_string(&mut call, characters)?;
     Ok(call.return_value(output))
 }
 

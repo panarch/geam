@@ -91,6 +91,7 @@ impl HostExternalSchema for CharlistSchema {
     const MODULE: &'static str = "gleam/erlang/charlist";
     const NAME: &'static str = "Charlist";
     const PARAMETER_COUNT: usize = 0;
+    const LIFETIME: geam_core::HostValueLifetime = geam_core::HostValueLifetime::LoadedOwner;
 }
 impl HostExternalSchema for PortSchema {
     const PACKAGE: &'static str = "gleam_erlang";

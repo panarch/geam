@@ -3,6 +3,7 @@ use crate::plan::SourceContext;
 use crate::planner::error::{HostProviderLinkReason, PlanError};
 use crate::planner::module::registry::ProgramRegistry;
 use ecow::EcoString;
+use std::collections::HashMap;
 
 #[derive(Clone, Copy)]
 enum HostCustomTypeAccess {
@@ -114,13 +115,16 @@ fn validate_host_custom_schema_with_constructions(
         Some(definition) => {
             let visible = match access {
                 HostCustomTypeAccess::SourceLessPublicSurface => {
-                    (!definition.is_opaque() || actual.requires_shared_access())
+                    (!definition.is_opaque()
+                        || actual.access() != crate::host::HostCustomAccess::Declared)
                         && definition.publicity() == crate::plan::CustomTypePublicity::Public
                 }
                 HostCustomTypeAccess::SourceDeclaration => {
                     let same_package = definition.name().package() == package;
                     let same_module = same_package && definition.name().module() == site.module();
-                    if definition.is_opaque() && !actual.requires_shared_access() {
+                    if definition.is_opaque()
+                        && actual.access() == crate::host::HostCustomAccess::Declared
+                    {
                         same_module
                     } else {
                         match definition.publicity() {
@@ -133,7 +137,8 @@ fn validate_host_custom_schema_with_constructions(
             };
             (
                 visible,
-                host_custom_type_schema(definition),
+                host_custom_type_schema(definition, &registry.external_type_schemas())
+                    .with_lifetime(definition.retention_lifetime()),
                 definition.parameters().len(),
             )
         }
@@ -193,7 +198,19 @@ fn validate_host_custom_schema_with_constructions(
             reason: Box::new(HostProviderLinkReason::MissingSharedCustomType { custom_type: name }),
         });
     }
-    let expected = expected.with_shared_access(actual.requires_shared_access());
+    if actual.access() == crate::host::HostCustomAccess::Retained
+        && !registry.retains_custom_type(&name)
+    {
+        return Err(PlanError::HostProviderLink {
+            package: package.clone(),
+            module: site.module().into(),
+            function: site.function().into(),
+            reason: Box::new(HostProviderLinkReason::MissingRetainedCustomType {
+                custom_type: name,
+            }),
+        });
+    }
+    let expected = expected.with_access(actual.access());
     if !actual.matches_source_fields(&expected) {
         return Err(PlanError::HostProviderLink {
             package: package.clone(),
@@ -275,6 +292,7 @@ fn invalid_host_custom_type_argument_count(
 
 pub(in crate::planner::module::host) fn host_custom_type_schema(
     definition: &crate::plan::CustomTypeDefinition,
+    external_schemas: &HashMap<crate::plan::ExternalTypeName, crate::host::HostExternalTypeSchema>,
 ) -> crate::host::HostCustomTypeSchema {
     crate::host::HostCustomTypeSchema::new(
         definition.name().package().clone(),
@@ -287,7 +305,7 @@ pub(in crate::planner::module::host) fn host_custom_type_schema(
                 constructor.fields().iter().map(|field| {
                     crate::host::HostCustomFieldSchema::new(
                         field.label().cloned(),
-                        host_schema_type(field.type_()),
+                        host_schema_type(field.type_(), external_schemas),
                     )
                 }),
             )
@@ -295,7 +313,10 @@ pub(in crate::planner::module::host) fn host_custom_type_schema(
     )
 }
 
-fn host_schema_type(type_: &crate::plan::CustomTypeTemplate) -> crate::host::HostSchemaType {
+fn host_schema_type(
+    type_: &crate::plan::CustomTypeTemplate,
+    external_schemas: &HashMap<crate::plan::ExternalTypeName, crate::host::HostExternalTypeSchema>,
+) -> crate::host::HostSchemaType {
     use crate::host::HostSchemaType as H;
     use crate::plan::CustomTypeTemplate as T;
 
@@ -307,28 +328,31 @@ fn host_schema_type(type_: &crate::plan::CustomTypeTemplate) -> crate::host::Hos
         T::UtfCodepoint => H::UtfCodepoint,
         T::Bool => H::Bool,
         T::Nil => H::Nil,
-        T::Tuple(elements) => H::tuple(elements.iter().map(host_schema_type)),
-        T::List(item) => H::list(host_schema_type(item)),
+        T::Tuple(elements) => H::tuple(
+            elements
+                .iter()
+                .map(|type_| host_schema_type(type_, external_schemas)),
+        ),
+        T::List(item) => H::list(host_schema_type(item, external_schemas)),
         T::Function { arguments, return_ } => H::function(
-            arguments.iter().map(host_schema_type),
-            host_schema_type(return_),
+            arguments
+                .iter()
+                .map(|type_| host_schema_type(type_, external_schemas)),
+            host_schema_type(return_, external_schemas),
         ),
         T::Custom { name, arguments } => H::custom(
             name.package().clone(),
             name.module().clone(),
             name.name().clone(),
-            arguments.iter().map(host_schema_type),
+            arguments
+                .iter()
+                .map(|type_| host_schema_type(type_, external_schemas)),
         ),
         T::External { name, arguments } => H::External {
-            schema: crate::host::HostExternalTypeSchema::new(
-                name.package().clone(),
-                name.module().clone(),
-                name.name().clone(),
-                arguments.len(),
-            ),
+            schema: external_schemas[name].clone(),
             arguments: arguments
                 .iter()
-                .map(host_schema_type)
+                .map(|type_| host_schema_type(type_, external_schemas))
                 .collect::<Vec<_>>()
                 .into_boxed_slice(),
         },
@@ -363,6 +387,7 @@ mod tests {
     use crate::planner::module::registry::{ModuleRegistry, ProgramRegistry};
     use crate::planner::{HostProviderLinkReason, PlanError};
     use ecow::EcoString;
+    use std::collections::HashMap;
 
     struct HiddenConstructionProvider;
 
@@ -479,7 +504,11 @@ mod tests {
         ];
 
         for (template, expected) in cases {
-            assert_eq!(host_schema_type(&template), expected);
+            let external_schemas = HashMap::from([(
+                ExternalTypeName::new("storage".into(), "storage/cell".into(), "Cell".into()),
+                crate::host::HostExternalTypeSchema::new("storage", "storage/cell", "Cell", 1),
+            )]);
+            assert_eq!(host_schema_type(&template, &external_schemas), expected);
         }
     }
 
@@ -796,6 +825,61 @@ mod tests {
     }
 
     #[test]
+    fn nominal_retention_requires_a_producer_grant_before_linkage() {
+        use crate::host::HostCustomAccess;
+        let name = CustomTypeName::new("domain".into(), "handles".into(), "Handle".into());
+        let definition = CustomTypeDefinition::new(
+            name.clone(),
+            CustomTypePublicity::Public,
+            true,
+            Vec::new(),
+            vec![CustomConstructorDefinition::new(
+                "Handle".into(),
+                0,
+                Vec::new(),
+            )],
+        );
+        let registry = ProgramRegistry::new(vec![ModuleRegistry::new(
+            "handles".into(),
+            vec![definition],
+            Vec::new(),
+            HashMap::new(),
+            ConstantSignatures::default(),
+        )]);
+        let signature = FunctionTemplateSignature::new(
+            FunctionTemplateId::in_module(ModuleId::new(0), 0),
+            TypeScheme::new(0),
+            FunctionShape::new(Vec::new(), ValueShape::Bool),
+        );
+        let schema = HostCustomTypeSchema::new("domain", "handles", "Handle", 0, [])
+            .with_access(HostCustomAccess::Retained);
+        let validate = |registry: &ProgramRegistry| {
+            validate_host_custom_schema(
+                registry,
+                &"application".into(),
+                &HostCallSite::new("consumer".into(), "accept".into(), SourceSpan::new(0, 0)),
+                &signature,
+                &schema,
+                HostCustomTypeAccess::SourceDeclaration,
+            )
+        };
+        assert_eq!(
+            validate(&registry),
+            Err(PlanError::HostProviderLink {
+                package: "application".into(),
+                module: "consumer".into(),
+                function: "accept".into(),
+                reason: Box::new(HostProviderLinkReason::MissingRetainedCustomType {
+                    custom_type: name.clone(),
+                }),
+            })
+        );
+        let registry = registry
+            .with_shared_custom_types([(name, HostCustomAccess::Retained)].into_iter().collect());
+        assert_eq!(validate(&registry), Ok(()));
+    }
+
+    #[test]
     fn sharing_delegates_opaque_representation_within_original_publicity() {
         let name = CustomTypeName::new("domain".into(), "handles".into(), "Handle".into());
         let schema = HostCustomTypeSchema::new(
@@ -912,9 +996,11 @@ mod tests {
                 ConstantSignatures::default(),
             )])
             .with_shared_custom_types(if grant {
-                [name.clone()].into_iter().collect()
+                [(name.clone(), crate::HostCustomAccess::Shared)]
+                    .into_iter()
+                    .collect()
             } else {
-                std::collections::HashSet::new()
+                std::collections::HashMap::new()
             });
             let expected = if !visible {
                 Some(HostProviderLinkReason::CustomTypeVisibility {

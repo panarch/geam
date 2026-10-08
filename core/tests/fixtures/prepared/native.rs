@@ -1,6 +1,6 @@
 data::HostedModuleArtifact {
     module: data::ModuleArtifact {
-        format: 24,
+        format: 25,
         program: data::ProgramTables {
             root: data::source::module_id(0),
             modules: data::Storage::Static(&[
@@ -9903,6 +9903,13 @@ fn integer_comparisons() {
                 ]),
                 tuple_items: data::Storage::Static(&[]),
                 function_items: data::Storage::Static(&[]),
+                lifetimes: data::Storage::Static(&[
+                    data::host::HostValueLifetime::LoadedOwner,
+                    data::host::HostValueLifetime::LoadedOwner,
+                    data::host::HostValueLifetime::LoadedOwner,
+                    data::host::HostValueLifetime::LoadedOwner,
+                    data::host::HostValueLifetime::LoadedOwner,
+                ]),
             },
             custom_types: data::type_::CustomTypeTable {
                 types: data::Storage::Static(&[
@@ -9915,6 +9922,8 @@ fn integer_comparisons() {
                                 data::type_::TypeMetadata::BitArray,
                             ]),
                         },
+                        native_visible: true,
+                        lifetime: data::host::HostValueLifetime::LoadedOwner,
                         constructor_count: 2,
                         constructors: data::Storage::Static(&[
                             data::type_::CustomConstructorDescriptor {
@@ -9962,6 +9971,8 @@ fn integer_comparisons() {
                                 data::type_::TypeMetadata::String,
                             ]),
                         },
+                        native_visible: true,
+                        lifetime: data::host::HostValueLifetime::LoadedOwner,
                         constructor_count: 2,
                         constructors: data::Storage::Static(&[
                             data::type_::CustomConstructorDescriptor {
@@ -10010,6 +10021,8 @@ fn integer_comparisons() {
                                 data::type_::TypeMetadata::String,
                             ]),
                         },
+                        native_visible: true,
+                        lifetime: data::host::HostValueLifetime::LoadedOwner,
                         constructor_count: 2,
                         constructors: data::Storage::Static(&[
                             data::type_::CustomConstructorDescriptor {
@@ -10056,6 +10069,8 @@ fn integer_comparisons() {
                                 data::type_::TypeMetadata::String,
                             ]),
                         },
+                        native_visible: true,
+                        lifetime: data::host::HostValueLifetime::LoadedOwner,
                         constructor_count: 2,
                         constructors: data::Storage::Static(&[
                             data::type_::CustomConstructorDescriptor {
@@ -10100,6 +10115,8 @@ fn integer_comparisons() {
                         name: data::Text::Static("Tree"),
                         publicity: data::type_::CustomTypePublicity::Public,
                         opaque: false,
+                        native_access: None,
+                        retention_lifetime: data::host::HostValueLifetime::LoadedOwner,
                         parameters: 1,
                         constructors: data::Storage::Static(&[
                             data::type_::ConstructorDefinition {
@@ -10133,6 +10150,8 @@ fn integer_comparisons() {
             },
             external_types: data::type_::ExternalTypeTable {
                 types: data::Storage::Static(&[]),
+                lifetimes: data::Storage::Static(&[]),
+                definitions: data::Storage::Static(&[]),
             },
             value_shapes: data::type_::ValueShapeTable {
                 shapes: data::Storage::Static(&[
@@ -10741,6 +10760,7 @@ fn integer_comparisons() {
                             module: data::Text::Static("main"),
                             name: data::Text::Static("Tree"),
                             parameter_count: 1,
+                            lifetime: data::host::HostValueLifetime::LoadedOwner,
                             constructors: data::Storage::Static(&[
                                 data::host::ConstructorSchema {
                                     name: data::Text::Static("Leaf"),
@@ -10768,19 +10788,21 @@ fn integer_comparisons() {
                                     ]),
                                 },
                             ]),
-                            shared: false,
+                            access: data::host::HostCustomAccess::Declared,
                         },
                         arguments: data::Storage::Static(&[
                             data::host::RegistrationType::String,
                         ]),
                     },
                 ]),
+                restorations: data::Storage::Static(&[]),
                 construction_customs: data::Storage::Static(&[
                     data::host::CustomSchema {
                         package: data::Text::Static("application"),
                         module: data::Text::Static("main"),
                         name: data::Text::Static("Tree"),
                         parameter_count: 1,
+                        lifetime: data::host::HostValueLifetime::LoadedOwner,
                         constructors: data::Storage::Static(&[
                             data::host::ConstructorSchema {
                                 name: data::Text::Static("Leaf"),
@@ -10808,7 +10830,7 @@ fn integer_comparisons() {
                                 ]),
                             },
                         ]),
-                        shared: false,
+                        access: data::host::HostCustomAccess::Declared,
                     },
                 ]),
                 construction_externals: data::Storage::Static(&[]),
@@ -11012,6 +11034,7 @@ fn integer_comparisons() {
                             module: data::Text::Static("main"),
                             name: data::Text::Static("Tree"),
                             parameter_count: 1,
+                            lifetime: data::host::HostValueLifetime::LoadedOwner,
                             constructors: data::Storage::Static(&[
                                 data::host::ConstructorSchema {
                                     name: data::Text::Static("Leaf"),
@@ -11039,19 +11062,21 @@ fn integer_comparisons() {
                                     ]),
                                 },
                             ]),
-                            shared: false,
+                            access: data::host::HostCustomAccess::Declared,
                         },
                         arguments: data::Storage::Static(&[
                             data::host::RegistrationType::String,
                         ]),
                     },
                 ]),
+                restorations: data::Storage::Static(&[]),
                 construction_customs: data::Storage::Static(&[
                     data::host::CustomSchema {
                         package: data::Text::Static("application"),
                         module: data::Text::Static("main"),
                         name: data::Text::Static("Tree"),
                         parameter_count: 1,
+                        lifetime: data::host::HostValueLifetime::LoadedOwner,
                         constructors: data::Storage::Static(&[
                             data::host::ConstructorSchema {
                                 name: data::Text::Static("Leaf"),
@@ -11079,7 +11104,7 @@ fn integer_comparisons() {
                                 ]),
                             },
                         ]),
-                        shared: false,
+                        access: data::host::HostCustomAccess::Declared,
                     },
                 ]),
                 construction_externals: data::Storage::Static(&[]),
@@ -11177,6 +11202,7 @@ fn integer_comparisons() {
                 custom_schemas: data::Storage::Static(&[]),
                 external_schemas: data::Storage::Static(&[]),
                 constructions: data::Storage::Static(&[]),
+                restorations: data::Storage::Static(&[]),
                 construction_customs: data::Storage::Static(&[]),
                 construction_externals: data::Storage::Static(&[]),
                 native_rules: None,
@@ -11379,6 +11405,7 @@ fn integer_comparisons() {
                             module: data::Text::Static("main"),
                             name: data::Text::Static("Tree"),
                             parameter_count: 1,
+                            lifetime: data::host::HostValueLifetime::LoadedOwner,
                             constructors: data::Storage::Static(&[
                                 data::host::ConstructorSchema {
                                     name: data::Text::Static("Leaf"),
@@ -11406,19 +11433,21 @@ fn integer_comparisons() {
                                     ]),
                                 },
                             ]),
-                            shared: false,
+                            access: data::host::HostCustomAccess::Declared,
                         },
                         arguments: data::Storage::Static(&[
                             data::host::RegistrationType::String,
                         ]),
                     },
                 ]),
+                restorations: data::Storage::Static(&[]),
                 construction_customs: data::Storage::Static(&[
                     data::host::CustomSchema {
                         package: data::Text::Static("application"),
                         module: data::Text::Static("main"),
                         name: data::Text::Static("Tree"),
                         parameter_count: 1,
+                        lifetime: data::host::HostValueLifetime::LoadedOwner,
                         constructors: data::Storage::Static(&[
                             data::host::ConstructorSchema {
                                 name: data::Text::Static("Leaf"),
@@ -11446,7 +11475,7 @@ fn integer_comparisons() {
                                 ]),
                             },
                         ]),
-                        shared: false,
+                        access: data::host::HostCustomAccess::Declared,
                     },
                 ]),
                 construction_externals: data::Storage::Static(&[]),
@@ -11510,6 +11539,7 @@ fn integer_comparisons() {
                 custom_schemas: data::Storage::Static(&[]),
                 external_schemas: data::Storage::Static(&[]),
                 constructions: data::Storage::Static(&[]),
+                restorations: data::Storage::Static(&[]),
                 construction_customs: data::Storage::Static(&[]),
                 construction_externals: data::Storage::Static(&[]),
                 native_rules: None,
@@ -11594,6 +11624,7 @@ fn integer_comparisons() {
                         module: data::Text::Static("gleam"),
                         name: data::Text::Static("Result"),
                         parameter_count: 2,
+                        lifetime: data::host::HostValueLifetime::LoadedOwner,
                         constructors: data::Storage::Static(&[
                             data::host::ConstructorSchema {
                                 name: data::Text::Static("Ok"),
@@ -11614,7 +11645,7 @@ fn integer_comparisons() {
                                 ]),
                             },
                         ]),
-                        shared: false,
+                        access: data::host::HostCustomAccess::Declared,
                     },
                     arguments: data::Storage::Static(&[
                         data::host::RegistrationType::Parameter(0),
@@ -11630,6 +11661,7 @@ fn integer_comparisons() {
                         module: data::Text::Static("gleam"),
                         name: data::Text::Static("Result"),
                         parameter_count: 2,
+                        lifetime: data::host::HostValueLifetime::LoadedOwner,
                         constructors: data::Storage::Static(&[
                             data::host::ConstructorSchema {
                                 name: data::Text::Static("Ok"),
@@ -11650,11 +11682,12 @@ fn integer_comparisons() {
                                 ]),
                             },
                         ]),
-                        shared: false,
+                        access: data::host::HostCustomAccess::Declared,
                     },
                 ]),
                 external_schemas: data::Storage::Static(&[]),
                 constructions: data::Storage::Static(&[]),
+                restorations: data::Storage::Static(&[]),
                 construction_customs: data::Storage::Static(&[]),
                 construction_externals: data::Storage::Static(&[]),
                 native_rules: None,
@@ -11757,6 +11790,7 @@ fn integer_comparisons() {
                         module: data::Text::Static("gleam"),
                         name: data::Text::Static("Result"),
                         parameter_count: 2,
+                        lifetime: data::host::HostValueLifetime::LoadedOwner,
                         constructors: data::Storage::Static(&[
                             data::host::ConstructorSchema {
                                 name: data::Text::Static("Ok"),
@@ -11777,7 +11811,7 @@ fn integer_comparisons() {
                                 ]),
                             },
                         ]),
-                        shared: false,
+                        access: data::host::HostCustomAccess::Declared,
                     },
                     arguments: data::Storage::Static(&[
                         data::host::RegistrationType::Parameter(0),
@@ -11796,6 +11830,7 @@ fn integer_comparisons() {
                         module: data::Text::Static("gleam"),
                         name: data::Text::Static("Result"),
                         parameter_count: 2,
+                        lifetime: data::host::HostValueLifetime::LoadedOwner,
                         constructors: data::Storage::Static(&[
                             data::host::ConstructorSchema {
                                 name: data::Text::Static("Ok"),
@@ -11816,11 +11851,12 @@ fn integer_comparisons() {
                                 ]),
                             },
                         ]),
-                        shared: false,
+                        access: data::host::HostCustomAccess::Declared,
                     },
                 ]),
                 external_schemas: data::Storage::Static(&[]),
                 constructions: data::Storage::Static(&[]),
+                restorations: data::Storage::Static(&[]),
                 construction_customs: data::Storage::Static(&[]),
                 construction_externals: data::Storage::Static(&[]),
                 native_rules: None,
@@ -11932,6 +11968,7 @@ fn integer_comparisons() {
                         module: data::Text::Static("gleam"),
                         name: data::Text::Static("Result"),
                         parameter_count: 2,
+                        lifetime: data::host::HostValueLifetime::LoadedOwner,
                         constructors: data::Storage::Static(&[
                             data::host::ConstructorSchema {
                                 name: data::Text::Static("Ok"),
@@ -11952,7 +11989,7 @@ fn integer_comparisons() {
                                 ]),
                             },
                         ]),
-                        shared: false,
+                        access: data::host::HostCustomAccess::Declared,
                     },
                     arguments: data::Storage::Static(&[
                         data::host::RegistrationType::Parameter(0),
@@ -11971,6 +12008,7 @@ fn integer_comparisons() {
                         module: data::Text::Static("gleam"),
                         name: data::Text::Static("Result"),
                         parameter_count: 2,
+                        lifetime: data::host::HostValueLifetime::LoadedOwner,
                         constructors: data::Storage::Static(&[
                             data::host::ConstructorSchema {
                                 name: data::Text::Static("Ok"),
@@ -11991,11 +12029,12 @@ fn integer_comparisons() {
                                 ]),
                             },
                         ]),
-                        shared: false,
+                        access: data::host::HostCustomAccess::Declared,
                     },
                 ]),
                 external_schemas: data::Storage::Static(&[]),
                 constructions: data::Storage::Static(&[]),
+                restorations: data::Storage::Static(&[]),
                 construction_customs: data::Storage::Static(&[]),
                 construction_externals: data::Storage::Static(&[]),
                 native_rules: None,

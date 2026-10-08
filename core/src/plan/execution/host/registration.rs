@@ -23,6 +23,7 @@ pub struct RegistrationContract {
     pub custom_schemas: Table<CustomSchema>,
     pub external_schemas: Table<ExternalSchema>,
     pub constructions: Table<RegistrationType>,
+    pub restorations: Table<RegistrationType>,
     pub construction_customs: Table<CustomSchema>,
     pub construction_externals: Table<ExternalSchema>,
     pub native_rules: Option<Table<RegistrationType>>,
@@ -91,6 +92,11 @@ impl RegistrationContract {
                 .iter()
                 .map(RegistrationType::from_descriptor)
                 .collect(),
+            restorations: constructions
+                .restorations()
+                .iter()
+                .map(RegistrationType::from_descriptor)
+                .collect(),
             construction_customs: constructions
                 .custom_schemas()
                 .iter()
@@ -153,6 +159,11 @@ impl RegistrationContract {
             && same(
                 &self.constructions,
                 constructions.types(),
+                RegistrationType::matches,
+            )
+            && same(
+                &self.restorations,
+                constructions.restorations(),
                 RegistrationType::matches,
             )
             && same(
@@ -226,6 +237,7 @@ impl Emit for RegistrationContract {
             custom_schemas,
             external_schemas,
             constructions,
+            restorations,
             construction_customs,
             construction_externals,
             native_rules,
@@ -244,6 +256,7 @@ impl Emit for RegistrationContract {
                 ("custom_schemas", custom_schemas),
                 ("external_schemas", external_schemas),
                 ("constructions", constructions),
+                ("restorations", restorations),
                 ("construction_customs", construction_customs),
                 ("construction_externals", construction_externals),
                 ("native_rules", native_rules),
@@ -308,6 +321,7 @@ mod tests {
             custom_schemas: Table::Static(&[]),
             external_schemas: Table::Static(&[]),
             constructions: Table::Static(&[]),
+            restorations: Table::Static(&[]),
             construction_customs: Table::Static(&[]),
             construction_externals: Table::Static(&[]),
             native_rules: None,
@@ -333,6 +347,7 @@ data::host::RegistrationContract {
     custom_schemas: data::Storage::Static(&[]),
     external_schemas: data::Storage::Static(&[]),
     constructions: data::Storage::Static(&[]),
+    restorations: data::Storage::Static(&[]),
     construction_customs: data::Storage::Static(&[]),
     construction_externals: data::Storage::Static(&[]),
     native_rules: None,

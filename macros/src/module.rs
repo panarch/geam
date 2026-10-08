@@ -12,6 +12,7 @@ mod list;
 mod list_capability;
 mod list_model;
 mod manual_external;
+mod permission;
 mod signature;
 mod syntax;
 mod type_syntax;
@@ -64,6 +65,7 @@ struct FunctionArguments {
 
 struct ExternalArguments {
     name: LitStr,
+    lifetime: ExternalLifetime,
     manual: bool,
     retained: bool,
     parameters: Vec<Ident>,
@@ -74,11 +76,19 @@ struct ExternalArguments {
 #[derive(Default)]
 struct PartialExternalArguments {
     name: Option<LitStr>,
+    lifetime: Option<ExternalLifetime>,
     manual: Option<Ident>,
     retained: Option<Ident>,
     parameters: Option<Vec<Ident>>,
     input: Option<Ident>,
     payload: Option<Type>,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+enum ExternalLifetime {
+    #[default]
+    Execution,
+    LoadedOwner,
 }
 
 enum ExternalSemantics {
@@ -92,6 +102,7 @@ struct ExternalModel {
     payload: Type,
     name: LitStr,
     semantics: ExternalSemantics,
+    lifetime: ExternalLifetime,
     schema: Ident,
     storage: Ident,
     store_field: Ident,
@@ -455,7 +466,7 @@ struct FunctionModel {
     return_: FunctionReturnType,
     host_result: bool,
     profile: bool,
-    factories: Vec<Type>,
+    permissions: Vec<FunctionPermission>,
     callable: Option<callable::CallableModel>,
 }
 
@@ -473,10 +484,16 @@ struct FunctionSourceParameter {
     index: usize,
 }
 
+#[derive(Clone, PartialEq)]
+enum FunctionPermission {
+    Factory(Type),
+    Restore(Type),
+}
+
 #[derive(Clone)]
 enum FunctionParameter {
     Call(Box<FunctionCallParameter>),
-    Factory(PatType),
+    Permission(PatType),
     Source(FunctionSourceParameter),
 }
 
@@ -931,6 +948,10 @@ pub(crate) fn expand(arguments: TokenStream, item: TokenStream) -> syn::Result<T
     });
 
     let schemas = externals.iter().map(|external| {
+        let lifetime = match external.lifetime {
+            ExternalLifetime::Execution => quote!(#support::HostValueLifetime::Execution),
+            ExternalLifetime::LoadedOwner => quote!(#support::HostValueLifetime::LoadedOwner),
+        };
         let payload = &external.payload;
         let source_name = &external.name;
         let schema = &external.schema;
@@ -1141,6 +1162,7 @@ pub(crate) fn expand(arguments: TokenStream, item: TokenStream) -> syn::Result<T
                             const MODULE: &'static str = #module_path;
                             const NAME: &'static str = #source_name;
                             const PARAMETER_COUNT: usize = #parameter_count;
+                            const LIFETIME: #support::HostValueLifetime = #lifetime;
                         }
 
                         impl<#(#parameters,)* #(#contexts,)*>
@@ -1232,6 +1254,7 @@ pub(crate) fn expand(arguments: TokenStream, item: TokenStream) -> syn::Result<T
                             const MODULE: &'static str = #module_path;
                             const NAME: &'static str = #source_name;
                             const PARAMETER_COUNT: usize = #parameter_count;
+                            const LIFETIME: #support::HostValueLifetime = #lifetime;
                         }
 
                         impl<#(#parameters,)* __GeamExternalContext>
@@ -1444,7 +1467,7 @@ pub(crate) fn expand(arguments: TokenStream, item: TokenStream) -> syn::Result<T
                             __GeamReturn,
                         >,
                         value: #support::ProviderExternalView<Self>,
-                    ) -> <Self::Host as #support::HostType>::Value<'__geam_call>
+                    ) -> ::core::result::Result<<Self::Host as #support::HostType>::Value<'__geam_call>, #support::HostCallError>
                     where
                         __GeamProviderBinding: #support::HostProvider<__GeamProfile>,
                         __GeamReturn: #support::HostType,
@@ -1464,7 +1487,7 @@ pub(crate) fn expand(arguments: TokenStream, item: TokenStream) -> syn::Result<T
                             __GeamReturn,
                         >,
                         value: #support::ProviderOwnedExternal<Self>,
-                    ) -> <Self::Host as #support::HostType>::Value<'__geam_call>
+                    ) -> ::core::result::Result<<Self::Host as #support::HostType>::Value<'__geam_call>, #support::HostCallError>
                     where
                         __GeamProviderBinding: #support::HostProvider<__GeamProfile>,
                         __GeamReturn: #support::HostType,
@@ -1501,8 +1524,9 @@ pub(crate) fn expand(arguments: TokenStream, item: TokenStream) -> syn::Result<T
                     >,
                 {
                     type Error = ::core::convert::Infallible;
+                    type Storage = #support::ProviderConvertedStorage;
 
-fn into_host<'__geam_call>(
+                    fn into_host<'__geam_call>(
                         self,
                         call: &mut #support::HostCall<
                             '__geam_call,
@@ -1574,6 +1598,7 @@ fn into_host<'__geam_call>(
                 const MODULE: &'static str = #module_path;
                 const NAME: &'static str = #source_name;
                 const PARAMETER_COUNT: usize = 0;
+                const LIFETIME: #support::HostValueLifetime = #lifetime;
             }
 
             #declaration_and_owner
@@ -3612,7 +3637,9 @@ mod tests {
         ));
         assert!(expansion.contains("__GeamExternalSchema0"));
         assert!(expansion.contains("__GeamCustom0Constructor0"));
-        assert!(expansion.contains("let returned = returned ?"));
+        assert!(expansion.contains(
+            "Result :: Err (error) => { return :: core :: result :: Result :: Err (error) ; }"
+        ));
         assert!(!expansion.contains("HostConstructions"));
     }
 
@@ -6329,7 +6356,7 @@ mod tests {
             quote!(path = "dynamic", crate_path = geam_core),
             quote! {
                 mod dynamic {
-                    #[geam::external(name = "Snapshot", manual)]
+                    #[geam::external(name = "Snapshot", manual, lifetime = loaded_owner)]
                     struct Snapshot;
 
                     #[geam::external(name = "Dynamic", retained)]
@@ -6349,6 +6376,8 @@ mod tests {
         assert!(!expansion.contains(
             "< Dynamic as geam_core :: __macro_support :: ExternalPayload > :: source_equal"
         ));
+        assert!(expansion.contains("HostValueLifetime :: LoadedOwner"));
+        assert!(expansion.contains("HostValueLifetime :: Execution"));
     }
 
     #[test]
@@ -6413,7 +6442,7 @@ mod tests {
     }
 
     #[test]
-    fn qualified_declarations_use_static_directional_codecs() {
+    fn qualified_declarations_use_profile_selected_directional_codecs() {
         let expansion = expand(
             quote!(path = "consumer", crate_path = geam_core),
             quote! {
@@ -6459,11 +6488,11 @@ mod tests {
                 }
             },
         )
-        .expect("qualified declarations should expand through their static codecs")
+        .expect("qualified declarations should select their profile-specific codecs")
         .to_string();
 
         assert!(expansion.contains(
-            "< declarations :: Token as geam_core :: __macro_support :: ProviderValueForms > :: ImmediateInput"
+            "< declarations :: Token as geam_core :: __macro_support :: ProviderContextualValueForms < __GeamProfile > > :: ImmediateInput"
         ));
         assert!(expansion.contains(
             "< declarations :: Status as geam_core :: __macro_support :: ProviderContextualValueForms < __GeamProfile > > :: Output : geam_core :: __macro_support :: ProviderOutputValue"
@@ -6477,6 +6506,46 @@ mod tests {
         assert!(expansion.contains(
             "Host = < declarations :: Status as geam_core :: __macro_support :: ProviderContextualValueForms < __GeamProfile > > :: Host"
         ));
+        let module: syn::ItemMod = syn::parse_str(&expansion).unwrap();
+        let functions = module
+            .content
+            .unwrap()
+            .1
+            .into_iter()
+            .filter_map(|item| {
+                if let syn::Item::Fn(function) = item {
+                    Some(function)
+                } else {
+                    None
+                }
+            })
+            .collect::<Vec<_>>();
+        for name in [
+            "pair",
+            "statuses",
+            "has_tokens",
+            "has_optional_tokens",
+            "owned_token_text",
+        ] {
+            let function = functions
+                .iter()
+                .find(|function| function.sig.ident == name)
+                .unwrap();
+            assert!(function.sig.generics.params.iter().any(|parameter| {
+                matches!(parameter, syn::GenericParam::Type(parameter) if parameter.ident == "__GeamProfile")
+            }), "{name} must keep the profile selected by its adapter");
+        }
+        let pair = functions
+            .iter()
+            .find(|function| function.sig.ident == "pair")
+            .unwrap();
+        assert_eq!(
+            pair.sig.output,
+            syn::parse_quote!(-> (
+                <declarations::Status as geam_core::__macro_support::ProviderContextualValueForms<__GeamProfile>>::Output,
+                bool,
+            ))
+        );
     }
 
     #[test]
@@ -6570,11 +6639,11 @@ mod tests {
             )
         );
         assert!(expansion.contains(
-            "value : :: core :: option :: Option < :: core :: result :: Result < < declarations :: Token as geam_core :: __macro_support :: ProviderValueForms > :: ImmediateInput , < Problem as geam_core :: __macro_support :: ProviderValueForms > :: ImmediateInput > >"
+            "value : :: core :: option :: Option < :: core :: result :: Result < < declarations :: Token as geam_core :: __macro_support :: ProviderContextualValueForms < __GeamProfile > > :: ImmediateInput , < Problem as geam_core :: __macro_support :: ProviderValueForms > :: ImmediateInput > >"
         ));
         assert!(
             expansion
-                .contains("value : :: core :: option :: Option < < declarations :: ProblemInput as geam_core :: __macro_support :: ProviderValueForms > :: ImmediateInput >")
+                .contains("value : :: core :: option :: Option < < declarations :: ProblemInput as geam_core :: __macro_support :: ProviderContextualValueForms < __GeamProfile > > :: ImmediateInput >")
         );
         assert!(expansion.contains(
             "value : :: core :: option :: Option < geam_core :: __macro_support :: ProviderExternalView < LocalToken > >"
@@ -7223,7 +7292,9 @@ mod tests {
         .expect("HostResult should wrap an ordinary source Result")
         .to_string();
 
-        assert!(expansion.contains("let returned = returned ?"));
+        assert!(expansion.contains(
+            "Result :: Err (error) => { return :: core :: result :: Result :: Err (error) ; }"
+        ));
         assert!(expansion.contains("ProviderResult <"));
         assert!(
             expansion.contains(

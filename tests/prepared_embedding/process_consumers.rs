@@ -42,6 +42,16 @@ fn native_function_views_run_live_and_relocated_prepared() {
     );
 }
 
+#[test]
+fn decoder_sdk_runs_live_and_relocated_prepared() {
+    verify_consumer(
+        "tests/fixtures/decoder_service",
+        "decoder-service-embedding",
+        b"decoder SDK: 42\n",
+        2,
+    );
+}
+
 fn verify_consumer(fixture: &str, executable: &str, expected: &[u8], embedding_calls: usize) {
     let directory = tempfile::tempdir().unwrap();
     let root = fs::canonicalize(directory.path()).unwrap();

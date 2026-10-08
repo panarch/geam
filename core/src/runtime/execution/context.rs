@@ -6,7 +6,7 @@ use crate::plan::execution::HostedProgram;
 use crate::plan::execution::runtime::RuntimeExecutionPlan;
 use crate::runtime::state::RuntimeStateFor;
 use crate::runtime::work::Cancelled;
-use crate::runtime::work::request::{Reply, Requests, Sender};
+use crate::runtime::work::request::{QueueEndpoint, Reply, Requests, Sender};
 use crate::runtime::{CallbackInputs, HostCallOrigin, RetainedCallable, StoredRuntimeValue};
 use std::future::Future;
 use std::sync::OnceLock;
@@ -27,6 +27,20 @@ struct Initialized<Profile: HostProfile> {
 pub(crate) struct ExecutionContext<Profile: HostProfile> {
     services: ServiceContext<HostedProgram<Profile>>,
     callbacks: Sender<CallbackRequest>,
+}
+
+/// Retention proof for a value that may hide execution-scoped fields.
+/// It has no invocation or state-access capability and does not keep the driver alive.
+#[derive(Clone)]
+pub(crate) struct ExecutionEndpoint(QueueEndpoint);
+
+impl ExecutionEndpoint {
+    pub(crate) fn belongs_to<Profile: HostProfile>(
+        &self,
+        caller: &ExecutionContext<Profile>,
+    ) -> bool {
+        self.0.belongs_to(&caller.callbacks)
+    }
 }
 
 pub(crate) type NativeCompletion = crate::runtime::error::ExecutionResult<StoredRuntimeValue>;
@@ -108,6 +122,10 @@ impl<Profile: HostProfile> Clone for ExecutionContext<Profile> {
 }
 
 impl<Profile: HostProfile> ExecutionContext<Profile> {
+    pub(crate) fn endpoint(&self) -> ExecutionEndpoint {
+        ExecutionEndpoint(self.callbacks.endpoint())
+    }
+
     pub(crate) fn unit(&self) -> Option<&crate::execution::ExecutionUnit> {
         self.services.unit()
     }
@@ -211,7 +229,15 @@ impl CallbackRequest {
                 .submit(context.services(), budget)
                 .await
                 .map(|result| {
-                    result.map(|value| StoredRuntimeValue::new(value, plan.value_metadata()))
+                    result.map(|value| {
+                        StoredRuntimeValue::from_retention(
+                            value,
+                            crate::runtime::host::ValueRetentionRef {
+                                metadata: plan.value_metadata(),
+                                endpoint: Some(&context.endpoint()),
+                            },
+                        )
+                    })
                 })
         };
         super::worker::completing(reply, async move {
@@ -229,6 +255,26 @@ mod tests {
     use crate::execution::UnitOwner;
     use crate::host::StatelessHostProfile;
     use crate::runtime::work::Cancelled;
+
+    #[test]
+    fn retained_endpoints_require_the_original_open_execution() {
+        let original = ExecutionServices::<StatelessHostProfile>::new(Default::default());
+        let foreign = ExecutionServices::<StatelessHostProfile>::new(Default::default());
+        let context = original.context();
+        let endpoint = context.endpoint();
+        let alias = endpoint.clone();
+        drop(endpoint);
+        assert!(alias.belongs_to(&context));
+        assert!(!alias.belongs_to(&foreign.context()));
+        original.close();
+        assert!(!alias.belongs_to(&context));
+
+        let dropped = ExecutionServices::<StatelessHostProfile>::new(Default::default());
+        let context = dropped.context();
+        let endpoint = context.endpoint();
+        drop(dropped);
+        assert!(!endpoint.belongs_to(&context));
+    }
 
     #[test]
     fn invocation_inherits_only_the_callers_unit_in_the_original_domain() {

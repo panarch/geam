@@ -4,8 +4,8 @@ use crate::{Charlist, Component, GleamErlangHostProfile, Pid, PidSchema, Referen
 use geam_core::execution::ExecutionUnit;
 use geam_core::host::native::NativeRules;
 use geam_core::host::{
-    HostCall, HostConstruction, HostCustom, HostExternal, HostListType, HostProvider, HostType,
-    HostTypeList, HostTypeListEnd,
+    HostCall, HostCallError, HostConstruction, HostCustom, HostExternal, HostListType,
+    HostProvider, HostType, HostTypeList, HostTypeListEnd,
 };
 use geam_core::provider::advanced::NativeValue;
 use geam_stdlib::provider_support::DynamicSchema;
@@ -41,7 +41,7 @@ where
 pub fn charlist_string<'call, Profile, Provider, Return>(
     call: &mut HostCall<'call, Profile, Provider, Return>,
     value: HostExternal<'call, Charlist>,
-) -> geam_core::StringValue
+) -> Result<geam_core::StringValue, HostCallError>
 where
     Profile: GleamErlangHostProfile,
     Provider: HostProvider<Profile>,
@@ -49,14 +49,14 @@ where
 {
     let characters = call
         .external_payload_with::<Component<Profile>, CharlistSchema, HostTypeListEnd>(value)
-        .restore(call, |characters| characters);
+        .restore(call, |characters| characters)?;
     let mut output = ecow::EcoString::new();
     let mut index = 0;
     while let Some(character) = call.list_item::<char>(characters, index) {
         output.push(character);
         index += 1;
     }
-    output.into()
+    Ok(output.into())
 }
 
 /// Adds the process producer's native conversions to a consumer registration.
@@ -295,7 +295,7 @@ pub fn main() {
         text.clear();
         text.push_str("changed input");
         drop(text);
-        assert_eq!(charlist_string(&mut call, value), string);
+        assert_eq!(charlist_string(&mut call, value), Ok(string));
         assert!(call.equal::<Charlist>(value, same));
         assert_eq!(
             call.source_hash::<Charlist>(value),
@@ -318,6 +318,101 @@ pub fn main() {
         assert!(call.native_equal(&integers, &native));
         assert_eq!(call.native_hash(&native), call.native_hash(&integers));
         Ok(call.return_tuple((value, (same, ()))))
+    }
+
+    #[test]
+    fn charlist_text_rejects_characters_retained_by_another_loaded_program() {
+        use geam_core::host::HostStoredValue;
+        use std::sync::{Arc, Mutex};
+
+        let previous = Arc::new(Mutex::new(None));
+        let mut state = GleamErlangRunState {
+            stdlib: geam_stdlib::GleamStdlibRunState::from_seed([0; 32]),
+            erlang: crate::Configuration::default(),
+        };
+        let mut echo = Vec::new();
+        for foreign in [false, true] {
+            let consumer = HostProviderModule::new("application", "main").unwrap()
+                .with_scoped_function_and_constructions::<Component<GleamErlangProfile>, (), Charlist, CharlistConstructions, _>(
+                    "characters", retained_characters(previous.clone()),
+                ).unwrap();
+            let typed = compile_typed_host_program(
+                "application",
+                "main",
+                [
+                    PackageSource::new(
+                        "gleam_erlang",
+                        Vec::<String>::new(),
+                        [ModuleSource::new(
+                            "gleam/erlang/charlist",
+                            "charlist.gleam",
+                            r#"
+pub type Charlist
+@external(erlang, "unicode", "characters_to_list") pub fn from_string(value: String) -> Charlist
+@external(erlang, "unicode", "characters_to_binary") pub fn to_string(value: Charlist) -> String
+"#,
+                        )],
+                    ),
+                    PackageSource::new(
+                        "application",
+                        ["gleam_erlang"],
+                        [ModuleSource::new(
+                            "main",
+                            "main.gleam",
+                            r#"
+import gleam/erlang/charlist
+@external(erlang, "host", "characters") fn characters() -> charlist.Charlist
+pub fn main() { charlist.to_string(characters()) }
+"#,
+                        )],
+                    ),
+                ],
+                HostProviderSet::from_providers([
+                    crate::charlist::host_provider().unwrap(),
+                    consumer,
+                ])
+                .unwrap(),
+            )
+            .unwrap();
+            let mut execution =
+                HostedExecution::try_from_module_plan(plan_host_program(typed).unwrap()).unwrap();
+            let result = crate::execution_fixture::run(&mut execution, &mut state, &mut echo)
+                .map_err(|error| error.to_string());
+            let expected = if foreign {
+                Err("host function gleam_erlang::gleam/erlang/charlist.to_string failed: retained value belongs to another owner or source type".into())
+            } else {
+                Ok(geam_core::Value::String("A\0🙂".into()))
+            };
+            assert_eq!(result, expected);
+        }
+        assert!(echo.is_empty());
+
+        type Call<'call> =
+            HostCall<'call, GleamErlangProfile, Component<GleamErlangProfile>, Charlist>;
+        type Completion<'call> = Result<HostCallCompletion<'call, Charlist>, HostCallError>;
+
+        fn retained_characters(
+            previous: Arc<Mutex<Option<HostStoredValue<HostListType<char>>>>>,
+        ) -> impl for<'call> Fn(
+            Call<'call>,
+            HostConstructions<'call, CharlistConstructions>,
+        ) -> Completion<'call> {
+            move |mut call, constructions| {
+                let retained = previous.lock().unwrap().take();
+                let token = constructions.at::<HostTypeIndex0>();
+                let value = match retained {
+                    Some(payload) => call.construct_external_with_binding::<Component<GleamErlangProfile>, crate::CharlistSchema, HostTypeListEnd>(token, payload),
+                    None => {
+                        let characters = call.construct_list(constructions.at::<HostTypeIndexNext<HostTypeIndex0>>(), "A\0🙂".chars());
+                        call.construct_retained_external_with_binding::<Component<GleamErlangProfile>, crate::CharlistSchema, HostTypeListEnd>(token, |builder| {
+                            *previous.lock().unwrap() = Some(builder.store::<HostListType<char>>(characters));
+                            builder.store::<HostListType<char>>(characters)
+                        })
+                    }
+                };
+                Ok(call.return_value(value))
+            }
+        }
     }
 
     #[test]

@@ -213,6 +213,17 @@ impl HostProviderModuleDeclaration {
         Ok(self)
     }
 
+    /// Declares nominal retention without publishing the source representation.
+    pub fn with_retained_custom_type<Schema: super::HostRetainedCustomSchema>(
+        mut self,
+    ) -> Result<Self, HostRegistrationError> {
+        self.shared_custom_types.register(
+            &self.identity,
+            super::HostCustomTypeSchema::retained::<Schema>(),
+        )?;
+        Ok(self)
+    }
+
     /// Declares a nominal external type without selecting an application's payload store.
     pub fn with_external_type<Schema: HostExternalSchema>(
         mut self,
@@ -488,6 +499,43 @@ mod tests {
             [crate::HostExternalTypeSchema::of::<Handle>()]
         );
         assert!(callables.is_empty());
+    }
+
+    #[test]
+    fn bodyless_producer_retention_preserves_the_exact_nominal_grant() {
+        struct Handle;
+        impl crate::HostRetainedCustomSchema for Handle {
+            const PACKAGE: &'static str = "producer";
+            const MODULE: &'static str = "handles";
+            const NAME: &'static str = "Handle";
+            const PARAMETER_COUNT: usize = 1;
+        }
+        let producer = HostProviderModuleDeclaration::new("producer", "handles")
+            .unwrap()
+            .with_retained_custom_type::<Handle>()
+            .unwrap();
+        let (_, providers, _, _) = HostDeclarations::from_providers([producer])
+            .unwrap()
+            .into_registered();
+        assert_eq!(
+            providers[0].shared_custom_types,
+            [crate::HostCustomTypeSchema::retained::<Handle>()]
+        );
+        assert_eq!(
+            HostProviderModuleDeclaration::new("consumer", "main")
+                .unwrap()
+                .with_retained_custom_type::<Handle>()
+                .err(),
+            Some(HostRegistrationError::SharedCustomTypeOwner {
+                custom_type: crate::CustomTypeName::new(
+                    "producer".into(),
+                    "handles".into(),
+                    "Handle".into()
+                ),
+                package: "consumer".into(),
+                module: "main".into(),
+            })
+        );
     }
 
     #[test]

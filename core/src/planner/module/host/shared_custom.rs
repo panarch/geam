@@ -1,4 +1,4 @@
-use crate::host::HostCustomTypeSchema;
+use crate::host::{HostCustomAccess, HostCustomTypeSchema};
 use crate::plan::{CustomTypeDefinition, CustomTypeName};
 use crate::planner::{PlanError, SharedCustomTypeProviderLinkReason};
 use ecow::EcoString;
@@ -8,7 +8,18 @@ pub(super) fn validate(
     module: &EcoString,
     definitions: &[CustomTypeDefinition],
     schemas: Vec<HostCustomTypeSchema>,
-) -> Result<Vec<CustomTypeName>, PlanError> {
+    external_schemas: &std::collections::HashMap<
+        crate::plan::ExternalTypeName,
+        crate::host::HostExternalTypeSchema,
+    >,
+) -> Result<
+    Vec<(
+        CustomTypeName,
+        HostCustomAccess,
+        crate::host::HostValueLifetime,
+    )>,
+    PlanError,
+> {
     schemas
         .into_iter()
         .map(|actual| {
@@ -22,8 +33,9 @@ pub(super) fn validate(
                 .iter()
                 .find(|definition| definition.name().name() == actual.name())
                 .ok_or_else(|| failure(SharedCustomTypeProviderLinkReason::MissingDeclaration))?;
-            let expected =
-                super::link::host_custom_type_schema(definition).with_shared_access(true);
+            let expected = super::link::host_custom_type_schema(definition, external_schemas)
+                .with_access(actual.access())
+                .with_lifetime(actual.lifetime());
             if expected != actual {
                 return Err(failure(
                     SharedCustomTypeProviderLinkReason::SchemaMismatch {
@@ -32,7 +44,11 @@ pub(super) fn validate(
                     },
                 ));
             }
-            Ok(definition.name().clone())
+            Ok((
+                definition.name().clone(),
+                actual.access(),
+                actual.lifetime(),
+            ))
         })
         .collect()
 }
@@ -163,22 +179,31 @@ pub fn main() { handles.get(retain(handles.make(42))) }
                 Vec::new(),
             )],
         );
-        let matching =
-            super::super::link::host_custom_type_schema(&definition).with_shared_access(true);
+        let matching = super::super::link::host_custom_type_schema(
+            &definition,
+            &std::collections::HashMap::new(),
+        )
+        .with_shared_access(true);
         assert_eq!(
             validate(
                 &"producer".into(),
                 &"handles".into(),
                 std::slice::from_ref(&definition),
-                vec![matching.clone()]
+                vec![matching.clone()],
+                &std::collections::HashMap::new(),
             ),
-            Ok(vec![name])
+            Ok(vec![(
+                name,
+                crate::HostCustomAccess::Shared,
+                crate::HostValueLifetime::LoadedOwner
+            )])
         );
         let missing = validate(
             &"producer".into(),
             &"handles".into(),
             &[],
             vec![matching.clone()],
+            &std::collections::HashMap::new(),
         )
         .unwrap_err();
         assert_eq!(
@@ -200,7 +225,8 @@ pub fn main() { handles.get(retain(handles.make(42))) }
                 &"producer".into(),
                 &"handles".into(),
                 &[definition],
-                vec![actual.clone()]
+                vec![actual.clone()],
+                &std::collections::HashMap::new(),
             ),
             Err(PlanError::SharedCustomTypeProviderLink {
                 package: "producer".into(),

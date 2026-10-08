@@ -394,11 +394,13 @@ mod tests {
         );
         let customs = CustomTypeTable {
             definitions: vec![CustomDefinition {
+                retention_lifetime: crate::HostValueLifetime::LoadedOwner,
                 package: "app".into(),
                 module: "items".into(),
                 name: "Choice".into(),
                 publicity: CustomTypePublicity::Public,
                 opaque: false,
+                native_access: None,
                 parameters: 0,
                 constructors: vec![ConstructorDefinition {
                     name: "Choice".into(),
@@ -408,6 +410,8 @@ mod tests {
             }]
             .into(),
             types: vec![CustomTypeDescriptor {
+                lifetime: crate::HostValueLifetime::LoadedOwner,
+                native_visible: true,
                 type_: NominalTypeMetadata::from_custom(&custom),
                 constructor_count: 1,
                 constructors: Table::Static(&[]),
@@ -433,6 +437,20 @@ mod tests {
         let nested = ListListTypeId::new(ListTypeId(10), ListTypeId(0));
         let function = FunctionListTypeId::new(ListTypeId(11), 0);
         let lists = ListTypeTable {
+            lifetimes: Table::Static(&[
+                crate::HostValueLifetime::LoadedOwner,
+                crate::HostValueLifetime::LoadedOwner,
+                crate::HostValueLifetime::LoadedOwner,
+                crate::HostValueLifetime::LoadedOwner,
+                crate::HostValueLifetime::LoadedOwner,
+                crate::HostValueLifetime::LoadedOwner,
+                crate::HostValueLifetime::Execution,
+                crate::HostValueLifetime::LoadedOwner,
+                crate::HostValueLifetime::LoadedOwner,
+                crate::HostValueLifetime::LoadedOwner,
+                crate::HostValueLifetime::LoadedOwner,
+                crate::HostValueLifetime::Execution,
+            ]),
             types: vec![
                 ListStorageTypeId::Int(int),
                 ListStorageTypeId::Float(float),

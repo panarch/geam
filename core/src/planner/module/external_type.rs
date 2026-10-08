@@ -3,7 +3,7 @@ use crate::plan::{ExternalTypeDefinition, ExternalTypeName};
 use crate::planner::error::{ExternalTypeProviderLinkReason, PlanError};
 use ecow::EcoString;
 use gleam_compiler_core::ast::TypedCustomType;
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 
 pub(super) struct HostedTypeDefinitions {
     pub(super) custom_types: Vec<crate::plan::CustomTypeDefinition>,
@@ -25,7 +25,7 @@ pub(super) fn plan_hosted_types(
         .into_iter()
         .map(|schema| (schema.name().clone(), schema))
         .collect::<BTreeMap<_, _>>();
-    let mut linked_external_types = BTreeSet::new();
+    let mut linked_external_types = BTreeMap::new();
     let mut custom_types = Vec::new();
     let mut external_types = Vec::new();
 
@@ -82,7 +82,7 @@ pub(super) fn plan_hosted_types(
                 }),
             });
         }
-        linked_external_types.insert(name.clone());
+        linked_external_types.insert(name.clone(), schema.lifetime());
     }
 
     if let Some((name, _)) = registrations.into_iter().next() {
@@ -95,11 +95,14 @@ pub(super) fn plan_hosted_types(
     }
 
     for (name, type_) in std::mem::take(&mut source_types) {
-        if linked_external_types.contains(&name) {
-            external_types.push(ExternalTypeDefinition::new(
-                ExternalTypeName::new(package.clone(), module.clone(), type_.name),
-                type_.typed_parameters.len(),
-            ));
+        if let Some(lifetime) = linked_external_types.get(&name) {
+            external_types.push(
+                ExternalTypeDefinition::new(
+                    ExternalTypeName::new(package.clone(), module.clone(), type_.name),
+                    type_.typed_parameters.len(),
+                )
+                .with_lifetime(*lifetime),
+            );
         } else {
             custom_types.extend(super::custom_type::plan_custom_types_with_external(
                 package,
@@ -146,7 +149,8 @@ pub(super) fn validate_host_external_schema(
         definition.name().module().clone(),
         definition.name().name().clone(),
         definition.parameters().len(),
-    );
+    )
+    .with_lifetime(definition.lifetime());
     if actual != &expected {
         return Err(PlanError::HostProviderLink {
             package: package.clone(),

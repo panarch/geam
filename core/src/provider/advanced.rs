@@ -1,7 +1,7 @@
 use crate::host::{
-    HostCall, HostExternalEquality, HostExternalHashing, HostExternalInspection, HostListType,
-    HostProfile, HostProvider, HostStoredDynamic, HostStoredType, HostStoredValue, HostType,
-    HostTypeIndex0, HostTypeIndexNext, HostTypeListEnd,
+    HostCall, HostCallError, HostExternalEquality, HostExternalHashing, HostExternalInspection,
+    HostListType, HostProfile, HostProvider, HostStoredDynamic, HostStoredType, HostStoredValue,
+    HostType, HostTypeIndex0, HostTypeIndexNext, HostTypeListEnd,
 };
 use crate::provider::{
     List, ProviderConstructionRequirements, ProviderConstructions, ProviderContextualValueForms,
@@ -96,11 +96,12 @@ where
     Return: HostType,
 {
     type Host: HostType;
+    type Error: Into<HostCallError>;
 
     fn into_stored<Owner>(
         self,
         call: &mut HostCall<'call, Profile, Provider, Return>,
-    ) -> StoredDynamic<Owner>
+    ) -> Result<StoredDynamic<Owner>, Self::Error>
     where
         Owner: ProviderStoredOwner;
 }
@@ -113,19 +114,19 @@ where
     Return: HostType,
     Type: ProviderValue
         + ProviderTypedValue<Profile, OutputRequirements = ProviderNoConstructions>
-        + ProviderOutputValue<Profile, Provider, Return, Error = std::convert::Infallible>,
+        + ProviderOutputValue<Profile, Provider, Return>,
 {
     type Host = <Type as ProviderTypedValue<Profile>>::Host;
+    type Error = super::ProviderStorageError<Type, Profile, Provider, Return>;
 
     fn into_stored<Owner>(
         self,
         call: &mut HostCall<'call, Profile, Provider, Return>,
-    ) -> StoredDynamic<Owner>
+    ) -> Result<StoredDynamic<Owner>, Self::Error>
     where
         Owner: ProviderStoredOwner,
     {
         self.store_dynamic(call, &ProviderConstructions::none())
-            .unwrap_or_else(|never| match never {})
     }
 }
 
@@ -140,16 +141,19 @@ where
     Decoder: crate::provider::ProviderListItemDecoder<Item>,
 {
     type Host = HostListType<HostItem>;
+    type Error = std::convert::Infallible;
 
     fn into_stored<Owner>(
         self,
         call: &mut HostCall<'call, Profile, Provider, Return>,
-    ) -> StoredDynamic<Owner>
+    ) -> Result<StoredDynamic<Owner>, Self::Error>
     where
         Owner: ProviderStoredOwner,
     {
-        let value = call.provider_list_from_input(self);
-        StoredDynamic::from_runtime_value(call.retain_value::<Self::Host>(value))
+        let _ = call;
+        Ok(StoredDynamic::from_runtime_value(
+            self.__geam_into_context().retained().retained_value(),
+        ))
     }
 }
 

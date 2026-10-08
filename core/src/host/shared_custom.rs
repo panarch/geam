@@ -18,7 +18,11 @@ impl RegisteredSharedCustomTypes {
         owner: &HostModuleIdentity,
         schema: HostCustomTypeSchema,
     ) -> Result<(), HostRegistrationError> {
-        let schema = schema.with_shared_access(true);
+        let schema = if schema.access() == super::HostCustomAccess::Retained {
+            schema
+        } else {
+            schema.with_shared_access(true)
+        };
         if schema.package() != &owner.package || schema.module() != &owner.module {
             return Err(HostRegistrationError::SharedCustomTypeOwner {
                 package: owner.package.clone(),
@@ -67,6 +71,14 @@ mod tests {
 
     struct Shared;
     struct Invalid;
+    struct Retained;
+
+    impl crate::HostRetainedCustomSchema for Retained {
+        const PACKAGE: &'static str = "producer";
+        const MODULE: &'static str = "handles";
+        const NAME: &'static str = "Handle";
+        const PARAMETER_COUNT: usize = 1;
+    }
 
     impl HostCustomSchema for Shared {
         const PACKAGE: &'static str = "producer";
@@ -124,6 +136,11 @@ mod tests {
     #[test]
     fn registration_rejects_wrong_owners_invalid_names_and_duplicates() {
         for (package, module) in [("other", "handles"), ("producer", "other")] {
+            let retained_error = HostProviderModule::<StatelessHostProfile>::new(package, module)
+                .unwrap()
+                .with_retained_custom_type::<Retained>()
+                .err()
+                .unwrap();
             let error = HostProviderModule::<StatelessHostProfile>::new(package, module)
                 .unwrap()
                 .with_shared_custom_type::<Shared>()
@@ -135,6 +152,7 @@ mod tests {
                 .err()
                 .unwrap();
             assert_eq!(declaration_error, error);
+            assert_eq!(retained_error, error);
             assert_eq!(
                 error,
                 HostRegistrationError::SharedCustomTypeOwner {
@@ -197,5 +215,40 @@ mod tests {
             invalid.to_string(),
             "shared custom type name bad in module handles is invalid"
         );
+    }
+
+    #[test]
+    fn retention_grants_survive_live_and_bodyless_registration() {
+        let provider = || {
+            HostProviderModule::<StatelessHostProfile>::new("producer", "handles")
+                .unwrap()
+                .with_retained_custom_type::<Retained>()
+                .unwrap()
+        };
+        let (_, live, _, _) = HostProviderSet::from_providers([provider()])
+            .unwrap()
+            .into_registered();
+        let (_, erased, _, _) = HostProviderSet::from_providers([provider()])
+            .unwrap()
+            .into_declarations()
+            .into_registered();
+        let declared = HostProviderModuleDeclaration::new("producer", "handles")
+            .unwrap()
+            .with_retained_custom_type::<Retained>()
+            .unwrap();
+        let (_, declarations, _, _) = HostDeclarations::from_providers([declared])
+            .unwrap()
+            .into_registered();
+        let expected = HostCustomTypeSchema::retained::<Retained>();
+        assert_eq!(expected.access(), crate::HostCustomAccess::Retained);
+        assert!(!expected.requires_shared_access());
+        for mut providers in [live, erased, declarations] {
+            let (package, module, functions, externals, grants) = providers.remove(0).into_parts();
+            assert_eq!(package, "producer");
+            assert_eq!(module, "handles");
+            assert!(functions.is_empty());
+            assert!(externals.is_empty());
+            assert_eq!(grants, std::slice::from_ref(&expected));
+        }
     }
 }

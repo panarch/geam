@@ -2,12 +2,14 @@ use super::{MissingValueContext, ProviderValueContext, Value};
 use crate::host::{
     HostCall, HostCallCompletion, HostCallError, HostProfile, HostProvider, HostType,
 };
+use crate::provider::advanced::StoredDynamic;
 use crate::provider::{
     ProviderConstructions, ProviderInputValue, ProviderListInputCodec, ProviderListInputValue,
-    ProviderListItemDecoder, ProviderListItemValue, ProviderNoConstructions, ProviderOutputValue,
-    ProviderRootOutputValue, ProviderStaticValueForms, ProviderTypedListItemDecoder, ProviderValue,
-    ProviderValueForms,
+    ProviderListItemDecoder, ProviderListItemValue, ProviderNoConstructions, ProviderOutputStorage,
+    ProviderOutputValue, ProviderRootOutputValue, ProviderStaticValueForms, ProviderStoredOwner,
+    ProviderTypedListItemDecoder, ProviderValue, ProviderValueForms,
 };
+use std::convert::Infallible;
 use std::marker::PhantomData;
 
 type Retained<Type> = Value<Type, ProviderValueContext<<Type as ProviderValue>::Host>>;
@@ -67,21 +69,39 @@ where
     Return: HostType,
     Host: HostType,
 {
-    type Error = std::convert::Infallible;
+    type Error = HostCallError;
+    type Storage = ProviderRetainedStorage;
 
     fn into_host<'call>(
         self,
         call: &mut HostCall<'call, Profile, Provider, Return>,
         _: &ProviderConstructions<'call, Self::OutputRequirements>,
     ) -> Result<<Self::Host as HostType>::Value<'call>, Self::Error> {
-        Ok(self.into_host(call))
+        self.into_host(call)
     }
-    fn store_dynamic<'call, Owner: crate::provider::ProviderStoredOwner>(
-        self,
+}
+
+/// Storage transfers an existing handle without restoring its represented value.
+#[doc(hidden)]
+pub struct ProviderRetainedStorage;
+
+impl<Profile, Provider, Return, Type, Host>
+    ProviderOutputStorage<Value<Type, ProviderValueContext<Host>>, Profile, Provider, Return>
+    for ProviderRetainedStorage
+where
+    Profile: HostProfile,
+    Provider: HostProvider<Profile>,
+    Return: HostType,
+    Host: HostType,
+{
+    type Error = Infallible;
+
+    fn store<'call, Owner: ProviderStoredOwner>(
+        value: Value<Type, ProviderValueContext<Host>>,
         _: &mut HostCall<'call, Profile, Provider, Return>,
-        _: &ProviderConstructions<'call, Self::OutputRequirements>,
-    ) -> Result<crate::provider::advanced::StoredDynamic<Owner>, Self::Error> {
-        Ok(crate::provider::advanced::StoredDynamic::from_runtime_value(self.into_stored()))
+        _: &ProviderConstructions<'call, ProviderNoConstructions>,
+    ) -> Result<StoredDynamic<Owner>, Self::Error> {
+        Ok(StoredDynamic::from_runtime_value(value.into_stored()))
     }
 }
 
@@ -96,7 +116,7 @@ where
         mut call: HostCall<'call, Profile, Provider, Self::Host>,
         _: &ProviderConstructions<'call, Self::RootRequirements>,
     ) -> Result<HostCallCompletion<'call, Self::Host>, HostCallError> {
-        let value = self.into_host(&mut call);
+        let value = self.into_host(&mut call)?;
         Ok(call.return_value(value))
     }
 }
@@ -104,16 +124,26 @@ where
 /// Retains a demanded opaque item without granting callable invocation rights.
 #[doc(hidden)]
 pub struct ProviderValueListDecoder<Type> {
-    retention: crate::runtime::ValueRetention,
     type_: PhantomData<fn() -> Type>,
+}
+
+impl<Type: ProviderValue> ProviderValueListDecoder<Type> {
+    #[doc(hidden)]
+    pub fn from_host<'call, Profile, Provider, Return>(
+        _call: &HostCall<'call, Profile, Provider, Return>,
+    ) -> Self
+    where
+        Profile: HostProfile,
+        Provider: HostProvider<Profile>,
+        Return: HostType,
+    {
+        Self { type_: PhantomData }
+    }
 }
 
 impl<Type> Clone for ProviderValueListDecoder<Type> {
     fn clone(&self) -> Self {
-        Self {
-            retention: self.retention.clone(),
-            type_: PhantomData,
-        }
+        Self { type_: PhantomData }
     }
 }
 
@@ -121,7 +151,7 @@ impl<Type: ProviderValue> ProviderListItemDecoder<Value<Type>> for ProviderValue
     type View = Retained<Type>;
 
     fn decode(&self, value: ProviderListItemValue<'_>) -> Self::View {
-        Value::from_stored(value.into_stored(&self.retention))
+        Value::from_stored(value.into_stored())
     }
 }
 
@@ -146,13 +176,10 @@ where
     type Requirements = ProviderNoConstructions;
 
     fn decoder_with<'call, Return: HostType>(
-        call: &HostCall<'call, Profile, Provider, Return>,
+        _call: &HostCall<'call, Profile, Provider, Return>,
         _: &ProviderConstructions<'call, Self::Requirements>,
     ) -> Self::Decoder {
-        ProviderValueListDecoder {
-            retention: call.value_retention(),
-            type_: PhantomData,
-        }
+        ProviderValueListDecoder { type_: PhantomData }
     }
 }
 
@@ -162,8 +189,8 @@ mod tests {
     use crate::host::{HostCall, HostCallCompletion, HostCallError, HostProvider};
     use crate::provider::advanced::ProviderDynamicValue;
     use crate::provider::{
-        ProviderConstructions, ProviderInputValue, ProviderListInputCodec, ProviderOutputValue,
-        ProviderRootOutputValue, Value,
+        ProviderConstructions, ProviderInputValue, ProviderOutputValue, ProviderRootOutputValue,
+        Value,
     };
     use crate::{
         HostList, HostListType, HostModule, HostProviderModule, HostProviderSet, HostTypeParameter,
@@ -246,15 +273,18 @@ mod tests {
         );
         let stored = <Opaque as ProviderDynamicValue<Profile, Provider, Parameter>>::into_stored::<
             Owner,
-        >(value, &mut call);
-        let restored = call.restore_value::<Parameter>(stored.stored());
+        >(value, &mut call)
+        .unwrap_or_else(|never| match never {});
+        let restored = call
+            .restore_value::<Parameter>(stored.stored())
+            .expect("stored value belongs to this call");
         let value = <Opaque as ProviderInputValue<Profile, Provider, Parameter>>::from_host_with(
             &mut call, restored, &proof,
         );
-        let returned =
-            <Opaque as ProviderOutputValue<Profile, Provider, Parameter>>::into_host_infallible(
-                value, &mut call, &proof,
-            );
+        let returned = <Opaque as ProviderOutputValue<Profile, Provider, Parameter>>::into_host(
+            value, &mut call, &proof,
+        )
+        .expect("retained value belongs to this call");
         let value = Opaque::from_host(&call, returned);
         <Opaque as ProviderRootOutputValue<Profile, Provider>>::complete(value, call, &proof)
     }
@@ -263,12 +293,10 @@ mod tests {
         call: HostCall<'call, Profile, Provider, Parameter>,
         values: HostList<'call, Parameter>,
     ) -> Result<HostCallCompletion<'call, Parameter>, HostCallError> {
-        let decoder = <Value<Parameter> as ProviderListInputCodec<Profile, Provider>>::decoder_with(
-            &call,
-            &ProviderConstructions::none(),
-        );
-        let values = call.provider_retained_list::<Value<Parameter>, _, _>(values, decoder.clone());
-        drop(decoder);
+        let values = {
+            let decoder = super::ProviderValueListDecoder::<Parameter>::from_host(&call);
+            call.provider_retained_list::<Value<Parameter>, _, _>(values, decoder.clone())
+        };
         assert_eq!(values.len(), 2);
         let value = values.get(1).unwrap();
         let context = values.__geam_into_context();

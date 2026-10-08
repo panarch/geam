@@ -2,18 +2,19 @@ mod schema;
 
 use self::schema::{
     ChildResult, ChildSpec, ChildSpecSchema, Flag, Flags, FlagsSchema, Handle as HandleType,
-    HandleSchema, Local, Message, MessageSchema, Property, Start, SupervisorName, Timeout,
-    TimeoutSchema,
+    HandleSchema, IntensityFlag, Local, Message, MessageSchema, PeriodFlag, Property,
+    RestartProperty, ShutdownProperty, Start, StrategyFlag, SupervisorName, Timeout, TimeoutSchema,
 };
 use crate::child::{Restart, RestartBudget, Shutdown, property};
-use crate::schema::{StartError, StartResult};
+use crate::schema::{Restart as RestartType, StartError, StartResult};
 use crate::{A, B, Call, Component, Four, One, OtpProfile, Three, Two};
 use geam::execution::{ExecutionUnit, ExecutionUnitId};
 use geam::gleam_erlang::service::{
-    CurrentProcess, Pid as ProcessId, Processes, native_rules, new_reference, pid_value,
-    with_current_process,
+    CurrentProcess, Processes, native_rules, new_reference, pid_value, with_current_process,
 };
-use geam::gleam_erlang::{Atom, AtomSchema, Name, Pid, Reference};
+use geam::gleam_erlang::{
+    Atom, AtomSchema, Component as ErlangComponent, Name, Pid, PidSchema, Reference,
+};
 use geam::gleam_stdlib::provider_support::{
     Dynamic, DynamicSchema, GleamError, GleamOk, GleamResult,
 };
@@ -24,11 +25,12 @@ use geam::host::{
     HostExecutionError, HostExternal, HostExternalBinding, HostExternalEquality,
     HostExternalHashing, HostExternalInspection, HostExternalStorage, HostExternalStore,
     HostFunctionType, HostList, HostListType, HostOwnedCallable, HostOwnedCompletion, HostProfile,
-    HostProviderModule, HostRegistrationError, HostReturns, HostTuple, HostTupleType, HostType,
-    HostTypeAt, HostTypeIndex0, HostTypeIndexNext, HostTypeListEnd, HostTypeSequence,
+    HostProviderModule, HostRegistrationError, HostRestoredType, HostReturns, HostTuple,
+    HostTupleType, HostType, HostTypeAt, HostTypeIndex0, HostTypeIndexNext, HostTypeListEnd,
+    HostTypeSequence,
 };
 use geam::provider::advanced::NativeValue;
-use geam::provider::{BigInt, EcoString, Value};
+use geam::provider::{BigInt, EcoString};
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -36,8 +38,16 @@ pub struct Child<Profile: HostProfile> {
     properties: NativeValue,
     restart: Restart,
     shutdown: Shutdown,
-    start: HostOwnedCallable<Profile, Component<Profile>, One<A>, StartResult<B>, HostTypeListEnd>,
+    start: ChildStart<Profile>,
 }
+
+type ChildStart<Profile> = HostOwnedCallable<
+    Profile,
+    Component<Profile>,
+    One<A>,
+    StartResult<B>,
+    One<HostRestoredType<A>>,
+>;
 
 pub struct Handle {
     source: NativeValue,
@@ -124,7 +134,7 @@ impl HostCallableSchema for SupervisorBody {
     type Arguments = HostTypeListEnd;
     type Return = ();
     type Captures = Captures;
-    type Constructions = One<Pid>;
+    type Constructions = Two<Pid, HostRestoredType<Pid>>;
     type Completion = HostReturns;
 }
 
@@ -139,7 +149,7 @@ pub(super) fn provider<Profile: OtpProfile>()
         .and_then(|module| module.with_resumable_callable::<Component<Profile>, SupervisorBody, (), _>(supervisor_body::<Profile>))
         .and_then(|module| module.with_scoped_function::<Component<Profile>, (Pid,), HandleType, _>("pid_to_supervisor_handle", pid_handle::<Profile>))
         .and_then(|module| module.with_scoped_function::<Component<Profile>, (Name<Message<A, B>>,), HandleType, _>("name_to_supervisor_handle", name_handle::<Profile>))
-        .and_then(|module| module.with_scoped_function_and_constructions::<Component<Profile>, (HostListType<Property<A, B>>,), ChildSpec, HostTypeListEnd, _>("make_erlang_child_spec", make_child::<Profile>))
+        .and_then(|module| module.with_scoped_function_and_constructions::<Component<Profile>, (HostListType<Property<A, B>>,), ChildSpec, One<HostRestoredType<A>>, _>("make_erlang_child_spec", make_child::<Profile>))
         .and_then(|module| module.with_scoped_function::<Component<Profile>, (HostListType<Flag<A>>,), Flags, _>("make_erlang_start_flags", make_flags::<Profile>))
         .and_then(|module| module.with_scoped_function::<Component<Profile>, (BigInt,), Timeout, _>("make_timeout", make_timeout::<Profile>))
         .and_then(|module| module.with_resumable_function::<Component<Profile>, (Atom, Arguments), GleamResult<Pid, Dynamic>, StartTypes, _>("unnamed_start", unnamed_start::<Profile>))
@@ -177,15 +187,28 @@ fn name_handle<'call, Profile: OtpProfile>(
 
 fn make_child<'call, Profile: OtpProfile>(
     mut call: Call<'call, Profile, ChildSpec>,
-    constructions: HostConstructions<'call, HostTypeListEnd>,
+    constructions: HostConstructions<'call, One<HostRestoredType<A>>>,
     properties: HostList<'call, Property<A, B>>,
 ) -> Result<HostCallCompletion<'call, ChildSpec>, HostCallError> {
     let mut callback = None;
+    let mut policies = Vec::new();
     let mut index = 0;
     while let Some(property) = call.list_item::<Property<A, B>>(properties, index) {
         if let Some((mfa, ())) = call.custom_fields::<Start<A, B>>(property) {
             let (_, (_, (callbacks, ()))) = call.tuple_values(mfa);
             callback = call.list_item::<HostFunctionType<One<A>, StartResult<B>>>(callbacks, 0);
+        }
+        if let Some((restart, ())) = call.custom_fields::<RestartProperty<A, B>>(property) {
+            policies.push(NativeValue::tuple([
+                NativeValue::symbol("restart"),
+                call.native_value::<RestartType>(restart),
+            ]));
+        }
+        if let Some((shutdown, ())) = call.custom_fields::<ShutdownProperty<A, B>>(property) {
+            policies.push(NativeValue::tuple([
+                NativeValue::symbol("shutdown"),
+                call.external_payload(shutdown).clone(),
+            ]));
         }
         index += 1;
     }
@@ -193,9 +216,10 @@ fn make_child<'call, Profile: OtpProfile>(
         .ok_or_else(|| geam::HostFailure::new("child specification has no start callback"))?;
     let start = call.owned_callable(callback, &constructions);
     let properties = call.native_value::<HostListType<Property<A, B>>>(properties);
+    let policies = NativeValue::tuple(policies);
     let child = Child {
-        restart: Restart::from_properties(&properties)?,
-        shutdown: Shutdown::from_properties(&properties)?,
+        restart: Restart::from_properties(&policies)?,
+        shutdown: Shutdown::from_properties(&policies)?,
         properties,
         start,
     };
@@ -207,7 +231,30 @@ fn make_flags<'call, Profile: OtpProfile>(
     mut call: Call<'call, Profile, Flags>,
     flags: HostList<'call, Flag<A>>,
 ) -> Result<HostCallCompletion<'call, Flags>, HostCallError> {
-    let value = call.native_value::<HostListType<Flag<A>>>(flags);
+    let mut properties = Vec::new();
+    let mut index = 0;
+    while let Some(flag) = call.list_item(flags, index) {
+        if let Some((_, ())) = call.custom_fields::<StrategyFlag<A>>(flag) {
+            properties.push(NativeValue::tuple([
+                NativeValue::symbol("strategy"),
+                NativeValue::symbol("simple_one_for_one"),
+            ]));
+        }
+        if let Some((value, ())) = call.custom_fields::<IntensityFlag<A>>(flag) {
+            properties.push(NativeValue::tuple([
+                NativeValue::symbol("intensity"),
+                call.native_value::<BigInt>(value),
+            ]));
+        }
+        if let Some((value, ())) = call.custom_fields::<PeriodFlag<A>>(flag) {
+            properties.push(NativeValue::tuple([
+                NativeValue::symbol("period"),
+                call.native_value::<BigInt>(value),
+            ]));
+        }
+        index += 1;
+    }
+    let value = NativeValue::tuple(properties);
     let value = call.create_external(value);
     Ok(call.return_value(value))
 }
@@ -417,7 +464,7 @@ struct Running {
 fn supervisor_body<'call, Profile: OtpProfile>(
     call: Call<'call, Profile, ()>,
     captures: HostCaptures<'call, Captures>,
-    constructions: HostConstructions<'call, One<Pid>>,
+    constructions: HostConstructions<'call, Two<Pid, HostRestoredType<Pid>>>,
 ) -> Result<HostCallContinuation<'call, ()>, HostCallError> {
     CurrentProcess::with(call, |mut process| {
         let call = process.call();
@@ -579,14 +626,18 @@ fn field(value: &NativeValue, index: usize) -> Result<NativeValue, geam::HostFai
 }
 
 async fn restore_pid<Profile: OtpProfile>(
-    context: &HostExecutionContext<'_, Profile, Component<Profile>, One<Pid>>,
+    context: &HostExecutionContext<
+        '_,
+        Profile,
+        Component<Profile>,
+        Two<Pid, HostRestoredType<Pid>>,
+    >,
     pid: NativeValue,
 ) -> Result<ExecutionUnit, HostExecutionError> {
     context
-        .with_call(move |call| {
-            let mut call = geam::provider::Call::from_host_call(call);
-            call.restore_native::<ProcessId>(&pid)
-                .map(|pid| pid.execution_unit())
+        .with_constructions(move |mut call, permissions| {
+            call.restore_native(&permissions.at::<Index1>().restoration(), &pid)
+                .map(|pid| call.external_payload_with::<ErlangComponent<Profile>, PidSchema, HostTypeListEnd>(pid).clone())
                 .ok_or_else(|| geam::HostFailure::new("factory message has no source Pid"))
         })
         .await?
@@ -594,7 +645,12 @@ async fn restore_pid<Profile: OtpProfile>(
 }
 
 async fn run_child<Profile: OtpProfile>(
-    context: &HostExecutionContext<'_, Profile, Component<Profile>, One<Pid>>,
+    context: &HostExecutionContext<
+        '_,
+        Profile,
+        Component<Profile>,
+        Two<Pid, HostRestoredType<Pid>>,
+    >,
     child: &Child<Profile>,
     argument: NativeValue,
 ) -> Result<Result<(NativeValue, Running), NativeValue>, HostExecutionError> {
@@ -603,12 +659,15 @@ async fn run_child<Profile: OtpProfile>(
         .start
         .try_invoke(
             context,
-            move |call, _| {
-                let mut call = geam::provider::Call::from_host_call(call);
-                let value = call.restore_native::<Value<A>>(&input).ok_or_else(|| {
-                    geam::HostFailure::new("factory argument does not match the retained callback")
-                })?;
-                Ok((value.into_host(call.host_call()), ()))
+            move |mut call, permissions| {
+                let value = call
+                    .restore_native(&permissions.at::<HostTypeIndex0>().restoration(), &input)
+                    .ok_or_else(|| {
+                        geam::HostFailure::new(
+                            "factory argument does not match the retained callback",
+                        )
+                    })?;
+                Ok((value, ()))
             },
             |call, _, result| Ok(crate::child::decode(call, result)),
         )
@@ -644,7 +703,7 @@ mod tests {
     use crate::{A, B, Call, Component, One};
     use geam::host::{
         HostCallCompletion, HostCallError, HostCallable, HostConstructions, HostFunctionType,
-        HostProviderModule, HostTypeListEnd,
+        HostProviderModule, HostRestoredType,
     };
     use geam::provider::{BigInt, StringValue};
     use std::sync::Arc;
@@ -748,7 +807,7 @@ pub fn probe() {{
                 .with_external_type::<Component<Profile>, HandleSchema>().unwrap()
                 .with_external_type::<Component<Profile>, MessageSchema>().unwrap()
                 .with_resumable_callable::<Component<Profile>, super::SupervisorBody, (), _>(super::supervisor_body::<Profile>).unwrap()
-                .with_scoped_function_and_constructions::<Component<Profile>, (geam::host::HostListType<super::Property<A, B>>,), super::ChildSpec, HostTypeListEnd, _>("make_erlang_child_spec", super::make_child::<Profile>).unwrap()
+                .with_scoped_function_and_constructions::<Component<Profile>, (geam::host::HostListType<super::Property<A, B>>,), super::ChildSpec, One<HostRestoredType<A>>, _>("make_erlang_child_spec", super::make_child::<Profile>).unwrap()
                 .with_scoped_function::<Component<Profile>, (geam::host::HostListType<super::Flag<A>>,), super::Flags, _>("make_erlang_start_flags", super::make_flags::<Profile>).unwrap()
                 .with_scoped_function::<Component<Profile>, (BigInt,), super::Timeout, _>("make_timeout", super::make_timeout::<Profile>).unwrap()
                 .with_resumable_function::<Component<Profile>, (super::Atom, super::Arguments), super::GleamResult<super::Pid, super::Dynamic>, super::StartTypes, _>("unnamed_start", super::unnamed_start::<Profile>).unwrap()
@@ -947,7 +1006,7 @@ pub type Atom
             let native = HostProviderModule::new("gleam_otp", "gleam/otp/factory_supervisor").unwrap()
                 .with_external_type::<Component<Profile>, ChildSpecSchema>().unwrap()
                 .with_external_type::<Component<Profile>, TimeoutSchema>().unwrap()
-                .with_scoped_function_and_constructions::<Component<Profile>, (geam::host::HostListType<super::Property<A, B>>,), super::ChildSpec, HostTypeListEnd, _>("make_erlang_child_spec", super::make_child::<Profile>).unwrap();
+                .with_scoped_function_and_constructions::<Component<Profile>, (geam::host::HostListType<super::Property<A, B>>,), super::ChildSpec, One<HostRestoredType<A>>, _>("make_erlang_child_spec", super::make_child::<Profile>).unwrap();
             let mut providers = callback_providers(native);
             providers.extend(
                 geam::gleam_erlang::host_providers::<Profile>()
@@ -1074,7 +1133,7 @@ pub fn main() { check(make(#("request", 1)), make(#("request", 1)), make(#("requ
     fn factory_child_storage_preserves_its_property_protocol_and_retained_callback() {
         let provider = HostProviderModule::new("application", "main").unwrap()
             .with_external_type::<Component<Profile>, Probe<ChildSpecSchema>>().unwrap()
-            .with_scoped_function_and_constructions::<Component<Profile>, (HostFunctionType<One<A>, StartResult<B>>, BigInt), ProbeValue<ChildSpecSchema>, HostTypeListEnd, _>("make", make_child).unwrap()
+            .with_scoped_function_and_constructions::<Component<Profile>, (HostFunctionType<One<A>, StartResult<B>>, BigInt), ProbeValue<ChildSpecSchema>, One<HostRestoredType<A>>, _>("make", make_child).unwrap()
             .with_scoped_function::<Component<Profile>, (ProbeValue<ChildSpecSchema>, ProbeValue<ChildSpecSchema>, ProbeValue<ChildSpecSchema>, StringValue), (), _>("check", check::<ChildSpecSchema>).unwrap();
         assert_eq!(run_source(callback_packages(r##"
 import gleam/otp/actor
@@ -1088,7 +1147,7 @@ pub fn main() { check(make(start, 1), make(start, 1), make(start, 2), "1") }
 
     fn make_child<'call>(
         mut call: Call<'call, Profile, ProbeValue<ChildSpecSchema>>,
-        constructions: HostConstructions<'call, HostTypeListEnd>,
+        constructions: HostConstructions<'call, One<HostRestoredType<A>>>,
         start: HostCallable<'call, One<A>, StartResult<B>>,
         property: BigInt,
     ) -> Result<HostCallCompletion<'call, ProbeValue<ChildSpecSchema>>, HostCallError> {

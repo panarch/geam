@@ -117,12 +117,27 @@ pub(super) fn generate_function_adapter(
         }
     }
     constructions.append(&mut generated_return.constructions);
-    let factory_offset = constructions.len();
+    let permission_offset = constructions.len();
     let capture_mode = super::callable::capture_mode(flavor, support);
-    for factory in &function.factories {
+    let restoration_return = if flavor == InputOwnership::Owned {
+        quote!(())
+    } else {
+        return_type.clone()
+    };
+    for permission in &function.permissions {
+        let requirement = match permission {
+            super::FunctionPermission::Factory(factory) => {
+                quote!(<#factory as #support::ProviderFactoryCodec<__GeamProfile, #capture_mode>>::Requirements)
+            }
+            super::FunctionPermission::Restore(target) => {
+                let host =
+                    super::permission::restoration_host(target, &restoration_return, support);
+                quote!(#support::ProviderConstruction<#support::HostRestoredType<#host>>)
+            }
+        };
         constructions.push(GeneratedConstruction {
-            requirement: quote!(<#factory as #support::ProviderFactoryCodec<__GeamProfile, #capture_mode>>::Requirements),
-            binding: names.next("factory_constructions"),
+            requirement,
+            binding: names.next("permissions"),
         });
     }
     let input_environment = InputEnvironment {
@@ -190,7 +205,7 @@ pub(super) fn generate_function_adapter(
         ));
     }
     let construction_bindings = provider_construction_bindings(
-        &constructions[..factory_offset],
+        &constructions[..permission_offset],
         constructions.len(),
         quote!(&__geam_provider_constructions),
         support,
@@ -215,23 +230,34 @@ pub(super) fn generate_function_adapter(
             || super::syntax::function_uses_contextual_forms(function, customs, support),
     );
     let name = ident.unraw().to_string();
-    let host_result_unwrap = function
-        .host_result
-        .then(|| quote!(let returned = returned?;));
+    let host_result_unwrap = function.host_result.then(|| {
+        quote! {
+            let returned = match returned {
+                ::core::result::Result::Ok(value) => value,
+                ::core::result::Result::Err(error) => {
+                    return ::core::result::Result::Err(error);
+                }
+            };
+        }
+    });
     let mut callback_codecs = generated_callbacks
         .into_values()
         .map(|callback| callback.definition)
         .collect::<Vec<_>>();
-    if !function.factories.is_empty() {
-        callback_codecs.push(super::callable::bindings_definition(
-            function,
-            &requirements,
-            factory_offset,
-            constructions.len(),
-            &bounds,
-            support,
-            flavor,
-        ));
+    if !function.permissions.is_empty() {
+        callback_codecs.push(
+            super::permission::Bindings {
+                function,
+                requirements: &requirements,
+                offset: permission_offset,
+                count: constructions.len(),
+                bounds: &bounds,
+                support,
+                flavor,
+                return_type: &restoration_return,
+            }
+            .generate(),
+        );
     }
     let lifetime = if flavor == InputOwnership::Owned {
         quote!('__geam_runtime)
@@ -257,13 +283,20 @@ pub(super) fn generate_function_adapter(
         );
     }
     let callable_schema = super::callable::schema_type(function, &quote!(__GeamProfile));
-    let factory_arguments = function
-        .factories
+    let permission_arguments = function
+        .permissions
         .iter()
-        .map(|factory| quote!(#support::Factory::<#factory>::declaration()))
+        .map(|permission| match permission {
+            super::FunctionPermission::Factory(target) => {
+                quote!(#support::Factory::<#target>::declaration())
+            }
+            super::FunctionPermission::Restore(target) => {
+                quote!(#support::Restore::<#target>::declaration())
+            }
+        })
         .collect::<Vec<_>>();
-    let has_factories = !function.factories.is_empty();
-    let factory_bindings = super::callable::bindings_type(function, &quote!(__GeamProfile));
+    let has_permissions = !function.permissions.is_empty();
+    let permission_bindings = super::permission::bindings_type(function, &quote!(__GeamProfile));
 
     match declaration {
         ProviderFunction::Owned {
@@ -322,19 +355,19 @@ pub(super) fn generate_function_adapter(
             let (call_setup, call_argument) = match call_access {
                 OwnedCallAccess::None => (TokenStream::new(), None),
                 OwnedCallAccess::Mutable => (
-                    if has_factories {
+                    if has_permissions {
                         let constructor = match source_completion {
                             SourceCompletion::Ordinary => {
-                                quote!(from_execution_context_with_factories)
+                                quote!(from_execution_context_with_bindings)
                             }
-                            SourceCompletion::Work => quote!(from_future_context_with_factories),
+                            SourceCompletion::Work => quote!(from_future_context_with_bindings),
                         };
                         let context = match source_completion {
                             SourceCompletion::Ordinary => {
-                                quote!(#support::ProviderExecutionCall<'_, __GeamProfile, __GeamProvider, (), #factory_bindings>)
+                                quote!(#support::ProviderExecutionCall<'_, __GeamProfile, __GeamProvider, (), #permission_bindings>)
                             }
                             SourceCompletion::Work => {
-                                quote!(#support::ProviderFutureCall<'_, __GeamProfile, __GeamProvider, #factory_bindings>)
+                                quote!(#support::ProviderFutureCall<'_, __GeamProfile, __GeamProvider, #permission_bindings>)
                             }
                         };
                         quote!(let mut __geam_provider_call = #support::Call::<_, #context>::#constructor(__geam_execution_context);)
@@ -349,7 +382,7 @@ pub(super) fn generate_function_adapter(
             };
             let call_arguments = call_argument
                 .into_iter()
-                .chain(factory_arguments.clone())
+                .chain(permission_arguments.clone())
                 .chain(argument_names.iter().map(|argument| quote!(#argument)))
                 .collect::<Vec<_>>();
             let wrapper_argument_names =
@@ -450,9 +483,9 @@ pub(super) fn generate_function_adapter(
             let (call_setup, call_argument, call_recovery) = match call_access {
                 CallAccess::None => (TokenStream::new(), None, TokenStream::new()),
                 CallAccess::Mutable => (
-                    if has_factories {
+                    if has_permissions {
                         quote! {
-                            let mut __geam_provider_call = #support::Call::<_, #support::ProviderActiveCall<'_, __GeamProfile, __GeamProvider, #return_type, #factory_bindings>>::from_host_call_with_factories(call, #support::ProviderConstructions::new(&__geam_constructions));
+                            let mut __geam_provider_call = #support::Call::<_, #support::ProviderActiveCall<'_, __GeamProfile, __GeamProvider, #return_type, #permission_bindings>>::from_host_call_with_bindings(call, #support::ProviderConstructions::new(&__geam_constructions));
                         }
                     } else {
                         quote! {
@@ -477,7 +510,7 @@ pub(super) fn generate_function_adapter(
             };
             let call_arguments = call_argument
                 .into_iter()
-                .chain(factory_arguments)
+                .chain(permission_arguments)
                 .chain(decoded_argument_values)
                 .collect::<Vec<_>>();
             let construction_parameter = (!constructions.is_empty() || function.callable.is_some())
@@ -613,7 +646,7 @@ fn retained_adapter(
         return None;
     };
     if function.callable.is_some()
-        || !function.factories.is_empty()
+        || !function.permissions.is_empty()
         || function.arguments.len() != 1
     {
         return None;
@@ -656,9 +689,16 @@ fn retained_adapter(
         _ => return None,
     };
     let wrapper = format_ident!("__geam_retained_{}", function.ident);
-    let unwrap = function
-        .host_result
-        .then(|| quote!(let returned = returned?;));
+    let unwrap = function.host_result.then(|| {
+        quote! {
+            let returned = match returned {
+                ::core::result::Result::Ok(value) => value,
+                ::core::result::Result::Err(error) => {
+                    return ::core::result::Result::Err(error);
+                }
+            };
+        }
+    });
     Some((
         quote! {
             fn #wrapper<__GeamProfile, #(#wrapper_parameters,)*>(

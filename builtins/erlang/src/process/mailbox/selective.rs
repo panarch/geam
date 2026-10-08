@@ -8,7 +8,7 @@ use geam_core::host::{
     HostType, HostTypeSequence,
 };
 use geam_core::provider::advanced::NativeValue;
-use geam_core::provider::{Call, ProviderExecutionCall, ProviderFactoryBindings};
+use geam_core::provider::{Call, ProviderCallBindings, ProviderExecutionCall};
 use std::future::Future;
 use std::marker::PhantomData;
 use std::time::Instant;
@@ -54,7 +54,7 @@ where
     ) -> impl Future<Output = Result<Option<Output>, HostExecutionError>> + Send + 'request
     where
         Provider: HostProvider<Profile>,
-        Bindings: ProviderFactoryBindings,
+        Bindings: ProviderCallBindings,
         'run: 'request,
     {
         self.wait(call.execution_context())
@@ -70,7 +70,7 @@ where
     ) -> impl Future<Output = Result<Output, HostExecutionError>> + Send + 'request
     where
         Provider: HostProvider<Profile>,
-        Bindings: ProviderFactoryBindings,
+        Bindings: ProviderCallBindings,
         'run: 'request,
     {
         self.wait_forever(call.execution_context())

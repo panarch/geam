@@ -192,6 +192,37 @@ impl From<StoredListValueId> for EvaluatedValue {
 }
 
 impl EvaluatedValue {
+    pub(in crate::runtime) fn requires_execution(
+        &self,
+        metadata: RuntimeValueMetadata<'_>,
+    ) -> bool {
+        match self {
+            Self::Custom(value) => metadata
+                .custom_lifetime(value.type_id())
+                .requires_execution(),
+            Self::External(value) => metadata
+                .external_lifetime(value.type_id())
+                .requires_execution(),
+            Self::List(value) => metadata
+                .list_lifetime(value.list_type())
+                .requires_execution(),
+            Self::ParameterList(value) => metadata
+                .list_lifetime(value.type_id().list_type())
+                .requires_execution(),
+            Self::Tuple(values) => values
+                .iter()
+                .any(|value| value.requires_execution(metadata)),
+            Self::Function(_) => true,
+            Self::Int(_)
+            | Self::Float(_)
+            | Self::String(_)
+            | Self::BitArray(_)
+            | Self::UtfCodepoint(_)
+            | Self::Bool(_)
+            | Self::Nil => false,
+        }
+    }
+
     pub(in crate::runtime) fn value_type(&self, metadata: RuntimeValueMetadata<'_>) -> ValueType {
         match self {
             Self::Int(_) => ValueType::Int,

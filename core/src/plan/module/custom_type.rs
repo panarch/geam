@@ -16,6 +16,8 @@ pub struct CustomTypeDefinition {
     name: CustomTypeName,
     publicity: CustomTypePublicity,
     opaque: bool,
+    native_access: Option<crate::host::HostCustomAccess>,
+    retention_lifetime: crate::host::HostValueLifetime,
     parameters: Vec<CustomTypeParameterId>,
     constructors: Vec<CustomConstructorDefinition>,
 }
@@ -85,6 +87,8 @@ impl CustomTypeDefinition {
             name,
             publicity,
             opaque,
+            native_access: None,
+            retention_lifetime: crate::host::HostValueLifetime::LoadedOwner,
             parameters,
             constructors,
         }
@@ -100,6 +104,22 @@ impl CustomTypeDefinition {
 
     pub fn is_opaque(&self) -> bool {
         self.opaque
+    }
+
+    pub fn retention_lifetime(&self) -> crate::host::HostValueLifetime {
+        self.retention_lifetime
+    }
+
+    pub(crate) fn set_retention_lifetime(&mut self, lifetime: crate::host::HostValueLifetime) {
+        self.retention_lifetime = lifetime;
+    }
+
+    pub fn native_access(&self) -> Option<crate::host::HostCustomAccess> {
+        self.native_access
+    }
+
+    pub(crate) fn set_native_access(&mut self, access: crate::host::HostCustomAccess) {
+        self.native_access = Some(access);
     }
 
     pub fn parameters(&self) -> &[CustomTypeParameterId] {

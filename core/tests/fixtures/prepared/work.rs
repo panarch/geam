@@ -1,6 +1,6 @@
 data::HostedModuleArtifact {
     module: data::ModuleArtifact {
-        format: 24,
+        format: 25,
         program: data::ProgramTables {
             root: data::source::module_id(1),
             modules: data::Storage::Static(&[
@@ -4138,6 +4138,10 @@ pub fn invoke(value: Captured) -> work.Work(Int) {
                 ]),
                 tuple_items: data::Storage::Static(&[]),
                 function_items: data::Storage::Static(&[]),
+                lifetimes: data::Storage::Static(&[
+                    data::host::HostValueLifetime::Execution,
+                    data::host::HostValueLifetime::LoadedOwner,
+                ]),
             },
             custom_types: data::type_::CustomTypeTable {
                 types: data::Storage::Static(&[
@@ -4148,6 +4152,8 @@ pub fn invoke(value: Captured) -> work.Work(Int) {
                             name: data::Text::Static("Captured"),
                             arguments: data::Storage::Static(&[]),
                         },
+                        native_visible: true,
+                        lifetime: data::host::HostValueLifetime::Execution,
                         constructor_count: 1,
                         constructors: data::Storage::Static(&[
                             data::type_::CustomConstructorDescriptor {
@@ -4186,6 +4192,8 @@ pub fn invoke(value: Captured) -> work.Work(Int) {
                         name: data::Text::Static("Captured"),
                         publicity: data::type_::CustomTypePublicity::Public,
                         opaque: false,
+                        native_access: None,
+                        retention_lifetime: data::host::HostValueLifetime::LoadedOwner,
                         parameters: 0,
                         constructors: data::Storage::Static(&[
                             data::type_::ConstructorDefinition {
@@ -4223,6 +4231,19 @@ pub fn invoke(value: Captured) -> work.Work(Int) {
                         arguments: data::Storage::Static(&[
                             data::type_::TypeMetadata::List(data::Storage::Static(&data::type_::TypeMetadata::Int)),
                         ]),
+                    },
+                ]),
+                lifetimes: data::Storage::Static(&[
+                    data::host::HostValueLifetime::Execution,
+                    data::host::HostValueLifetime::Execution,
+                ]),
+                definitions: data::Storage::Static(&[
+                    data::host::ExternalSchema {
+                        package: data::Text::Static("work_fixture"),
+                        module: data::Text::Static("fixture/work"),
+                        name: data::Text::Static("Work"),
+                        parameter_count: 1,
+                        lifetime: data::host::HostValueLifetime::Execution,
                     },
                 ]),
             },
@@ -4737,6 +4758,7 @@ pub fn invoke(value: Captured) -> work.Work(Int) {
                         module: data::Text::Static("fixture/work"),
                         name: data::Text::Static("Work"),
                         parameter_count: 1,
+                        lifetime: data::host::HostValueLifetime::Execution,
                     },
                     arguments: data::Storage::Static(&[
                         data::host::RegistrationType::Parameter(0),
@@ -4752,9 +4774,11 @@ pub fn invoke(value: Captured) -> work.Work(Int) {
                         module: data::Text::Static("fixture/work"),
                         name: data::Text::Static("Work"),
                         parameter_count: 1,
+                        lifetime: data::host::HostValueLifetime::Execution,
                     },
                 ]),
                 constructions: data::Storage::Static(&[]),
+                restorations: data::Storage::Static(&[]),
                 construction_customs: data::Storage::Static(&[]),
                 construction_externals: data::Storage::Static(&[]),
                 native_rules: None,
@@ -4870,6 +4894,7 @@ pub fn invoke(value: Captured) -> work.Work(Int) {
                             module: data::Text::Static("fixture/work"),
                             name: data::Text::Static("Work"),
                             parameter_count: 1,
+                            lifetime: data::host::HostValueLifetime::Execution,
                         },
                         arguments: data::Storage::Static(&[
                             data::host::RegistrationType::Parameter(1),
@@ -4891,6 +4916,7 @@ pub fn invoke(value: Captured) -> work.Work(Int) {
                         module: data::Text::Static("fixture/work"),
                         name: data::Text::Static("Work"),
                         parameter_count: 1,
+                        lifetime: data::host::HostValueLifetime::Execution,
                     },
                     arguments: data::Storage::Static(&[
                         data::host::RegistrationType::Parameter(0),
@@ -4910,9 +4936,11 @@ pub fn invoke(value: Captured) -> work.Work(Int) {
                         module: data::Text::Static("fixture/work"),
                         name: data::Text::Static("Work"),
                         parameter_count: 1,
+                        lifetime: data::host::HostValueLifetime::Execution,
                     },
                 ]),
                 constructions: data::Storage::Static(&[]),
+                restorations: data::Storage::Static(&[]),
                 construction_customs: data::Storage::Static(&[]),
                 construction_externals: data::Storage::Static(&[]),
                 native_rules: None,
@@ -5021,6 +5049,7 @@ pub fn invoke(value: Captured) -> work.Work(Int) {
                             module: data::Text::Static("fixture/work"),
                             name: data::Text::Static("Work"),
                             parameter_count: 1,
+                            lifetime: data::host::HostValueLifetime::Execution,
                         },
                         arguments: data::Storage::Static(&[
                             data::host::RegistrationType::Parameter(0),
@@ -5036,6 +5065,7 @@ pub fn invoke(value: Captured) -> work.Work(Int) {
                         module: data::Text::Static("fixture/work"),
                         name: data::Text::Static("Work"),
                         parameter_count: 1,
+                        lifetime: data::host::HostValueLifetime::Execution,
                     },
                     arguments: data::Storage::Static(&[
                         data::host::RegistrationType::List(data::Storage::Static(&data::host::RegistrationType::Parameter(0))),
@@ -5051,11 +5081,13 @@ pub fn invoke(value: Captured) -> work.Work(Int) {
                         module: data::Text::Static("fixture/work"),
                         name: data::Text::Static("Work"),
                         parameter_count: 1,
+                        lifetime: data::host::HostValueLifetime::Execution,
                     },
                 ]),
                 constructions: data::Storage::Static(&[
                     data::host::RegistrationType::List(data::Storage::Static(&data::host::RegistrationType::Parameter(0))),
                 ]),
+                restorations: data::Storage::Static(&[]),
                 construction_customs: data::Storage::Static(&[]),
                 construction_externals: data::Storage::Static(&[]),
                 native_rules: None,

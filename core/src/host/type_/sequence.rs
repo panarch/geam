@@ -33,6 +33,12 @@ pub trait HostTypeSequence: private::Sequence + Send + Sync + 'static {
 }
 
 pub(crate) trait HostAbiTypeSequence: HostTypeSequence {
+    fn permissions() -> (Vec<HostTypeDescriptor>, Vec<HostTypeDescriptor>) {
+        let mut constructions = Vec::new();
+        let mut restorations = Vec::new();
+        <Self as private::Sequence>::collect_permissions(&mut constructions, &mut restorations);
+        (constructions, restorations)
+    }
     fn descriptors() -> Vec<HostTypeDescriptor> {
         <Self as private::Sequence>::descriptors()
     }
@@ -103,6 +109,7 @@ impl HostTypeSequence for HostTypeListEnd {
 
 impl private::Sequence for HostTypeListEnd {
     const CALLABLE_COUNT: usize = 0;
+    fn collect_permissions(_: &mut Vec<HostTypeDescriptor>, _: &mut Vec<HostTypeDescriptor>) {}
     fn descriptors() -> Vec<HostTypeDescriptor> {
         Vec::new()
     }
@@ -153,6 +160,13 @@ impl<Left: HostTypeSequence, Right: HostTypeSequence> private::Sequence
     for HostTypeBranch<Left, Right>
 {
     const CALLABLE_COUNT: usize = Left::CALLABLE_COUNT + Right::CALLABLE_COUNT;
+    fn collect_permissions(
+        constructions: &mut Vec<HostTypeDescriptor>,
+        restorations: &mut Vec<HostTypeDescriptor>,
+    ) {
+        <Left as private::Sequence>::collect_permissions(constructions, restorations);
+        <Right as private::Sequence>::collect_permissions(constructions, restorations);
+    }
 
     fn descriptors() -> Vec<HostTypeDescriptor> {
         let mut types = <Left as private::Sequence>::descriptors();
@@ -207,6 +221,13 @@ where
 {
     const CALLABLE_COUNT: usize =
         <Head as private::Abi>::CALLABLE_CONSTRUCTION + <Tail as private::Sequence>::CALLABLE_COUNT;
+    fn collect_permissions(
+        constructions: &mut Vec<HostTypeDescriptor>,
+        restorations: &mut Vec<HostTypeDescriptor>,
+    ) {
+        <Head as private::Abi>::collect_permissions(constructions, restorations);
+        <Tail as private::Sequence>::collect_permissions(constructions, restorations);
+    }
 
     fn descriptors() -> Vec<HostTypeDescriptor> {
         let mut types = vec![<Head as HostAbiType>::descriptor()];

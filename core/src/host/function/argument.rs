@@ -11,7 +11,8 @@ use crate::StringValue;
 use crate::host::{
     HostAbiType, HostAbiTypeSequence, HostCall, HostCustomSchema, HostCustomType,
     HostExternalSchema, HostExternalType, HostFunctionType, HostFunctionValueType, HostListType,
-    HostOpaqueFunctionType, HostProfile, HostProvider, HostTupleType, HostTypeParameter,
+    HostOpaqueFunctionType, HostProfile, HostProvider, HostRetainedCustomSchema,
+    HostRetainedCustomType, HostTupleType, HostTypeParameter,
 };
 use num_bigint::BigInt;
 
@@ -294,6 +295,30 @@ impl<Elements: HostAbiTypeSequence> HostScopedArgument for HostTupleType<Element
 impl<Schema, Arguments> HostScopedArgument for HostCustomType<Schema, Arguments>
 where
     Schema: HostCustomSchema,
+    Arguments: HostAbiTypeSequence,
+{
+    type Slot = HostCustomArgumentSlot;
+
+    fn register(layout: &mut HostParameterLayout) -> Self::Slot {
+        layout.register_custom_parameter()
+    }
+
+    fn read<'call, Profile, Provider, Return>(
+        call: &HostCall<'call, Profile, Provider, Return>,
+        slot: Self::Slot,
+    ) -> Self::Value<'call>
+    where
+        Profile: HostProfile,
+        Provider: HostProvider<Profile>,
+        Return: HostAbiType,
+    {
+        call.custom(slot)
+    }
+}
+
+impl<Schema, Arguments> HostScopedArgument for HostRetainedCustomType<Schema, Arguments>
+where
+    Schema: HostRetainedCustomSchema,
     Arguments: HostAbiTypeSequence,
 {
     type Slot = HostCustomArgumentSlot;

@@ -62,6 +62,10 @@ mod consumer {
 
     #[geam_macros::function]
     fn status_text(value: declarations::StatusInput) -> StringValue {
+        render_status(value)
+    }
+
+    fn render_status(value: declarations::StatusInput) -> StringValue {
         match value {
             declarations::StatusInput::Ready => "ready".into(),
             declarations::StatusInput::Count(value) => format!("count:{value}").into(),
@@ -112,9 +116,11 @@ mod consumer {
     #[geam_macros::function]
     fn envelope_text(value: EnvelopeInput) -> StringValue {
         match value {
-            EnvelopeInput::One(value) => format!("one:{}", status_text(value)).into(),
+            EnvelopeInput::One(value) => format!("one:{}", render_status(value)).into(),
             EnvelopeInput::Many(values) => {
-                let second = values.get(1).map_or_else(|| "missing".into(), status_text);
+                let second = values
+                    .get(1)
+                    .map_or_else(|| "missing".into(), render_status);
                 format!("many:{}:{second}", values.len()).into()
             }
             EnvelopeInput::Token(value) => format!("token:{}", value.0).into(),
@@ -133,7 +139,9 @@ mod consumer {
 
     #[geam_macros::function]
     fn first(values: geam_core::List<declarations::StatusInput>) -> StringValue {
-        values.get(0).map_or_else(|| "missing".into(), status_text)
+        values
+            .get(0)
+            .map_or_else(|| "missing".into(), render_status)
     }
 
     #[geam_macros::function]

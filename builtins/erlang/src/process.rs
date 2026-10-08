@@ -38,6 +38,7 @@ pub(crate) fn host_provider<Profile: GleamErlangHostProfile>()
 -> Result<HostProviderModule<Profile>, HostRegistrationError> {
     HostProviderModule::new("gleam_erlang", "gleam/erlang/process")
         .and_then(|module| module.with_shared_custom_type::<schema::SubjectSchema>())
+        .and_then(|module| module.with_shared_custom_type::<schema::AnythingSelectorTagSchema>())
         .and_then(|module| module.with_external_type::<Component<Profile>, PidSchema>())
         .and_then(|module| module.with_external_type::<Component<Profile>, NameSchema>())
         .and_then(|module| module.with_external_type::<Component<Profile>, SelectorSchema>())

@@ -1,8 +1,8 @@
-error[E0277]: the trait bound `geam_core::provider::ProviderNoFactories: geam_core::provider::ProviderFactoryBinding<_, _>` is not satisfied
+error[E0277]: the trait bound `geam_core::provider::ProviderNoCallBindings: geam_core::provider::ProviderFactoryBinding<_, _>` is not satisfied
   --> tests/ui/factory_without_permission.rs:18:21
    |
 18 |         call.create(&factory, (1.into(),))
-   |              ------ ^^^^^^^^ the trait `geam_core::provider::ProviderFactoryBinding<_, _>` is not implemented for `geam_core::provider::ProviderNoFactories`
+   |              ------ ^^^^^^^^ the trait `geam_core::provider::ProviderFactoryBinding<_, _>` is not implemented for `geam_core::provider::ProviderNoCallBindings`
    |              |
    |              required by a bound introduced by this call
    |

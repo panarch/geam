@@ -76,6 +76,8 @@ pub enum HostProviderLinkReason {
     },
     #[error("custom type {custom_type:?} requires a sharing registration from its source owner")]
     MissingSharedCustomType { custom_type: CustomTypeName },
+    #[error("custom type {custom_type:?} requires a retention registration from its source owner")]
+    MissingRetainedCustomType { custom_type: CustomTypeName },
     #[error("custom type {custom_type:?} is missing")]
     MissingCustomType { custom_type: CustomTypeName },
     #[error("custom type {custom_type:?} is not visible to the host function")]
@@ -125,8 +127,8 @@ mod tests {
         assert_eq!(
             reason.to_string(),
             concat!(
-                "shared custom schema mismatch: expected HostCustomTypeSchema { package: \"app\", module: \"handles\", name: \"Handle\", parameter_count: 0, constructors: [], shared: true }, ",
-                "got HostCustomTypeSchema { package: \"app\", module: \"handles\", name: \"Handle\", parameter_count: 1, constructors: [], shared: true }",
+                "shared custom schema mismatch: expected HostCustomTypeSchema { package: \"app\", module: \"handles\", name: \"Handle\", parameter_count: 0, constructors: [], access: Shared, lifetime: LoadedOwner }, ",
+                "got HostCustomTypeSchema { package: \"app\", module: \"handles\", name: \"Handle\", parameter_count: 1, constructors: [], access: Shared, lifetime: LoadedOwner }",
             )
         );
         assert_eq!(reason.clone(), reason);

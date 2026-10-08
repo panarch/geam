@@ -9,7 +9,7 @@ pub struct Component;
 )]
 mod service {
     use geam::gleam_erlang::service::{self, ProcessCall};
-    use geam::provider::{BigInt, Call, HostResult, Value};
+    use geam::provider::{BigInt, Call, HostResult, Restore, Value};
     use std::time::Duration;
 
     #[geam::custom]
@@ -24,6 +24,7 @@ mod service {
     #[geam::function(await, profile = Profile)]
     async fn exchange<Message, Reply>(
         #[geam::call] call: &mut Call<()>,
+        #[geam::restore] restore: Restore<Value<Reply>>,
         name: service::Name<Message>,
         destination: service::Subject<Message>,
         message: Value<Message>,
@@ -45,8 +46,8 @@ mod service {
                     return Ok::<_, geam::HostCallError>(None);
                 };
                 let receive = call.receive_subject(reply, timeout)?;
-                call.send_subject(destination, message);
-                Ok(Some((target, receive)))
+                call.send_subject(destination, message)
+                    .map(|_| Some((target, receive)))
             })
             .await??;
         let Some((target, receive)) = request else {
@@ -55,7 +56,7 @@ mod service {
         let response = receive.wait_in(call).await?;
         call.with_call(move |call| match response {
             Some(response) => Ok(call
-                .restore_native::<Value<Reply>>(&response)
+                .restore_native::<Value<Reply>>(&restore, &response)
                 .ok_or(RequestError::InvalidReply)),
             None => Ok(Err(if call.is_alive(&target) {
                 RequestError::TimedOut

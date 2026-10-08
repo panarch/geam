@@ -286,8 +286,10 @@ where
     ) -> Option<HostScopedValue> {
         let conversion = conversions.get(id);
         if let Some(source) = value.find_source(|source| {
-            (self.call.runtime.owns_stored(source) && conversion.matches_type(source.type_()))
-                .then(|| source.clone_retained())
+            (self.call.runtime.owns_stored(source)
+                && source.belongs_to(&self.call.runtime.execution())
+                && conversion.matches_type(source.type_()))
+            .then(|| source.clone_retained())
         }) {
             return Some(HostScopedValue::Value(
                 self.call.runtime.restore_stored(&source),
@@ -463,9 +465,16 @@ mod tests {
                 let result = match input {
                     Some(value) => {
                         callback
-                            .invoke(
+                            .try_invoke(
                                 &context,
-                                move |mut call, _| (value.into_host(&mut call), ()),
+                                move |mut call, _| {
+                                    Ok((
+                                        value
+                                            .into_host(&mut call)
+                                            .expect("input belongs to this execution"),
+                                        (),
+                                    ))
+                                },
                                 |call, _, value| Ok(Owned::<Output>::from_host(&call, value)),
                             )
                             .await?
@@ -473,7 +482,9 @@ mod tests {
                     None => fallback,
                 };
                 Ok(crate::host::HostOwnedCompletion::new(move |mut call, _| {
-                    let value = result.into_host(&mut call);
+                    let value = result
+                        .into_host(&mut call)
+                        .expect("result belongs to this execution");
                     Ok(call.return_value(value))
                 }))
             })
@@ -760,14 +771,23 @@ pub fn main() {
             Ok(call.resume(constructions, move |context| {
                 Box::pin(async move {
                     let result = callback
-                        .invoke(
+                        .try_invoke(
                             &context,
-                            move |mut call, _| (packet.into_host(&mut call), ()),
+                            move |mut call, _| {
+                                Ok((
+                                    packet
+                                        .into_host(&mut call)
+                                        .expect("packet belongs to this execution"),
+                                    (),
+                                ))
+                            },
                             |call, _, value| Ok(Owned::<Output>::from_host(&call, value)),
                         )
                         .await?;
                     Ok(crate::host::HostOwnedCompletion::new(move |mut call, _| {
-                        let value = result.into_host(&mut call);
+                        let value = result
+                            .into_host(&mut call)
+                            .expect("result belongs to this execution");
                         Ok(call.return_value(value))
                     }))
                 })
@@ -998,6 +1018,7 @@ pub fn main() {
         const MODULE: &'static str = "main";
         const NAME: &'static str = "Name";
         const PARAMETER_COUNT: usize = 0;
+        const LIFETIME: crate::HostValueLifetime = crate::HostValueLifetime::LoadedOwner;
     }
 
     impl HostExternalSchema for BoxSchema {
@@ -2172,9 +2193,16 @@ pub fn main() {
                 let result = match input {
                     Some(value) => {
                         callback
-                            .invoke(
+                            .try_invoke(
                                 &context,
-                                move |mut call, _| (value.into_host(&mut call), ()),
+                                move |mut call, _| {
+                                    Ok((
+                                        value
+                                            .into_host(&mut call)
+                                            .expect("input belongs to this execution"),
+                                        (),
+                                    ))
+                                },
                                 |call, _, value| Ok(Owned::<Output>::from_host(&call, value)),
                             )
                             .await?
@@ -2182,7 +2210,9 @@ pub fn main() {
                     None => fallback,
                 };
                 Ok(crate::host::HostOwnedCompletion::new(move |mut call, _| {
-                    let value = result.into_host(&mut call);
+                    let value = result
+                        .into_host(&mut call)
+                        .expect("result belongs to this execution");
                     Ok(call.return_value(value))
                 }))
             })

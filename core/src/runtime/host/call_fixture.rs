@@ -404,7 +404,8 @@ impl HostCallRuntime<TestHostProfile> for TestHostCallRuntime<'_> {
     fn native_tuple(&self, value: HostListToken) -> crate::runtime::NativeValue {
         crate::runtime::NativeValue::tuple_from_list(
             self.scoped.list_value(value),
-            self.execution.execution().value_metadata(),
+            crate::runtime::ValueRetention::new(self.execution.execution().value_metadata())
+                .with_endpoint(self.execution().endpoint()),
         )
     }
 
@@ -438,9 +439,7 @@ impl HostCallRuntime<TestHostProfile> for TestHostCallRuntime<'_> {
                 &crate::runtime::BorrowedValue::from_stored(value).list(),
                 index,
             )
-            .map(|value| {
-                StoredRuntimeValue::new(value, self.execution.execution().value_metadata())
-            })
+            .map(|item| StoredRuntimeValue::from_retention(item, value.retention()))
     }
 
     fn restore_list(&mut self, value: &StoredRuntimeList) -> HostListToken {
@@ -614,7 +613,10 @@ mod tests {
             assert_eq!(item.type_(), &ValueType::Int);
         }
         assert!(runtime.stored_list_item(&value, 2).is_none());
-        let retained = StoredRuntimeList::new(list.into());
+        let retained = StoredRuntimeList::new(
+            list.into(),
+            crate::runtime::ValueRetention::new(plan.value_metadata()),
+        );
         let token = runtime.restore_list(&retained);
         assert_eq!(
             runtime

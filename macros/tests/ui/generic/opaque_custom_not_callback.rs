@@ -1,4 +1,6 @@
-use geam_core::provider::advanced::{Equality, Hashing, Inspection, RetainedExternalPayload, StoredDynamic};
+use geam_core::provider::advanced::{
+    Equality, Hashing, Inspection, RetainedExternalPayload, StoredDynamic,
+};
 use geam_core::provider::{Call, Callback};
 
 #[geam_macros::provider(package = "opaque", modules = [messages, opaque], crate_path = geam_core)]
@@ -16,7 +18,10 @@ mod messages {
 
 #[geam_macros::module(path = "opaque", crate_path = geam_core)]
 mod opaque {
-    use super::{Call, Callback, Equality, Hashing, Inspection, RetainedExternalPayload, StoredDynamic};
+    use super::{
+        Call, Callback, Equality, Hashing, Inspection, RetainedExternalPayload, StoredDynamic,
+    };
+    use geam_core::provider::Restore;
 
     #[geam_macros::custom(input = MessageInput)]
     enum Message {
@@ -29,7 +34,9 @@ mod opaque {
     }
 
     #[geam_macros::external(name = "Dynamic", retained)]
-    struct Dynamic { value: StoredDynamic<Dynamic> }
+    struct Dynamic {
+        value: StoredDynamic<Dynamic>,
+    }
 
     impl RetainedExternalPayload for Dynamic {
         fn source_equal(&self, context: &Equality<'_>, other: &Self) -> bool {
@@ -44,13 +51,23 @@ mod opaque {
     }
 
     #[geam_macros::function]
-    fn recover_callback(#[geam_macros::call] call: &mut Call<()>, value: &Dynamic) -> bool {
-        call.restore_dynamic::<Message, Dynamic>(&value.value).is_some()
+    fn recover_callback(
+        #[geam_macros::call] call: &mut Call<()>,
+        #[geam_macros::restore] restore: Restore<Message>,
+        value: &Dynamic,
+    ) -> bool {
+        call.restore_dynamic::<Message, Dynamic>(&restore, &value.value)
+            .is_some()
     }
 
     #[geam_macros::function]
-    fn recover_nested_callback(#[geam_macros::call] call: &mut Call<()>, value: &Dynamic) -> bool {
-        call.restore_dynamic::<Batch, Dynamic>(&value.value).is_some()
+    fn recover_nested_callback(
+        #[geam_macros::call] call: &mut Call<()>,
+        #[geam_macros::restore] restore: Restore<Batch>,
+        value: &Dynamic,
+    ) -> bool {
+        call.restore_dynamic::<Batch, Dynamic>(&restore, &value.value)
+            .is_some()
     }
 }
 

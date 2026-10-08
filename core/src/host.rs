@@ -8,6 +8,7 @@ mod external;
 mod failure;
 mod function;
 mod future;
+mod lifetime;
 mod module;
 pub mod native;
 mod profile;
@@ -23,7 +24,7 @@ pub use component::{
     HostProviderConfiguration, HostProviderConfigurationValue, HostProviderInitializationError,
     HostServiceProfile,
 };
-pub use construction::{HostConstruction, HostConstructions};
+pub use construction::{HostConstruction, HostConstructions, HostRestoration};
 pub use declaration::{
     HostCompletion, HostDeclarations, HostDiverges, HostFunctionDeclaration, HostModuleDeclaration,
     HostProviderModuleDeclaration, HostReturns,
@@ -53,17 +54,18 @@ pub use future::{
     HostFutureContext, HostFuturePayload, HostFutureStore, HostFutureType, HostFutureValue,
     HostWorkProfile, HostWorkRepresentation, HostWorkSchema, HostWorkStorage,
 };
+pub use lifetime::HostValueLifetime;
 pub use module::{HostModule, HostProviderModule, HostProviderSet};
 pub use profile::{HostCall, HostProfile, HostProvider, StatelessHostProfile};
 pub use type_::{
-    HostCreatedFunction, HostCustomConstructor, HostCustomConstructorAt,
+    HostCreatedFunction, HostCustomAccess, HostCustomConstructor, HostCustomConstructorAt,
     HostCustomConstructorDefinition, HostCustomConstructorList, HostCustomConstructorListEnd,
     HostCustomConstructorSchema, HostCustomField, HostCustomFieldList, HostCustomFieldListEnd,
     HostCustomFieldSchema, HostCustomIndex0, HostCustomIndexNext, HostCustomSchema, HostCustomType,
     HostCustomTypeArgument, HostCustomTypeSchema, HostFunctionType, HostFunctionValueType,
-    HostListType, HostNominalCustomField, HostSchemaType, HostTupleType, HostType, HostTypeAt,
-    HostTypeIndex0, HostTypeIndexNext, HostTypeList, HostTypeListEnd, HostTypeParameter,
-    HostTypeSequence,
+    HostListType, HostNominalCustomField, HostRestoredType, HostRetainedCustomSchema,
+    HostRetainedCustomType, HostSchemaType, HostTupleType, HostType, HostTypeAt, HostTypeIndex0,
+    HostTypeIndexNext, HostTypeList, HostTypeListEnd, HostTypeParameter, HostTypeSequence,
 };
 #[doc(hidden)]
 pub use type_::{

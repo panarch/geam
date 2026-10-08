@@ -1,5 +1,5 @@
-use super::{ProviderConstructionRequirements, ProviderConstructions, ProviderNoConstructions};
-use crate::{HostCall, HostCallError, HostProfile, HostProvider, HostType, HostTypeListEnd};
+use super::{ProviderCallBindings, ProviderConstructionRequirements, ProviderConstructions};
+use crate::{HostCall, HostCallError, HostProfile, HostProvider, HostType};
 use std::marker::PhantomData;
 
 /// Selects a native callable declaration for an explicitly authorized provider call.
@@ -30,16 +30,9 @@ impl<Declaration> Factory<Declaration> {
     }
 }
 
-/// The exact construction tree owned by one generated provider function.
-#[doc(hidden)]
-pub trait ProviderFactoryBindings {
-    type Requirements: ProviderConstructionRequirements;
-    type CaptureMode;
-}
-
 /// Selects a declared factory's subtree without granting any additional capability.
 #[doc(hidden)]
-pub trait ProviderFactoryBinding<Declaration, Requirements>: ProviderFactoryBindings
+pub trait ProviderFactoryBinding<Declaration, Requirements>: ProviderCallBindings
 where
     Requirements: ProviderConstructionRequirements,
 {
@@ -65,9 +58,6 @@ pub trait ProviderFactoryCodec<Profile: HostProfile, Mode = ProviderOwnedCapture
         Return: HostType;
 }
 
-#[doc(hidden)]
-pub struct ProviderNoFactories;
-
 /// Capture inputs received during an immediate provider call.
 #[doc(hidden)]
 pub struct ProviderImmediateCaptures;
@@ -75,14 +65,6 @@ pub struct ProviderImmediateCaptures;
 /// Capture inputs already owned by a resumable provider operation.
 #[doc(hidden)]
 pub struct ProviderOwnedCaptures;
-
-impl ProviderFactoryBindings for ProviderNoFactories {
-    type Requirements = ProviderNoConstructions;
-    type CaptureMode = ProviderOwnedCaptures;
-}
-
-pub(super) type FactoryConstructions<Bindings> =
-    <<Bindings as ProviderFactoryBindings>::Requirements as ProviderConstructionRequirements>::Types<HostTypeListEnd>;
 
 impl<Requirements: ProviderConstructionRequirements> ProviderConstructions<'_, Requirements> {
     /// Converts owned factory captures using the declaration's original provider.
@@ -111,7 +93,7 @@ impl<Requirements: ProviderConstructionRequirements> ProviderConstructions<'_, R
 
 #[cfg(test)]
 mod tests {
-    use super::{Factory, ProviderFactoryBinding, ProviderFactoryBindings, ProviderFactoryCodec};
+    use super::{Factory, ProviderCallBindings, ProviderFactoryBinding, ProviderFactoryCodec};
     use crate::embedding::{FunctionDeclaration, HostedModuleBuilder};
     use crate::provider::{
         Call, ProviderActiveCall, ProviderConstruction, ProviderConstructionIndex0,
@@ -166,7 +148,7 @@ mod tests {
         }
     }
     struct Bindings;
-    impl ProviderFactoryBindings for Bindings {
+    impl ProviderCallBindings for Bindings {
         type Requirements = Requirements;
         type CaptureMode = super::ProviderOwnedCaptures;
     }
@@ -223,7 +205,7 @@ mod tests {
         proof: HostConstructions<'call, Constructions>,
     ) -> Result<HostCallCompletion<'call, Function>, HostCallError> {
         let mut call =
-            Call::<_, ProviderActiveCall<'_, _, _, _, Bindings>>::from_host_call_with_factories(
+            Call::<_, ProviderActiveCall<'_, _, _, _, Bindings>>::from_host_call_with_bindings(
                 call,
                 ProviderConstructions::new(&proof),
             );
@@ -243,7 +225,7 @@ mod tests {
             if cancel {
                 assert!(context.execution().unit().expect("active native invocation").cancel());
             }
-            let mut call = Call::<_, ProviderExecutionCall<'_, _, _, (), Bindings>>::from_execution_context_with_factories(context);
+            let mut call = Call::<_, ProviderExecutionCall<'_, _, _, (), Bindings>>::from_execution_context_with_bindings(context);
             let first = call.create(&Factory::<Add<100>>::declaration(), (9.into(),)).await.unwrap();
             let second = call.with_call(|call| call.create(&Factory::<Add<100>>::declaration(), (11.into(),))).await.unwrap().unwrap();
             Ok(HostOwnedCompletion::new(move |mut call, _| {

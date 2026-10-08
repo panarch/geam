@@ -68,6 +68,23 @@ impl HostCustomSchema for SubjectSchema {
     >;
 }
 
+pub struct AnythingSelectorTagSchema;
+pub struct Anything;
+
+impl HostCustomConstructorDefinition for Anything {
+    const NAME: &'static str = "Anything";
+    type Fields = HostCustomFieldListEnd;
+}
+
+impl HostCustomSchema for AnythingSelectorTagSchema {
+    const PACKAGE: &'static str = "gleam_erlang";
+    const MODULE: &'static str = "gleam/erlang/process";
+    const NAME: &'static str = "AnythingSelectorTag";
+    const PARAMETER_COUNT: usize = 0;
+    const SHARED: bool = true;
+    type Constructors = HostCustomConstructorList<Anything, HostCustomConstructorListEnd>;
+}
+
 pub struct ExitReasonSchema;
 pub struct Normal;
 pub struct Killed;

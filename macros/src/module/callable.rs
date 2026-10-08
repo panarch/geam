@@ -19,59 +19,6 @@ pub(super) struct CallableModel {
     pub(super) returned: CallbackType,
 }
 
-pub(super) fn bindings_type(function: &super::FunctionModel, profile: &TokenStream) -> TokenStream {
-    let name = format_ident!("__GeamFactories_{}", function.ident.unraw());
-    let parameters = function.generics.iter().map(|generic| &generic.ident);
-    quote!(#name<#profile, #(#parameters),*>)
-}
-
-pub(super) fn bindings_definition(
-    function: &super::FunctionModel,
-    requirements: &TokenStream,
-    offset: usize,
-    count: usize,
-    bounds: &[TokenStream],
-    support: &TokenStream,
-    flavor: super::InputOwnership,
-) -> TokenStream {
-    let mode = capture_mode(flavor, support);
-    let name = format_ident!("__GeamFactories_{}", function.ident.unraw());
-    let parameters = function
-        .generics
-        .iter()
-        .map(|generic| &generic.ident)
-        .collect::<Vec<_>>();
-    let type_ = bindings_type(function, &quote!(__GeamProfile));
-    let selections = function.factories.iter().enumerate().map(|(index, factory)| {
-        let index = super::function::provider_requirement_index(offset + index, count, support);
-        let required = quote!(<#factory as #support::ProviderFactoryCodec<__GeamProfile, #mode>>::Requirements);
-        quote! {
-            impl<__GeamProfile, #(#parameters,)*> #support::ProviderFactoryBinding<#factory, #required> for #type_
-            where
-                __GeamProfile: __GeamModuleProfile,
-                #(#parameters: #support::ProviderValue + 'static,)*
-                #(#bounds,)*
-            {
-                fn select<'call>(proof: &#support::ProviderConstructions<'call, Self::Requirements>)
-                    -> #support::ProviderConstructions<'call, #required>
-                { proof.select::<#index>() }
-            }
-        }
-    });
-    quote! {
-        #[doc(hidden)]
-        #[allow(non_camel_case_types)]
-        struct #name<__GeamProfile, #(#parameters,)*>(::core::marker::PhantomData<fn() -> (__GeamProfile, #(#parameters,)*)>);
-        impl<__GeamProfile, #(#parameters,)*> #support::ProviderFactoryBindings for #type_
-        where
-            __GeamProfile: __GeamModuleProfile,
-            #(#parameters: #support::ProviderValue + 'static,)*
-            #(#bounds,)*
-        { type Requirements = #requirements; type CaptureMode = #mode; }
-        #(#selections)*
-    }
-}
-
 pub(super) fn capture_mode(flavor: super::InputOwnership, support: &TokenStream) -> TokenStream {
     match flavor {
         super::InputOwnership::Borrowed => quote!(#support::ProviderImmediateCaptures),
@@ -761,14 +708,14 @@ mod tests {
                     #[geam::callable(factory = Bad)]
                     fn body(#[geam::call] #[geam::capture] call: &mut Call<()>) -> bool { true }
                 },
-                "call, factory and capture parameters are distinct",
+                "call, factory, restore and capture parameters are distinct",
             ),
             (
                 quote! {
                     #[geam::callable(factory = Bad)]
                     fn body(#[geam::factory] #[geam::capture] factory: Factory<Other>) -> bool { true }
                 },
-                "call, factory and capture parameters are distinct",
+                "call, factory, restore and capture parameters are distinct",
             ),
             (
                 quote! {
@@ -794,7 +741,7 @@ mod tests {
                     #[geam::function]
                     fn source(#arguments) -> bool { true }
                 }),
-                "factory parameters must follow a mutable Call and precede source arguments"
+                "permission parameters must follow a mutable Call and precede source arguments"
             );
         }
         assert_eq!(
@@ -813,7 +760,7 @@ mod tests {
                     #[geam::factory] second: Factory<Other>,
                 ) -> bool { true }
             }),
-            "duplicate factory declaration parameter"
+            "duplicate permission declaration parameter"
         );
     }
 

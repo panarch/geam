@@ -4,7 +4,9 @@ use super::super::specialization::{
     SpecializedCustomConstructorField, SpecializedCustomValueShape, SpecializedFunctionShape,
     SpecializedTypeSubstitution, SpecializedValueShape,
 };
-use crate::host::{HostCustomTypeSchema, HostSchemaType, HostTypeDescriptor};
+use crate::host::{
+    HostCustomTypeSchema, HostSchemaType, HostTypeDescriptor, RegisteredHostConstructions,
+};
 use crate::plan::execution::host::{HostConstructionTypes, HostSpecializationError};
 use crate::plan::{
     CustomConstructorRefinement, CustomTypeName, FunctionType, HostFunctionTemplate,
@@ -14,6 +16,7 @@ use std::collections::{HashMap, HashSet};
 
 pub(super) fn seal_callbacks(
     template: &HostFunctionTemplate,
+    constructions: &RegisteredHostConstructions,
     key: &SpecializationKey,
     shape: &SpecializedFunctionShape,
     representations: &RepresentationContext,
@@ -21,6 +24,7 @@ pub(super) fn seal_callbacks(
 ) -> Result<(), HostSpecializationError> {
     if let Some(callback) = first_uninhabited_callback(
         template,
+        constructions,
         key.substitution(),
         representations,
         include_return,
@@ -38,7 +42,7 @@ pub(super) fn seal_callbacks(
 
 pub(super) fn seal_host_types(
     template: &HostFunctionTemplate,
-    constructions: &crate::host::RegisteredHostConstructions,
+    constructions: &RegisteredHostConstructions,
     key: &SpecializationKey,
     context: &mut LoweringContext,
     position: super::native::NativeViewPosition,
@@ -260,6 +264,7 @@ impl HostTypeSealing<'_, '_> {
 
 fn first_uninhabited_callback(
     template: &HostFunctionTemplate,
+    constructions: &RegisteredHostConstructions,
     substitution: &SpecializedTypeSubstitution,
     representations: &RepresentationContext,
     include_return: bool,
@@ -267,6 +272,7 @@ fn first_uninhabited_callback(
     let schemas = template
         .custom_schemas()
         .iter()
+        .chain(constructions.custom_schemas())
         .map(|schema| (identity(schema), schema))
         .collect();
     let mut search = CallbackSearch {
@@ -276,7 +282,12 @@ fn first_uninhabited_callback(
         visiting: HashSet::new(),
     };
 
-    for parameter in template.parameters().iter().chain(template.captures()) {
+    for parameter in template
+        .parameters()
+        .iter()
+        .chain(template.captures())
+        .chain(constructions.restorations())
+    {
         if let Some(callback) = search.find(parameter) {
             return Some(callback);
         }
@@ -635,6 +646,78 @@ pub fn main() {
                     ValueType::Int,
                 ),
             },
+        );
+    }
+
+    #[test]
+    fn restoring_a_storable_function_does_not_bypass_callback_argument_sealing() {
+        use crate::host::{HostFunctionValue, HostFunctionValueType, HostRestoredType};
+        type Argument =
+            HostFunctionValueType<HostTypeList<HostTypeParameter<0>, HostTypeListEnd>, BigInt>;
+        type Target = HostFunctionType<HostTypeList<HostTypeParameter<0>, HostTypeListEnd>, BigInt>;
+        type Permissions<Type> = HostTypeList<HostRestoredType<Type>, HostTypeListEnd>;
+        fn retain<'call, Type: crate::HostType>(
+            call: HostCall<'call, StatelessHostProfile, StatelessTestProvider, BigInt>,
+            _: HostConstructions<'call, Permissions<Type>>,
+            _: HostFunctionValue<
+                'call,
+                HostTypeList<HostTypeParameter<0>, HostTypeListEnd>,
+                BigInt,
+            >,
+        ) -> Result<HostCallCompletion<'call, BigInt>, HostCallError> {
+            Ok(call.return_value(42.into()))
+        }
+        let source = r#"
+@external(erlang, "native", "retain")
+fn retain(callback: fn(a) -> Int) -> Int
+fn generic(_value) { 1 }
+pub fn main() { retain(generic) }
+"#;
+        let module = HostProviderModule::new("application", "main").unwrap()
+            .with_scoped_function_and_constructions::<StatelessTestProvider, (Argument,), BigInt, Permissions<Target>, _>("retain", retain::<Target>).unwrap();
+        let typed = compile_typed_host_program(
+            "application",
+            "main",
+            [PackageSource::new(
+                "application",
+                Vec::<&str>::new(),
+                [ModuleSource::new("main", "main.gleam", source)],
+            )],
+            HostProviderSet::from_providers([module]).unwrap(),
+        )
+        .unwrap();
+        let plan = plan_host_program(typed).unwrap();
+        let error = HostedExecution::try_from_module_plan(plan)
+            .err()
+            .expect("an invocable restoration target must be sealed");
+        assert_eq!(error.function(), "retain");
+        assert_eq!(
+            error.reason(),
+            &HostSpecializationErrorReason::UninhabitedCallbackArguments {
+                callback: FunctionType::new(
+                    vec![ValueType::Parameter(TypeParameterId(0))],
+                    ValueType::Int
+                ),
+            }
+        );
+        let module = HostProviderModule::new("application", "main").unwrap()
+            .with_scoped_function_and_constructions::<StatelessTestProvider, (Argument,), BigInt, Permissions<Argument>, _>("retain", retain::<Argument>).unwrap();
+        let typed = compile_typed_host_program(
+            "application",
+            "main",
+            [PackageSource::new(
+                "application",
+                Vec::<&str>::new(),
+                [ModuleSource::new("main", "main.gleam", source)],
+            )],
+            HostProviderSet::from_providers([module]).unwrap(),
+        )
+        .unwrap();
+        let mut execution =
+            HostedExecution::try_from_module_plan(plan_host_program(typed).unwrap()).unwrap();
+        assert_eq!(
+            crate::execution_fixture::run(&mut execution, &mut (), &mut Vec::new()).unwrap(),
+            crate::Value::Int(42.into())
         );
     }
 

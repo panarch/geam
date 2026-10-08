@@ -12,6 +12,7 @@ pub mod profile {
 }
 
 pub mod host {
+    pub use crate::host::{HostCustomAccess, HostValueLifetime};
     pub use crate::plan::execution::host::construction::ConstructionIndex;
     pub use crate::plan::execution::host::function::{
         HostCallParameter, HostCallableConstruction, HostCallableEntry, HostConstructionTypes,

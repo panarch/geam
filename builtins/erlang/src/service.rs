@@ -27,7 +27,7 @@ use geam_core::host::native::NativeValues;
 use geam_core::host::{HostCall, HostCallError, HostProvider, HostType};
 use geam_core::provider::advanced::NativeValue;
 use geam_core::provider::{
-    Call, ProviderActiveCall, ProviderFactoryBindings, ProviderValue, ProviderValueContext, Value,
+    Call, ProviderActiveCall, ProviderCallBindings, ProviderValueContext, Value,
 };
 
 /// Process operations available to ordinary macro-authored provider calls.
@@ -43,7 +43,7 @@ pub trait ProcessCall {
         &mut self,
         target: &Pid,
         message: Value<Message, ProviderValueContext<Host>>,
-    );
+    ) -> Result<(), HostCallError>;
 
     fn is_alive(&mut self, target: &Pid) -> bool;
 
@@ -57,15 +57,15 @@ pub trait ProcessCall {
 
     fn new_name<Message>(&mut self, prefix: &str) -> Result<Name<Message>, HostCallError>;
 
-    fn send_subject<Message: ProviderValue>(
+    fn send_subject<Message, Host: HostType>(
         &mut self,
-        subject: Subject<Message>,
-        message: Value<Message, ProviderValueContext<Message::Host>>,
-    ) -> bool;
+        subject: Subject<Message, ProviderValueContext<types::Subject<Host>>>,
+        message: Value<Message, ProviderValueContext<Host>>,
+    ) -> Result<bool, HostCallError>;
 
-    fn receive_subject<Message: ProviderValue>(
+    fn receive_subject<Message, Host: HostType>(
         &mut self,
-        subject: Subject<Message>,
+        subject: Subject<Message, ProviderValueContext<types::Subject<Host>>>,
         timeout: Option<std::time::Duration>,
     ) -> Result<Receive<Self::Profile>, HostCallError>;
 
@@ -105,7 +105,7 @@ where
     Profile: GleamErlangHostProfile,
     Provider: HostProvider<Profile>,
     Return: HostType,
-    Bindings: ProviderFactoryBindings,
+    Bindings: ProviderCallBindings,
 {
     type Profile = Profile;
 
@@ -117,12 +117,13 @@ where
         &mut self,
         target: &Pid,
         message: Value<Message, ProviderValueContext<Host>>,
-    ) {
+    ) -> Result<(), HostCallError> {
         let call = self.host_call();
         let target = target.execution_unit();
-        let message = message.into_host(call);
+        let message = message.into_host(call)?;
         let message = call.native_value::<Host>(message);
         Processes::new(call).send(&target, message);
+        Ok(())
     }
 
     fn is_alive(&mut self, target: &Pid) -> bool {
@@ -154,25 +155,25 @@ where
         fresh_name(self.host_call(), prefix).map(Name::new)
     }
 
-    fn send_subject<Message: ProviderValue>(
+    fn send_subject<Message, Host: HostType>(
         &mut self,
-        subject: Subject<Message>,
-        message: Value<Message, ProviderValueContext<Message::Host>>,
-    ) -> bool {
+        subject: Subject<Message, ProviderValueContext<types::Subject<Host>>>,
+        message: Value<Message, ProviderValueContext<Host>>,
+    ) -> Result<bool, HostCallError> {
         let call = self.host_call();
-        let subject = subject.into_host(call);
-        let message = message.into_host(call);
-        let message = call.native_value::<Message::Host>(message);
-        Processes::new(call).send_subject(subject, message)
+        let subject = subject.into_host(call)?;
+        let message = message.into_host(call)?;
+        let message = call.native_value::<Host>(message);
+        Ok(Processes::new(call).send_subject(subject, message))
     }
 
-    fn receive_subject<Message: ProviderValue>(
+    fn receive_subject<Message, Host: HostType>(
         &mut self,
-        subject: Subject<Message>,
+        subject: Subject<Message, ProviderValueContext<types::Subject<Host>>>,
         timeout: Option<std::time::Duration>,
     ) -> Result<Receive<Profile>, HostCallError> {
         let call = self.host_call();
-        let subject = subject.into_host(call);
+        let subject = subject.into_host(call)?;
         let deadline = receive_timeout(call, timeout)?;
         Processes::new(call).receive_subject(subject, deadline)
     }
@@ -183,7 +184,7 @@ where
         timeout: Option<std::time::Duration>,
     ) -> Result<Receive<Profile>, HostCallError> {
         let call = self.host_call();
-        let tag = tag.into_host(call);
+        let tag = tag.into_host(call)?;
         let tag = call.native_value::<Host>(tag);
         let deadline = receive_timeout(call, timeout)?;
         Processes::new(call).receive(tag, deadline)
@@ -330,7 +331,8 @@ pub fn main() { check() }
                 .to_string(),
             "timeout exceeds the host clock range"
         );
-        call.send(&current, message);
+        call.send(&current, message)
+            .expect("current execution owns the message");
         let host = call.host_call();
         let tag = host.native_value::<BigInt>(7.into());
         let payload = host.native_value::<BigInt>(8.into());
@@ -792,8 +794,8 @@ mod domain_tests {
                     for error in errors {
                         assert_eq!(error.to_string(), "native operation requires a source invocation");
                     }
-                    let send_subject = super::Subject::<BigInt>::from_host(&mut host, subject);
-                    let receive_subject = super::Subject::<BigInt>::from_host(&mut host, subject);
+                    let send_subject = super::subject::Owned::<BigInt, BigInt>::from_host(&mut host, subject);
+                    let receive_subject = super::subject::Owned::<BigInt, BigInt>::from_host(&mut host, subject);
                     let message = Value::<BigInt, ProviderValueContext<BigInt>>::from_host(&host, 42.into());
                     let tagged = Value::<BigInt, ProviderValueContext<BigInt>>::from_host(&host, 43.into());
                     let tag = Value::<BigInt, ProviderValueContext<BigInt>>::from_host(&host, 7.into());
@@ -805,8 +807,8 @@ mod domain_tests {
                     assert_eq!(call.named(&name).unwrap().execution_unit().id(), target.execution_unit().id());
                     assert!(call.unregister(&name));
                     assert!(call.named(&name).is_none());
-                    call.send(&target, message);
-                    assert!(call.send_subject(send_subject, tagged));
+                    assert_eq!(call.send(&target, message), Ok(()));
+                    assert_eq!(call.send_subject(send_subject, tagged), Ok(true));
                     assert_eq!(call.current_process().err().unwrap().to_string(), "native operation requires a source invocation");
                     assert_eq!(call.receive_any(None).err().unwrap().to_string(), "native operation requires a source invocation");
                     assert_eq!(call.receive_tagged(tag, None).err().unwrap().to_string(), "native operation requires a source invocation");
@@ -882,5 +884,157 @@ mod domain_tests {
 
     fn exit_reason(message: &NativeValue) -> Option<NativeValue> {
         message.index(2)
+    }
+}
+
+#[cfg(test)]
+mod retained_calls {
+    use super::ProcessCall;
+    use super::subject::Owned;
+    use super::types::{Subject as HostSubject, SubjectSchema};
+    use crate::{
+        Component, GleamErlangProfile, GleamErlangRunState, Name as HostName, NameSchema, PidSchema,
+    };
+    use geam_core::host::{
+        HostCall, HostCallCompletion, HostCallError, HostCustom, HostProviderModule,
+        HostProviderSet,
+    };
+    use geam_core::provider::{Call, ProviderInputValue, ProviderValueContext, Value};
+    use geam_core::{
+        HostedExecution, ModuleSource, PackageSource, compile_typed_host_program, plan_host_program,
+    };
+    use num_bigint::BigInt;
+    use std::sync::{Arc, Mutex};
+
+    type Message = Value<BigInt, ProviderValueContext<BigInt>>;
+    type Retained = (Owned<BigInt, BigInt>, Message);
+
+    type Host<'call> = HostCall<'call, GleamErlangProfile, Component<GleamErlangProfile>, BigInt>;
+    type SourceSubject<'call> = HostCustom<'call, HostSubject<BigInt>>;
+    type Completion<'call> = Result<HostCallCompletion<'call, BigInt>, HostCallError>;
+
+    #[test]
+    fn process_calls_reject_foreign_subjects_messages_and_tags_before_using_the_service() {
+        let previous = Arc::new(Mutex::new(None));
+        let mut state = GleamErlangRunState {
+            stdlib: geam_stdlib::GleamStdlibRunState::from_seed([0; 32]),
+            erlang: crate::Configuration::default(),
+        };
+        let mut echo = Vec::new();
+        for _ in 0..2 {
+            let process = HostProviderModule::new("gleam_erlang", "gleam/erlang/process")
+                .unwrap()
+                .with_shared_custom_type::<SubjectSchema>()
+                .unwrap()
+                .with_external_type::<Component<GleamErlangProfile>, PidSchema>()
+                .unwrap()
+                .with_external_type::<Component<GleamErlangProfile>, NameSchema>()
+                .unwrap()
+                .with_scoped_function::<Component<GleamErlangProfile>, (), HostName<BigInt>, _>(
+                    "name", name,
+                )
+                .unwrap();
+            let dynamic = HostProviderModule::new("gleam_stdlib", "gleam/dynamic").unwrap()
+                .with_external_type::<Component<GleamErlangProfile>, geam_stdlib::provider_support::DynamicSchema>().unwrap();
+            let consumer = HostProviderModule::new("application", "main").unwrap()
+                .with_scoped_function::<Component<GleamErlangProfile>, (HostSubject<BigInt>, BigInt), BigInt, _>("check", retaining_call(previous.clone())).unwrap();
+            let typed = compile_typed_host_program(
+                "application", "main",
+                [
+                    PackageSource::new("gleam_stdlib", Vec::<String>::new(), [ModuleSource::new("gleam/dynamic", "dynamic.gleam", "pub type Dynamic")]),
+                    PackageSource::new("gleam_erlang", ["gleam_stdlib"], [ModuleSource::new("gleam/erlang/process", "process.gleam", r#"
+import gleam/dynamic.{type Dynamic}
+pub type Pid
+pub type Name(a)
+pub opaque type Subject(message) { Subject(owner: Pid, tag: Dynamic) NamedSubject(name: Name(message)) }
+@external(erlang, "host", "name") fn name() -> Name(Int)
+pub fn make() -> Subject(Int) { NamedSubject(name()) }
+"#)]),
+                    PackageSource::new("application", ["gleam_erlang"], [ModuleSource::new("main", "main.gleam", r#"
+import gleam/erlang/process as p
+@external(erlang, "host", "check") fn check(subject: p.Subject(Int), message: Int) -> Int
+pub fn main() { check(p.make(), 42) }
+"#)]),
+                ],
+                HostProviderSet::from_providers([dynamic, process, consumer]).unwrap(),
+            ).unwrap();
+            let mut execution =
+                HostedExecution::try_from_module_plan(plan_host_program(typed).unwrap()).unwrap();
+            assert_eq!(
+                crate::execution_fixture::run(&mut execution, &mut state, &mut echo),
+                Ok(geam_core::Value::Int(42.into()))
+            );
+        }
+        assert!(echo.is_empty());
+    }
+
+    fn name<'call>(
+        mut call: HostCall<
+            'call,
+            GleamErlangProfile,
+            Component<GleamErlangProfile>,
+            HostName<BigInt>,
+        >,
+    ) -> Result<HostCallCompletion<'call, HostName<BigInt>>, HostCallError> {
+        let name = call.create_external("worker".into());
+        Ok(call.return_value(name))
+    }
+
+    fn retaining_call(
+        previous: Arc<Mutex<Option<Retained>>>,
+    ) -> impl for<'call> Fn(Host<'call>, SourceSubject<'call>, BigInt) -> Completion<'call> {
+        move |mut host, subject, number| {
+            let subject = Owned::<BigInt, BigInt>::from_host(&mut host, subject);
+            let message = Message::from_host(&host, number.clone());
+            let previous = previous
+                .lock()
+                .unwrap()
+                .replace((subject.clone(), message.clone()));
+            if let Some((foreign_subject, foreign_message)) = previous {
+                let mut call = Call::from_host_call(host);
+                let pid = call
+                    .current_process()
+                    .expect("source entry has a current process");
+                assert_eq!(
+                    call.receive_subject(subject.clone(), Some(std::time::Duration::MAX))
+                        .err()
+                        .map(|error| error.to_string()),
+                    Some("timeout exceeds the host clock range".into())
+                );
+                const ERROR: &str = "retained value belongs to another owner or source type";
+                assert_eq!(
+                    call.send(&pid, foreign_message.clone())
+                        .err()
+                        .map(|error| error.to_string()),
+                    Some(ERROR.into())
+                );
+                assert_eq!(
+                    call.send_subject(foreign_subject.clone(), message)
+                        .err()
+                        .map(|error| error.to_string()),
+                    Some(ERROR.into())
+                );
+                assert_eq!(
+                    call.send_subject(subject, foreign_message.clone())
+                        .err()
+                        .map(|error| error.to_string()),
+                    Some(ERROR.into())
+                );
+                assert_eq!(
+                    call.receive_subject(foreign_subject, None)
+                        .err()
+                        .map(|error| error.to_string()),
+                    Some(ERROR.into())
+                );
+                assert_eq!(
+                    call.receive_tagged(foreign_message, None)
+                        .err()
+                        .map(|error| error.to_string()),
+                    Some(ERROR.into())
+                );
+                host = call.into_host_call();
+            }
+            Ok(host.return_value(number))
+        }
     }
 }

@@ -1,0 +1,25 @@
+[package]
+name = "geam-decoder-service-fixture"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[package.metadata.geam.provider]
+schema = 2
+gleam-package = "decoder_service_fixture"
+gleam-version = ">= 0.1.0 and < 0.2.0"
+component = "plain"
+execution-service = false
+requires-services = ["gleam_erlang"]
+
+[dependencies]
+geam = { version = "=0.2.3", default-features = false, features = ["provider", "gleam-stdlib", "gleam-erlang"] }
+
+[dev-dependencies]
+camino = "1"
+
+[patch.crates-io]
+geam = { path = "../../../.." }
+
+[workspace]
+resolver = "3"

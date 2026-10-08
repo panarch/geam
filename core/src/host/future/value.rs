@@ -117,10 +117,8 @@ where
         self.context
             .for_invocation(&call.runtime.execution())
             .map_err(|_| crate::HostFailure::new("work belongs to another execution"))?;
-        Ok(
-            call.restore_value::<HostFutureType<Value, crate::host::HostWorkSchema<Profile>>>(
-                &self.value,
-            ),
+        call.restore_value::<HostFutureType<Value, crate::host::HostWorkSchema<Profile>>>(
+            &self.value,
         )
     }
 

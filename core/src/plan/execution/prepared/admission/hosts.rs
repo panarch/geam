@@ -1,5 +1,6 @@
 mod callable;
 mod contract;
+mod custom;
 mod link;
 mod view;
 
@@ -8,11 +9,13 @@ use super::functions::Hosts;
 use super::instruction::Instructions;
 use super::local::Output;
 use super::type_::TypeError;
-use crate::host::HostProfile;
+use crate::host::{HostExternalTypeSchema, HostProfile};
 use crate::plan::execution::function::{ExecutionFunctionBody, HostedExecutionGraph};
+use crate::plan::execution::host::registration::ExternalSchema;
 use crate::plan::execution::host::{
     HostFunctionId, HostNeverFunctionId, HostedExecutionProfile, HostedFunctionTarget,
 };
+use crate::plan::execution::type_::NominalTypeMetadata;
 
 pub(super) use link::NativeFunctions;
 
@@ -29,6 +32,14 @@ pub(super) enum NativeError {
         index: usize,
         reason: ContractError,
     },
+    CustomGrant {
+        custom_type: Box<crate::plan::CustomTypeName>,
+    },
+    ExternalLifetime {
+        package: String,
+        module: String,
+        name: String,
+    },
     MissingValue(usize),
     MissingNever(usize),
     Call(ContractError),
@@ -44,6 +55,9 @@ pub(super) enum NativeError {
 #[derive(Debug, PartialEq, Eq)]
 pub(super) enum RegistrationError {
     SharedCustomType {
+        custom_type: Box<crate::plan::CustomTypeName>,
+    },
+    RetainedCustomType {
         custom_type: Box<crate::plan::CustomTypeName>,
     },
     Missing,
@@ -91,6 +105,8 @@ impl<Profile: HostProfile> Hosts<HostedExecutionProfile> for NativeFunctions<'_,
         context: &Instructions<'_, '_, HostedExecutionGraph>,
     ) -> Result<(), NativeError> {
         admit_external_types(context.types.external_types(), &self.external_types)?;
+        custom::admit(&context.types.customs.definitions, &self.custom_grants)?;
+        admit_external_lifetimes(context.types.external_definitions(), &self.external_types)?;
         for (index, (metadata, _, registration)) in self.values.iter().enumerate() {
             contract::metadata(
                 metadata,
@@ -198,8 +214,8 @@ impl<Profile: HostProfile> Hosts<HostedExecutionProfile> for NativeFunctions<'_,
 }
 
 fn admit_external_types(
-    expected: &[crate::plan::execution::type_::NominalTypeMetadata],
-    registered: &[crate::host::HostExternalTypeSchema],
+    expected: &[NominalTypeMetadata],
+    registered: &[HostExternalTypeSchema],
 ) -> Result<(), NativeError> {
     for type_ in expected {
         let actual = registered
@@ -223,8 +239,28 @@ fn admit_external_types(
     Ok(())
 }
 
+fn admit_external_lifetimes(
+    expected: &[ExternalSchema],
+    registered: &[HostExternalTypeSchema],
+) -> Result<(), NativeError> {
+    for schema in expected {
+        if !registered
+            .iter()
+            .any(|registered| schema.matches(registered))
+        {
+            return Err(NativeError::ExternalLifetime {
+                package: schema.package.to_string(),
+                module: schema.module.to_string(),
+                name: schema.name.to_string(),
+            });
+        }
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
+    use super::super::tests::NativeProfile;
     use super::Hosts;
     use super::{
         ContractError, HostedExecutionProfile, Instructions, NativeError, NativeFunctions,
@@ -339,7 +375,7 @@ pub fn main() { fn(value: Key) { value } }
             sources: &sources,
             constants: &common.constants,
         };
-        let linked = NativeFunctions::<StatelessHostProfile>::new(
+        let linked = NativeFunctions::<NativeProfile>::new(
             &values,
             &nevers,
             HostProviderSet::from_providers([]).unwrap(),
@@ -353,6 +389,96 @@ pub fn main() { fn(value: Key) { value } }
                 name: "Key".into(),
                 expected: 0,
                 actual: None,
+            })
+        );
+    }
+
+    #[test]
+    fn prepared_custom_grants_require_the_registered_producer_without_native_targets() {
+        let (program, values, nevers) = lowered(
+            "pub type Handle { Handle(Int) }\npub fn main() { Handle(42) }",
+            HostProviderSet::<StatelessHostProfile>::from_providers([]).unwrap(),
+        );
+        assert!(values.is_empty());
+        assert!(nevers.is_empty());
+        let common = &program.common;
+        let mut customs = common.custom_types.as_ref().clone();
+        let mut definitions = customs.definitions.to_vec();
+        definitions[0].native_access = Some(crate::host::HostCustomAccess::Shared);
+        customs.definitions = definitions.into();
+        let types = Types::admit(
+            &common.list_types,
+            &customs,
+            &common.external_types,
+            &common.value_shapes,
+        )
+        .unwrap();
+        let catalog =
+            Catalog::admit(&common.function_parameters, &program.functions, &types).unwrap();
+        let sources = Sources::admit(common.root, &common.modules).unwrap();
+        let context = Instructions {
+            types: &types,
+            catalog: &catalog,
+            sources: &sources,
+            constants: &common.constants,
+        };
+        let linked = NativeFunctions::<NativeProfile>::new(
+            &values,
+            &nevers,
+            HostProviderSet::from_providers([]).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(
+            linked.tables(&context),
+            Err(NativeError::CustomGrant {
+                custom_type: Box::new(crate::plan::CustomTypeName::new(
+                    "app".into(),
+                    "main".into(),
+                    "Handle".into(),
+                )),
+            }),
+        );
+    }
+
+    #[test]
+    fn prepared_external_lifetime_must_match_the_actual_producer_floor() {
+        let (program, values, nevers) = super::super::tests::lowered_native(
+            "pub type Key\n@external(erlang, \"native\", \"key\") fn key() -> Key\npub fn main() { fn(value: Key) { value } }",
+        );
+        let common = &program.common;
+        let mut externals = common.external_types.as_ref().clone();
+        let mut definitions = externals.definitions.to_vec();
+        definitions[0].lifetime = crate::HostValueLifetime::LoadedOwner;
+        externals.definitions = definitions.into();
+        externals.lifetimes = vec![crate::HostValueLifetime::LoadedOwner].into();
+        let types = Types::admit(
+            &common.list_types,
+            &common.custom_types,
+            &externals,
+            &common.value_shapes,
+        )
+        .unwrap();
+        let catalog =
+            Catalog::admit(&common.function_parameters, &program.functions, &types).unwrap();
+        let sources = Sources::admit(common.root, &common.modules).unwrap();
+        let context = Instructions {
+            types: &types,
+            catalog: &catalog,
+            sources: &sources,
+            constants: &common.constants,
+        };
+        let linked = NativeFunctions::<NativeProfile>::new(
+            &values,
+            &nevers,
+            super::super::tests::native_hosts(),
+        )
+        .unwrap();
+        assert_eq!(
+            linked.tables(&context),
+            Err(NativeError::ExternalLifetime {
+                package: "app".into(),
+                module: "main".into(),
+                name: "Key".into(),
             })
         );
     }
@@ -668,7 +794,7 @@ pub fn main() {
     fn never_native_targets_are_checked_and_preserve_their_source_failure() {
         use std::convert::Infallible;
         let hosts = || {
-            HostProviderSet::<StatelessHostProfile>::from_providers([HostProviderModule::new(
+            HostProviderSet::<NativeProfile>::from_providers([HostProviderModule::new(
                 "app", "main",
             )
             .unwrap()

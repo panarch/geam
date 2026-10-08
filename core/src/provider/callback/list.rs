@@ -11,7 +11,6 @@ use crate::provider::{
     ProviderConstructions, ProviderListItemDecoder, ProviderListItemValue,
     ProviderTypedListItemDecoder,
 };
-use crate::runtime::ValueRetention;
 use std::marker::PhantomData;
 
 /// Decoder selected by a static callback codec, with normalized stored views.
@@ -159,7 +158,6 @@ where
     HostReturn: HostType,
 {
     retention: CallableRetention<Profile, super::CallbackProvider>,
-    values: ValueRetention,
     encode: ArgumentCodec<Profile, Arguments, HostArguments>,
     decode: ReturnCodec<Profile, Returned, HostReturn>,
 }
@@ -174,7 +172,6 @@ where
     fn clone(&self) -> Self {
         Self {
             retention: self.retention.clone(),
-            values: self.values.clone(),
             encode: self.encode,
             decode: self.decode,
         }
@@ -209,7 +206,6 @@ where
         Self {
             retention: call
                 .callable_retention_with::<super::CallbackProvider, _>(&constructions.host()),
-            values: call.value_retention(),
             encode: encode_arguments::<Profile, Provider, Codec>,
             decode: decode_return::<Profile, Provider, Codec>,
         }
@@ -235,7 +231,7 @@ where
                 function: self
                     .retention
                     .clone()
-                    .bind_function_value(value.into_function_value(&self.values)),
+                    .bind_function_value(value.into_function_value()),
                 encode: self.encode,
                 decode: self.decode,
             },

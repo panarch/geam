@@ -66,7 +66,9 @@ mod consumer_a {
 
     #[geam_macros::module(path = "service_consumer_a", profile = super::ServiceProfile, component = super::Component, crate_path = geam_core)]
     mod first {
-        use geam_core::provider::{BigInt, Call, HostFailure, HostResult, StringValue, Value};
+        use geam_core::provider::{
+            BigInt, Call, HostFailure, HostResult, Restore, StringValue, Value,
+        };
         use geam_erlang::service::{self, ProcessCall};
 
         #[geam_macros::function(profile = Profile)]
@@ -92,7 +94,7 @@ mod consumer_a {
             #[geam_macros::call] call: &mut Call<()>,
             pid: service::Pid,
             message: Value<Message>,
-        ) -> () {
+        ) -> HostResult<()> {
             call.send(&pid, message)
         }
 
@@ -121,7 +123,15 @@ mod consumer_a {
             #[geam_macros::call] call: &mut Call<()>,
         ) -> HostResult<Result<geam_stdlib::Dynamic, ()>> {
             let receive = call
-                .with_call(|call| call.receive_any(Some(std::time::Duration::ZERO)))
+                .with_call(|call| {
+                    assert_eq!(
+                        call.receive_any(Some(std::time::Duration::MAX))
+                            .err()
+                            .map(|error| error.to_string()),
+                        Some("timeout exceeds the host clock range".into()),
+                    );
+                    call.receive_any(Some(std::time::Duration::ZERO))
+                })
                 .await??;
             Ok(receive
                 .wait_in(call)
@@ -170,13 +180,14 @@ mod consumer_a {
             #[geam_macros::call] call: &mut Call<()>,
             subject: service::Subject<Message>,
             message: Value<Message>,
-        ) -> bool {
+        ) -> HostResult<bool> {
             call.send_subject(subject, message)
         }
 
         #[geam_macros::function(await, profile = Profile)]
         async fn receive_subject<Message>(
             #[geam_macros::call] call: &mut Call<()>,
+            #[geam_macros::restore] restore: Restore<Value<Message>>,
             subject: service::Subject<Message>,
         ) -> HostResult<Result<Value<Message>, ()>> {
             let receive = call
@@ -188,7 +199,7 @@ mod consumer_a {
             call.with_call(move |call| {
                 value
                     .map(|value| {
-                        call.restore_native::<Value<Message>>(&value)
+                        call.restore_native::<Value<Message>>(&restore, &value)
                             .ok_or_else(|| {
                                 HostFailure::new("subject message has the wrong source type")
                             })
@@ -439,4 +450,184 @@ fn two_macro_consumers_share_both_producer_services_and_preserve_exact_values() 
         );
         events.lock().unwrap().clear();
     }
+}
+
+#[test]
+fn public_process_calls_reject_foreign_subjects_messages_and_tags_before_using_the_service() {
+    use geam_core::host::{
+        HostCall, HostCallCompletion, HostCallError, HostCustom, HostProviderModule,
+    };
+    use geam_core::provider::{Call, ProviderInputValue, ProviderValueContext, Value};
+    use geam_core::{ModuleSource, PackageSource, compile_typed_host_program};
+    use geam_erlang::service::types::{Subject as HostSubject, SubjectSchema};
+    use geam_erlang::service::{ProcessCall, Subject};
+    use geam_erlang::{
+        Component, GleamErlangProfile, GleamErlangRunState, Name, NameSchema, PidSchema,
+    };
+    use geam_stdlib::provider_support::DynamicSchema;
+    use num_bigint::BigInt;
+    use std::time::Duration;
+
+    type Message = Value<BigInt, ProviderValueContext<BigInt>>;
+    type RetainedSubject = Subject<BigInt, ProviderValueContext<HostSubject<BigInt>>>;
+    type Retained = (RetainedSubject, Message);
+    type Host<'call> = HostCall<'call, GleamErlangProfile, Component<GleamErlangProfile>, ()>;
+    type SourceSubject<'call> = HostCustom<'call, HostSubject<BigInt>>;
+    type Completion<'call> = Result<HostCallCompletion<'call, ()>, HostCallError>;
+    type NameCall<'call> =
+        HostCall<'call, GleamErlangProfile, Component<GleamErlangProfile>, Name<BigInt>>;
+
+    type NameCompletion<'call> = Result<HostCallCompletion<'call, Name<BigInt>>, HostCallError>;
+
+    fn name<'call>(mut call: NameCall<'call>) -> NameCompletion<'call> {
+        let value = call.create_external("worker".into());
+        Ok(call.return_value(value))
+    }
+
+    fn retaining_call(
+        previous: Arc<Mutex<Option<Retained>>>,
+    ) -> impl for<'call> Fn(Host<'call>, SourceSubject<'call>, BigInt) -> Completion<'call> {
+        move |mut host, subject, number| {
+            let subject = RetainedSubject::from_host(&mut host, subject);
+            let message = Message::from_host(&host, number);
+            let previous = previous
+                .lock()
+                .unwrap()
+                .replace((subject.clone(), message.clone()));
+            if let Some((foreign_subject, foreign_message)) = previous {
+                let mut call = Call::from_host_call(host);
+                let pid = call.current_process().expect("source entry owns a process");
+                const FOREIGN: &str = "retained value belongs to another owner or source type";
+                const OVERFLOW: &str = "timeout exceeds the host clock range";
+                assert!(!call.send_subject(subject.clone(), message.clone()).unwrap());
+                assert_eq!(
+                    call.send(&pid, foreign_message.clone())
+                        .err()
+                        .map(|error| error.to_string()),
+                    Some(FOREIGN.into())
+                );
+                assert_eq!(
+                    call.send_subject(foreign_subject.clone(), message.clone())
+                        .err()
+                        .map(|error| error.to_string()),
+                    Some(FOREIGN.into())
+                );
+                assert_eq!(
+                    call.send_subject(subject.clone(), foreign_message.clone())
+                        .err()
+                        .map(|error| error.to_string()),
+                    Some(FOREIGN.into())
+                );
+                assert_eq!(
+                    call.receive_subject(foreign_subject, None)
+                        .err()
+                        .map(|error| error.to_string()),
+                    Some(FOREIGN.into())
+                );
+                assert_eq!(
+                    call.receive_tagged(foreign_message, None)
+                        .err()
+                        .map(|error| error.to_string()),
+                    Some(FOREIGN.into())
+                );
+                assert_eq!(
+                    call.receive_subject(subject, Some(Duration::MAX))
+                        .err()
+                        .map(|error| error.to_string()),
+                    Some(OVERFLOW.into())
+                );
+                assert_eq!(
+                    call.receive_tagged(message, Some(Duration::MAX))
+                        .err()
+                        .map(|error| error.to_string()),
+                    Some(OVERFLOW.into())
+                );
+                host = call.into_host_call();
+            }
+            Ok(host.return_value(()))
+        }
+    }
+
+    let previous = Arc::new(Mutex::new(None));
+    let mut state = GleamErlangRunState {
+        stdlib: GleamStdlibRunState::from_seed([0; 32]),
+        erlang: Configuration::default(),
+    };
+    let mut echo = Vec::new();
+    for _ in 0..2 {
+        let process = HostProviderModule::new("gleam_erlang", "gleam/erlang/process")
+            .unwrap()
+            .with_shared_custom_type::<SubjectSchema>()
+            .unwrap()
+            .with_external_type::<Component<GleamErlangProfile>, PidSchema>()
+            .unwrap()
+            .with_external_type::<Component<GleamErlangProfile>, NameSchema>()
+            .unwrap()
+            .with_scoped_function::<Component<GleamErlangProfile>, (), Name<BigInt>, _>(
+                "name", name,
+            )
+            .unwrap();
+        let dynamic = HostProviderModule::new("gleam_stdlib", "gleam/dynamic")
+            .unwrap()
+            .with_external_type::<Component<GleamErlangProfile>, DynamicSchema>()
+            .unwrap();
+        let consumer = HostProviderModule::new("application", "main").unwrap()
+            .with_scoped_function::<Component<GleamErlangProfile>, (HostSubject<BigInt>, BigInt), (), _>("check", retaining_call(previous.clone())).unwrap();
+        let typed = compile_typed_host_program(
+            "application",
+            "main",
+            [
+                PackageSource::new(
+                    "gleam_stdlib",
+                    Vec::<String>::new(),
+                    [ModuleSource::new(
+                        "gleam/dynamic",
+                        "dynamic.gleam",
+                        "pub type Dynamic",
+                    )],
+                ),
+                PackageSource::new(
+                    "gleam_erlang",
+                    ["gleam_stdlib"],
+                    [ModuleSource::new(
+                        "gleam/erlang/process",
+                        "process.gleam",
+                        r#"
+import gleam/dynamic.{type Dynamic}
+pub type Pid
+pub type Name(a)
+pub opaque type Subject(message) {
+  Subject(owner: Pid, tag: Dynamic)
+  NamedSubject(name: Name(message))
+}
+@external(erlang, "host", "name") fn name() -> Name(Int)
+pub fn make() -> Subject(Int) { NamedSubject(name()) }
+"#,
+                    )],
+                ),
+                PackageSource::new(
+                    "application",
+                    ["gleam_erlang"],
+                    [ModuleSource::new(
+                        "main",
+                        "main.gleam",
+                        r#"
+import gleam/erlang/process as process
+@external(erlang, "host", "check") fn check(subject: process.Subject(Int), message: Int) -> Nil
+pub fn main() { check(process.make(), 42) }
+"#,
+                    )],
+                ),
+            ],
+            HostProviderSet::from_providers([dynamic, process, consumer]).unwrap(),
+        )
+        .unwrap();
+        let mut execution =
+            HostedExecution::try_from_module_plan(plan_host_program(typed).unwrap()).unwrap();
+        assert_eq!(
+            super::execution_fixture::run(&mut execution, &mut state, &mut echo),
+            Ok(geam_core::Value::Nil)
+        );
+    }
+    assert!(echo.is_empty());
 }

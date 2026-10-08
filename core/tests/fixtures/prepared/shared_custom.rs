@@ -1,6 +1,6 @@
 data::HostedModuleArtifact {
     module: data::ModuleArtifact {
-        format: 24,
+        format: 25,
         program: data::ProgramTables {
             root: data::source::module_id(1),
             modules: data::Storage::Static(&[
@@ -961,6 +961,7 @@ pub fn main() {
                 types: data::Storage::Static(&[]),
                 tuple_items: data::Storage::Static(&[]),
                 function_items: data::Storage::Static(&[]),
+                lifetimes: data::Storage::Static(&[]),
             },
             custom_types: data::type_::CustomTypeTable {
                 types: data::Storage::Static(&[
@@ -973,6 +974,8 @@ pub fn main() {
                                 data::type_::TypeMetadata::Int,
                             ]),
                         },
+                        native_visible: true,
+                        lifetime: data::host::HostValueLifetime::LoadedOwner,
                         constructor_count: 1,
                         constructors: data::Storage::Static(&[
                             data::type_::CustomConstructorDescriptor {
@@ -1007,6 +1010,8 @@ pub fn main() {
                                 }),
                             ]),
                         },
+                        native_visible: true,
+                        lifetime: data::host::HostValueLifetime::Execution,
                         constructor_count: 1,
                         constructors: data::Storage::Static(&[
                             data::type_::CustomConstructorDescriptor {
@@ -1040,6 +1045,8 @@ pub fn main() {
                         name: data::Text::Static("Handle"),
                         publicity: data::type_::CustomTypePublicity::Public,
                         opaque: true,
+                        native_access: Some(data::host::HostCustomAccess::Shared),
+                        retention_lifetime: data::host::HostValueLifetime::LoadedOwner,
                         parameters: 1,
                         constructors: data::Storage::Static(&[
                             data::type_::ConstructorDefinition {
@@ -1057,6 +1064,8 @@ pub fn main() {
             },
             external_types: data::type_::ExternalTypeTable {
                 types: data::Storage::Static(&[]),
+                lifetimes: data::Storage::Static(&[]),
+                definitions: data::Storage::Static(&[]),
             },
             value_shapes: data::type_::ValueShapeTable {
                 shapes: data::Storage::Static(&[
@@ -1259,6 +1268,7 @@ pub fn main() {
                             module: data::Text::Static("handles"),
                             name: data::Text::Static("Handle"),
                             parameter_count: 1,
+                            lifetime: data::host::HostValueLifetime::LoadedOwner,
                             constructors: data::Storage::Static(&[
                                 data::host::ConstructorSchema {
                                     name: data::Text::Static("Handle"),
@@ -1270,7 +1280,7 @@ pub fn main() {
                                     ]),
                                 },
                             ]),
-                            shared: true,
+                            access: data::host::HostCustomAccess::Shared,
                         },
                         arguments: data::Storage::Static(&[
                             data::host::RegistrationType::Parameter(0),
@@ -1286,6 +1296,7 @@ pub fn main() {
                         module: data::Text::Static("handles"),
                         name: data::Text::Static("Handle"),
                         parameter_count: 1,
+                        lifetime: data::host::HostValueLifetime::LoadedOwner,
                         constructors: data::Storage::Static(&[
                             data::host::ConstructorSchema {
                                 name: data::Text::Static("Handle"),
@@ -1297,7 +1308,7 @@ pub fn main() {
                                 ]),
                             },
                         ]),
-                        shared: true,
+                        access: data::host::HostCustomAccess::Shared,
                     },
                     arguments: data::Storage::Static(&[
                         data::host::RegistrationType::Parameter(0),
@@ -1312,6 +1323,7 @@ pub fn main() {
                         module: data::Text::Static("handles"),
                         name: data::Text::Static("Handle"),
                         parameter_count: 1,
+                        lifetime: data::host::HostValueLifetime::LoadedOwner,
                         constructors: data::Storage::Static(&[
                             data::host::ConstructorSchema {
                                 name: data::Text::Static("Handle"),
@@ -1323,11 +1335,12 @@ pub fn main() {
                                 ]),
                             },
                         ]),
-                        shared: true,
+                        access: data::host::HostCustomAccess::Shared,
                     },
                 ]),
                 external_schemas: data::Storage::Static(&[]),
                 constructions: data::Storage::Static(&[]),
+                restorations: data::Storage::Static(&[]),
                 construction_customs: data::Storage::Static(&[]),
                 construction_externals: data::Storage::Static(&[]),
                 native_rules: None,
@@ -1413,6 +1426,7 @@ pub fn main() {
                             module: data::Text::Static("handles"),
                             name: data::Text::Static("Handle"),
                             parameter_count: 1,
+                            lifetime: data::host::HostValueLifetime::LoadedOwner,
                             constructors: data::Storage::Static(&[
                                 data::host::ConstructorSchema {
                                     name: data::Text::Static("Handle"),
@@ -1424,7 +1438,7 @@ pub fn main() {
                                     ]),
                                 },
                             ]),
-                            shared: true,
+                            access: data::host::HostCustomAccess::Shared,
                         },
                         arguments: data::Storage::Static(&[
                             data::host::RegistrationType::Int,
@@ -1440,6 +1454,7 @@ pub fn main() {
                         module: data::Text::Static("handles"),
                         name: data::Text::Static("Handle"),
                         parameter_count: 1,
+                        lifetime: data::host::HostValueLifetime::LoadedOwner,
                         constructors: data::Storage::Static(&[
                             data::host::ConstructorSchema {
                                 name: data::Text::Static("Handle"),
@@ -1451,7 +1466,7 @@ pub fn main() {
                                 ]),
                             },
                         ]),
-                        shared: true,
+                        access: data::host::HostCustomAccess::Shared,
                     },
                     arguments: data::Storage::Static(&[
                         data::host::RegistrationType::Int,
@@ -1466,6 +1481,7 @@ pub fn main() {
                         module: data::Text::Static("handles"),
                         name: data::Text::Static("Handle"),
                         parameter_count: 1,
+                        lifetime: data::host::HostValueLifetime::LoadedOwner,
                         constructors: data::Storage::Static(&[
                             data::host::ConstructorSchema {
                                 name: data::Text::Static("Handle"),
@@ -1477,11 +1493,12 @@ pub fn main() {
                                 ]),
                             },
                         ]),
-                        shared: true,
+                        access: data::host::HostCustomAccess::Shared,
                     },
                 ]),
                 external_schemas: data::Storage::Static(&[]),
                 constructions: data::Storage::Static(&[]),
+                restorations: data::Storage::Static(&[]),
                 construction_customs: data::Storage::Static(&[]),
                 construction_externals: data::Storage::Static(&[]),
                 native_rules: None,
@@ -1592,6 +1609,7 @@ pub fn main() {
                             module: data::Text::Static("handles"),
                             name: data::Text::Static("Handle"),
                             parameter_count: 1,
+                            lifetime: data::host::HostValueLifetime::LoadedOwner,
                             constructors: data::Storage::Static(&[
                                 data::host::ConstructorSchema {
                                     name: data::Text::Static("Handle"),
@@ -1603,7 +1621,7 @@ pub fn main() {
                                     ]),
                                 },
                             ]),
-                            shared: true,
+                            access: data::host::HostCustomAccess::Shared,
                         },
                         arguments: data::Storage::Static(&[
                             data::host::RegistrationType::Parameter(0),
@@ -1619,6 +1637,7 @@ pub fn main() {
                         module: data::Text::Static("handles"),
                         name: data::Text::Static("Handle"),
                         parameter_count: 1,
+                        lifetime: data::host::HostValueLifetime::LoadedOwner,
                         constructors: data::Storage::Static(&[
                             data::host::ConstructorSchema {
                                 name: data::Text::Static("Handle"),
@@ -1630,7 +1649,7 @@ pub fn main() {
                                 ]),
                             },
                         ]),
-                        shared: true,
+                        access: data::host::HostCustomAccess::Shared,
                     },
                     arguments: data::Storage::Static(&[
                         data::host::RegistrationType::Parameter(0),
@@ -1645,6 +1664,7 @@ pub fn main() {
                         module: data::Text::Static("handles"),
                         name: data::Text::Static("Handle"),
                         parameter_count: 1,
+                        lifetime: data::host::HostValueLifetime::LoadedOwner,
                         constructors: data::Storage::Static(&[
                             data::host::ConstructorSchema {
                                 name: data::Text::Static("Handle"),
@@ -1656,11 +1676,12 @@ pub fn main() {
                                 ]),
                             },
                         ]),
-                        shared: true,
+                        access: data::host::HostCustomAccess::Shared,
                     },
                 ]),
                 external_schemas: data::Storage::Static(&[]),
                 constructions: data::Storage::Static(&[]),
+                restorations: data::Storage::Static(&[]),
                 construction_customs: data::Storage::Static(&[]),
                 construction_externals: data::Storage::Static(&[]),
                 native_rules: None,

@@ -65,6 +65,9 @@ jobs:
       - name: Check BytesTree service provider formatting
         run: cargo fmt --manifest-path tests/fixtures/bytes_tree_service/provider/Cargo.toml --all --check
 
+      - name: Format independent Decoder service consumer
+        run: cargo fmt --manifest-path tests/fixtures/decoder_service/provider/Cargo.toml --all --check
+
       - name: Check selective receive provider formatting
         run: cargo fmt --manifest-path tests/fixtures/selective_receive_service/provider/Cargo.toml --all --check
 
@@ -113,6 +116,7 @@ jobs:
             tests/fixtures/charlist_service/provider -> target
             tests/fixtures/dict_service/provider -> target
             tests/fixtures/bytes_tree_service/provider -> target
+            tests/fixtures/decoder_service/provider -> target
             tests/fixtures/selective_receive_service/provider -> target
             tests/fixtures/application_exit/provider -> target
             tests/fixtures/native_function_views/provider -> target
@@ -157,6 +161,9 @@ jobs:
 
       - name: Run BytesTree service provider clippy
         run: cargo clippy --manifest-path tests/fixtures/bytes_tree_service/provider/Cargo.toml --all-targets --locked -- -D warnings
+
+      - name: Clippy independent Decoder service consumer
+        run: cargo clippy --manifest-path tests/fixtures/decoder_service/provider/Cargo.toml --all-targets --locked -- -D warnings
 
       - name: Run selective receive provider clippy
         run: cargo clippy --manifest-path tests/fixtures/selective_receive_service/provider/Cargo.toml --all-targets --locked -- -D warnings

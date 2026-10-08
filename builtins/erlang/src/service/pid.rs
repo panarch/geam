@@ -5,8 +5,9 @@ use geam_core::host::{
     HostTypeListEnd,
 };
 use geam_core::provider::{
-    ProviderConstruction, ProviderConstructions, ProviderExternalPayloadAccess, ProviderInputValue,
-    ProviderListInputCodec, ProviderListInputValue, ProviderListItemDecoder, ProviderListItemValue,
+    ProviderConstruction, ProviderConstructions, ProviderConvertedStorage,
+    ProviderExternalPayloadAccess, ProviderInputValue, ProviderListInputCodec,
+    ProviderListInputValue, ProviderListItemDecoder, ProviderListItemValue,
     ProviderNoConstructions, ProviderOutputValue, ProviderOwnedExternal, ProviderRootOutputValue,
     ProviderStaticValueForms, ProviderTypedListItemDecoder, ProviderValue, ProviderValueForms,
 };
@@ -125,7 +126,8 @@ where
     Provider: HostProvider<Profile>,
     Return: HostType,
 {
-    type Error = std::convert::Infallible;
+    type Error = HostCallError;
+    type Storage = ProviderConvertedStorage;
 
     fn into_host<'call>(
         self,
@@ -133,9 +135,8 @@ where
         constructions: &ProviderConstructions<'call, Self::OutputRequirements>,
     ) -> Result<HostExternal<'call, HostPid>, Self::Error> {
         Ok(match self.value {
-            Representation::Source(value) => {
-                call.provider_external_from_item::<PidSchema, HostTypeListEnd, ExecutionUnit>(value)
-            }
+            Representation::Source(value) => call
+                .provider_external_from_item::<PidSchema, HostTypeListEnd, ExecutionUnit>(value)?,
             Representation::Unit(unit) => call
                 .construct_external_with_binding::<Component<Profile>, PidSchema, HostTypeListEnd>(
                     constructions.token(),
@@ -155,7 +156,7 @@ where
         mut call: HostCall<'call, Profile, Provider, HostPid>,
         constructions: &ProviderConstructions<'call, Self::RootRequirements>,
     ) -> Result<HostCallCompletion<'call, HostPid>, HostCallError> {
-        let value = self.into_host_infallible(&mut call, constructions);
+        let value = self.into_host(&mut call, constructions)?;
         Ok(call.return_value(value))
     }
 }
@@ -164,6 +165,7 @@ where
 mod tests {
     use super::Pid;
     use crate::{Component, GleamErlangProfile, Pid as HostPid, PidSchema};
+    use geam_core::host::HostProviderSet;
     use geam_core::host::{
         HostCall, HostCallCompletion, HostCallError, HostConstructions, HostExternal, HostList,
         HostListType, HostProviderModule, HostTypeList, HostTypeListEnd,
@@ -172,24 +174,34 @@ mod tests {
         ProviderConstructions, ProviderInputValue, ProviderListInputCodec, ProviderOutputValue,
         ProviderRootOutputValue,
     };
-    use geam_core::{ModuleSource, PackageSource};
+    use geam_core::{
+        HostedExecution, ModuleSource, PackageSource, compile_typed_host_program, plan_host_program,
+    };
+    use std::sync::{Arc, Mutex};
 
     type Call<'call> = HostCall<'call, GleamErlangProfile, Component<GleamErlangProfile>, HostPid>;
     type Constructions<'call> = HostConstructions<'call, HostTypeList<HostPid, HostTypeListEnd>>;
 
+    type Source<'call> = HostExternal<'call, HostPid>;
+    type Items<'call> = HostList<'call, HostPid>;
+    type Completion<'call> = Result<HostCallCompletion<'call, HostPid>, HostCallError>;
+
     #[test]
-    fn retained_values_and_list_decoders_preserve_the_producer_identity() {
+    fn retained_values_preserve_identity_and_reject_a_previous_execution() {
         let producer = HostProviderModule::new("gleam_erlang", "gleam/erlang/process")
             .unwrap()
             .with_external_type::<Component<GleamErlangProfile>, PidSchema>()
             .unwrap();
+        let previous = Arc::new(Mutex::new(None::<Pid>));
         let consumer = HostProviderModule::new("application", "main")
             .unwrap()
             .with_scoped_function_and_constructions::<Component<GleamErlangProfile>, (), HostPid, HostTypeList<HostPid, HostTypeListEnd>, _>("make", make)
             .unwrap()
-            .with_scoped_function_and_constructions::<Component<GleamErlangProfile>, (HostPid, HostListType<HostPid>), HostPid, HostTypeList<HostPid, HostTypeListEnd>, _>("round_trip", round_trip)
+            .with_scoped_function_and_constructions::<Component<GleamErlangProfile>, (HostPid, HostListType<HostPid>), HostPid, HostTypeList<HostPid, HostTypeListEnd>, _>("round_trip", retaining_round_trip(previous))
             .unwrap();
-        let result = crate::test_support::run_main(
+        let typed = compile_typed_host_program(
+            "application",
+            "main",
             [
                 PackageSource::new(
                     "gleam_erlang",
@@ -218,15 +230,57 @@ pub fn main() {
                     )],
                 ),
             ],
-            [producer, consumer],
+            HostProviderSet::from_providers([producer, consumer]).unwrap(),
+        )
+        .unwrap();
+        let mut execution =
+            HostedExecution::try_from_module_plan(plan_host_program(typed).unwrap()).unwrap();
+        let mut state = crate::GleamErlangRunState {
+            stdlib: geam_stdlib::GleamStdlibRunState::from_seed([0; 32]),
+            erlang: crate::Configuration::default(),
+        };
+        let mut echo = Vec::new();
+        assert_eq!(
+            crate::execution_fixture::run(&mut execution, &mut state, &mut echo),
+            Ok(geam_core::Value::Bool(true))
         );
-        assert_eq!(result, geam_core::Value::Bool(true));
+        assert_eq!(
+            crate::execution_fixture::run(&mut execution, &mut state, &mut echo).map_err(|error| error.to_string()),
+            Err("host function application::main.round_trip failed: retained value belongs to another execution".into()),
+        );
+        assert!(echo.is_empty());
     }
 
-    fn make<'call>(
-        call: Call<'call>,
-        constructions: Constructions<'call>,
-    ) -> Result<HostCallCompletion<'call, HostPid>, HostCallError> {
+    fn retaining_round_trip(
+        previous: Arc<Mutex<Option<Pid>>>,
+    ) -> impl for<'call> Fn(
+        Call<'call>,
+        Constructions<'call>,
+        Source<'call>,
+        Items<'call>,
+    ) -> Completion<'call> {
+        move |mut call, constructions, original, items| {
+            let retained = <Pid>::from_host(&mut call, original);
+            let previous = previous.lock().unwrap().replace(retained);
+            match previous {
+                None => round_trip(call, constructions, original, items),
+                Some(previous) => {
+                    let constructions = ProviderConstructions::new(&constructions);
+                    assert_eq!(
+                        previous
+                            .clone()
+                            .into_host(&mut call, &constructions)
+                            .err()
+                            .map(|error| error.to_string()),
+                        Some("retained value belongs to another execution".into()),
+                    );
+                    previous.complete(call, &constructions)
+                }
+            }
+        }
+    }
+
+    fn make<'call>(call: Call<'call>, constructions: Constructions<'call>) -> Completion<'call> {
         let value = Pid::new(call.execution_unit().unwrap());
         value
             .clone()
@@ -236,9 +290,9 @@ pub fn main() {
     fn round_trip<'call>(
         mut call: Call<'call>,
         constructions: Constructions<'call>,
-        original: HostExternal<'call, HostPid>,
-        items: HostList<'call, HostPid>,
-    ) -> Result<HostCallCompletion<'call, HostPid>, HostCallError> {
+        original: Source<'call>,
+        items: Items<'call>,
+    ) -> Completion<'call> {
         let expected_hash = call.source_hash::<HostPid>(original);
         let expected_inspection = call.inspect::<HostPid>(original);
         let retained = <Pid>::from_host(&mut call, original);
@@ -262,7 +316,9 @@ pub fn main() {
         drop(items);
         let constructions = ProviderConstructions::new(&constructions);
         for item in [first, second, alias] {
-            let restored = item.into_host_infallible(&mut call, &constructions);
+            let restored = item
+                .into_host(&mut call, &constructions)
+                .expect("current execution retains the exact producer value");
             assert!(call.equal::<HostPid>(original, restored));
             assert_eq!(call.source_hash::<HostPid>(restored), expected_hash);
             assert_eq!(call.inspect::<HostPid>(restored), expected_inspection);

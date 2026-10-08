@@ -234,7 +234,7 @@ fn insert<'call>(
     let payload = call.external_payload(map);
     let mut replacement = None;
     for index in 0..payload.entries.len() {
-        let current = payload.restore_argument(&mut call, |payload| &payload.entries[index].key);
+        let current = payload.restore_argument(&mut call, |payload| &payload.entries[index].key)?;
         if call.equal::<Key>(current, key) {
             replacement = Some(index);
             break;
@@ -265,7 +265,7 @@ fn remove<'call>(
     let payload = call.external_payload(map);
     let mut entries = Vec::new();
     for index in 0..payload.entries.len() {
-        let current = payload.restore_argument(&mut call, |payload| &payload.entries[index].key);
+        let current = payload.restore_argument(&mut call, |payload| &payload.entries[index].key)?;
         if !call.equal::<Key>(current, key) {
             entries.push(Arc::clone(&payload.entries[index]));
         }
@@ -288,10 +288,10 @@ fn merge<'call>(
     let mut entries = left.entries.to_vec();
     let mut keys = Vec::with_capacity(left.entries.len() + right.entries.len());
     for index in 0..left.entries.len() {
-        keys.push(left.restore_argument(&mut call, |payload| &payload.entries[index].key));
+        keys.push(left.restore_argument(&mut call, |payload| &payload.entries[index].key)?);
     }
     for right_index in 0..right.entries.len() {
-        let key = right.restore_argument(&mut call, |payload| &payload.entries[right_index].key);
+        let key = right.restore_argument(&mut call, |payload| &payload.entries[right_index].key)?;
         let replacement = keys
             .iter()
             .position(|current| call.equal::<Key>(*current, key));
@@ -321,7 +321,7 @@ fn keys<'call>(
     let payload = call.external_payload(map);
     let mut values = Vec::with_capacity(payload.entries.len());
     for index in 0..payload.entries.len() {
-        values.push(payload.restore_argument(&mut call, |payload| &payload.entries[index].key));
+        values.push(payload.restore_argument(&mut call, |payload| &payload.entries[index].key)?);
     }
     Ok(call.return_list(values))
 }
@@ -333,7 +333,7 @@ fn values<'call>(
     let payload = call.external_payload(map);
     let mut values = Vec::with_capacity(payload.entries.len());
     for index in 0..payload.entries.len() {
-        values.push(payload.restore_argument(&mut call, |payload| &payload.entries[index].value));
+        values.push(payload.restore_argument(&mut call, |payload| &payload.entries[index].value)?);
     }
     Ok(call.return_list(values))
 }
@@ -363,24 +363,24 @@ fn map_values<'call>(
             for index in 0..count {
                 let (retained, key, value) = context
                     .with_call(move |mut call| {
-                        let value = map.into_host(&mut call);
+                        let value = map.into_host(&mut call)?;
                         let payload = call.external_payload(value);
                         let key = payload
-                            .restore_argument(&mut call, |payload| &payload.entries[index].key);
+                            .restore_argument(&mut call, |payload| &payload.entries[index].key)?;
                         let item = payload
-                            .restore_argument(&mut call, |payload| &payload.entries[index].value);
-                        (
+                            .restore_argument(&mut call, |payload| &payload.entries[index].value)?;
+                        Ok::<_, HostCallError>((
                             Owned::<TransientMap>::from_host(&call, value),
                             Owned::<Key>::from_host(&call, key),
                             Owned::<Item>::from_host(&call, item),
-                        )
+                        ))
                     })
-                    .await?;
+                    .await??;
                 map = retained;
                 let value = function
-                    .invoke(
+                    .try_invoke(
                         &context,
-                        move |mut call, _| (value.into_host(&mut call), ()),
+                        move |mut call, _| Ok((value.into_host(&mut call)?, ())),
                         |call, _, value| Ok(Owned::<Item>::from_host(&call, value)),
                     )
                     .await?;
@@ -394,8 +394,10 @@ fn map_values<'call>(
             >::new(move |mut call, _| {
                 let mapped = mapped
                     .into_iter()
-                    .map(|(key, value)| (key.into_host(&mut call), value.into_host(&mut call)))
-                    .collect::<Vec<_>>();
+                    .map(|(key, value)| {
+                        Ok((key.into_host(&mut call)?, value.into_host(&mut call)?))
+                    })
+                    .collect::<Result<Vec<_>, HostCallError>>()?;
                 let payload_drops = Arc::clone(&call.state().payload_drops);
                 let entry_drops = Arc::clone(&call.state().entry_drops);
                 let map = call.create_external_with(move |builder| TransientPayload {

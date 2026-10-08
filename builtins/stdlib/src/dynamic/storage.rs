@@ -19,6 +19,7 @@ pub enum DynamicRepresentation {
     Nil,
     Function,
     External,
+    Opaque,
 }
 
 impl DynamicRepresentation {
@@ -42,6 +43,7 @@ impl DynamicRepresentation {
             NativeKind::Tuple => Self::Array,
             NativeKind::Map => Self::Dict,
             NativeKind::External => Self::External,
+            NativeKind::Opaque => Self::Opaque,
             NativeKind::Function => Self::Function,
         }
     }
@@ -60,6 +62,7 @@ impl DynamicRepresentation {
             Self::Nil => "Nil",
             Self::Function => "Function",
             Self::External => "External",
+            Self::Opaque => "Opaque",
         }
     }
 }
@@ -104,6 +107,7 @@ mod tests {
             (DynamicRepresentation::Nil, "Nil"),
             (DynamicRepresentation::Function, "Function"),
             (DynamicRepresentation::External, "External"),
+            (DynamicRepresentation::Opaque, "Opaque"),
         ];
 
         for (representation, expected) in cases {

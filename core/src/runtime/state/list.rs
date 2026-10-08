@@ -235,6 +235,27 @@ pub(in crate::runtime) enum ListValueId {
     Function(FunctionListValueId),
 }
 
+impl ListValueId {
+    pub(in crate::runtime) fn list_type(&self) -> ListTypeId {
+        match self {
+            Self::Parameter(value) => value.type_id().list_type(),
+            Self::Int(value) => value.type_id().list_type(),
+            Self::String(value) => value.type_id().list_type(),
+            Self::BitArray(value) => value.type_id().list_type(),
+            Self::UtfCodepoint(value) => value.type_id().list_type(),
+            Self::Custom(value) => value.type_id().list_type(),
+            Self::External(value) => value.type_id().list_type(),
+            Self::Float(value) => value.type_id().list_type(),
+            Self::Bool(value) => value.type_id().list_type(),
+            Self::Nil(value) => value.type_id().list_type(),
+            Self::Tuple(value) => value.type_id().list_type(),
+            Self::ParameterList(value) => value.type_id().list_type(),
+            Self::List(value) => value.type_id().list_type(),
+            Self::Function(value) => value.type_id().list_type(),
+        }
+    }
+}
+
 impl StoredListValueId {
     pub(in crate::runtime) fn list_type(&self) -> ListTypeId {
         match self {
@@ -2100,14 +2121,23 @@ mod tests {
         Ok(call.resume(constructions, move |context| {
             Box::pin(async move {
                 let value = callback
-                    .invoke(
+                    .try_invoke(
                         &context,
-                        move |mut call, _| (value.into_host(&mut call), ()),
+                        move |mut call, _| {
+                            Ok((
+                                value
+                                    .into_host(&mut call)
+                                    .expect("value belongs to this execution"),
+                                (),
+                            ))
+                        },
                         |call, _, value| Ok(Owned::from_host(&call, value)),
                     )
                     .await?;
                 Ok(HostOwnedCompletion::new(move |mut call, _| {
-                    let value = value.into_host(&mut call);
+                    let value = value
+                        .into_host(&mut call)
+                        .expect("value belongs to this execution");
                     Ok(call.return_value(value))
                 }))
             })

@@ -514,7 +514,7 @@ pub fn main() { exercise(fn() { panic as "cancelled child must never run" }) }
         let named =
             call.construct_custom::<NamedSubject<BigInt>>(constructions.at::<Three>(), (name, ()));
         let subject =
-            <crate::service::Subject<BigInt> as geam_core::provider::ProviderInputValue<
+            <crate::service::subject::Owned<BigInt, BigInt> as geam_core::provider::ProviderInputValue<
                 GleamErlangProfile,
                 Component<GleamErlangProfile>,
                 BigInt,
@@ -532,7 +532,7 @@ pub fn main() { exercise(fn() { panic as "cancelled child must never run" }) }
             "timeout exceeds the host clock range",
         );
         let subject =
-            <crate::service::Subject<BigInt> as geam_core::provider::ProviderInputValue<
+            <crate::service::subject::Owned<BigInt, BigInt> as geam_core::provider::ProviderInputValue<
                 GleamErlangProfile,
                 Component<GleamErlangProfile>,
                 BigInt,

@@ -1,6 +1,7 @@
 pub(in crate::plan::execution) mod custom;
 pub(in crate::plan::execution) mod external;
 pub(in crate::plan::execution) mod function;
+pub(in crate::plan::execution) mod lifetime;
 pub(in crate::plan::execution) mod list;
 pub(in crate::plan::execution) mod metadata;
 pub(in crate::plan::execution) mod shape;
