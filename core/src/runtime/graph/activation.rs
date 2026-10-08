@@ -525,6 +525,24 @@ impl<'plan, Plan: ExecutableRuntimePlan> Storage<'plan, Plan> {
 }
 
 impl<'plan, Plan: ExecutableRuntimePlan> CallFrame<'plan, Plan> {
+    fn new(
+        graph: BlockGraphView<'plan, RuntimeGraph<Plan>>,
+        inputs: RetainedValues,
+        exit: Box<dyn GeneratedExit<'plan, Plan> + 'plan>,
+    ) -> Self {
+        Self {
+            graph,
+            position: GraphPosition::new(graph.entry(), inputs),
+            exit,
+        }
+    }
+
+    fn interpreted(mut self, point: CompiledCheckpoint) -> Activation<'plan, Plan> {
+        self.position.block = point.block;
+        self.position.instruction = point.instruction;
+        Activation::Graph(self.into_graph())
+    }
+
     fn enter(self, compiled: Option<&'plan CompiledImplementation>) -> Activation<'plan, Plan> {
         match compiled {
             Some(implementation) => Activation::Compiled {
@@ -738,16 +756,30 @@ where
             map,
         })
         .enter(inputs),
-        ExecutionFunctionRef::Host(target) => Activation::Host(Plan::map_host(
+        ExecutionFunctionRef::Host(target) => host_return(
             Id::prepare_host(plan, origin, target, inputs),
-            move |value| {
-                let value = map(value)?;
-                Ok(Activation::Return(Box::new(move |returns| {
-                    destination.resume(returns, value)
-                })))
-            },
-        )),
+            destination,
+            map,
+        ),
     }
+}
+
+fn host_return<'plan, Plan, Value, DestinationOwner>(
+    invoke: Plan::HostInvocation<'plan, Value>,
+    destination: DestinationOwner,
+    map: impl FnOnce(Value) -> ExecutionResult<DestinationOwner::Value> + Send + 'plan,
+) -> Activation<'plan, Plan>
+where
+    Plan: ExecutableRuntimePlan + 'plan,
+    Value: Send + 'plan,
+    DestinationOwner: ReturnDestination<'plan, Plan> + 'plan,
+{
+    Activation::Host(Plan::map_host(invoke, move |value| {
+        let value = map(value)?;
+        Ok(Activation::Return(Box::new(move |returns| {
+            destination.resume(returns, value)
+        })))
+    }))
 }
 
 impl<'plan, Plan, Id, DestinationOwner, Map>
@@ -765,12 +797,7 @@ where
     fn enter(self: Box<Self>, inputs: RetainedValues) -> Activation<'plan, Plan> {
         let graph = self.body.function_body().block_graph().as_view();
         let compiled = self.id.compiled(self.plan);
-        CallFrame {
-            graph,
-            position: GraphPosition::new(graph.entry(), inputs),
-            exit: self,
-        }
-        .enter(compiled)
+        CallFrame::new(graph, inputs, self).enter(compiled)
     }
 
     fn retarget(
@@ -786,14 +813,7 @@ where
                 self.body = function.body();
                 if let Some(point) = checkpoint {
                     let graph = self.body.function_body().block_graph().as_view();
-                    let mut position = GraphPosition::new(graph.entry(), inputs);
-                    position.block = point.block;
-                    position.instruction = point.instruction;
-                    Activation::Graph(Frame {
-                        graph,
-                        position,
-                        exit: self,
-                    })
+                    CallFrame::new(graph, inputs, self).interpreted(point)
                 } else {
                     self.enter(inputs)
                 }
@@ -805,15 +825,11 @@ where
                     map,
                     ..
                 } = *self;
-                Activation::Host(Plan::map_host(
+                host_return(
                     Id::prepare_host(plan, origin, target, inputs),
-                    move |value| {
-                        let value = map(value)?;
-                        Ok(Activation::Return(Box::new(move |returns| {
-                            destination.resume(returns, value)
-                        })))
-                    },
-                ))
+                    destination,
+                    map,
+                )
             }
         }
     }

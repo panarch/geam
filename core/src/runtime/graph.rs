@@ -21,7 +21,7 @@ use crate::plan::execution::host::HostedExecutionProfile;
 use crate::plan::execution::type_::ValueType;
 use crate::runtime::{CaptureStorage, ExecutableRuntimePlan};
 pub(in crate::runtime) use activation::{
-    Execution as GraphExecution, Progress as GraphProgress, Storage as GraphStorage,
+    CallFrame, Execution as GraphExecution, Progress as GraphProgress, Storage as GraphStorage,
 };
 use environment::StoragePool;
 pub(in crate::runtime) use instruction::{

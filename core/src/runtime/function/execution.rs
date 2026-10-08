@@ -2,11 +2,12 @@ use super::EntryTarget;
 use crate::plan::execution::ExecutionPlan;
 use crate::plan::execution::function::{ExecutionFunctionRef, FunctionBodyOwner, FunctionExit};
 use crate::runtime::ExecutableRuntimePlan;
+use crate::runtime::compiled::calls::GeneratedNativeState;
 use crate::runtime::error::{ExecutionResult, HostCallOrigin};
 use crate::runtime::execution::{Evaluation, ServiceContext, Yield};
 use crate::runtime::graph::RuntimeGraphState;
 use crate::runtime::graph::{
-    GraphExecution, GraphProgress, GraphStorage, GraphValue, RetainedValues,
+    CallFrame, GraphExecution, GraphProgress, GraphStorage, GraphValue, RetainedValues,
 };
 use crate::runtime::state::RuntimeState;
 use std::num::NonZeroUsize;
@@ -23,8 +24,31 @@ pub(in crate::runtime) enum Progress<
     Id: EntryTarget<Plan> + 'plan,
 > {
     Continue(Execution<'plan, Plan, Id>),
-    Host(Plan::HostInvocation<'plan, Progress<'plan, Plan, Id>>),
+    Host(HostSuspension<'plan, Plan, Id>),
     Complete(EntryValue<Plan, Id>),
+}
+
+/// Host requests keep their native result type. The function owner resumes
+/// afterward instead of wrapping every request in a return-family mapper.
+pub(in crate::runtime) enum HostSuspension<'plan, Plan, Id>
+where
+    Plan: ExecutableRuntimePlan + 'plan,
+    Id: EntryTarget<Plan> + 'plan,
+{
+    Entry(Plan::HostInvocation<'plan, EntryValue<Plan, Id>>),
+    Graph {
+        function: Id,
+        body: &'plan Id::Body,
+        storage: Box<GraphStorage<'plan, Plan>>,
+        invoke: Plan::HostInvocation<'plan, GraphExecution<'plan, Plan>>,
+    },
+    Generated {
+        function: Id,
+        body: &'plan Id::Body,
+        storage: Box<GraphStorage<'plan, Plan>>,
+        frame: CallFrame<'plan, Plan>,
+        invoke: Plan::HostInvocation<'plan, Box<GeneratedNativeState>>,
+    },
 }
 
 pub(in crate::runtime) type EntryValue<Plan, Id> =
@@ -109,7 +133,38 @@ where
                     }
                     result
                 }
-                Ok(Progress::Host(invoke)) => Plan::submit_host(invoke, context, budget).await?,
+                Ok(Progress::Host(suspended)) => match suspended {
+                    HostSuspension::Entry(invoke) => Plan::submit_host(invoke, context, budget)
+                        .await?
+                        .map(Progress::Complete),
+                    HostSuspension::Graph {
+                        function,
+                        body,
+                        storage,
+                        invoke,
+                    } => Plan::submit_host(invoke, context, budget)
+                        .await?
+                        .map(|execution| {
+                            Progress::Continue(Self {
+                                function,
+                                position: Position::Graph { body, execution },
+                                storage,
+                            })
+                        }),
+                    HostSuspension::Generated {
+                        function,
+                        body,
+                        mut storage,
+                        frame,
+                        invoke,
+                    } => Plan::submit_host(invoke, context, budget)
+                        .await?
+                        .and_then(|state| {
+                            let progress =
+                                GraphExecution::generated_ready(frame, state, plan, &mut storage)?;
+                            Self::finish_graph(function, body, storage, plan, progress)
+                        }),
+                },
                 Ok(Progress::Complete(value)) => return Ok(Ok(value)),
                 Err(error) => return Ok(Err(error)),
             };
@@ -150,7 +205,7 @@ where
                 if let Some(cancelled) =
                     plan.reject_foreign_callable(&inputs, Some(state.captures().domain()))
                 {
-                    return Ok(Progress::Host(cancelled));
+                    return Ok(Progress::Host(HostSuspension::Entry(cancelled)));
                 }
                 match function.entry(plan) {
                     ExecutionFunctionRef::Graph(entry) => {
@@ -168,10 +223,9 @@ where
                             },
                         }))
                     }
-                    ExecutionFunctionRef::Host(target) => Ok(Progress::Host(Plan::map_host(
-                        Id::prepare_host(plan, origin, target, inputs),
-                        |value| Ok(Progress::Complete(value)),
-                    ))),
+                    ExecutionFunctionRef::Host(target) => Ok(Progress::Host(
+                        HostSuspension::Entry(Id::prepare_host(plan, origin, target, inputs)),
+                    )),
                 }
             }
             Position::Graph { body, execution } => {
@@ -184,28 +238,26 @@ where
     fn finish_graph(
         function: Id,
         body: &'plan Id::Body,
-        mut storage: Box<GraphStorage<'plan, Plan>>,
+        storage: Box<GraphStorage<'plan, Plan>>,
         plan: &'plan Plan,
         progress: GraphProgress<'plan, Plan>,
     ) -> ExecutionResult<Progress<'plan, Plan, Id>> {
         match progress {
             GraphProgress::GeneratedHost { frame, invoke } => {
-                Ok(Progress::Host(Plan::map_host(invoke, move |state| {
-                    let progress =
-                        GraphExecution::generated_ready(frame, state, plan, &mut storage)?;
-                    Self::finish_graph(function, body, storage, plan, progress)
-                })))
+                Ok(Progress::Host(HostSuspension::Generated {
+                    function,
+                    body,
+                    storage,
+                    frame,
+                    invoke,
+                }))
             }
-
-            GraphProgress::Host(invoke) => {
-                Ok(Progress::Host(Plan::map_host(invoke, move |execution| {
-                    Ok(Progress::Continue(Self {
-                        function,
-                        position: Position::Graph { body, execution },
-                        storage,
-                    }))
-                })))
-            }
+            GraphProgress::Host(invoke) => Ok(Progress::Host(HostSuspension::Graph {
+                function,
+                body,
+                storage,
+                invoke,
+            })),
             GraphProgress::Continue(next) => Ok(Progress::Continue(Self {
                 function,
                 storage,
@@ -236,15 +288,14 @@ where
                             ),
                         },
                     }),
-                    ExecutionFunctionRef::Host(target) => Progress::Host(Plan::map_host(
-                        Id::prepare_host(
+                    ExecutionFunctionRef::Host(target) => {
+                        Progress::Host(HostSuspension::Entry(Id::prepare_host(
                             plan,
                             HostCallOrigin::Entry,
                             target,
                             values.into_retained(),
-                        ),
-                        |value| Ok(Progress::Complete(value)),
-                    )),
+                        )))
+                    }
                 })
             }
             GraphProgress::Complete(completed) => {
@@ -472,7 +523,7 @@ mod tests {
     }
 
     #[test]
-    fn generated_string_native_results_resume_the_original_function_driver() {
+    fn string_native_driver_preserves_results_and_each_pending_host_owner() {
         use super::Position;
         use crate::plan::execution::function::{
             ExecutionFunctionEntry, ExecutionFunctionRef, StringFunctionId,
@@ -489,18 +540,22 @@ mod tests {
             CallExecution, CallInputs, CallOps, CallOutput, CallProgress, CallStorage,
             StringNativeExecution, StringNativeRequest,
         };
+        use crate::runtime::execution::Services;
         use crate::runtime::graph::{
             BlockEnvironment, GraphExecution, GraphStorage, RetainedValues,
         };
+        use crate::runtime::work::Cancelled;
         use crate::{
             HostCall, HostCallContinuation, HostCallError, HostConstructions, HostOwnedCompletion,
             HostProvider, HostProviderModule, HostProviderSet, HostTypeListEnd,
             StatelessHostProfile, StringValue,
         };
+        use std::future::Future;
         use std::sync::{
             Arc, Mutex, Weak,
             atomic::{AtomicUsize, Ordering},
         };
+        use std::task::{Context, Poll, Waker};
         const SOURCE: &str = r#"
 @external(erlang, "example", "answer")
 fn answer() -> String
@@ -517,8 +572,14 @@ pub fn main() { exercise() source() }
                 state
             }
         }
+        static DROPPED: AtomicUsize = AtomicUsize::new(0);
         struct Completion {
             requested: bool,
+        }
+        impl Drop for Completion {
+            fn drop(&mut self) {
+                DROPPED.fetch_add(1, Ordering::SeqCst);
+            }
         }
         impl CallExecution for Completion {
             fn restart(&mut self, _: CallTarget, _: usize, _: CallInputs<'_>) -> bool {
@@ -641,6 +702,82 @@ pub fn main() { exercise() source() }
                             .unwrap();
                         assert_eq!(value.as_str(), Ok("kept"));
                     }
+                    let native = Execution::new(
+                        StringFunctionId(2),
+                        HostCallOrigin::Entry,
+                        RetainedValues::empty(),
+                    )
+                    .drive(
+                        &*plan,
+                        context.execution().services(),
+                        NonZeroUsize::new(16).unwrap(),
+                    )
+                    .await
+                    .unwrap()
+                    .unwrap();
+                    assert_eq!(native.as_str(), Ok("native"));
+
+                    // Each suspension releases its original owner without
+                    // publishing a result or replaying the pending native call.
+                    for (boundary, execution, dropped_engines) in [
+                        (
+                            "entry",
+                            Execution::new(
+                                StringFunctionId(2),
+                                HostCallOrigin::Entry,
+                                RetainedValues::empty(),
+                            ),
+                            0,
+                        ),
+                        (
+                            "graph",
+                            Execution::new(
+                                StringFunctionId(1),
+                                HostCallOrigin::Entry,
+                                RetainedValues::empty(),
+                            ),
+                            0,
+                        ),
+                        (
+                            "generated",
+                            Execution {
+                                function: StringFunctionId(1),
+                                storage: Box::new(GraphStorage::new()),
+                                position: Position::Graph {
+                                    body,
+                                    execution: GraphExecution::new(
+                                        graph,
+                                        RetainedValues::empty(),
+                                        Some(&implementation),
+                                    ),
+                                },
+                            },
+                            1,
+                        ),
+                    ] {
+                        let services =
+                            Services::new(context.execution().services().captures().clone());
+                        let service_context = services.context();
+                        let dropped_before = DROPPED.load(Ordering::SeqCst);
+                        let mut waiting = Box::pin(execution.drive(
+                            &*plan,
+                            &service_context,
+                            NonZeroUsize::new(16).unwrap(),
+                        ));
+                        let mut cx = Context::from_waker(Waker::noop());
+                        assert!(waiting.as_mut().poll(&mut cx).is_pending(), "{boundary}");
+                        drop(services);
+                        assert_eq!(
+                            waiting.as_mut().poll(&mut cx),
+                            Poll::Ready(Err(Cancelled)),
+                            "{boundary}"
+                        );
+                        assert_eq!(
+                            DROPPED.load(Ordering::SeqCst),
+                            dropped_before + dropped_engines,
+                            "{boundary}"
+                        );
+                    }
                     Ok(HostOwnedCompletion::new(
                         |call, _| Ok(call.return_value(())),
                     ))
@@ -728,8 +865,66 @@ pub fn main() { exercise() source() }
             crate::execution_fixture::run(&mut hosted, &mut (), &mut echo).unwrap(),
             crate::Value::String("kept".into())
         );
-        assert_eq!(calls.load(Ordering::SeqCst), 3);
+        assert_eq!(calls.load(Ordering::SeqCst), 4);
         assert!(echo.is_empty());
+    }
+
+    #[test]
+    fn string_driver_preserves_echo_delivery_and_pending_service_cancellation() {
+        use crate::plan::execution::function::StringFunctionId;
+        use crate::runtime::execution::Services;
+        use crate::runtime::work::Cancelled;
+        use crate::{HostProviderSet, StatelessHostProfile};
+        use std::future::Future;
+        use std::task::{Context, Poll, Waker};
+
+        let typed = crate::compile_typed_host_program(
+            "echo_probe",
+            "echo_probe",
+            [crate::PackageSource::new(
+                "echo_probe",
+                Vec::<String>::new(),
+                [crate::ModuleSource::new(
+                    "echo_probe",
+                    "src/echo_probe.gleam",
+                    "pub fn main() { echo \"kept\" }",
+                )],
+            )],
+            HostProviderSet::<StatelessHostProfile>::from_providers([]).unwrap(),
+        )
+        .unwrap();
+        let mut hosted =
+            crate::HostedExecution::try_from_module_plan(crate::plan_host_program(typed).unwrap())
+                .unwrap();
+        let mut echo = Vec::new();
+        assert_eq!(
+            crate::execution_fixture::run(&mut hosted, &mut (), &mut echo).unwrap(),
+            crate::Value::String("kept".into())
+        );
+        assert_eq!(echo.len(), 1);
+        assert_eq!(echo[0].value(), &crate::Value::String("kept".into()));
+        assert_eq!(
+            echo[0].location().path().unwrap().as_str(),
+            "src/echo_probe.gleam"
+        );
+        assert_eq!(echo[0].location().line(), Some(1));
+        assert!(echo[0].message().is_none());
+
+        let (plan, _, _) = hosted.parts_mut();
+        let services = Services::new(Default::default());
+        let context = services.context();
+        let mut waiting = Box::pin(
+            Execution::new(
+                StringFunctionId(0),
+                HostCallOrigin::Entry,
+                RetainedValues::empty(),
+            )
+            .drive(plan.as_ref(), &context, NonZeroUsize::new(16).unwrap()),
+        );
+        let mut cx = Context::from_waker(Waker::noop());
+        assert!(waiting.as_mut().poll(&mut cx).is_pending());
+        drop(services);
+        assert_eq!(waiting.as_mut().poll(&mut cx), Poll::Ready(Err(Cancelled)));
     }
 
     #[test]
