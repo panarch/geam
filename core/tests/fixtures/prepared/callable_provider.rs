@@ -77,14 +77,14 @@ fn wrap<'call>(
     Ok(call.resume(constructions, move |context| {
         Box::pin(async move {
             let output = callback
-                .invoke(
+                .try_invoke(
                     &context,
-                    move |mut call, _| (input.into_host(&mut call), ()),
+                    move |mut call, _| Ok((input.into_host(&mut call)?, ())),
                     |call, _, value| Ok(Owned::<U>::from_host(&call, value)),
                 )
                 .await?;
             Ok(geam_core::HostOwnedCompletion::new(move |mut call, _| {
-                let value = output.into_host(&mut call);
+                let value = output.into_host(&mut call)?;
                 Ok(call.return_value(value))
             }))
         })

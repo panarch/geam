@@ -4,4 +4,11 @@
 /target/
 # Prepared embedding data is regenerated with `geam embedding sync`.
 **/src/geam_bindings/program.rs
+# Independent Decoder consumers regenerate build data locally and in CI.
+/tests/fixtures/decoder_service/provider/target/
+/tests/fixtures/decoder_service/project/build/
+/tests/fixtures/decoder_service/embedding/target/
+/tests/fixtures/decoder_service/embedding/gleam/build/
 *.snap.new
+# LLVM profiling counters emitted by coverage subprocesses.
+*.profraw

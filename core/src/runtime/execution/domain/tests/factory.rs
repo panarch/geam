@@ -1,8 +1,8 @@
 use super::{Domain, Profile};
 use crate::provider::{
-    Call, Factory, ProviderConstruction, ProviderConstructionIndex0, ProviderConstructionList,
-    ProviderConstructionRequirements, ProviderConstructions, ProviderExecutionCall,
-    ProviderFactoryBinding, ProviderFactoryBindings, ProviderFactoryCodec, ProviderNoConstructions,
+    Call, Factory, ProviderCallBindings, ProviderConstruction, ProviderConstructionIndex0,
+    ProviderConstructionList, ProviderConstructionRequirements, ProviderConstructions,
+    ProviderExecutionCall, ProviderFactoryBinding, ProviderFactoryCodec, ProviderNoConstructions,
     ProviderOwnedCaptures,
 };
 use crate::{
@@ -47,7 +47,7 @@ impl HostCallableSchema for Increment {
 }
 
 struct Bindings;
-impl ProviderFactoryBindings for Bindings {
+impl ProviderCallBindings for Bindings {
     type Requirements = Requirements;
     type CaptureMode = ProviderOwnedCaptures;
 }
@@ -102,7 +102,7 @@ fn issue<'call>(
     Ok(call.resume(constructions, move |context| {
         Box::pin(async move {
             context.with_state(|state| state.set(1)).await.unwrap();
-            let mut call = Call::<_, ProviderExecutionCall<'_, _, _, (), Bindings>>::from_execution_context_with_factories(context);
+            let mut call = Call::<_, ProviderExecutionCall<'_, _, _, (), Bindings>>::from_execution_context_with_bindings(context);
             let callback = call.create(&Factory::<Increment>::declaration(), (value,)).await?;
             Ok(HostOwnedCompletion::new(move |mut call, _| {
                 let function = callback.restore(&mut call).unwrap();

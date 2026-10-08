@@ -40,7 +40,7 @@ fn external_profile_preserves_every_callback_return_family() {
                     )
                     .await?;
                 Ok(geam_core::HostOwnedCompletion::new(move |mut call, _| {
-                    let value = value.into_host(&mut call);
+                    let value = value.into_host(&mut call)?;
                     Ok(call.return_value(value))
                 }))
             })
@@ -64,7 +64,7 @@ fn external_profile_preserves_every_callback_return_family() {
                     )
                     .await?;
                 Ok(geam_core::HostOwnedCompletion::new(move |mut call, _| {
-                    let value = value.into_host(&mut call);
+                    let value = value.into_host(&mut call)?;
                     Ok(call.return_value(value))
                 }))
             })

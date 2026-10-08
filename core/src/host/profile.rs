@@ -1,7 +1,7 @@
 use crate::execution::ExitStatus;
 use crate::host::{
     HostCallArguments, HostCallCompletion, HostCallError, HostConstruction, HostCustom,
-    HostCustomArgumentSlot, HostCustomConstructor, HostCustomType, HostExternal,
+    HostCustomArgumentSlot, HostCustomConstructor, HostCustomSchema, HostCustomType, HostExternal,
     HostExternalArgumentSlot, HostExternalBinding, HostExternalPayloadBuilder,
     HostExternalPayloadView, HostExternalSchema, HostExternalStorage, HostExternalType,
     HostFunctionArgumentSlot, HostList, HostListArgumentSlot, HostListType, HostStoredValue,
@@ -346,7 +346,10 @@ where
         HostTuple::new(self.runtime.tuple_token(value))
     }
 
-    pub fn custom_constructor<Custom>(&self, value: HostCustom<'call, Custom>) -> usize {
+    pub fn custom_constructor<Schema: HostCustomSchema, Arguments: HostTypeSequence>(
+        &self,
+        value: HostCustom<'call, HostCustomType<Schema, Arguments>>,
+    ) -> usize {
         self.runtime.custom_constructor(value.token)
     }
 
@@ -471,7 +474,7 @@ where
     pub(crate) fn restore_stored<Type, Stored>(
         &mut self,
         value: &HostStoredValue<Stored>,
-    ) -> Type::Value<'call>
+    ) -> Result<Type::Value<'call>, crate::HostCallError>
     where
         Type: HostType,
     {
@@ -481,12 +484,11 @@ where
     pub(in crate::host) fn restore_runtime_value<Type>(
         &mut self,
         value: &crate::runtime::StoredRuntimeValue,
-    ) -> Type::Value<'call>
+    ) -> Result<Type::Value<'call>, crate::HostCallError>
     where
         Type: HostType,
     {
-        let token = self.runtime.restore_stored(value);
-        crate::host::type_::from_token::<Type, Profile>(self.runtime, token)
+        self.restore_value::<Type>(value)
     }
 
     pub(in crate::host) fn resolve_host_type<Type: HostType>(
@@ -666,7 +668,7 @@ where
     pub fn provider_list_from_input<Item, HostItem, Decoder>(
         &mut self,
         value: crate::provider::List<Item, crate::provider::ProviderListContext<HostItem, Decoder>>,
-    ) -> HostList<'call, HostItem>
+    ) -> Result<HostList<'call, HostItem>, crate::HostCallError>
     where
         HostItem: HostType,
         Decoder: crate::provider::ProviderListItemDecoder<Item>,
@@ -687,7 +689,11 @@ where
     {
         let lease = self.runtime.external_lease(value.token);
         let access = self.provider_external_payload_access_with::<Binding, Schema>();
-        crate::provider::ProviderOwnedExternal::new(access, lease)
+        crate::provider::ProviderOwnedExternal::new(
+            access,
+            lease,
+            self.retain_value::<HostExternalType<Schema, Arguments>>(value),
+        )
     }
 
     #[doc(hidden)]
@@ -705,53 +711,47 @@ where
         let view =
             BoundExternalStorage::<Profile, Binding, Schema>::store(self.runtime.external_stores())
                 .view(&lease);
-        crate::provider::ProviderExternalView::new(view, lease)
+        crate::provider::ProviderExternalView::new(
+            view,
+            self.retain_value::<HostExternalType<Schema, Arguments>>(value),
+        )
     }
 
     #[doc(hidden)]
     pub fn provider_external_from_item<Schema, Arguments, Payload>(
         &mut self,
         value: crate::provider::ProviderOwnedExternal<Payload>,
-    ) -> HostExternal<'call, HostExternalType<Schema, Arguments>>
+    ) -> Result<HostExternal<'call, HostExternalType<Schema, Arguments>>, crate::HostCallError>
     where
         Schema: HostExternalSchema,
         Arguments: HostTypeSequence,
         Payload: Send + 'static,
     {
-        HostExternal::new(self.runtime.build_external(
-            &crate::host::HostTypeDescriptor::of::<HostExternalType<Schema, Arguments>>(),
-            value.into_lease(),
-        ))
+        self.restore_value::<HostExternalType<Schema, Arguments>>(&value.into_stored())
     }
 
     #[doc(hidden)]
     pub fn provider_external_from_view<Schema, Arguments, Payload>(
         &mut self,
         value: crate::provider::ProviderExternalView<Payload>,
-    ) -> HostExternal<'call, HostExternalType<Schema, Arguments>>
+    ) -> Result<HostExternal<'call, HostExternalType<Schema, Arguments>>, crate::HostCallError>
     where
         Schema: HostExternalSchema,
         Arguments: HostTypeSequence,
     {
-        HostExternal::new(self.runtime.build_external(
-            &crate::host::HostTypeDescriptor::of::<HostExternalType<Schema, Arguments>>(),
-            value.into_lease(),
-        ))
+        self.restore_value::<HostExternalType<Schema, Arguments>>(&value.into_stored())
     }
 
     #[doc(hidden)]
     pub fn provider_external_from_return<Schema, Arguments, Payload>(
         &mut self,
         value: crate::provider::ProviderExternalReturn<Payload>,
-    ) -> HostExternal<'call, HostExternalType<Schema, Arguments>>
+    ) -> Result<HostExternal<'call, HostExternalType<Schema, Arguments>>, crate::HostCallError>
     where
         Schema: HostExternalSchema,
         Arguments: HostTypeSequence,
     {
-        HostExternal::new(self.runtime.build_external(
-            &crate::host::HostTypeDescriptor::of::<HostExternalType<Schema, Arguments>>(),
-            value.into_lease(),
-        ))
+        self.restore_value::<HostExternalType<Schema, Arguments>>(&value.into_stored())
     }
 
     #[doc(hidden)]
@@ -774,10 +774,6 @@ where
         ))
     }
 
-    pub(crate) fn value_retention(&self) -> crate::runtime::ValueRetention {
-        self.runtime.native_values().value_retention()
-    }
-
     pub(crate) fn retain_value<Type: HostType>(
         &self,
         value: Type::Value<'call>,
@@ -789,6 +785,53 @@ where
     pub(crate) fn restore_value<Type: HostType>(
         &mut self,
         value: &StoredRuntimeValue,
+    ) -> Result<Type::Value<'call>, crate::HostCallError> {
+        if !self.native_has_type::<Type>(value) {
+            return Err(crate::HostFailure::new(
+                "retained value belongs to another owner or source type",
+            )
+            .into());
+        }
+        if !value.belongs_to(&self.runtime.execution()) {
+            return Err(
+                crate::HostFailure::new("retained value belongs to another execution").into(),
+            );
+        }
+        Ok(self.restore_matched_value::<Type>(value))
+    }
+
+    pub(crate) fn try_restore_value<Type: HostType>(
+        &mut self,
+        value: &StoredRuntimeValue,
+    ) -> Option<Type::Value<'call>> {
+        self.can_restore_value::<Type>(value)
+            .then(|| self.restore_matched_value::<Type>(value))
+    }
+
+    pub(crate) fn try_restore_value_with<Type: HostType>(
+        &mut self,
+        _restoration: &crate::HostRestoration<'call, Type>,
+        value: &StoredRuntimeValue,
+    ) -> Option<Type::Value<'call>> {
+        self.try_restore_value::<Type>(value)
+    }
+
+    /// Restores an exact source carried by a native value using a registered target.
+    pub fn restore_native<Type: HostType>(
+        &mut self,
+        restoration: &crate::HostRestoration<'call, Type>,
+        value: &crate::provider::advanced::NativeValue,
+    ) -> Option<Type::Value<'call>> {
+        let value = value.find_source(|value| {
+            self.can_restore_value::<Type>(value)
+                .then(|| value.clone_retained())
+        })?;
+        self.try_restore_value_with(restoration, &value)
+    }
+
+    fn restore_matched_value<Type: HostType>(
+        &mut self,
+        value: &StoredRuntimeValue,
     ) -> Type::Value<'call> {
         let token = self.runtime.restore_stored(value);
         crate::host::type_::from_runtime_token::<Type, _>(self.runtime, token)
@@ -797,6 +840,10 @@ where
     pub(crate) fn stored_has_type<Type: HostType>(&self, value: &StoredRuntimeValue) -> bool {
         self.resolve_host_type::<Type>()
             .is_some_and(|requested| value.type_() == &requested)
+    }
+
+    pub(crate) fn can_restore_value<Type: HostType>(&self, value: &StoredRuntimeValue) -> bool {
+        self.native_has_type::<Type>(value) && value.belongs_to(&self.runtime.execution())
     }
 
     pub(crate) fn native_has_type<Type: HostType>(&self, value: &StoredRuntimeValue) -> bool {
@@ -813,8 +860,24 @@ where
     pub(crate) fn restore_list_value<Item: HostType>(
         &mut self,
         value: &StoredRuntimeList,
-    ) -> HostList<'call, Item> {
-        HostList::new(self.runtime.restore_list(value))
+    ) -> Result<HostList<'call, Item>, crate::HostCallError> {
+        if !self
+            .resolve_host_type::<HostListType<Item>>()
+            .is_some_and(|requested| {
+                value.has_type(self.runtime.native_values().metadata(), &requested)
+            })
+        {
+            return Err(crate::HostFailure::new(
+                "retained list belongs to another owner or source type",
+            )
+            .into());
+        }
+        if !value.belongs_to(&self.runtime.execution()) {
+            return Err(
+                crate::HostFailure::new("retained list belongs to another execution").into(),
+            );
+        }
+        Ok(HostList::new(self.runtime.restore_list(value)))
     }
 }
 
@@ -971,6 +1034,7 @@ mod tests {
     };
     use crate::provider::{ProviderError, ProviderOk, ProviderResult};
     use crate::provider::{ProviderListItemDecoder, ProviderListItemValue};
+    use crate::runtime::NativeKind;
     use crate::work_fixture::{WorkComponent, WorkHostType, WorkSchema};
     use crate::{HostCallCompletion, HostCallError, HostExternal, ModuleSource, PackageSource};
     use num_bigint::BigInt;
@@ -1357,6 +1421,145 @@ pub fn main() { #(active(), converted(42), converted(0)) }
     }
 
     #[test]
+    fn retained_lists_check_specialization_owner_and_original_execution_before_restore() {
+        use crate::runtime::StoredRuntimeList;
+        use std::sync::{Arc, Mutex};
+
+        type State = Arc<Mutex<Option<StoredRuntimeList>>>;
+        type Item = HostTypeParameter<0>;
+        type List = HostListType<Item>;
+        struct RetentionProfile;
+        struct RetentionProvider;
+        impl HostProfile for RetentionProfile {
+            type RunState = State;
+            type ExternalStores = ();
+            type ExecutionState = ();
+        }
+        impl HostProvider<RetentionProfile> for RetentionProvider {
+            type State = State;
+            fn project(state: &mut State) -> &mut State {
+                state
+            }
+        }
+        fn save<'call>(
+            mut call: HostCall<'call, RetentionProfile, RetentionProvider, List>,
+            value: HostList<'call, Item>,
+        ) -> Result<HostCallCompletion<'call, List>, HostCallError> {
+            let retained = call.retain_list_value(value);
+            *call.state().lock().unwrap() = Some(retained);
+            Ok(call.return_value(value))
+        }
+        fn restore<'call>(
+            mut call: HostCall<'call, RetentionProfile, RetentionProvider, List>,
+            _: HostList<'call, Item>,
+        ) -> Result<HostCallCompletion<'call, List>, HostCallError> {
+            let retained = call.state().lock().unwrap().take().unwrap();
+            let restored = call.restore_list_value::<Item>(&retained);
+            *call.state().lock().unwrap() = Some(retained);
+            Ok(call.return_value(restored?))
+        }
+        fn program() -> HostedModuleBuilder<RetentionProfile> {
+            let provider = HostProviderModule::new("application", "library")
+                .unwrap()
+                .with_scoped_function::<RetentionProvider, (List,), List, _>("save", save)
+                .unwrap()
+                .with_scoped_function::<RetentionProvider, (List,), List, _>("restore", restore)
+                .unwrap();
+            let typed = compile_typed_host_program(
+                "application",
+                "library",
+                [PackageSource::new(
+                    "application",
+                    Vec::<&str>::new(),
+                    [ModuleSource::new(
+                        "library",
+                        "library.gleam",
+                        r#"
+@external(erlang, "native", "save") fn save(values: List(item)) -> List(item)
+@external(erlang, "native", "restore") fn restore(sample: List(item)) -> List(item)
+pub fn save_int() { let assert [value] = save([42]) value }
+pub fn restore_int() { let assert [value] = restore([0]) value }
+pub fn restore_string() { let assert [value] = restore([""]) value }
+pub fn save_function() {
+  let offset = 7
+  let _ = save([fn(value) { echo value value + offset }])
+  Nil
+}
+pub fn restore_function() {
+  let assert [callback] = restore([fn(value) { value }])
+  callback(1)
+}
+"#,
+                    )],
+                )],
+                HostProviderSet::from_providers([provider]).unwrap(),
+            )
+            .unwrap();
+            HostedModuleBuilder::new(typed).unwrap()
+        }
+        let (mut bindings, save_int) = program()
+            .function(FunctionDeclaration::<(), BigInt>::new("save_int"))
+            .unwrap();
+        let restore_int = bindings
+            .function(FunctionDeclaration::<(), BigInt>::new("restore_int"))
+            .unwrap();
+        let restore_string = bindings
+            .function(FunctionDeclaration::<(), StringValue>::new(
+                "restore_string",
+            ))
+            .unwrap();
+        let save_function = bindings
+            .function(FunctionDeclaration::<(), ()>::new("save_function"))
+            .unwrap();
+        let restore_function = bindings
+            .function(FunctionDeclaration::<(), BigInt>::new("restore_function"))
+            .unwrap();
+        let mut module = bindings.seal().unwrap();
+        let (bindings, foreign_restore) = program()
+            .function(FunctionDeclaration::<(), BigInt>::new("restore_int"))
+            .unwrap();
+        let mut foreign = bindings.seal().unwrap();
+        let mut state = State::default();
+        let mut foreign_state = state.clone();
+        let mut echo = Vec::new();
+        let mut foreign_echo = Vec::new();
+        let host = crate::execution_fixture::TestHost::default();
+        host.block_on(module.with_execution(&host, &mut state, &mut echo, async |scope| {
+            assert_eq!(scope.call(&save_int, ()).await.unwrap(), BigInt::from(42));
+            assert_eq!(scope.call(&restore_string, ()).await.unwrap_err().to_string(),
+                "host function application::library.restore failed: retained list belongs to another owner or source type");
+            assert_eq!(scope.call(&restore_int, ()).await.unwrap(), BigInt::from(42));
+            foreign.with_execution(&host, &mut foreign_state, &mut foreign_echo, async |other| {
+                assert_eq!(other.call(&foreign_restore, ()).await.unwrap_err().to_string(),
+                    "host function application::library.restore failed: retained list belongs to another owner or source type");
+            }).await.unwrap().try_into_value().unwrap();
+        })).unwrap().try_into_value().unwrap();
+        host.block_on(
+            module.with_execution(&host, &mut state, &mut echo, async |scope| {
+                assert_eq!(
+                    scope.call(&restore_int, ()).await.unwrap(),
+                    BigInt::from(42)
+                );
+                scope.call(&save_function, ()).await.unwrap();
+                assert_eq!(
+                    scope.call(&restore_function, ()).await.unwrap(),
+                    BigInt::from(8)
+                );
+            }),
+        )
+        .unwrap()
+        .try_into_value()
+        .unwrap();
+        host.block_on(module.with_execution(&host, &mut state, &mut echo, async |scope| {
+            assert_eq!(scope.call(&restore_function, ()).await.unwrap_err().to_string(),
+                "host function application::library.restore failed: retained list belongs to another execution");
+        })).unwrap().try_into_value().unwrap();
+        assert_eq!(echo.len(), 1);
+        assert_eq!(echo[0].value().inspect().to_string(), "1");
+        assert!(foreign_echo.is_empty());
+    }
+
+    #[test]
     fn host_call_completes_typed_function_handles_without_reconstruction() {
         type Arguments = HostTypeList<BigInt, HostTypeListEnd>;
         type Function = HostFunctionType<Arguments, BigInt>;
@@ -1418,6 +1621,11 @@ pub fn main() { #(active(), converted(42), converted(0)) }
         assert_eq!(call.list_len(values), 2);
         assert_eq!(call.list_item(values, 1), Some(BigInt::from(42)));
         assert_eq!(call.list_item(values, 2), None);
+        let native = call.native_tuple(values);
+        assert_eq!(native.kind(), NativeKind::Tuple);
+        assert_eq!(native.len(), Some(2));
+        assert_eq!(native.index(1).unwrap().as_int(), Some(BigInt::from(42)));
+        assert!(native.index(2).is_none());
         assert_eq!(call.tuple_len(pair), 2);
         assert_eq!(
             call.tuple_values(pair),

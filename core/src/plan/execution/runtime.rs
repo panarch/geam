@@ -580,6 +580,25 @@ impl<'plan> RuntimeValueMetadata<'plan> {
         self.custom_types.value_type(id)
     }
 
+    pub(crate) fn custom_lifetime(&self, id: CustomTypeId) -> crate::host::HostValueLifetime {
+        self.custom_types.types[id.index()].lifetime
+    }
+
+    pub(crate) fn external_lifetime(
+        &self,
+        id: super::type_::ExternalTypeId,
+    ) -> crate::host::HostValueLifetime {
+        self.external_types.lifetimes[id.index()]
+    }
+
+    pub(crate) fn list_lifetime(&self, id: ListTypeId) -> crate::host::HostValueLifetime {
+        self.list_types.lifetimes[id.index()]
+    }
+
+    pub(crate) fn custom_native_visible(&self, id: CustomTypeId) -> bool {
+        self.custom_types.native_visible(id)
+    }
+
     pub(crate) fn external_value_type(
         &self,
         id: super::type_::ExternalTypeId,

@@ -1,5 +1,5 @@
 data::ModuleArtifact {
-    format: 28,
+    format: 29,
     program: data::ProgramTables {
         root: data::source::module_id(0),
         modules: data::Storage::Static(&[
@@ -22541,6 +22541,25 @@ fn integer_comparisons() {
                     return_: data::Storage::Static(&data::type_::ValueType::Int),
                 },
             ]),
+            lifetimes: data::Storage::Static(&[
+                data::host::HostValueLifetime::LoadedOwner,
+                data::host::HostValueLifetime::LoadedOwner,
+                data::host::HostValueLifetime::LoadedOwner,
+                data::host::HostValueLifetime::LoadedOwner,
+                data::host::HostValueLifetime::LoadedOwner,
+                data::host::HostValueLifetime::LoadedOwner,
+                data::host::HostValueLifetime::LoadedOwner,
+                data::host::HostValueLifetime::LoadedOwner,
+                data::host::HostValueLifetime::LoadedOwner,
+                data::host::HostValueLifetime::Execution,
+                data::host::HostValueLifetime::LoadedOwner,
+                data::host::HostValueLifetime::LoadedOwner,
+                data::host::HostValueLifetime::LoadedOwner,
+                data::host::HostValueLifetime::LoadedOwner,
+                data::host::HostValueLifetime::LoadedOwner,
+                data::host::HostValueLifetime::LoadedOwner,
+                data::host::HostValueLifetime::LoadedOwner,
+            ]),
         },
         custom_types: data::type_::CustomTypeTable {
             types: data::Storage::Static(&[
@@ -22553,6 +22572,8 @@ fn integer_comparisons() {
                             data::type_::TypeMetadata::Int,
                         ]),
                     },
+                    native_visible: false,
+                    lifetime: data::host::HostValueLifetime::LoadedOwner,
                     constructor_count: 1,
                     constructors: data::Storage::Static(&[
                         data::type_::CustomConstructorDescriptor {
@@ -22582,6 +22603,8 @@ fn integer_comparisons() {
                             data::type_::TypeMetadata::List(data::Storage::Static(&data::type_::TypeMetadata::Int)),
                         ]),
                     },
+                    native_visible: false,
+                    lifetime: data::host::HostValueLifetime::LoadedOwner,
                     constructor_count: 1,
                     constructors: data::Storage::Static(&[
                         data::type_::CustomConstructorDescriptor {
@@ -22610,6 +22633,8 @@ fn integer_comparisons() {
                     name: data::Text::Static("Box"),
                     publicity: data::type_::CustomTypePublicity::Private,
                     opaque: false,
+                    native_access: None,
+                    retention_lifetime: data::host::HostValueLifetime::LoadedOwner,
                     parameters: 1,
                     constructors: data::Storage::Static(&[
                         data::type_::ConstructorDefinition {
@@ -22627,6 +22652,8 @@ fn integer_comparisons() {
         },
         external_types: data::type_::ExternalTypeTable {
             types: data::Storage::Static(&[]),
+            lifetimes: data::Storage::Static(&[]),
+            definitions: data::Storage::Static(&[]),
         },
         value_shapes: data::type_::ValueShapeTable {
             shapes: data::Storage::Static(&[

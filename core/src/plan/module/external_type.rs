@@ -5,6 +5,7 @@ use ecow::EcoString;
 pub struct ExternalTypeDefinition {
     name: ExternalTypeName,
     parameters: Box<[TypeParameterId]>,
+    lifetime: crate::host::HostValueLifetime,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -30,11 +31,21 @@ impl ExternalTypeDefinition {
     pub(crate) fn new(name: ExternalTypeName, parameter_count: usize) -> Self {
         Self {
             name,
+            lifetime: crate::host::HostValueLifetime::Execution,
             parameters: (0..parameter_count)
                 .map(TypeParameterId)
                 .collect::<Vec<_>>()
                 .into_boxed_slice(),
         }
+    }
+
+    pub fn lifetime(&self) -> crate::host::HostValueLifetime {
+        self.lifetime
+    }
+
+    pub(crate) fn with_lifetime(mut self, lifetime: crate::host::HostValueLifetime) -> Self {
+        self.lifetime = lifetime;
+        self
     }
 
     pub fn name(&self) -> &ExternalTypeName {

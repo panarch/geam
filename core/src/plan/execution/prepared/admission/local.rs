@@ -852,6 +852,7 @@ mod tests {
     #[test]
     fn checks_definition_order_operand_ownership_and_descriptor_agreement() {
         let lists = ListTypeTable {
+            lifetimes: Table::Static(&[]),
             types: Table::Static(&[]),
             tuple_items: Table::Static(&[]),
             function_items: Table::Static(&[]),
@@ -861,6 +862,8 @@ mod tests {
             types: Table::Static(&[]),
         };
         let externals = ExternalTypeTable {
+            lifetimes: Table::Static(&[]),
+            definitions: Table::Static(&[]),
             types: Table::Static(&[]),
         };
         let shapes = ValueShapeTable {

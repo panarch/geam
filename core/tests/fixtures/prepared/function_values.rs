@@ -1,6 +1,6 @@
 data::HostedModuleArtifact {
     module: data::ModuleArtifact {
-        format: 28,
+        format: 29,
         program: data::ProgramTables {
             root: data::source::module_id(0),
             modules: data::Storage::Static(&[
@@ -1752,6 +1752,9 @@ pub fn compound() {
                 ]),
                 tuple_items: data::Storage::Static(&[]),
                 function_items: data::Storage::Static(&[]),
+                lifetimes: data::Storage::Static(&[
+                    data::host::HostValueLifetime::LoadedOwner,
+                ]),
             },
             custom_types: data::type_::CustomTypeTable {
                 types: data::Storage::Static(&[
@@ -1764,6 +1767,8 @@ pub fn compound() {
                                 data::type_::TypeMetadata::Parameter(data::type_::parameter_id(0)),
                             ]),
                         },
+                        native_visible: true,
+                        lifetime: data::host::HostValueLifetime::Execution,
                         constructor_count: 1,
                         constructors: data::Storage::Static(&[
                             data::type_::CustomConstructorDescriptor {
@@ -1802,6 +1807,8 @@ pub fn compound() {
                         name: data::Text::Static("Holder"),
                         publicity: data::type_::CustomTypePublicity::Public,
                         opaque: false,
+                        native_access: None,
+                        retention_lifetime: data::host::HostValueLifetime::LoadedOwner,
                         parameters: 1,
                         constructors: data::Storage::Static(&[
                             data::type_::ConstructorDefinition {
@@ -1824,6 +1831,8 @@ pub fn compound() {
             },
             external_types: data::type_::ExternalTypeTable {
                 types: data::Storage::Static(&[]),
+                lifetimes: data::Storage::Static(&[]),
+                definitions: data::Storage::Static(&[]),
             },
             value_shapes: data::type_::ValueShapeTable {
                 shapes: data::Storage::Static(&[
@@ -2139,6 +2148,7 @@ pub fn compound() {
                 custom_schemas: data::Storage::Static(&[]),
                 external_schemas: data::Storage::Static(&[]),
                 constructions: data::Storage::Static(&[]),
+                restorations: data::Storage::Static(&[]),
                 construction_customs: data::Storage::Static(&[]),
                 construction_externals: data::Storage::Static(&[]),
                 native_rules: None,
@@ -2240,6 +2250,7 @@ pub fn compound() {
                 custom_schemas: data::Storage::Static(&[]),
                 external_schemas: data::Storage::Static(&[]),
                 constructions: data::Storage::Static(&[]),
+                restorations: data::Storage::Static(&[]),
                 construction_customs: data::Storage::Static(&[]),
                 construction_externals: data::Storage::Static(&[]),
                 native_rules: None,
@@ -2330,6 +2341,7 @@ pub fn compound() {
                             module: data::Text::Static("function_values"),
                             name: data::Text::Static("Holder"),
                             parameter_count: 1,
+                            lifetime: data::host::HostValueLifetime::LoadedOwner,
                             constructors: data::Storage::Static(&[
                                 data::host::ConstructorSchema {
                                     name: data::Text::Static("Held"),
@@ -2346,7 +2358,7 @@ pub fn compound() {
                                     ]),
                                 },
                             ]),
-                            shared: false,
+                            access: data::host::HostCustomAccess::Declared,
                         },
                         arguments: data::Storage::Static(&[
                             data::host::RegistrationType::Parameter(0),
@@ -2362,6 +2374,7 @@ pub fn compound() {
                         module: data::Text::Static("function_values"),
                         name: data::Text::Static("Holder"),
                         parameter_count: 1,
+                        lifetime: data::host::HostValueLifetime::LoadedOwner,
                         constructors: data::Storage::Static(&[
                             data::host::ConstructorSchema {
                                 name: data::Text::Static("Held"),
@@ -2378,7 +2391,7 @@ pub fn compound() {
                                 ]),
                             },
                         ]),
-                        shared: false,
+                        access: data::host::HostCustomAccess::Declared,
                     },
                     arguments: data::Storage::Static(&[
                         data::host::RegistrationType::Parameter(0),
@@ -2393,6 +2406,7 @@ pub fn compound() {
                         module: data::Text::Static("function_values"),
                         name: data::Text::Static("Holder"),
                         parameter_count: 1,
+                        lifetime: data::host::HostValueLifetime::LoadedOwner,
                         constructors: data::Storage::Static(&[
                             data::host::ConstructorSchema {
                                 name: data::Text::Static("Held"),
@@ -2409,11 +2423,12 @@ pub fn compound() {
                                 ]),
                             },
                         ]),
-                        shared: false,
+                        access: data::host::HostCustomAccess::Declared,
                     },
                 ]),
                 external_schemas: data::Storage::Static(&[]),
                 constructions: data::Storage::Static(&[]),
+                restorations: data::Storage::Static(&[]),
                 construction_customs: data::Storage::Static(&[]),
                 construction_externals: data::Storage::Static(&[]),
                 native_rules: None,
@@ -2519,6 +2534,7 @@ pub fn compound() {
                 custom_schemas: data::Storage::Static(&[]),
                 external_schemas: data::Storage::Static(&[]),
                 constructions: data::Storage::Static(&[]),
+                restorations: data::Storage::Static(&[]),
                 construction_customs: data::Storage::Static(&[]),
                 construction_externals: data::Storage::Static(&[]),
                 native_rules: None,
@@ -2609,6 +2625,7 @@ pub fn compound() {
                 custom_schemas: data::Storage::Static(&[]),
                 external_schemas: data::Storage::Static(&[]),
                 constructions: data::Storage::Static(&[]),
+                restorations: data::Storage::Static(&[]),
                 construction_customs: data::Storage::Static(&[]),
                 construction_externals: data::Storage::Static(&[]),
                 native_rules: None,
@@ -2720,6 +2737,7 @@ pub fn compound() {
                 custom_schemas: data::Storage::Static(&[]),
                 external_schemas: data::Storage::Static(&[]),
                 constructions: data::Storage::Static(&[]),
+                restorations: data::Storage::Static(&[]),
                 construction_customs: data::Storage::Static(&[]),
                 construction_externals: data::Storage::Static(&[]),
                 native_rules: None,

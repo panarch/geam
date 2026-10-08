@@ -30,6 +30,7 @@ mod native {
         Arc, AtomicUsize, BigInt, Call, Callback, Equality, Hashing, HostResult, Inspection,
         NativeValue, Ordering, RetainedExternalPayload, State, StringValue, Value,
     };
+    use geam_core::provider::Restore;
     use std::cell::RefCell;
 
     #[geam_macros::external(name = "Key", retained)]
@@ -107,10 +108,13 @@ mod native {
     }
 
     #[geam_macros::function]
-    fn wrap<Item>(#[geam_macros::call] call: &mut Call<State>, value: Value<Item>) -> Envelope {
-        Envelope {
+    fn wrap<Item>(
+        #[geam_macros::call] call: &mut Call<State>,
+        value: Value<Item>,
+    ) -> HostResult<Envelope> {
+        Ok(Envelope {
             value: call.store_dynamic::<_, Envelope>(value).native_view(),
-        }
+        })
     }
 
     #[geam_macros::function]
@@ -136,11 +140,11 @@ mod native {
         #[geam_macros::call] call: &mut Call<State>,
         left: Value<Left>,
         right: Value<Right>,
-    ) -> (bool, bool) {
+    ) -> HostResult<(bool, bool)> {
         let hashes_match = call.native_source_hash(&left) == call.native_source_hash(&right);
         let left = call.store_dynamic::<_, Envelope>(left).native_view();
         let right = call.store_dynamic::<_, Envelope>(right).native_view();
-        (call.native_equal(&left, &right), hashes_match)
+        Ok((call.native_equal(&left, &right), hashes_match))
     }
 
     #[geam_macros::function]
@@ -173,9 +177,11 @@ mod native {
     #[geam_macros::function]
     fn string(
         #[geam_macros::call] call: &mut Call<State>,
+        #[geam_macros::restore] restore: Restore<StringValue>,
         value: &Envelope,
     ) -> Result<StringValue, ()> {
-        call.restore_native::<StringValue>(&value.value).ok_or(())
+        call.restore_native::<StringValue>(&restore, &value.value)
+            .ok_or(())
     }
 }
 

@@ -4,6 +4,7 @@ mod external;
 mod function;
 mod list;
 mod parameter;
+mod restored;
 pub(crate) mod retained;
 mod scalar;
 mod schema;
@@ -12,11 +13,12 @@ mod tuple;
 
 pub use created_function::HostCreatedFunction;
 pub use custom::{
-    HostCustomConstructor, HostCustomConstructorAt, HostCustomConstructorDefinition,
-    HostCustomConstructorList, HostCustomConstructorListEnd, HostCustomConstructorSchema,
-    HostCustomField, HostCustomFieldList, HostCustomFieldListEnd, HostCustomFieldSchema,
-    HostCustomIndex0, HostCustomIndexNext, HostCustomSchema, HostCustomType,
-    HostCustomTypeArgument, HostCustomTypeSchema, HostNominalCustomField, HostSchemaType,
+    HostCustomAccess, HostCustomConstructor, HostCustomConstructorAt,
+    HostCustomConstructorDefinition, HostCustomConstructorList, HostCustomConstructorListEnd,
+    HostCustomConstructorSchema, HostCustomField, HostCustomFieldList, HostCustomFieldListEnd,
+    HostCustomFieldSchema, HostCustomIndex0, HostCustomIndexNext, HostCustomSchema, HostCustomType,
+    HostCustomTypeArgument, HostCustomTypeSchema, HostNominalCustomField, HostRetainedCustomSchema,
+    HostRetainedCustomType, HostSchemaType,
 };
 #[doc(hidden)]
 pub use custom::{
@@ -26,6 +28,7 @@ pub use custom::{
 pub use function::{HostFunctionType, HostFunctionValueType};
 pub use list::HostListType;
 pub use parameter::HostTypeParameter;
+pub use restored::HostRestoredType;
 #[doc(hidden)]
 pub use retained::{HostRetainedType, HostRetainedValue};
 pub use sequence::{
@@ -489,6 +492,12 @@ mod private {
     pub(crate) trait Abi {
         const CALLABLE_CONSTRUCTION: usize = 0;
         fn descriptor() -> super::HostTypeDescriptor;
+        fn collect_permissions(
+            constructions: &mut Vec<super::HostTypeDescriptor>,
+            _restorations: &mut Vec<super::HostTypeDescriptor>,
+        ) {
+            constructions.push(Self::descriptor());
+        }
         fn schema_type() -> super::HostSchemaType;
         fn collect_custom_schemas(
             _output: &mut Vec<super::HostCustomTypeSchema>,
@@ -512,6 +521,10 @@ mod private {
 
     pub(crate) trait Sequence {
         const CALLABLE_COUNT: usize;
+        fn collect_permissions(
+            constructions: &mut Vec<super::HostTypeDescriptor>,
+            restorations: &mut Vec<super::HostTypeDescriptor>,
+        );
         fn descriptors() -> Vec<super::HostTypeDescriptor>;
         fn schema_types() -> Vec<super::HostSchemaType>;
         fn collect_callable_constructions(

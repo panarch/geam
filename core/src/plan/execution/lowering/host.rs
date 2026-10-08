@@ -190,6 +190,7 @@ where
     let mut templates = HostTemplateCatalog::new();
     let mut constant_templates = Vec::with_capacity(modules.len());
     let mut custom_types = Vec::new();
+    let mut external_types = Vec::new();
 
     for module in modules {
         let parts = module.into_parts();
@@ -199,6 +200,7 @@ where
             parts.source_context,
         ));
         custom_types.extend(parts.custom_types);
+        external_types.extend(parts.external_types);
         constant_templates.push(parts.constants);
         templates.push_module(
             parts.functions,
@@ -211,7 +213,8 @@ where
         constant_templates: ProgramConstantTemplates {
             modules: constant_templates,
         },
-        representations: RepresentationContext::new(custom_types),
+        representations: RepresentationContext::new(custom_types)
+            .with_external_types(external_types),
         erased_specializations: HashSet::new(),
     };
 

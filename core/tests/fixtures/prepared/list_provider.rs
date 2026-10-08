@@ -62,7 +62,7 @@ fn hold<'call>(
             Ok(HostOwnedCompletion::new(
                 move |mut call: HostCall<'_, Profile, Provider, Ints>, _| {
                     call.state().push("completed");
-                    let values = values.into_host(&mut call);
+                    let values = values.into_host(&mut call)?;
                     Ok(call.return_value(values))
                 },
             ))

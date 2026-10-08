@@ -17,8 +17,8 @@ pub(super) mod provider {
         BigInt, Call, Callback, DictDeclaration, DynamicPayload, GleamStdlibRunState, List,
         StringValue, ToPrimitive, Value,
     };
-    use geam_core::provider::HostResult;
     use geam_core::provider::advanced::NativeKind;
+    use geam_core::provider::{HostResult, Restore};
 
     #[geam_macros::custom(input = DecodeErrorInput)]
     pub enum DecodeError {
@@ -184,12 +184,13 @@ pub(super) mod provider {
     #[geam_macros::function(profile = Profile)]
     fn decode_dict(
         #[geam_macros::call] call: &mut Call<GleamStdlibRunState<Profile::Io>>,
+        #[geam_macros::restore] restore: Restore<DictDeclaration<DynamicPayload, DynamicPayload>>,
         data: geam_core::provider::advanced::External<DynamicPayload>,
     ) -> Result<crate::dict::DynamicDictOutput, ()> {
         let value = data.native_value().clone();
         drop(data);
         if let Some(dict) =
-            call.restore_native::<DictDeclaration<DynamicPayload, DynamicPayload>>(&value)
+            call.restore_native::<DictDeclaration<DynamicPayload, DynamicPayload>>(&restore, &value)
         {
             return Ok(crate::dict::DynamicDictOutput::exact(dict.into_value()));
         }
@@ -346,6 +347,10 @@ import gleam/option
 
 pub type DecodeError {
   DecodeError(expected: String, found: String, path: List(String))
+}
+
+pub opaque type Decoder(a) {
+  Decoder(function: fn(dynamic.Dynamic) -> #(a, List(DecodeError)))
 }
 
 @external(erlang, "gleam_stdlib", "index")

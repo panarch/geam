@@ -764,7 +764,9 @@ pub fn main() { cycle(3, fn() { 7 }) }
                         )
                         .await?;
                     Ok(crate::HostOwnedCompletion::new(move |mut call, _| {
-                        let value = counter.into_host(&mut call);
+                        let value = counter
+                            .into_host(&mut call)
+                            .expect("counter belongs to this execution");
                         Ok(call.return_value(value))
                     }))
                 })
@@ -792,7 +794,9 @@ pub fn main() { cycle(3, fn() { 7 }) }
                         )
                         .await?;
                     Ok(crate::HostOwnedCompletion::new(move |mut call, _| {
-                        let value = value.into_host(&mut call);
+                        let value = value
+                            .into_host(&mut call)
+                            .expect("value belongs to this execution");
                         Ok(call.return_value(value))
                     }))
                 })

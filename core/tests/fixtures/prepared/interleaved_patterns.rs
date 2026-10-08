@@ -1,5 +1,5 @@
 data::ModuleArtifact {
-    format: 28,
+    format: 29,
     program: data::ProgramTables {
         root: data::source::module_id(0),
         modules: data::Storage::Static(&[
@@ -1881,6 +1881,7 @@ data::ModuleArtifact {
             types: data::Storage::Static(&[]),
             tuple_items: data::Storage::Static(&[]),
             function_items: data::Storage::Static(&[]),
+            lifetimes: data::Storage::Static(&[]),
         },
         custom_types: data::type_::CustomTypeTable {
             types: data::Storage::Static(&[
@@ -1891,6 +1892,8 @@ data::ModuleArtifact {
                         name: data::Text::Static("Frame"),
                         arguments: data::Storage::Static(&[]),
                     },
+                    native_visible: false,
+                    lifetime: data::host::HostValueLifetime::LoadedOwner,
                     constructor_count: 3,
                     constructors: data::Storage::Static(&[
                         data::type_::CustomConstructorDescriptor {
@@ -1950,6 +1953,8 @@ data::ModuleArtifact {
                         name: data::Text::Static("DataFrame"),
                         arguments: data::Storage::Static(&[]),
                     },
+                    native_visible: false,
+                    lifetime: data::host::HostValueLifetime::LoadedOwner,
                     constructor_count: 2,
                     constructors: data::Storage::Static(&[
                         data::type_::CustomConstructorDescriptor {
@@ -1993,6 +1998,8 @@ data::ModuleArtifact {
                         name: data::Text::Static("ControlFrame"),
                         arguments: data::Storage::Static(&[]),
                     },
+                    native_visible: false,
+                    lifetime: data::host::HostValueLifetime::LoadedOwner,
                     constructor_count: 3,
                     constructors: data::Storage::Static(&[
                         data::type_::CustomConstructorDescriptor {
@@ -2053,6 +2060,8 @@ data::ModuleArtifact {
                     name: data::Text::Static("ControlFrame"),
                     publicity: data::type_::CustomTypePublicity::Private,
                     opaque: false,
+                    native_access: None,
+                    retention_lifetime: data::host::HostValueLifetime::LoadedOwner,
                     parameters: 0,
                     constructors: data::Storage::Static(&[
                         data::type_::ConstructorDefinition {
@@ -2090,6 +2099,8 @@ data::ModuleArtifact {
                     name: data::Text::Static("DataFrame"),
                     publicity: data::type_::CustomTypePublicity::Private,
                     opaque: false,
+                    native_access: None,
+                    retention_lifetime: data::host::HostValueLifetime::LoadedOwner,
                     parameters: 0,
                     constructors: data::Storage::Static(&[
                         data::type_::ConstructorDefinition {
@@ -2118,6 +2129,8 @@ data::ModuleArtifact {
                     name: data::Text::Static("Frame"),
                     publicity: data::type_::CustomTypePublicity::Private,
                     opaque: false,
+                    native_access: None,
+                    retention_lifetime: data::host::HostValueLifetime::LoadedOwner,
                     parameters: 0,
                     constructors: data::Storage::Static(&[
                         data::type_::ConstructorDefinition {
@@ -2163,6 +2176,8 @@ data::ModuleArtifact {
         },
         external_types: data::type_::ExternalTypeTable {
             types: data::Storage::Static(&[]),
+            lifetimes: data::Storage::Static(&[]),
+            definitions: data::Storage::Static(&[]),
         },
         value_shapes: data::type_::ValueShapeTable {
             shapes: data::Storage::Static(&[

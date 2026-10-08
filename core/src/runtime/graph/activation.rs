@@ -3359,6 +3359,135 @@ pub fn main() { #(project, apply, factory) }
     }
 
     #[test]
+    fn a_suspended_call_rejects_a_callable_from_a_previous_execution() {
+        use crate::execution_fixture::TestHost;
+        use crate::plan::execution::HostedProgram;
+        use crate::plan::execution::function::TupleFunctionId;
+        use crate::plan::execution::graph::IntFunctionLocalId;
+        use crate::runtime::execution::Domain;
+        use crate::runtime::graph::BlockEnvironment;
+        use crate::{
+            HostProviderSet, HostedExecution, ModuleSource, PackageSource, StatelessHostProfile,
+        };
+
+        let source = r#"
+fn apply(value: fn(Int) -> Int) { value(41) }
+pub fn main() {
+  let bias = 1
+  #(fn(value) { value + bias }, apply)
+}
+"#;
+        let typed = crate::compile_typed_host_program(
+            "application",
+            "main",
+            [PackageSource::new(
+                "application",
+                Vec::<String>::new(),
+                [ModuleSource::new("main", "main.gleam", source)],
+            )],
+            HostProviderSet::<StatelessHostProfile>::from_providers([]).unwrap(),
+        )
+        .unwrap();
+        let mut execution =
+            HostedExecution::try_from_module_plan(crate::plan_host_program(typed).unwrap())
+                .unwrap();
+        let (plan, stores, captures) = execution.parts_mut();
+        let host = TestHost::default();
+        let mut state = ();
+        let mut echo = Vec::new();
+        let previous = Domain::new(
+            Arc::clone(plan),
+            &host,
+            &mut state,
+            stores,
+            &mut echo,
+            captures.clone(),
+            Domain::<StatelessHostProfile>::DEFAULT_BUDGET,
+        );
+        let context = previous.context();
+        let previous_callback = host
+            .block_on(previous.drive(async {
+                let values = context
+                    .call(
+                        TupleFunctionId(0),
+                        HostCallOrigin::Entry,
+                        RetainedValues::empty(),
+                    )
+                    .await
+                    .unwrap()
+                    .unwrap();
+                values[0].clone()
+            }))
+            .unwrap()
+            .try_into_value()
+            .unwrap();
+
+        let current = Domain::new(
+            Arc::clone(plan),
+            &host,
+            &mut state,
+            stores,
+            &mut echo,
+            captures.clone(),
+            Domain::<StatelessHostProfile>::DEFAULT_BUDGET,
+        );
+        let context = current.context();
+        host.block_on(current.drive(async {
+            let values = context
+                .call(
+                    TupleFunctionId(0),
+                    HostCallOrigin::Entry,
+                    RetainedValues::empty(),
+                )
+                .await
+                .unwrap()
+                .unwrap();
+            let callback = values[0].clone();
+            let mut inputs = RetainedValues::empty();
+            inputs.push_evaluated(callback.clone());
+            assert_eq!(
+                context
+                    .call(IntFunctionId(1), HostCallOrigin::Entry, inputs)
+                    .await
+                    .unwrap(),
+                Ok(42.into())
+            );
+
+            let plan = &**plan;
+            let graph = int_body(plan, IntFunctionId(1)).block_graph().as_view();
+            for (argument, foreign) in [(callback.clone(), false), (previous_callback, true)] {
+                let mut caller_inputs = RetainedValues::empty();
+                caller_inputs.push_evaluated(callback.clone());
+                let frame = Frame {
+                    graph,
+                    position: GraphPosition::new(graph.entry(), caller_inputs),
+                    exit: Box::new(RootExit),
+                };
+                let mut storage: Storage<'_, HostedProgram<StatelessHostProfile>> = Storage::new();
+                storage.returns.domain = Some(context.captures().domain());
+                let destination = storage.returns.suspend::<IntegerValue>(frame);
+                let mut functions = RetainedValues::empty();
+                functions.push_evaluated(argument);
+                let functions = BlockEnvironment::from_retained(functions);
+                let function = functions.int_function(IntFunctionLocalId(0));
+                let mut inputs = RetainedValues::empty();
+                inputs.push_int(41.into());
+                inputs.append_captures(function.capture_frame());
+                let activation = enter_function(
+                    plan,
+                    function.runtime_id(),
+                    HostCallOrigin::Entry,
+                    inputs,
+                    destination,
+                    Ok,
+                );
+                assert_eq!(matches!(activation, Activation::Host(_)), foreign);
+            }
+        }))
+        .unwrap();
+    }
+
+    #[test]
     fn source_and_native_function_returns_check_the_evaluated_target_family() {
         use crate::execution_fixture::TestHost;
         use crate::host::{

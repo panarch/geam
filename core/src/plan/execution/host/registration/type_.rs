@@ -289,8 +289,9 @@ data::host::RegistrationType::Custom {
         module: data::Text::Static("types"),
         name: data::Text::Static("Empty"),
         parameter_count: 1,
+        lifetime: data::host::HostValueLifetime::LoadedOwner,
         constructors: data::Storage::Static(&[]),
-        shared: false,
+        access: data::host::HostCustomAccess::Declared,
     },
     arguments: data::Storage::Static(&[
         data::host::RegistrationType::Int,
@@ -307,6 +308,7 @@ data::host::RegistrationType::External {
         module: data::Text::Static("types"),
         name: data::Text::Static("Resource"),
         parameter_count: 1,
+        lifetime: data::host::HostValueLifetime::Execution,
     },
     arguments: data::Storage::Static(&[
         data::host::RegistrationType::Int,

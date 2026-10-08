@@ -115,6 +115,7 @@ pub(super) fn declaration(
             #(#parameters: #support::ProviderValue,)*
         {
             type Error = ::core::convert::Infallible;
+            type Storage = #support::ProviderConvertedStorage;
 
             fn into_host<'__geam_call>(
                 self,

@@ -71,21 +71,25 @@ mod records {
     }
 
     #[geam::function]
-    fn record(#[geam::call] call: &mut Call<()>, label: StringValue, count: BigInt) -> Record {
+    fn record(
+        #[geam::call] call: &mut Call<()>,
+        label: StringValue,
+        count: BigInt,
+    ) -> HostResult<Record> {
         let label = call.store_dynamic::<_, Record>(label).native_view();
         let count = call.store_dynamic::<_, Record>(count).native_view();
-        Record {
+        Ok(Record {
             value: NativeValue::tuple([NativeValue::symbol("record"), label, count]),
-        }
+        })
     }
 
     #[geam::function]
     fn erase<Item>(
         #[geam::call] call: &mut Call<()>,
         value: Value<Item>,
-    ) -> geam::gleam_stdlib::Dynamic {
+    ) -> HostResult<geam::gleam_stdlib::Dynamic> {
         let value = call.store_dynamic::<_, Record>(value).native_view();
-        geam::gleam_stdlib::Dynamic::from_native(value)
+        Ok(geam::gleam_stdlib::Dynamic::from_native(value))
     }
 
     #[geam::function(await)]

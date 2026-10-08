@@ -313,3 +313,15 @@ pub(super) type Start<A, B> =
 pub(super) type Local<A, B> =
     HostCustomConstructorAt<SupervisorName<A, B>, HostCustomIndex0, SupervisorNameLocal>;
 pub(super) type ChildResult<B> = Result2<geam::gleam_erlang::Pid, B, StartError>;
+
+type CustomIndex1 = HostCustomIndexNext<HostCustomIndex0>;
+type CustomIndex2 = HostCustomIndexNext<CustomIndex1>;
+type CustomIndex3 = HostCustomIndexNext<CustomIndex2>;
+type CustomIndex4 = HostCustomIndexNext<CustomIndex3>;
+pub(super) type RestartProperty<A, B> =
+    HostCustomConstructorAt<Property<A, B>, CustomIndex2, PropertyRestart>;
+pub(super) type ShutdownProperty<A, B> =
+    HostCustomConstructorAt<Property<A, B>, CustomIndex4, PropertyShutdown>;
+pub(super) type StrategyFlag<A> = HostCustomConstructorAt<Flag<A>, HostCustomIndex0, FlagStrategy>;
+pub(super) type IntensityFlag<A> = HostCustomConstructorAt<Flag<A>, CustomIndex1, FlagIntensity>;
+pub(super) type PeriodFlag<A> = HostCustomConstructorAt<Flag<A>, CustomIndex2, FlagPeriod>;

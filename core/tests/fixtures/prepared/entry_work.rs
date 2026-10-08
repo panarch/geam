@@ -1,5 +1,5 @@
 data::HostedEntryArtifact {
-    format: 28,
+    format: 29,
     program: data::ProgramTables {
         root: data::source::module_id(3),
         modules: data::Storage::Static(&[
@@ -1177,6 +1177,7 @@ pub fn main() {
             types: data::Storage::Static(&[]),
             tuple_items: data::Storage::Static(&[]),
             function_items: data::Storage::Static(&[]),
+            lifetimes: data::Storage::Static(&[]),
         },
         custom_types: data::type_::CustomTypeTable {
             types: data::Storage::Static(&[]),
@@ -1204,6 +1205,19 @@ pub fn main() {
                     arguments: data::Storage::Static(&[
                         data::type_::TypeMetadata::Int,
                     ]),
+                },
+            ]),
+            lifetimes: data::Storage::Static(&[
+                data::host::HostValueLifetime::Execution,
+                data::host::HostValueLifetime::Execution,
+            ]),
+            definitions: data::Storage::Static(&[
+                data::host::ExternalSchema {
+                    package: data::Text::Static("work_fixture"),
+                    module: data::Text::Static("fixture/work"),
+                    name: data::Text::Static("Work"),
+                    parameter_count: 1,
+                    lifetime: data::host::HostValueLifetime::Execution,
                 },
             ]),
         },
@@ -1328,6 +1342,7 @@ pub fn main() {
                         module: data::Text::Static("fixture/work"),
                         name: data::Text::Static("Work"),
                         parameter_count: 1,
+                        lifetime: data::host::HostValueLifetime::Execution,
                     },
                     arguments: data::Storage::Static(&[
                         data::host::RegistrationType::Parameter(0),
@@ -1343,9 +1358,11 @@ pub fn main() {
                         module: data::Text::Static("fixture/work"),
                         name: data::Text::Static("Work"),
                         parameter_count: 1,
+                        lifetime: data::host::HostValueLifetime::Execution,
                     },
                 ]),
                 constructions: data::Storage::Static(&[]),
+                restorations: data::Storage::Static(&[]),
                 construction_customs: data::Storage::Static(&[]),
                 construction_externals: data::Storage::Static(&[]),
                 native_rules: None,
@@ -1513,6 +1530,7 @@ pub fn main() {
                             module: data::Text::Static("fixture/work"),
                             name: data::Text::Static("Work"),
                             parameter_count: 1,
+                            lifetime: data::host::HostValueLifetime::Execution,
                         },
                         arguments: data::Storage::Static(&[
                             data::host::RegistrationType::Parameter(1),
@@ -1534,6 +1552,7 @@ pub fn main() {
                         module: data::Text::Static("fixture/work"),
                         name: data::Text::Static("Work"),
                         parameter_count: 1,
+                        lifetime: data::host::HostValueLifetime::Execution,
                     },
                     arguments: data::Storage::Static(&[
                         data::host::RegistrationType::Parameter(0),
@@ -1553,9 +1572,11 @@ pub fn main() {
                         module: data::Text::Static("fixture/work"),
                         name: data::Text::Static("Work"),
                         parameter_count: 1,
+                        lifetime: data::host::HostValueLifetime::Execution,
                     },
                 ]),
                 constructions: data::Storage::Static(&[]),
+                restorations: data::Storage::Static(&[]),
                 construction_customs: data::Storage::Static(&[]),
                 construction_externals: data::Storage::Static(&[]),
                 native_rules: None,

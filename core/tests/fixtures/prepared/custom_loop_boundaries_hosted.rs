@@ -1,6 +1,6 @@
 data::HostedModuleArtifact {
     module: data::ModuleArtifact {
-        format: 28,
+        format: 29,
         program: data::ProgramTables {
             root: data::source::module_id(0),
             modules: data::Storage::Static(&[
@@ -4347,6 +4347,10 @@ fn items(count: Int, result: List(Item)) {
                 ]),
                 tuple_items: data::Storage::Static(&[]),
                 function_items: data::Storage::Static(&[]),
+                lifetimes: data::Storage::Static(&[
+                    data::host::HostValueLifetime::LoadedOwner,
+                    data::host::HostValueLifetime::LoadedOwner,
+                ]),
             },
             custom_types: data::type_::CustomTypeTable {
                 types: data::Storage::Static(&[
@@ -4357,6 +4361,8 @@ fn items(count: Int, result: List(Item)) {
                             name: data::Text::Static("Item"),
                             arguments: data::Storage::Static(&[]),
                         },
+                        native_visible: false,
+                        lifetime: data::host::HostValueLifetime::LoadedOwner,
                         constructor_count: 1,
                         constructors: data::Storage::Static(&[
                             data::type_::CustomConstructorDescriptor {
@@ -4385,6 +4391,8 @@ fn items(count: Int, result: List(Item)) {
                         name: data::Text::Static("Item"),
                         publicity: data::type_::CustomTypePublicity::Private,
                         opaque: false,
+                        native_access: None,
+                        retention_lifetime: data::host::HostValueLifetime::LoadedOwner,
                         parameters: 0,
                         constructors: data::Storage::Static(&[
                             data::type_::ConstructorDefinition {
@@ -4402,6 +4410,8 @@ fn items(count: Int, result: List(Item)) {
             },
             external_types: data::type_::ExternalTypeTable {
                 types: data::Storage::Static(&[]),
+                lifetimes: data::Storage::Static(&[]),
+                definitions: data::Storage::Static(&[]),
             },
             value_shapes: data::type_::ValueShapeTable {
                 shapes: data::Storage::Static(&[

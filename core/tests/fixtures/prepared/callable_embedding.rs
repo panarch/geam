@@ -1,6 +1,6 @@
 data::HostedModuleArtifact {
     module: data::ModuleArtifact {
-        format: 28,
+        format: 29,
         program: data::ProgramTables {
             root: data::source::module_id(1),
             modules: data::Storage::Static(&[
@@ -1860,6 +1860,10 @@ pub fn native_predicate(value: Int) -> Bool {
                         return_: data::Storage::Static(&data::type_::ValueType::Int),
                     },
                 ]),
+                lifetimes: data::Storage::Static(&[
+                    data::host::HostValueLifetime::Execution,
+                    data::host::HostValueLifetime::LoadedOwner,
+                ]),
             },
             custom_types: data::type_::CustomTypeTable {
                 types: data::Storage::Static(&[
@@ -1878,6 +1882,8 @@ pub fn native_predicate(value: Int) -> Bool {
                                 data::type_::TypeMetadata::Nil,
                             ]),
                         },
+                        native_visible: true,
+                        lifetime: data::host::HostValueLifetime::Execution,
                         constructor_count: 2,
                         constructors: data::Storage::Static(&[
                             data::type_::CustomConstructorDescriptor {
@@ -1913,6 +1919,8 @@ pub fn native_predicate(value: Int) -> Bool {
                                 data::type_::TypeMetadata::Nil,
                             ]),
                         },
+                        native_visible: true,
+                        lifetime: data::host::HostValueLifetime::LoadedOwner,
                         constructor_count: 2,
                         constructors: data::Storage::Static(&[
                             data::type_::CustomConstructorDescriptor {
@@ -1956,6 +1964,8 @@ pub fn native_predicate(value: Int) -> Bool {
                             name: data::Text::Static("Never"),
                             arguments: data::Storage::Static(&[]),
                         },
+                        native_visible: true,
+                        lifetime: data::host::HostValueLifetime::LoadedOwner,
                         constructor_count: 0,
                         constructors: data::Storage::Static(&[]),
                     },
@@ -1967,6 +1977,8 @@ pub fn native_predicate(value: Int) -> Bool {
                         name: data::Text::Static("Never"),
                         publicity: data::type_::CustomTypePublicity::Public,
                         opaque: false,
+                        native_access: None,
+                        retention_lifetime: data::host::HostValueLifetime::LoadedOwner,
                         parameters: 0,
                         constructors: data::Storage::Static(&[]),
                     },
@@ -1974,6 +1986,8 @@ pub fn native_predicate(value: Int) -> Bool {
             },
             external_types: data::type_::ExternalTypeTable {
                 types: data::Storage::Static(&[]),
+                lifetimes: data::Storage::Static(&[]),
+                definitions: data::Storage::Static(&[]),
             },
             value_shapes: data::type_::ValueShapeTable {
                 shapes: data::Storage::Static(&[
@@ -2836,6 +2850,7 @@ pub fn native_predicate(value: Int) -> Bool {
                 custom_schemas: data::Storage::Static(&[]),
                 external_schemas: data::Storage::Static(&[]),
                 constructions: data::Storage::Static(&[]),
+                restorations: data::Storage::Static(&[]),
                 construction_customs: data::Storage::Static(&[]),
                 construction_externals: data::Storage::Static(&[]),
                 native_rules: None,
@@ -2903,6 +2918,7 @@ pub fn native_predicate(value: Int) -> Bool {
                 custom_schemas: data::Storage::Static(&[]),
                 external_schemas: data::Storage::Static(&[]),
                 constructions: data::Storage::Static(&[]),
+                restorations: data::Storage::Static(&[]),
                 construction_customs: data::Storage::Static(&[]),
                 construction_externals: data::Storage::Static(&[]),
                 native_rules: None,
@@ -2997,6 +3013,7 @@ pub fn native_predicate(value: Int) -> Bool {
                 custom_schemas: data::Storage::Static(&[]),
                 external_schemas: data::Storage::Static(&[]),
                 constructions: data::Storage::Static(&[]),
+                restorations: data::Storage::Static(&[]),
                 construction_customs: data::Storage::Static(&[]),
                 construction_externals: data::Storage::Static(&[]),
                 native_rules: None,
@@ -3117,6 +3134,7 @@ pub fn native_predicate(value: Int) -> Bool {
                         return_: data::Storage::Static(&data::host::RegistrationType::Int),
                     },
                 ]),
+                restorations: data::Storage::Static(&[]),
                 construction_customs: data::Storage::Static(&[]),
                 construction_externals: data::Storage::Static(&[]),
                 native_rules: None,
@@ -3196,6 +3214,7 @@ pub fn native_predicate(value: Int) -> Bool {
                 custom_schemas: data::Storage::Static(&[]),
                 external_schemas: data::Storage::Static(&[]),
                 constructions: data::Storage::Static(&[]),
+                restorations: data::Storage::Static(&[]),
                 construction_customs: data::Storage::Static(&[]),
                 construction_externals: data::Storage::Static(&[]),
                 native_rules: None,
@@ -3218,8 +3237,9 @@ pub fn native_predicate(value: Int) -> Bool {
                         module: data::Text::Static("library"),
                         name: data::Text::Static("Never"),
                         parameter_count: 0,
+                        lifetime: data::host::HostValueLifetime::LoadedOwner,
                         constructors: data::Storage::Static(&[]),
-                        shared: false,
+                        access: data::host::HostCustomAccess::Declared,
                     },
                     arguments: data::Storage::Static(&[]),
                 },

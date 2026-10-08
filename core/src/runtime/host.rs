@@ -8,6 +8,7 @@ pub(in crate::runtime) use self::invoke::{SynchronousStringReturn, invoke_synchr
 pub(super) use self::invoke::{host_call_error, invoke_never, invoke_value};
 
 use self::scoped::ScopedValues;
+pub(in crate::runtime) use self::scoped::ValueRetentionRef;
 pub(crate) use self::scoped::{
     RetainedFunctionValue, StoredRuntimeFunction, StoredRuntimeList, StoredRuntimeListCustomFields,
     StoredRuntimeListItem, StoredRuntimeListTupleItems, StoredRuntimeValue, ValueRetention,

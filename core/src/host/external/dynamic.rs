@@ -1,5 +1,7 @@
 use super::stored::{HostExternalPayloadBuilder, HostExternalPayloadView};
-use crate::host::{HostCall, HostProfile, HostProvider, HostType, HostTypeSequence};
+use crate::host::{
+    HostCall, HostProfile, HostProvider, HostRestoration, HostType, HostTypeSequence,
+};
 use crate::provider_support::HostStoredValueFamily;
 
 /// An existential Gleam value retained with its exact specialized type.
@@ -71,6 +73,7 @@ impl HostStoredDynamic {
     pub(crate) fn decode<'call, Profile, Provider, Return, Type>(
         &self,
         call: &mut HostCall<'call, Profile, Provider, Return>,
+        restoration: &HostRestoration<'call, Type>,
     ) -> Option<Type::Value<'call>>
     where
         Profile: HostProfile,
@@ -78,15 +81,7 @@ impl HostStoredDynamic {
         Return: HostType,
         Type: HostType,
     {
-        let requested = call.resolve_host_type::<Type>()?;
-        if !self.has_type(&requested) {
-            return None;
-        }
-        Some(call.restore_runtime_value::<Type>(&self.value))
-    }
-
-    fn has_type(&self, type_: &crate::plan::ValueType) -> bool {
-        self.value.type_() == type_
+        call.try_restore_value_with(restoration, &self.value)
     }
 }
 
@@ -115,6 +110,7 @@ where
     pub fn decode<Profile, Provider, Return, Type>(
         &self,
         call: &mut HostCall<'call, Profile, Provider, Return>,
+        restoration: &HostRestoration<'call, Type>,
         select: impl FnOnce(&Payload) -> &HostStoredDynamic,
     ) -> Option<Type::Value<'call>>
     where
@@ -123,7 +119,7 @@ where
         Return: HostType,
         Type: HostType,
     {
-        select(&self.value).decode::<Profile, Provider, Return, Type>(call)
+        select(&self.value).decode::<Profile, Provider, Return, Type>(call, restoration)
     }
 }
 
@@ -139,7 +135,6 @@ mod tests {
             BigInt::from(7),
         ));
 
-        assert!(stored.has_type(&ValueType::Int));
-        assert!(!stored.has_type(&ValueType::String));
+        assert_eq!(stored.runtime_value().type_(), &ValueType::Int);
     }
 }

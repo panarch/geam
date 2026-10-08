@@ -1,6 +1,7 @@
 #[cfg(test)]
 mod collection;
 mod field;
+mod retained;
 
 pub use field::{HostCustomTypeArgument, HostNominalCustomField};
 
@@ -16,6 +17,49 @@ use std::marker::PhantomData;
 
 /// An ordinary Gleam custom type and its concrete type arguments.
 pub struct HostCustomType<Schema, Arguments = HostTypeListEnd>(PhantomData<(Schema, Arguments)>);
+
+/// Retains an ordinary custom value without exposing its private representation.
+///
+/// The source owner registers this nominal contract. It has no constructor or
+/// field selection, and does not make a function carried by the value callable.
+///
+/// Even a producer-owned handle cannot use representation-reading APIs:
+///
+/// ```compile_fail
+/// use geam_core::{HostCall, HostCustom, HostProfile, HostProvider, HostRetainedCustomSchema, HostRetainedCustomType, HostType};
+/// fn tag<'call, Profile, Provider, Return, Schema>(
+///     call: &HostCall<'call, Profile, Provider, Return>,
+///     value: HostCustom<'call, HostRetainedCustomType<Schema>>,
+/// ) where Profile: HostProfile, Provider: HostProvider<Profile>, Return: HostType, Schema: HostRetainedCustomSchema {
+///     call.custom_constructor(value);
+/// }
+/// ```
+pub struct HostRetainedCustomType<Schema, Arguments = HostTypeListEnd>(
+    PhantomData<(Schema, Arguments)>,
+);
+
+/// Producer-owned nominal identity for an ordinary custom value.
+/// Private constructors and fields are deliberately absent from this contract.
+pub trait HostRetainedCustomSchema: Send + Sync + 'static {
+    const PACKAGE: &'static str;
+    const MODULE: &'static str;
+    const NAME: &'static str;
+    const PARAMETER_COUNT: usize;
+    /// Minimum lifetime of the producer-owned representation.
+    /// Hidden callbacks and work require the original live execution.
+    const LIFETIME: crate::host::HostValueLifetime = crate::host::HostValueLifetime::Execution;
+}
+
+/// The native role of one ordinary custom declaration.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HostCustomAccess {
+    /// An exact representation used under ordinary source visibility.
+    Declared,
+    /// The source owner explicitly shares the exact representation.
+    Shared,
+    /// Only the nominal identity is available for preservation and restoration.
+    Retained,
+}
 
 /// A constructor selected at `Index` from `Custom`'s sealed constructor list.
 ///
@@ -225,7 +269,8 @@ pub struct HostCustomTypeSchema {
     name: EcoString,
     parameter_count: usize,
     constructors: Box<[HostCustomConstructorSchema]>,
-    shared: bool,
+    access: HostCustomAccess,
+    lifetime: crate::host::HostValueLifetime,
 }
 
 /// The source-facing schema of one custom constructor.
@@ -303,7 +348,8 @@ impl HostCustomTypeSchema {
             module: module.into(),
             name: name.into(),
             parameter_count,
-            shared: false,
+            access: HostCustomAccess::Declared,
+            lifetime: crate::host::HostValueLifetime::LoadedOwner,
             constructors: constructors
                 .into_iter()
                 .collect::<Vec<_>>()
@@ -313,11 +359,49 @@ impl HostCustomTypeSchema {
 
     /// Whether each native use requires the source owner's explicit sharing grant.
     pub fn requires_shared_access(&self) -> bool {
-        self.shared
+        self.access == HostCustomAccess::Shared
+    }
+
+    pub fn lifetime(&self) -> crate::host::HostValueLifetime {
+        self.lifetime
+    }
+
+    pub(crate) fn with_lifetime(mut self, lifetime: crate::host::HostValueLifetime) -> Self {
+        self.lifetime = lifetime;
+        self
+    }
+
+    pub fn access(&self) -> HostCustomAccess {
+        self.access
+    }
+
+    /// Names a producer-owned value without copying its private fields.
+    pub fn retained<Schema: HostRetainedCustomSchema>() -> Self {
+        Self {
+            package: Schema::PACKAGE.into(),
+            module: Schema::MODULE.into(),
+            name: Schema::NAME.into(),
+            parameter_count: Schema::PARAMETER_COUNT,
+            constructors: Box::new([]),
+            access: HostCustomAccess::Retained,
+            lifetime: Schema::LIFETIME,
+        }
     }
 
     pub(crate) fn with_shared_access(mut self, shared: bool) -> Self {
-        self.shared = shared;
+        self.access = if shared {
+            HostCustomAccess::Shared
+        } else {
+            HostCustomAccess::Declared
+        };
+        self
+    }
+
+    pub(crate) fn with_access(mut self, access: HostCustomAccess) -> Self {
+        self.access = access;
+        if access == HostCustomAccess::Retained {
+            self.constructors = Box::new([]);
+        }
         self
     }
 
@@ -345,23 +429,24 @@ impl HostCustomTypeSchema {
     // Source function signatures do not declare host invocation permissions.
     pub(crate) fn matches_source_fields(&self, source: &Self) -> bool {
         self.parameter_count == source.parameter_count
-            && self.constructors.len() == source.constructors.len()
-            && self
-                .constructors
-                .iter()
-                .zip(&source.constructors)
-                .all(|(host, source)| {
-                    host.name == source.name
-                        && host.fields.len() == source.fields.len()
-                        && host
-                            .fields
-                            .iter()
-                            .zip(&source.fields)
-                            .all(|(host, source)| {
-                                host.label == source.label
-                                    && host.type_.matches_source(&source.type_)
-                            })
-                })
+            && (self.access == HostCustomAccess::Retained
+                || (self.constructors.len() == source.constructors.len()
+                    && self
+                        .constructors
+                        .iter()
+                        .zip(&source.constructors)
+                        .all(|(host, source)| {
+                            host.name == source.name
+                                && host.fields.len() == source.fields.len()
+                                && host
+                                    .fields
+                                    .iter()
+                                    .zip(&source.fields)
+                                    .all(|(host, source)| {
+                                        host.label == source.label
+                                            && host.type_.matches_source(&source.type_)
+                                    })
+                        })))
     }
 }
 

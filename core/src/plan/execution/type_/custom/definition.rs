@@ -10,6 +10,8 @@ pub struct CustomDefinition {
     pub name: Text,
     pub publicity: plan::CustomTypePublicity,
     pub opaque: bool,
+    pub native_access: Option<crate::host::HostCustomAccess>,
+    pub retention_lifetime: crate::host::HostValueLifetime,
     pub parameters: usize,
     pub constructors: Table<ConstructorDefinition>,
 }
@@ -32,6 +34,8 @@ pub(in crate::plan::execution) static RESULT: CustomDefinition = CustomDefinitio
     name: Text::Static("Result"),
     publicity: plan::CustomTypePublicity::Public,
     opaque: false,
+    native_access: None,
+    retention_lifetime: crate::host::HostValueLifetime::LoadedOwner,
     parameters: 2,
     constructors: Table::Static(&[
         ConstructorDefinition {
@@ -61,6 +65,8 @@ impl CustomDefinition {
             name: definition.name().name().clone().into(),
             publicity: definition.publicity(),
             opaque: definition.is_opaque(),
+            native_access: definition.native_access(),
+            retention_lifetime: definition.retention_lifetime(),
             parameters: definition.parameters().len(),
             constructors: definition
                 .constructors()
@@ -82,6 +88,14 @@ impl CustomDefinition {
 
     pub(in crate::plan::execution) fn identity(&self) -> (&str, &str, &str) {
         (&self.package, &self.module, &self.name)
+    }
+
+    pub(crate) fn native_visible(&self) -> bool {
+        match self.native_access {
+            Some(crate::host::HostCustomAccess::Retained) => false,
+            Some(crate::host::HostCustomAccess::Shared) => true,
+            _ => !self.opaque && self.publicity == plan::CustomTypePublicity::Public,
+        }
     }
 }
 
@@ -125,6 +139,8 @@ impl Emit for CustomDefinition {
             name,
             publicity,
             opaque,
+            native_access,
+            retention_lifetime,
             parameters,
             constructors,
         } = self;
@@ -136,6 +152,8 @@ impl Emit for CustomDefinition {
                 ("name", name),
                 ("publicity", publicity),
                 ("opaque", opaque),
+                ("native_access", native_access),
+                ("retention_lifetime", retention_lifetime),
                 ("parameters", parameters),
                 ("constructors", constructors),
             ],
@@ -149,6 +167,16 @@ impl Emit for plan::CustomTypePublicity {
             Self::Public => "type_::CustomTypePublicity::Public",
             Self::Private => "type_::CustomTypePublicity::Private",
             Self::Internal => "type_::CustomTypePublicity::Internal",
+        });
+    }
+}
+
+impl Emit for crate::host::HostCustomAccess {
+    fn emit(&self, output: &mut Rust) {
+        output.path(match self {
+            Self::Declared => "host::HostCustomAccess::Declared",
+            Self::Shared => "host::HostCustomAccess::Shared",
+            Self::Retained => "host::HostCustomAccess::Retained",
         });
     }
 }
@@ -180,13 +208,76 @@ mod tests {
     use crate::plan::{CustomTypePublicity, Text, TypeParameterId};
 
     #[test]
+    fn nominal_retention_never_exposes_a_native_representation() {
+        use crate::host::HostCustomAccess;
+
+        for (publicity, opaque, native_access, expected) in [
+            (CustomTypePublicity::Public, false, None, true),
+            (CustomTypePublicity::Public, true, None, false),
+            (CustomTypePublicity::Private, false, None, false),
+            (CustomTypePublicity::Internal, false, None, false),
+            (
+                CustomTypePublicity::Public,
+                false,
+                Some(HostCustomAccess::Declared),
+                true,
+            ),
+            (
+                CustomTypePublicity::Private,
+                false,
+                Some(HostCustomAccess::Declared),
+                false,
+            ),
+            (
+                CustomTypePublicity::Public,
+                true,
+                Some(HostCustomAccess::Shared),
+                true,
+            ),
+            (
+                CustomTypePublicity::Private,
+                true,
+                Some(HostCustomAccess::Shared),
+                true,
+            ),
+            (
+                CustomTypePublicity::Public,
+                false,
+                Some(HostCustomAccess::Retained),
+                false,
+            ),
+            (
+                CustomTypePublicity::Private,
+                true,
+                Some(HostCustomAccess::Retained),
+                false,
+            ),
+        ] {
+            let definition = CustomDefinition {
+                package: "producer".into(),
+                module: "handles".into(),
+                name: "Handle".into(),
+                publicity,
+                opaque,
+                native_access,
+                retention_lifetime: crate::HostValueLifetime::LoadedOwner,
+                parameters: 0,
+                constructors: Table::Static(&[]),
+            };
+            assert_eq!(definition.native_visible(), expected);
+        }
+    }
+
+    #[test]
     fn emits_full_declarations_and_every_visibility() {
         let definition = CustomDefinition {
+            retention_lifetime: crate::HostValueLifetime::LoadedOwner,
             package: Text::Static("app"),
             module: Text::Static("app/types"),
             name: Text::Static("Box"),
             publicity: CustomTypePublicity::Public,
             opaque: true,
+            native_access: None,
             parameters: 1,
             constructors: Table::Static(&[ConstructorDefinition {
                 name: Text::Static("Box"),
@@ -202,6 +293,7 @@ mod tests {
                 ]),
             }]),
         };
+        assert_eq!(definition.identity(), ("app", "app/types", "Box"));
         assert_eq!(
             Rust::expression(&definition),
             r#"
@@ -211,6 +303,8 @@ data::type_::CustomDefinition {
     name: data::Text::Static("Box"),
     publicity: data::type_::CustomTypePublicity::Public,
     opaque: true,
+    native_access: None,
+    retention_lifetime: data::host::HostValueLifetime::LoadedOwner,
     parameters: 1,
     constructors: data::Storage::Static(&[
         data::type_::ConstructorDefinition {
@@ -245,6 +339,22 @@ data::type_::CustomDefinition {
             ),
         ] {
             assert_eq!(Rust::expression(&publicity), expected);
+        }
+        for (access, expected) in [
+            (
+                crate::HostCustomAccess::Declared,
+                "data::host::HostCustomAccess::Declared",
+            ),
+            (
+                crate::HostCustomAccess::Shared,
+                "data::host::HostCustomAccess::Shared",
+            ),
+            (
+                crate::HostCustomAccess::Retained,
+                "data::host::HostCustomAccess::Retained",
+            ),
+        ] {
+            assert_eq!(Rust::expression(&access), expected);
         }
     }
 }

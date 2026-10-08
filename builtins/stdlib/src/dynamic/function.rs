@@ -385,6 +385,9 @@ import gleam/option.{type Option}
 pub type DecodeError {
   DecodeError(expected: String, found: String, path: List(String))
 }
+pub opaque type Decoder(a) {
+  Decoder(function: fn(Dynamic) -> #(a, List(DecodeError)))
+}
 @external(erlang, "gleam_stdlib", "index")
 fn bare_index(data: Dynamic, key: key) -> Result(Option(Dynamic), String)
 @external(erlang, "gleam_stdlib", "string")
@@ -670,6 +673,10 @@ pub type Boxed {
   Boxed(Int)
 }
 
+pub opaque type Secret {
+  Secret(Int)
+}
+
 fn increment(value: Int) {
   value + 1
 }
@@ -682,6 +689,7 @@ pub fn main() {
     classify(cast([1, 2])),
     classify(cast(increment)),
     classify(cast(Boxed(1))),
+    classify(cast(Secret(42))),
     classify(cast(Nil)),
   )
 }
@@ -701,6 +709,7 @@ pub fn main() {
                 Value::String("List".into()),
                 Value::String("Function".into()),
                 Value::String("Array".into()),
+                Value::String("Opaque".into()),
                 Value::String("Nil".into()),
             ]),
         );

@@ -243,7 +243,7 @@ pub fn main() { function.accept(fn(value: Int) { value + 1 }) }
                 .unwrap();
         assert_eq!(prepared.emit_rust(), r#"
 data::HostedEntryArtifact {
-    format: 28,
+    format: 29,
     program: data::ProgramTables {
         root: data::source::module_id(0),
         modules: data::Storage::Static(&[
@@ -439,6 +439,7 @@ data::HostedEntryArtifact {
             types: data::Storage::Static(&[]),
             tuple_items: data::Storage::Static(&[]),
             function_items: data::Storage::Static(&[]),
+            lifetimes: data::Storage::Static(&[]),
         },
         custom_types: data::type_::CustomTypeTable {
             types: data::Storage::Static(&[]),
@@ -446,6 +447,8 @@ data::HostedEntryArtifact {
         },
         external_types: data::type_::ExternalTypeTable {
             types: data::Storage::Static(&[]),
+            lifetimes: data::Storage::Static(&[]),
+            definitions: data::Storage::Static(&[]),
         },
         value_shapes: data::type_::ValueShapeTable {
             shapes: data::Storage::Static(&[

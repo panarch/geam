@@ -1,0 +1,6 @@
+name = "decoder_service_embedding"
+version = "0.1.0"
+gleam = ">= 1.18.1"
+
+[dependencies]
+decoder_service_fixture = { path = "../../project" }

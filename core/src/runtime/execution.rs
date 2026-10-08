@@ -9,9 +9,9 @@ mod unit;
 mod worker;
 mod yield_;
 
-pub(crate) use context::ExecutionContext;
 #[cfg(test)]
 pub(in crate::runtime) use context::NativeCompletion;
+pub(crate) use context::{ExecutionContext, ExecutionEndpoint};
 pub(in crate::runtime) use context::{ExecutionServices, Request};
 pub(crate) use continuation::Continuation;
 pub(crate) use domain::{Domain, EntryContext};

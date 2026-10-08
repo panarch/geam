@@ -10,6 +10,7 @@ where
     Profile: GleamStdlibProviderProfile,
 {
     function::host_provider::<Profile>()
+        .and_then(HostProviderModule::with_retained_custom_type::<crate::service::DecoderSchema>)
 }
 
 #[cfg(test)]

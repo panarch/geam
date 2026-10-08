@@ -27,7 +27,7 @@ impl Types<'_> {
         arguments: &[bool],
     ) -> Result<bool, TypeError> {
         self.metadata(type_)?;
-        self.input_inhabited(type_, arguments, &mut HashSet::new(), &mut HashSet::new())
+        Ok(self.template_inhabited(type_, arguments, &mut HashSet::new(), &mut HashSet::new()))
     }
 
     /// The metadata must already match an admitted value type. Its nominal
@@ -250,51 +250,6 @@ impl Types<'_> {
             | TypeMetadata::List(_)
             | TypeMetadata::Function(_)
             | TypeMetadata::External(_) => true,
-        }
-    }
-
-    fn input_inhabited(
-        &self,
-        input: &TypeMetadata,
-        arguments: &[bool],
-        active: &mut HashSet<CustomKey>,
-        known: &mut HashSet<CustomKey>,
-    ) -> Result<bool, TypeError> {
-        match input {
-            TypeMetadata::Parameter(id) => Ok(arguments.get(id.0).copied().unwrap_or(false)),
-            TypeMetadata::Tuple(items) => {
-                for item in items.iter() {
-                    if !self.input_inhabited(item, arguments, active, known)? {
-                        return Ok(false);
-                    }
-                }
-                Ok(true)
-            }
-            TypeMetadata::Custom(nominal) => {
-                let arguments = nominal
-                    .arguments
-                    .iter()
-                    .map(|argument| self.input_inhabited(argument, arguments, active, known))
-                    .collect::<Result<Vec<_>, _>>()?;
-                let definition = self.definition(nominal)?;
-                Ok(self.custom_inhabited(
-                    definition,
-                    arguments,
-                    CustomConstructorRefinement::Any,
-                    active,
-                    known,
-                ))
-            }
-            TypeMetadata::Int
-            | TypeMetadata::Float
-            | TypeMetadata::String
-            | TypeMetadata::BitArray
-            | TypeMetadata::UtfCodepoint
-            | TypeMetadata::Bool
-            | TypeMetadata::Nil
-            | TypeMetadata::List(_)
-            | TypeMetadata::Function(_)
-            | TypeMetadata::External(_) => Ok(true),
         }
     }
 
@@ -545,6 +500,17 @@ pub fn main() {
             );
         }
         static RECURSIVE: TypeMetadata = TypeMetadata::List(Node::Static(&RECURSIVE));
+        let unknown_external =
+            TypeMetadata::External(crate::plan::execution::type_::NominalTypeMetadata {
+                package: "producer".into(),
+                module: "handles".into(),
+                name: "Handle".into(),
+                arguments: Table::Static(&[]),
+            });
+        assert_eq!(
+            types.metadata_inhabited(&unknown_external, &[]),
+            Err(TypeError::Definition)
+        );
         assert_eq!(
             types.metadata_inhabited(&RECURSIVE, &[]),
             Err(TypeError::RecursiveMetadata)

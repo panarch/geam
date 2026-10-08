@@ -1,6 +1,9 @@
 use crate::host::{HostExternalEquality, HostExternalHashing, HostExternalInspection};
-use crate::plan::execution::runtime::{OwnedRuntimeValueMetadata, RuntimeValueMetadata};
+use crate::plan::execution::runtime::RuntimeValueMetadata;
+use crate::plan::execution::type_::CustomTypeId;
+use crate::runtime::ValueRetention;
 use crate::runtime::evaluated::EvaluatedValue;
+use crate::runtime::host::ValueRetentionRef;
 use crate::runtime::integer::IntegerValue;
 use crate::runtime::retained_list::RetainedList;
 use crate::runtime::state::list::ListValueId;
@@ -32,7 +35,7 @@ enum Representation {
     Tuple(Arc<[NativeValue]>),
     ListTuple {
         list: ListValueId,
-        metadata: OwnedRuntimeValueMetadata,
+        metadata: ValueRetention,
     },
     Map(NativeMap),
     Closure(Arc<NativeClosure>),
@@ -54,6 +57,7 @@ pub enum NativeKind {
     List,
     Map,
     External,
+    Opaque,
     Function,
 }
 
@@ -66,6 +70,11 @@ enum Node<'value> {
     List(Sequence<'value>),
     Map(&'value NativeMap),
     External(RetainedValueRef<'value>),
+    Opaque(
+        RetainedValueRef<'value>,
+        RuntimeValueMetadata<'value>,
+        CustomTypeId,
+    ),
     Function(RetainedValueRef<'value>, RuntimeValueMetadata<'value>),
     Closure(&'value NativeClosure),
 }
@@ -77,13 +86,13 @@ enum Binary<'value> {
 
 enum Sequence<'value> {
     Declared(&'value [NativeValue]),
-    Tuple(&'value [EvaluatedValue], RuntimeValueMetadata<'value>),
+    Tuple(&'value [EvaluatedValue], ValueRetentionRef<'value>),
     Custom {
         tag: &'value str,
         fields: &'value [EvaluatedValue],
-        metadata: RuntimeValueMetadata<'value>,
+        metadata: ValueRetentionRef<'value>,
     },
-    List(RetainedList<ListValueId>, RuntimeValueMetadata<'value>),
+    List(RetainedList<ListValueId>, ValueRetentionRef<'value>),
 }
 
 #[expect(
@@ -93,24 +102,24 @@ enum Sequence<'value> {
 enum Item<'value> {
     Declared(&'value NativeValue),
     Symbol(&'value str),
-    Source(Cow<'value, EvaluatedValue>, RuntimeValueMetadata<'value>),
+    Source(Cow<'value, EvaluatedValue>, ValueRetentionRef<'value>),
 }
 
 enum Items<'value> {
     Declared(std::slice::Iter<'value, NativeValue>),
     Tuple(
         std::slice::Iter<'value, EvaluatedValue>,
-        RuntimeValueMetadata<'value>,
+        ValueRetentionRef<'value>,
     ),
     Custom {
         tag: Option<&'value str>,
         fields: std::slice::Iter<'value, EvaluatedValue>,
-        metadata: RuntimeValueMetadata<'value>,
+        metadata: ValueRetentionRef<'value>,
     },
     List {
         list: RetainedList<ListValueId>,
         next: usize,
-        metadata: RuntimeValueMetadata<'value>,
+        metadata: ValueRetentionRef<'value>,
     },
 }
 
@@ -162,14 +171,12 @@ impl NativeValue {
         })))
     }
 
-    pub(in crate::runtime) fn tuple_from_list(
-        list: ListValueId,
-        metadata: RuntimeValueMetadata<'_>,
-    ) -> Self {
-        Self(Representation::ListTuple {
-            list,
-            metadata: metadata.to_owned(),
-        })
+    pub(in crate::runtime) fn tuple_from_list(list: ListValueId, metadata: ValueRetention) -> Self {
+        Self(Representation::ListTuple { list, metadata })
+    }
+
+    pub(crate) fn from_retained_list(value: &crate::runtime::StoredRuntimeList) -> Self {
+        Self::tuple_from_list(value.handle(), value.retention().clone())
     }
 
     pub(crate) fn from_stored(value: StoredRuntimeValue) -> Self {
@@ -301,7 +308,7 @@ impl NativeValue {
     fn with_node<Output>(&self, read: impl FnOnce(Node<'_>) -> Output) -> Output {
         match &self.0 {
             Representation::Stored(value) => {
-                with_source_node(value.value(), value.metadata(), read)
+                with_source_node(value.value(), value.retention(), read)
             }
             Representation::Symbol(value) => read(Node::Symbol(value)),
             Representation::Closure(value) => read(Node::Closure(value)),
@@ -481,9 +488,9 @@ impl Item<'_> {
         match self {
             Self::Declared(value) => value.clone(),
             Self::Symbol(value) => NativeValue::symbol(value),
-            Self::Source(value, metadata) => {
-                NativeValue::from_stored(StoredRuntimeValue::new(value.into_owned(), metadata))
-            }
+            Self::Source(value, metadata) => NativeValue::from_stored(
+                StoredRuntimeValue::from_retention(value.into_owned(), metadata),
+            ),
         }
     }
 }
@@ -513,9 +520,10 @@ pub(in crate::runtime) fn value_hash(
 
 fn with_source_node<Output>(
     value: &EvaluatedValue,
-    metadata: RuntimeValueMetadata<'_>,
+    retention: ValueRetentionRef<'_>,
     read: impl FnOnce(Node<'_>) -> Output,
 ) -> Output {
+    let metadata = retention.metadata;
     let node = match value {
         EvaluatedValue::Int(value) => Node::Int(Cow::Borrowed(value)),
         EvaluatedValue::UtfCodepoint(value) => Node::Int(Cow::Owned(u32::from(*value).into())),
@@ -525,23 +533,30 @@ fn with_source_node<Output>(
         EvaluatedValue::Bool(true) => Node::Symbol("true"),
         EvaluatedValue::Bool(false) => Node::Symbol("false"),
         EvaluatedValue::Nil => Node::Symbol("nil"),
-        EvaluatedValue::Tuple(values) => Node::Tuple(Sequence::Tuple(values, metadata)),
+        EvaluatedValue::Tuple(values) => Node::Tuple(Sequence::Tuple(values, retention)),
         EvaluatedValue::List(list) => Node::List(Sequence::List(
             RetainedList::new(list.clone().into()),
-            metadata,
+            retention,
         )),
         EvaluatedValue::ParameterList(list) => {
-            Node::List(Sequence::List(RetainedList::new((*list).into()), metadata))
+            Node::List(Sequence::List(RetainedList::new((*list).into()), retention))
         }
-        EvaluatedValue::Custom(value) => {
-            let constructor = metadata.custom_constructor(value.constructor());
-            if value.fields().is_empty() {
+        EvaluatedValue::Custom(custom) => {
+            if !metadata.custom_native_visible(custom.constructor().type_id()) {
+                return read(Node::Opaque(
+                    RetainedValueRef::new(value),
+                    metadata,
+                    custom.constructor().type_id(),
+                ));
+            }
+            let constructor = metadata.custom_constructor(custom.constructor());
+            if custom.fields().is_empty() {
                 Node::Symbol(constructor.native_tag())
             } else {
                 Node::Tuple(Sequence::Custom {
                     tag: constructor.native_tag(),
-                    fields: value.fields(),
-                    metadata,
+                    fields: custom.fields(),
+                    metadata: retention,
                 })
             }
         }
@@ -568,6 +583,7 @@ impl Node<'_> {
             Self::List(_) => NativeKind::List,
             Self::Map(_) => NativeKind::Map,
             Self::External(_) => NativeKind::External,
+            Self::Opaque(..) => NativeKind::Opaque,
             Self::Function(..) | Self::Closure(_) => NativeKind::Function,
         }
     }
@@ -592,6 +608,9 @@ fn nodes_equal(left: Node<'_>, right: Node<'_>, context: &HostExternalEquality<'
         }
         (Node::External(left), Node::External(right)) => {
             context.0.stored_values_equal(&left, &right)
+        }
+        (Node::Opaque(left, left_owner, _), Node::Opaque(right, right_owner, _)) => {
+            left_owner.shares_owner(right_owner) && context.0.stored_values_equal(&left, &right)
         }
         (Node::Map(left), Node::Map(right)) => {
             left.len() == right.len()
@@ -635,7 +654,7 @@ fn hash_node(node: Node<'_>, context: &HostExternalHashing<'_>) -> u64 {
                     .hash(&mut hash);
             }
         }
-        Node::External(value) | Node::Function(value, _) => {
+        Node::External(value) | Node::Opaque(value, _, _) | Node::Function(value, _) => {
             context.0.stored_value_hash(&value).hash(&mut hash)
         }
         Node::Closure(value) => {
@@ -745,6 +764,16 @@ fn inspect_node(node: Node<'_>, context: &HostExternalInspection<'_>) -> EcoStri
                 .collect::<Vec<_>>();
             entries.sort_unstable();
             format!("dict.from_list([{}])", entries.join(", ")).into()
+        }
+        Node::Opaque(_, metadata, id) => {
+            let type_ = metadata.custom_value_type(id);
+            format!(
+                "<opaque {}:{}.{}>",
+                type_.type_name().package(),
+                type_.type_name().module(),
+                type_.type_name().name()
+            )
+            .into()
         }
         Node::External(value) | Node::Function(value, _) => context.0.inspect_stored_value(&value),
         Node::Closure(_) => "//fn(a) { ... }".into(),
@@ -864,6 +893,52 @@ mod tests {
 
     fn opaque_inspection(_: &RetainedValueRef) -> EcoString {
         "opaque".into()
+    }
+
+    #[test]
+    fn opaque_custom_values_are_terminal_inside_native_containers_and_keep_identity() {
+        let values = source(
+            r#"
+pub opaque type Secret { Secret(Int, fn(Int) -> Int) }
+pub type Envelope(a) { Envelope(a) }
+pub fn main() {
+  let secret = Secret(40, fn(value) { value + 2 })
+  #(secret, secret, [secret], Envelope(secret))
+}
+"#,
+        );
+        let secret = values.index(0).unwrap();
+        let alias = values.index(1).unwrap();
+        let list_item = values.index(2).unwrap().index(0).unwrap();
+        let field = values.index(3).unwrap().index(1).unwrap();
+        let equality = RetainedValueEquality::new(&opaque_equal);
+        let hashing = RetainedValueHashing::new(&opaque_hash);
+        let inspection = RetainedValueInspection::new(&opaque_inspection);
+        let equality = HostExternalEquality(&equality);
+        let hashing = HostExternalHashing(&hashing);
+        let inspection = HostExternalInspection(&inspection);
+        for value in [&secret, &alias, &list_item, &field] {
+            assert_eq!(value.kind(), NativeKind::Opaque);
+            assert_eq!(value.len(), None);
+            assert!(value.index(0).is_none());
+            assert!(value.index(1).is_none());
+            assert_eq!(value.as_symbol(), None);
+            assert!(value.source_equal(&equality, &secret));
+            assert_eq!(value.source_hash(&hashing), secret.source_hash(&hashing));
+            assert_eq!(value.inspect(&inspection), "<opaque geam:main.Secret>");
+        }
+        let declared =
+            NativeValue::tuple([NativeValue::symbol("secret"), values.index(2).unwrap()]);
+        assert!(!secret.source_equal(&equality, &declared));
+        let foreign = source(
+            r#"
+pub opaque type Secret { Secret(Int, fn(Int) -> Int) }
+pub fn main() { Secret(40, fn(value) { value + 2 }) }
+"#,
+        );
+        assert!(!secret.source_equal(&equality, &foreign));
+        drop(values);
+        assert!(secret.source_equal(&equality, &field));
     }
 
     #[test]

@@ -1,8 +1,8 @@
 use super::{NativeError, RegistrationError};
 use crate::host::{
-    HostCodecScope, HostFunctionImplementation, HostFunctionSchema, HostNativeViewFactory,
-    HostNeverFunction, HostProfile, HostProviderSet, HostValueFunction, NativeViewBinding,
-    NativeViewImplementation, RegisteredHostConstructions,
+    HostCodecScope, HostCustomAccess, HostFunctionImplementation, HostFunctionSchema,
+    HostNativeViewFactory, HostNeverFunction, HostProfile, HostProviderSet, HostValueFunction,
+    NativeViewBinding, NativeViewImplementation, RegisteredHostConstructions,
 };
 use crate::plan::execution::host::{
     HostFunctionCompletion, HostFunctionTables, HostedFunction, HostedFunctionMetadata,
@@ -20,6 +20,7 @@ pub(in crate::plan::execution::prepared::admission) struct NativeFunctions<
     pub(super) callable_bindings:
         RefCell<HashMap<crate::plan::execution::host::HostCallableEntry, (bool, usize)>>,
     pub(super) registrations: Vec<Registration>,
+    pub(super) custom_grants: super::custom::CustomGrants,
     pub(super) external_types: Vec<crate::host::HostExternalTypeSchema>,
     pub(super) values: Vec<(
         &'data HostedFunctionMetadata,
@@ -46,7 +47,7 @@ impl<'data, Profile: HostProfile> NativeFunctions<'data, Profile> {
     ) -> Result<Self, NativeError> {
         let (modules, providers, callables, implementations) = hosts.into_registered();
         let mut external_types = Vec::new();
-        let mut shared_custom_types = HashMap::new();
+        let mut custom_grants = HashMap::new();
         let sources = modules
             .into_iter()
             .map(|module| {
@@ -68,8 +69,8 @@ impl<'data, Profile: HostProfile> NativeFunctions<'data, Profile> {
         for (package, module, functions, schemas, shared) in sources {
             external_types.extend(schemas);
             for schema in shared {
-                shared_custom_types.insert(
-                    (
+                custom_grants.insert(
+                    crate::plan::CustomTypeName::new(
                         schema.package().clone(),
                         schema.module().clone(),
                         schema.name().clone(),
@@ -122,20 +123,27 @@ impl<'data, Profile: HostProfile> NativeFunctions<'data, Profile> {
                 .iter()
                 .chain(registered.constructions.custom_schemas())
             {
-                if required.requires_shared_access()
-                    && shared_custom_types.get(&(
-                        required.package().clone(),
-                        required.module().clone(),
-                        required.name().clone(),
-                    )) != Some(required)
-                {
-                    return Err(failure(RegistrationError::SharedCustomType {
-                        custom_type: Box::new(crate::plan::CustomTypeName::new(
-                            required.package().clone(),
-                            required.module().clone(),
-                            required.name().clone(),
-                        )),
-                    }));
+                let name = crate::plan::CustomTypeName::new(
+                    required.package().clone(),
+                    required.module().clone(),
+                    required.name().clone(),
+                );
+                match required.access() {
+                    HostCustomAccess::Shared if custom_grants.get(&name) != Some(required) => {
+                        return Err(failure(RegistrationError::SharedCustomType {
+                            custom_type: Box::new(name),
+                        }));
+                    }
+                    HostCustomAccess::Retained
+                        if !custom_grants.get(&name).is_some_and(|grant| {
+                            grant.parameter_count() == required.parameter_count()
+                        }) =>
+                    {
+                        return Err(failure(RegistrationError::RetainedCustomType {
+                            custom_type: Box::new(name),
+                        }));
+                    }
+                    _ => {}
                 }
             }
             Ok((*slot, implementations.implementation(*implementation)))
@@ -225,6 +233,7 @@ impl<'data, Profile: HostProfile> NativeFunctions<'data, Profile> {
             callable_bindings: RefCell::new(HashMap::new()),
             registrations,
             external_types,
+            custom_grants,
             values,
             nevers,
         })
@@ -268,6 +277,94 @@ mod tests {
     use crate::host::{HostModule, HostProviderModule, HostProviderSet};
     use num_bigint::BigInt;
     use std::convert::Infallible;
+
+    #[test]
+    fn prepared_restorations_require_the_original_target_and_permission_role() {
+        use super::super::tests::lowered;
+        use crate::host::test::StatelessTestProvider;
+        use crate::host::{
+            HostCall, HostCallCompletion, HostCallError, HostConstructions, HostRestoredType,
+            HostType, HostTypeList, HostTypeListEnd, StatelessHostProfile,
+        };
+        use crate::plan::execution::host::registration::RegistrationType;
+
+        type Permission<Type> = HostTypeList<Type, HostTypeListEnd>;
+        fn retain<'call>(
+            call: HostCall<'call, StatelessHostProfile, StatelessTestProvider, BigInt>,
+            value: BigInt,
+        ) -> Result<HostCallCompletion<'call, BigInt>, HostCallError> {
+            Ok(call.return_value(value))
+        }
+        fn registered<'call, Type: HostType>(
+            call: HostCall<'call, StatelessHostProfile, StatelessTestProvider, BigInt>,
+            _: HostConstructions<'call, Permission<Type>>,
+            value: BigInt,
+        ) -> Result<HostCallCompletion<'call, BigInt>, HostCallError> {
+            Ok(call.return_value(value))
+        }
+        let hosts = |permission| {
+            let module = HostProviderModule::new("app", "main").unwrap();
+            let module = match permission {
+                0 => module.with_scoped_function::<StatelessTestProvider, (BigInt,), BigInt, _>("retain", retain),
+                1 => module.with_scoped_function_and_constructions::<StatelessTestProvider, (BigInt,), BigInt, Permission<HostRestoredType<BigInt>>, _>("retain", registered::<HostRestoredType<BigInt>>),
+                2 => module.with_scoped_function_and_constructions::<StatelessTestProvider, (BigInt,), BigInt, Permission<HostRestoredType<bool>>, _>("retain", registered::<HostRestoredType<bool>>),
+                _ => module.with_scoped_function_and_constructions::<StatelessTestProvider, (BigInt,), BigInt, Permission<BigInt>, _>("retain", registered::<BigInt>),
+            }.unwrap();
+            HostProviderSet::from_providers([module]).unwrap()
+        };
+        let source = r#"
+@external(erlang, "native", "retain")
+fn retain(value: Int) -> Int
+pub fn main() { retain(42) }
+"#;
+        for permission in 0..4 {
+            let typed = crate::compile_typed_host_program(
+                "app",
+                "main",
+                [crate::PackageSource::new(
+                    "app",
+                    Vec::<&str>::new(),
+                    [crate::ModuleSource::new("main", "main.gleam", source)],
+                )],
+                hosts(permission),
+            )
+            .unwrap();
+            let mut execution = crate::HostedExecution::try_from_module_plan(
+                crate::plan_host_program(typed).unwrap(),
+            )
+            .unwrap();
+            assert_eq!(
+                crate::execution_fixture::run(&mut execution, &mut (), &mut Vec::new()).unwrap(),
+                crate::Value::Int(42.into())
+            );
+        }
+        let (_, values, nevers) = lowered(source, hosts(1));
+        assert!(nevers.is_empty());
+        assert_eq!(values.len(), 1);
+        assert_eq!(NativeFunctions::new(&values, &[], hosts(1)).err(), None);
+        let rejected = Some(NativeError::Registration {
+            package: "app".into(),
+            module: "main".into(),
+            function: "retain".into(),
+            reason: RegistrationError::Declaration,
+        });
+        for permission in [0, 2, 3] {
+            assert_eq!(
+                NativeFunctions::new(&values, &[], hosts(permission)).err(),
+                rejected
+            );
+        }
+        for targets in [Vec::new(), vec![RegistrationType::Bool]] {
+            let mut altered = values[0].clone();
+            let mut registration = (*altered.registration).clone();
+            registration.restorations = targets.into();
+            altered.registration = Box::new(registration).into();
+            assert_eq!(
+                NativeFunctions::new(&[altered], &[], hosts(1)).err(),
+                rejected
+            );
+        }
+    }
 
     #[test]
     fn completion_links_require_the_original_registration_kind() {
@@ -384,6 +481,86 @@ pub fn main() { let _ = produce() 42 }
             );
             assert!(echo.is_empty());
         }
+    }
+
+    #[test]
+    fn prepared_nominal_consumers_require_the_producers_retention_grant() {
+        use super::super::tests::lowered;
+        use crate::host::test::StatelessTestProvider;
+        use crate::host::{
+            HostCall, HostCallCompletion, HostCallError, HostCustom, HostRetainedCustomSchema,
+            HostRetainedCustomType, StatelessHostProfile,
+        };
+
+        struct Schema;
+        impl HostRetainedCustomSchema for Schema {
+            const PACKAGE: &'static str = "app";
+            const MODULE: &'static str = "main";
+            const NAME: &'static str = "Handle";
+            const PARAMETER_COUNT: usize = 0;
+        }
+        type Handle = HostRetainedCustomType<Schema>;
+        fn retain<'call>(
+            call: HostCall<'call, StatelessHostProfile, StatelessTestProvider, Handle>,
+            value: HostCustom<'call, Handle>,
+        ) -> Result<HostCallCompletion<'call, Handle>, HostCallError> {
+            Ok(call.return_value(value))
+        }
+        let hosts = |grant| {
+            let owner = HostProviderModule::new("app", "main")
+                .unwrap()
+                .with_scoped_function::<StatelessTestProvider, (Handle,), Handle, _>(
+                    "retain", retain,
+                )
+                .unwrap();
+            let owner = if grant {
+                owner.with_retained_custom_type::<Schema>().unwrap()
+            } else {
+                owner
+            };
+            HostProviderSet::from_providers([owner]).unwrap()
+        };
+        let source = r#"
+pub opaque type Handle { Handle(Int) }
+@external(erlang, "native", "retain") fn retain(value: Handle) -> Handle
+pub fn main() { let assert Handle(value) = retain(Handle(42)) value }
+"#;
+        let typed = crate::compile_typed_host_program(
+            "app",
+            "main",
+            [crate::PackageSource::new(
+                "app",
+                Vec::<&str>::new(),
+                [crate::ModuleSource::new("main", "main.gleam", source)],
+            )],
+            hosts(true),
+        )
+        .unwrap();
+        let mut execution =
+            crate::HostedExecution::try_from_module_plan(crate::plan_host_program(typed).unwrap())
+                .unwrap();
+        assert_eq!(
+            crate::execution_fixture::run(&mut execution, &mut (), &mut Vec::new()).unwrap(),
+            crate::Value::Int(42.into())
+        );
+        let (_, values, nevers) = lowered(source, hosts(true));
+        assert!(nevers.is_empty());
+        assert_eq!(NativeFunctions::new(&values, &[], hosts(true)).err(), None);
+        assert_eq!(
+            NativeFunctions::new(&values, &[], hosts(false)).err(),
+            Some(NativeError::Registration {
+                package: "app".into(),
+                module: "main".into(),
+                function: "retain".into(),
+                reason: RegistrationError::RetainedCustomType {
+                    custom_type: Box::new(crate::plan::CustomTypeName::new(
+                        "app".into(),
+                        "main".into(),
+                        "Handle".into()
+                    )),
+                },
+            })
+        );
     }
 
     #[test]
@@ -532,7 +709,7 @@ pub fn main() { retain(handles.make()) probe() Nil }
         altered.sort_by_key(|metadata| metadata.name() != "retain");
         let mut registration = (*altered[0].registration).clone();
         let mut schemas = registration.custom_schemas.to_vec();
-        schemas[0].shared = false;
+        schemas[0].access = crate::host::HostCustomAccess::Declared;
         registration.custom_schemas = schemas.into();
         altered[0].registration = Box::new(registration).into();
         assert_eq!(

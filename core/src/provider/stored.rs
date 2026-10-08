@@ -163,7 +163,7 @@ pub struct ProviderExternalOutput<Payload> {
 /// A typed external identity returned without retaining a payload borrow.
 #[doc(hidden)]
 pub struct ProviderExternalReturn<Payload> {
-    lease: crate::runtime::ExternalPayloadLease,
+    stored: crate::runtime::StoredRuntimeValue,
     payload: PhantomData<fn() -> Payload>,
 }
 
@@ -249,8 +249,8 @@ impl<Payload> ProviderExternalOutput<Payload> {
 }
 
 impl<Payload> ProviderExternalReturn<Payload> {
-    pub(crate) fn into_lease(self) -> crate::runtime::ExternalPayloadLease {
-        self.lease
+    pub(crate) fn into_stored(self) -> crate::runtime::StoredRuntimeValue {
+        self.stored
     }
 }
 
@@ -275,7 +275,7 @@ where
     #[doc(hidden)]
     pub fn into_output(self) -> ProviderExternalOutput<Payload> {
         ProviderExternalOutput::from_input(ProviderExternalReturn {
-            lease: self.value.into_lease(),
+            stored: self.value.into_stored(),
             payload: PhantomData,
         })
     }
@@ -302,7 +302,7 @@ where
     #[doc(hidden)]
     pub fn into_output(self) -> ProviderExternalOutput<Payload> {
         ProviderExternalOutput::from_input(ProviderExternalReturn {
-            lease: self.value.into_lease(),
+            stored: self.value.into_stored(),
             payload: PhantomData,
         })
     }
@@ -665,7 +665,9 @@ pub fn run() {
                 .into_value()
                 .err()
                 .expect("pass-through retains the original payload");
-            let returned = call.provider_external_from_return::<Schema, HostTypeListEnd, _>(output);
+            let returned = call
+                .provider_external_from_return::<Schema, HostTypeListEnd, _>(output)
+                .expect("returned payload belongs to this call");
             let payload = call.external_payload(returned);
             assert_eq!(std::ptr::from_ref(&*payload).addr(), address);
             drop(payload);

@@ -3309,7 +3309,9 @@ pub fn make() {{ echo 7 #({expression}, future.ready(7)) }}
                         )
                         .await?;
                     Ok(crate::HostOwnedCompletion::new(move |mut call, _| {
-                        let value = work.into_host(&mut call);
+                        let value = work
+                            .into_host(&mut call)
+                            .expect("work belongs to this execution");
                         Ok(call.return_value(value))
                     }))
                 })
@@ -3811,6 +3813,7 @@ pub fn make() {
                     value.read(|value| {
                         let list = crate::runtime::StoredRuntimeList::new(
                             crate::runtime::BorrowedValue::from_stored(value).list(),
+                            crate::runtime::ValueRetention::new(value.metadata()),
                         );
                         assert_eq!(list.decode_item(0, |item| item.into_int()), Some(11.into()));
                         assert_eq!(list.decode_item(1, |item| item.into_int()), Some(11.into()));
@@ -4116,7 +4119,7 @@ pub fn make() {
                         std::pin::Pin::new(&mut gate).poll(cx)
                     })
                     .await
-                    .expect("original host gate")?;
+                    .map_err(|_| crate::HostExecutionError::Cancelled)??;
                     Ok(crate::host::HostOwnedCompletion::new(|call, _| {
                         Ok(call.return_value(42.into()))
                     }))
@@ -4137,7 +4140,7 @@ pub fn make() {
             value: HostExternal<'call, HostExternalType<Envelope>>,
         ) -> Result<HostCallCompletion<'call, WorkHostType<BigInt>>, crate::HostCallError> {
             let payload = call.external_payload(value);
-            let work = call.restore_value::<WorkHostType<BigInt>>(&payload);
+            let work = call.restore_value::<WorkHostType<BigInt>>(&payload)?;
             drop(payload);
             Ok(call.return_value(work))
         }
@@ -4203,6 +4206,10 @@ fn hash(envelope: Envelope) -> Int
 fn observe_native(work: future.Work(Int)) -> future.Work(Int)
 pub fn observe_negative() { #(observe_native(future.ready(-1))) }
 pub fn observe_ready() { #(observe_native(future.ready(43))) }
+pub fn observe_pending() { #(observe_native(fetch())) }
+pub fn observe_failed() {
+  #(observe_native(future.map(future.ready(0), fn(_) { panic as "observed source failure" })))
+}
 "#;
         let typed = compile_typed_host_program(
             "application",
@@ -4228,7 +4235,14 @@ pub fn observe_ready() { #(observe_native(future.ready(43))) }
         .expect("source");
         let library = crate::planner::plan_host_library_program(typed).expect("library");
         let mut entries = Vec::new();
-        for name in ["make", "open", "observe_negative", "observe_ready"] {
+        for name in [
+            "make",
+            "open",
+            "observe_negative",
+            "observe_ready",
+            "observe_pending",
+            "observe_failed",
+        ] {
             let function = library
                 .functions()
                 .iter()
@@ -4251,9 +4265,12 @@ pub fn observe_ready() { #(observe_native(future.ready(43))) }
         let executor = TestHost::default();
         let make = *entries.tuples[0].function();
         let open = *entries.tuples[1].function();
-        for (entry, cancelled) in [
-            (*entries.tuples[2].function(), false),
-            (*entries.tuples[3].function(), true),
+        let source_failure = *entries.tuples[5].function();
+        for (entry, cancelled, failed) in [
+            (*entries.tuples[2].function(), false, true),
+            (*entries.tuples[3].function(), true, false),
+            (*entries.tuples[3].function(), false, false),
+            (source_failure, false, true),
         ] {
             let polls = Arc::new(AtomicUsize::new(0));
             let mut state = State {
@@ -4313,21 +4330,82 @@ pub fn observe_ready() { #(observe_native(future.ready(43))) }
                     Box::pin(work.observe()).as_mut(),
                 ));
                 result.read(|result| {
-                    result
-                        .as_ref()
-                        .err()
-                        .expect("native validation failed")
-                        .read(|error| {
-                            assert_eq!(
-                                host_error(error).failure().message(),
-                                "negative completion"
-                            );
-                        })
+                    if failed {
+                        result
+                            .as_ref()
+                            .err()
+                            .expect("native validation failed")
+                            .read(|error| {
+                                if entry == source_failure {
+                                    assert_eq!(error.to_string(), "panic: observed source failure");
+                                } else {
+                                    assert_eq!(
+                                        host_error(error).failure().message(),
+                                        "negative completion"
+                                    );
+                                }
+                            })
+                    } else {
+                        result
+                            .as_ref()
+                            .ok()
+                            .expect("native observation completed")
+                            .read(|value| {
+                                assert_eq!(value.value(), &EvaluatedValue::Int(43.into()));
+                            });
+                    }
                 });
             }
             drop(driver);
             assert_eq!(polls.load(Ordering::SeqCst), 0);
             assert!(echo.output.is_empty());
+        }
+        {
+            let (sender, gate) = futures_channel::oneshot::channel();
+            let mut state = State {
+                gate: Some(gate),
+                polls: Arc::new(AtomicUsize::new(0)),
+                unit: (),
+            };
+            let mut stores = Stores::default();
+            let mut echo = Echo::default();
+            let mut driver = Domain::new(
+                Arc::clone(&plan),
+                &executor,
+                &mut state,
+                &mut stores,
+                &mut echo,
+                Default::default(),
+                NonZeroUsize::MIN,
+            );
+            let source_entries = driver.context();
+            let services = driver.work.execution();
+            let entry = *entries.tuples[4].function();
+            let work = complete_domain(&mut driver, &executor, async move {
+                let values = source_entries
+                    .call(
+                        entry,
+                        HostCallOrigin::Entry,
+                        RetainedInputs::empty().into_retained(),
+                    )
+                    .await
+                    .expect("original execution is live")
+                    .expect("observe pending work");
+                services
+                    .with_runtime(move |_plan, runtime| {
+                        let [value] = external_values(&values);
+                        runtime.host().stores().future.work(value.lease())
+                    })
+                    .await
+                    .expect("original runtime is live")
+            });
+            let mut observer = std::pin::pin!(work.observe());
+            assert!(poll_domain(&mut driver, &executor, observer.as_mut()).is_pending());
+            drop(sender);
+            assert_eq!(
+                poll_domain(&mut driver, &executor, observer.as_mut()).map(Result::err),
+                Poll::Ready(Some(Cancelled)),
+            );
         }
         for (poll_inner, complete_inner, failed) in [
             (false, false, false),
@@ -4421,6 +4499,40 @@ pub fn observe_ready() { #(observe_native(future.ready(43))) }
             } else {
                 Some(send)
             };
+            let retained_envelope = completed.read(|result| {
+                result
+                    .as_ref()
+                    .ok()
+                    .expect("original envelope completed")
+                    .clone()
+            });
+            let retained_envelope = retained_envelope.read(|value| value.value().clone());
+            let restored_identity = {
+                let source_entries = driver.context();
+                let services = driver.work.execution();
+                complete_domain(&mut driver, &executor, async move {
+                    let mut input = RetainedInputs::empty();
+                    input.push_value(retained_envelope);
+                    let values = source_entries
+                        .call(open, HostCallOrigin::Entry, input.into_retained())
+                        .await
+                        .expect("original execution is live")
+                        .expect("restore keeps the original work");
+                    services
+                        .with_runtime(move |_plan, runtime| {
+                            let [restored, _, _] = external_values(&values);
+                            runtime
+                                .host()
+                                .stores()
+                                .future
+                                .work(restored.lease())
+                                .identity()
+                        })
+                        .await
+                        .expect("original runtime is live")
+                })
+            };
+            assert_eq!(restored_identity, inner.identity());
             drop(inner);
             drop(driver);
             if let Some(send) = send {
@@ -4446,38 +4558,29 @@ pub fn observe_ready() { #(observe_native(future.ready(43))) }
                 Default::default(),
                 NonZeroUsize::MIN,
             );
-            let restored = {
+            let error = {
                 let source_entries = next.context();
-                let services = next.work.execution();
                 complete_domain(&mut next, &executor, async move {
                     let mut input = RetainedInputs::empty();
                     input.push_value(envelope);
-                    let values = source_entries
+                    source_entries
                         .call(open, HostCallOrigin::Entry, input.into_retained())
                         .await
                         .expect("active restoring entry")
-                        .expect("restore via real source call");
-                    services
-                        .with_runtime(move |_, runtime| {
-                            let values = external_values::<3>(&values);
-                            values.map(|work| runtime.host().stores().future.work(work.lease()))
-                        })
-                        .await
-                        .expect("active runtime service")
+                        .expect_err("a new execution cannot restore the retained work")
                 })
             };
-            for restored in restored {
-                let restored =
-                    poll_domain(&mut next, &executor, Box::pin(restored.observe()).as_mut());
-                assert_eq!(
-                    restored.map(|value| value.map(|completion| completion.read(Result::is_err))),
-                    if complete_inner {
-                        Poll::Ready(Ok(failed))
-                    } else {
-                        Poll::Ready(Err(Cancelled))
-                    },
-                );
-            }
+            let error = host_error(&error);
+            assert_eq!(error.function(), "restore");
+            assert_eq!(
+                error.failure().message(),
+                "retained value belongs to another execution"
+            );
+            assert!(matches!(
+                error.location(),
+                crate::HostLocation::Resolved { path, line: 19, .. }
+                    if path.as_str() == "src/library.gleam"
+            ));
             assert_eq!(
                 poll_domain(&mut next, &executor, Box::pin(outer.observe()).as_mut())
                     .map(|result| result.is_ok()),

@@ -840,6 +840,35 @@ execution and Gleam formatting, and Coverage's service-consumer matrix requires
 fresh 100% line/full-region coverage of this fixture provider package. Stdlib
 schema/input/read owner tests and production coverage remain in `geam-stdlib`.
 
+## Decoder SDK Consumer
+
+The independent [Decoder fixture](../../tests/fixtures/decoder_service) composes
+the public stdlib and Erlang producer SDKs with a manual typed provider and a
+macro-authored provider. Its locked original-source oracle covers Int/String
+decoders, captures, lazy Lists, tuples, generic retention, and
+`Subject(Message(Item))`. Core/stdlib owner tests separately prove grants,
+private-view rejection, exact specialization, and original-execution lifetime.
+
+```sh
+cargo fetch --manifest-path tests/fixtures/decoder_service/provider/Cargo.toml --locked
+cargo test --manifest-path tests/fixtures/decoder_service/provider/Cargo.toml --locked
+cargo fmt --manifest-path tests/fixtures/decoder_service/provider/Cargo.toml --all --check
+cargo clippy --manifest-path tests/fixtures/decoder_service/provider/Cargo.toml --all-targets --locked -- -D warnings
+gleam format --check tests/fixtures/decoder_service/project/src
+gleam format --check tests/fixtures/decoder_service/embedding/gleam/src
+cargo test --package geam --test prepared_embedding --locked -- decoder_sdk
+cargo llvm-cov clean --manifest-path tests/fixtures/decoder_service/provider/Cargo.toml --workspace
+cargo llvm-cov --manifest-path tests/fixtures/decoder_service/provider/Cargo.toml --no-report --locked
+cargo llvm-cov report --manifest-path tests/fixtures/decoder_service/provider/Cargo.toml --package geam-decoder-service-fixture --summary-only --fail-under-lines 100 --fail-under-regions 100
+```
+
+Workspace runs provider formatting/Clippy; Acceptance runs source tests and the
+compiled prepared/standalone consumer. The `process_consumers` acceptance helper
+checks repeatable generation and lock preservation, live/prepared results, and
+relocated source-free binaries. Coverage adds `decoder_service` to its existing
+independent consumer matrix. Its fresh 100% line/full-region denominator is the
+fixture provider package, independently of production dependencies.
+
 ## Benchmark Tooling
 
 The independently locked [`benchmarks/`](https://github.com/panarch/geam/tree/main/benchmarks) workspace

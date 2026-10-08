@@ -1,4 +1,4 @@
-use crate::host::{HostType, HostTypeAt, HostTypeSequence};
+use crate::host::{HostRestoredType, HostType, HostTypeAt, HostTypeSequence};
 use std::marker::PhantomData;
 
 type CallScopedMarker<'call, Type> = PhantomData<fn(&'call ()) -> (&'call (), Type)>;
@@ -74,6 +74,43 @@ pub struct HostConstructions<'call, Types: HostTypeSequence> {
 pub struct HostConstruction<'call, Type: HostType> {
     pub(super) callable_index: usize,
     marker: CallScopedMarker<'call, Type>,
+}
+
+/// Permission to restore one statically registered type during the active call.
+///
+/// This token restores an existing value; it grants no constructor, native
+/// conversion, or permission to create a new callable. An invocable function
+/// target must pass the ordinary callback signature checks during sealing.
+/// The token cannot escape the call that supplied the registered permission.
+///
+/// ```compile_fail
+/// use geam_core::{HostConstruction, HostRestoration, HostRestoredType};
+/// use num_bigint::BigInt;
+/// fn escape<'call>(permission: HostConstruction<'call, HostRestoredType<BigInt>>)
+///     -> HostRestoration<'static, BigInt>
+/// { permission.restoration() }
+/// ```
+///
+/// A restoration entry cannot stand in for a construction entry.
+///
+/// ```compile_fail
+/// use geam_core::{HostConstruction, HostListType, HostRestoredType};
+/// use num_bigint::BigInt;
+/// fn construct<'call>(permission: HostConstruction<'call, HostRestoredType<HostListType<BigInt>>>)
+///     -> HostConstruction<'call, HostListType<BigInt>>
+/// { permission }
+/// ```
+pub struct HostRestoration<'call, Type: HostType> {
+    marker: CallScopedMarker<'call, Type>,
+}
+
+impl<'call, Type: HostType> HostConstruction<'call, HostRestoredType<Type>> {
+    /// Selects the registered restoration capability, preserving its call lifetime.
+    pub fn restoration(self) -> HostRestoration<'call, Type> {
+        HostRestoration {
+            marker: PhantomData,
+        }
+    }
 }
 
 impl<'call, Types: HostTypeSequence> HostConstructions<'call, Types> {

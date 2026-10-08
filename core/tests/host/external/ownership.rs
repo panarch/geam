@@ -68,7 +68,7 @@ fn preserves_external_values_through_lists_customs_captures_and_calls() {
                     )
                     .await?;
                 Ok(geam_core::HostOwnedCompletion::new(move |mut call, _| {
-                    let counter = counter.into_host(&mut call);
+                    let counter = counter.into_host(&mut call)?;
                     Ok(call.return_value(counter))
                 }))
             })
@@ -506,9 +506,9 @@ fn passes_external_values_and_lists_through_scoped_callbacks() {
         Ok(call.resume(constructions, move |context| {
             Box::pin(async move {
                 let value = function
-                    .invoke(
+                    .try_invoke(
                         &context,
-                        move |mut call, _| (counter.into_host(&mut call), ()),
+                        move |mut call, _| Ok((counter.into_host(&mut call)?, ())),
                         |_, _, value| Ok(value),
                     )
                     .await?;
@@ -531,9 +531,9 @@ fn passes_external_values_and_lists_through_scoped_callbacks() {
         Ok(call.resume(constructions, move |context| {
             Box::pin(async move {
                 let first = function
-                    .invoke(
+                    .try_invoke(
                         &context,
-                        move |mut call, _| (counter.into_host(&mut call), ()),
+                        move |mut call, _| Ok((counter.into_host(&mut call)?, ())),
                         |mut call, _, values| {
                             let first = call.list_item(values, 0).ok_or_else(|| {
                                 HostFailure::new("callback list should not be empty")
@@ -543,7 +543,7 @@ fn passes_external_values_and_lists_through_scoped_callbacks() {
                     )
                     .await?;
                 Ok(geam_core::HostOwnedCompletion::new(move |mut call, _| {
-                    let first = first.into_host(&mut call);
+                    let first = first.into_host(&mut call)?;
                     Ok(call.return_list([first]))
                 }))
             })

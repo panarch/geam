@@ -834,7 +834,9 @@ pub fn main() {
             );
             assert_eq!(call.inspect::<Held>(value), "//fn(a) { ... }");
             let payload = call.external_payload(value);
-            let callback = payload.restore(&mut call, |payload| &payload.callback);
+            let callback = payload
+                .restore(&mut call, |payload| &payload.callback)
+                .expect("callback belongs to this execution");
             drop(payload);
             Ok(call.return_value(callback))
         }

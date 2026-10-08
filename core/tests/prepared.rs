@@ -4733,7 +4733,7 @@ fn incompatible_format_never_produces_a_prepared_binding_owner() {
     let error = incompatible.load().err().unwrap();
     assert_eq!(
         error.to_string(),
-        "prepared format 6 is incompatible with format 28; regenerate the prepared program"
+        "prepared format 6 is incompatible with format 29; regenerate the prepared program"
     );
 }
 
@@ -4756,6 +4756,99 @@ fn work_data_matches_preparation_and_contains_external_storage_families() {
     ] {
         assert_ne!(length, 0);
     }
+}
+
+#[test]
+fn prepared_loading_rejects_an_unregistered_external_type_even_when_unused() {
+    const ARTIFACT: data::HostedModuleArtifact = include!("fixtures/prepared/work.rs");
+    let mut artifact = ARTIFACT;
+    let table = &mut artifact.module.program.external_types;
+    let mut types = table.types.to_vec();
+    types.push(data::type_::NominalTypeMetadata {
+        package: data::Text::Static("unregistered"),
+        module: data::Text::Static("opaque"),
+        name: data::Text::Static("Handle"),
+        arguments: data::Storage::Static(&[]),
+    });
+    table.types = types.into();
+    let mut lifetimes = table.lifetimes.to_vec();
+    lifetimes.push(data::host::HostValueLifetime::LoadedOwner);
+    table.lifetimes = lifetimes.into();
+    let mut definitions = table.definitions.to_vec();
+    definitions.push(data::host::ExternalSchema {
+        package: data::Text::Static("unregistered"),
+        module: data::Text::Static("opaque"),
+        name: data::Text::Static("Handle"),
+        parameter_count: 0,
+        lifetime: data::host::HostValueLifetime::LoadedOwner,
+    });
+    table.definitions = definitions.into();
+    let error = Box::leak(Box::new(artifact))
+        .load(work_provider::hosts())
+        .err()
+        .unwrap();
+    assert_eq!(
+        error.to_string(),
+        "invalid prepared program: Hosts(ExternalType { package: \"unregistered\", module: \"opaque\", name: \"Handle\", expected: 0, actual: None }); regenerate the prepared program",
+    );
+}
+
+#[test]
+fn prepared_loading_rejects_an_unregistered_custom_producer_even_when_unused() {
+    const ARTIFACT: data::HostedModuleArtifact = include!("fixtures/prepared/numeric_hosted.rs");
+    let mut artifact = ARTIFACT;
+    let table = &mut artifact.module.program.custom_types;
+    let mut definitions = table.definitions.to_vec();
+    definitions.extend(
+        SHARED_CUSTOM
+            .module
+            .program
+            .custom_types
+            .definitions
+            .iter()
+            .cloned(),
+    );
+    table.definitions = definitions.into();
+    let error = Box::leak(Box::new(artifact))
+        .load(work_provider::hosts())
+        .err()
+        .unwrap();
+    assert_eq!(
+        error.to_string(),
+        "invalid prepared program: Hosts(CustomGrant { custom_type: CustomTypeName { package: \"producer\", module: \"handles\", name: \"Handle\" } }); regenerate the prepared program",
+    );
+}
+
+#[test]
+fn prepared_loading_rejects_a_producer_lifetime_changed_in_the_artifact() {
+    const ARTIFACT: data::HostedModuleArtifact = include!("fixtures/prepared/numeric_hosted.rs");
+    let mut artifact = ARTIFACT;
+    let table = &mut artifact.module.program.external_types;
+    assert!(table.types.is_empty());
+    table.types = vec![data::type_::NominalTypeMetadata {
+        package: data::Text::Static("work_fixture"),
+        module: data::Text::Static("fixture/work"),
+        name: data::Text::Static("Work"),
+        arguments: data::Storage::Static(&[data::type_::TypeMetadata::Int]),
+    }]
+    .into();
+    table.definitions = vec![data::host::ExternalSchema {
+        package: data::Text::Static("work_fixture"),
+        module: data::Text::Static("fixture/work"),
+        name: data::Text::Static("Work"),
+        parameter_count: 1,
+        lifetime: data::host::HostValueLifetime::LoadedOwner,
+    }]
+    .into();
+    table.lifetimes = vec![data::host::HostValueLifetime::LoadedOwner].into();
+    let error = Box::leak(Box::new(artifact))
+        .load(work_provider::hosts())
+        .err()
+        .unwrap();
+    assert_eq!(
+        error.to_string(),
+        "invalid prepared program: Hosts(ExternalLifetime { package: \"work_fixture\", module: \"fixture/work\", name: \"Work\" }); regenerate the prepared program",
+    );
 }
 
 #[cfg(feature = "tokio")]
@@ -5421,6 +5514,36 @@ fn native_function_views_load_and_call_the_original_captures_from_emitted_data()
 }
 
 #[test]
+fn never_native_metadata_rejects_a_source_span_outside_the_original_module() {
+    FUNCTION_VIEWS
+        .load(function_view_provider::hosts())
+        .unwrap();
+
+    const BASE: data::HostedModuleArtifact = include!("fixtures/prepared/function_views.rs");
+    let mut artifact = BASE;
+    let mut functions = artifact.never_functions.to_vec();
+    let source = include_str!("fixtures/prepared/function_views.gleam");
+    let span = data::source::SourceSpan::new(source.len() + 1, source.len() + 2);
+    let metadata = &mut functions[0];
+    metadata.site = data::source::HostCallSite::new(
+        metadata.site.module().into(),
+        metadata.site.function().into(),
+        span,
+    );
+    artifact.never_functions = functions.into();
+    let error = Box::leak(Box::new(artifact))
+        .load(function_view_provider::hosts())
+        .err()
+        .unwrap();
+    assert_eq!(
+        error.to_string(),
+        format!(
+            "invalid prepared program: Hosts(Contract {{ value: false, index: 0, reason: Source(SpanBounds {{ module: \"function_views\", span: {span:?} }}) }}); regenerate the prepared program"
+        ),
+    );
+}
+
+#[test]
 fn native_function_view_metadata_rejects_changed_parent_source_edges_and_captures() {
     #[derive(Debug, Clone, Copy)]
     enum Change {
@@ -5971,6 +6094,27 @@ mod pricing {
 }
 
 static CALLABLES: data::HostedModuleArtifact = include!("fixtures/prepared/callables.rs");
+
+#[test]
+fn never_native_metadata_rejects_a_signature_different_from_the_registered_callable() {
+    CALLABLES
+        .load(callable_provider::implementations())
+        .unwrap();
+
+    const BASE: data::HostedModuleArtifact = include!("fixtures/prepared/callables.rs");
+    let mut artifact = BASE;
+    let mut functions = artifact.never_functions.to_vec();
+    functions[0].signature.arguments = vec![data::type_::TypeMetadata::Int].into();
+    artifact.never_functions = functions.into();
+    let error = Box::leak(Box::new(artifact))
+        .load(callable_provider::implementations())
+        .err()
+        .unwrap();
+    assert_eq!(
+        error.to_string(),
+        "invalid prepared program: Hosts(Contract { value: false, index: 0, reason: Signature }); regenerate the prepared program",
+    );
+}
 
 #[cfg(feature = "tokio")]
 static EMBEDDED_CALLABLES: data::HostedModuleArtifact =

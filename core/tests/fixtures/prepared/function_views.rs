@@ -1,6 +1,6 @@
 data::HostedModuleArtifact {
     module: data::ModuleArtifact {
-        format: 28,
+        format: 29,
         program: data::ProgramTables {
             root: data::source::module_id(0),
             modules: data::Storage::Static(&[
@@ -8006,6 +8006,10 @@ pub fn stopped() -> Bool {
                 ]),
                 tuple_items: data::Storage::Static(&[]),
                 function_items: data::Storage::Static(&[]),
+                lifetimes: data::Storage::Static(&[
+                    data::host::HostValueLifetime::Execution,
+                    data::host::HostValueLifetime::Execution,
+                ]),
             },
             custom_types: data::type_::CustomTypeTable {
                 types: data::Storage::Static(&[
@@ -8019,6 +8023,8 @@ pub fn stopped() -> Bool {
                                 data::type_::TypeMetadata::Int,
                             ]),
                         },
+                        native_visible: true,
+                        lifetime: data::host::HostValueLifetime::Execution,
                         constructor_count: 1,
                         constructors: data::Storage::Static(&[
                             data::type_::CustomConstructorDescriptor {
@@ -8069,6 +8075,8 @@ pub fn stopped() -> Bool {
                                 }),
                             ]),
                         },
+                        native_visible: true,
+                        lifetime: data::host::HostValueLifetime::Execution,
                         constructor_count: 1,
                         constructors: data::Storage::Static(&[
                             data::type_::CustomConstructorDescriptor {
@@ -8113,6 +8121,8 @@ pub fn stopped() -> Bool {
                                 }),
                             ]),
                         },
+                        native_visible: true,
+                        lifetime: data::host::HostValueLifetime::Execution,
                         constructor_count: 2,
                         constructors: data::Storage::Static(&[
                             data::type_::CustomConstructorDescriptor {
@@ -8180,6 +8190,8 @@ pub fn stopped() -> Bool {
                                 }),
                             ]),
                         },
+                        native_visible: true,
+                        lifetime: data::host::HostValueLifetime::Execution,
                         constructor_count: 2,
                         constructors: data::Storage::Static(&[
                             data::type_::CustomConstructorDescriptor {
@@ -8230,6 +8242,8 @@ pub fn stopped() -> Bool {
                             name: data::Text::Static("Empty"),
                             arguments: data::Storage::Static(&[]),
                         },
+                        native_visible: true,
+                        lifetime: data::host::HostValueLifetime::LoadedOwner,
                         constructor_count: 1,
                         constructors: data::Storage::Static(&[]),
                     },
@@ -8241,6 +8255,8 @@ pub fn stopped() -> Bool {
                         name: data::Text::Static("Empty"),
                         publicity: data::type_::CustomTypePublicity::Public,
                         opaque: false,
+                        native_access: None,
+                        retention_lifetime: data::host::HostValueLifetime::LoadedOwner,
                         parameters: 0,
                         constructors: data::Storage::Static(&[
                             data::type_::ConstructorDefinition {
@@ -8265,6 +8281,8 @@ pub fn stopped() -> Bool {
                         name: data::Text::Static("Handler"),
                         publicity: data::type_::CustomTypePublicity::Public,
                         opaque: false,
+                        native_access: None,
+                        retention_lifetime: data::host::HostValueLifetime::LoadedOwner,
                         parameters: 2,
                         constructors: data::Storage::Static(&[
                             data::type_::ConstructorDefinition {
@@ -8289,6 +8307,8 @@ pub fn stopped() -> Bool {
                         name: data::Text::Static("Tree"),
                         publicity: data::type_::CustomTypePublicity::Public,
                         opaque: false,
+                        native_access: None,
+                        retention_lifetime: data::host::HostValueLifetime::LoadedOwner,
                         parameters: 1,
                         constructors: data::Storage::Static(&[
                             data::type_::ConstructorDefinition {
@@ -8327,6 +8347,18 @@ pub fn stopped() -> Bool {
                         module: data::Text::Static("function_views"),
                         name: data::Text::Static("Erased"),
                         arguments: data::Storage::Static(&[]),
+                    },
+                ]),
+                lifetimes: data::Storage::Static(&[
+                    data::host::HostValueLifetime::Execution,
+                ]),
+                definitions: data::Storage::Static(&[
+                    data::host::ExternalSchema {
+                        package: data::Text::Static("application"),
+                        module: data::Text::Static("function_views"),
+                        name: data::Text::Static("Erased"),
+                        parameter_count: 0,
+                        lifetime: data::host::HostValueLifetime::Execution,
                     },
                 ]),
             },
@@ -8841,10 +8873,12 @@ pub fn stopped() -> Bool {
                             module: data::Text::Static("function_views"),
                             name: data::Text::Static("Erased"),
                             parameter_count: 0,
+                            lifetime: data::host::HostValueLifetime::Execution,
                         },
                         arguments: data::Storage::Static(&[]),
                     },
                 ]),
+                restorations: data::Storage::Static(&[]),
                 construction_customs: data::Storage::Static(&[]),
                 construction_externals: data::Storage::Static(&[
                     data::host::ExternalSchema {
@@ -8852,6 +8886,7 @@ pub fn stopped() -> Bool {
                         module: data::Text::Static("function_views"),
                         name: data::Text::Static("Erased"),
                         parameter_count: 0,
+                        lifetime: data::host::HostValueLifetime::Execution,
                     },
                 ]),
                 native_rules: Some(data::Storage::Static(&[
@@ -8861,6 +8896,7 @@ pub fn stopped() -> Bool {
                             module: data::Text::Static("function_views"),
                             name: data::Text::Static("Erased"),
                             parameter_count: 0,
+                            lifetime: data::host::HostValueLifetime::Execution,
                         },
                         arguments: data::Storage::Static(&[]),
                     },
@@ -8991,10 +9027,12 @@ pub fn stopped() -> Bool {
                             module: data::Text::Static("function_views"),
                             name: data::Text::Static("Erased"),
                             parameter_count: 0,
+                            lifetime: data::host::HostValueLifetime::Execution,
                         },
                         arguments: data::Storage::Static(&[]),
                     },
                 ]),
+                restorations: data::Storage::Static(&[]),
                 construction_customs: data::Storage::Static(&[]),
                 construction_externals: data::Storage::Static(&[
                     data::host::ExternalSchema {
@@ -9002,6 +9040,7 @@ pub fn stopped() -> Bool {
                         module: data::Text::Static("function_views"),
                         name: data::Text::Static("Erased"),
                         parameter_count: 0,
+                        lifetime: data::host::HostValueLifetime::Execution,
                     },
                 ]),
                 native_rules: Some(data::Storage::Static(&[
@@ -9011,6 +9050,7 @@ pub fn stopped() -> Bool {
                             module: data::Text::Static("function_views"),
                             name: data::Text::Static("Erased"),
                             parameter_count: 0,
+                            lifetime: data::host::HostValueLifetime::Execution,
                         },
                         arguments: data::Storage::Static(&[]),
                     },
@@ -9252,10 +9292,12 @@ pub fn stopped() -> Bool {
                             module: data::Text::Static("function_views"),
                             name: data::Text::Static("Erased"),
                             parameter_count: 0,
+                            lifetime: data::host::HostValueLifetime::Execution,
                         },
                         arguments: data::Storage::Static(&[]),
                     },
                 ]),
+                restorations: data::Storage::Static(&[]),
                 construction_customs: data::Storage::Static(&[]),
                 construction_externals: data::Storage::Static(&[
                     data::host::ExternalSchema {
@@ -9263,6 +9305,7 @@ pub fn stopped() -> Bool {
                         module: data::Text::Static("function_views"),
                         name: data::Text::Static("Erased"),
                         parameter_count: 0,
+                        lifetime: data::host::HostValueLifetime::Execution,
                     },
                 ]),
                 native_rules: Some(data::Storage::Static(&[
@@ -9272,6 +9315,7 @@ pub fn stopped() -> Bool {
                             module: data::Text::Static("function_views"),
                             name: data::Text::Static("Erased"),
                             parameter_count: 0,
+                            lifetime: data::host::HostValueLifetime::Execution,
                         },
                         arguments: data::Storage::Static(&[]),
                     },
@@ -9395,10 +9439,12 @@ pub fn stopped() -> Bool {
                             module: data::Text::Static("function_views"),
                             name: data::Text::Static("Erased"),
                             parameter_count: 0,
+                            lifetime: data::host::HostValueLifetime::Execution,
                         },
                         arguments: data::Storage::Static(&[]),
                     },
                 ]),
+                restorations: data::Storage::Static(&[]),
                 construction_customs: data::Storage::Static(&[]),
                 construction_externals: data::Storage::Static(&[
                     data::host::ExternalSchema {
@@ -9406,6 +9452,7 @@ pub fn stopped() -> Bool {
                         module: data::Text::Static("function_views"),
                         name: data::Text::Static("Erased"),
                         parameter_count: 0,
+                        lifetime: data::host::HostValueLifetime::Execution,
                     },
                 ]),
                 native_rules: Some(data::Storage::Static(&[
@@ -9415,6 +9462,7 @@ pub fn stopped() -> Bool {
                             module: data::Text::Static("function_views"),
                             name: data::Text::Static("Erased"),
                             parameter_count: 0,
+                            lifetime: data::host::HostValueLifetime::Execution,
                         },
                         arguments: data::Storage::Static(&[]),
                     },
@@ -9732,10 +9780,12 @@ pub fn stopped() -> Bool {
                             module: data::Text::Static("function_views"),
                             name: data::Text::Static("Erased"),
                             parameter_count: 0,
+                            lifetime: data::host::HostValueLifetime::Execution,
                         },
                         arguments: data::Storage::Static(&[]),
                     },
                 ]),
+                restorations: data::Storage::Static(&[]),
                 construction_customs: data::Storage::Static(&[]),
                 construction_externals: data::Storage::Static(&[
                     data::host::ExternalSchema {
@@ -9743,6 +9793,7 @@ pub fn stopped() -> Bool {
                         module: data::Text::Static("function_views"),
                         name: data::Text::Static("Erased"),
                         parameter_count: 0,
+                        lifetime: data::host::HostValueLifetime::Execution,
                     },
                 ]),
                 native_rules: Some(data::Storage::Static(&[
@@ -9752,6 +9803,7 @@ pub fn stopped() -> Bool {
                             module: data::Text::Static("function_views"),
                             name: data::Text::Static("Erased"),
                             parameter_count: 0,
+                            lifetime: data::host::HostValueLifetime::Execution,
                         },
                         arguments: data::Storage::Static(&[]),
                     },
@@ -9888,10 +9940,12 @@ pub fn stopped() -> Bool {
                             module: data::Text::Static("function_views"),
                             name: data::Text::Static("Erased"),
                             parameter_count: 0,
+                            lifetime: data::host::HostValueLifetime::Execution,
                         },
                         arguments: data::Storage::Static(&[]),
                     },
                 ]),
+                restorations: data::Storage::Static(&[]),
                 construction_customs: data::Storage::Static(&[]),
                 construction_externals: data::Storage::Static(&[
                     data::host::ExternalSchema {
@@ -9899,6 +9953,7 @@ pub fn stopped() -> Bool {
                         module: data::Text::Static("function_views"),
                         name: data::Text::Static("Erased"),
                         parameter_count: 0,
+                        lifetime: data::host::HostValueLifetime::Execution,
                     },
                 ]),
                 native_rules: Some(data::Storage::Static(&[
@@ -9908,6 +9963,7 @@ pub fn stopped() -> Bool {
                             module: data::Text::Static("function_views"),
                             name: data::Text::Static("Erased"),
                             parameter_count: 0,
+                            lifetime: data::host::HostValueLifetime::Execution,
                         },
                         arguments: data::Storage::Static(&[]),
                     },
@@ -10286,10 +10342,12 @@ pub fn stopped() -> Bool {
                             module: data::Text::Static("function_views"),
                             name: data::Text::Static("Erased"),
                             parameter_count: 0,
+                            lifetime: data::host::HostValueLifetime::Execution,
                         },
                         arguments: data::Storage::Static(&[]),
                     },
                 ]),
+                restorations: data::Storage::Static(&[]),
                 construction_customs: data::Storage::Static(&[]),
                 construction_externals: data::Storage::Static(&[
                     data::host::ExternalSchema {
@@ -10297,6 +10355,7 @@ pub fn stopped() -> Bool {
                         module: data::Text::Static("function_views"),
                         name: data::Text::Static("Erased"),
                         parameter_count: 0,
+                        lifetime: data::host::HostValueLifetime::Execution,
                     },
                 ]),
                 native_rules: Some(data::Storage::Static(&[
@@ -10306,6 +10365,7 @@ pub fn stopped() -> Bool {
                             module: data::Text::Static("function_views"),
                             name: data::Text::Static("Erased"),
                             parameter_count: 0,
+                            lifetime: data::host::HostValueLifetime::Execution,
                         },
                         arguments: data::Storage::Static(&[]),
                     },
@@ -10450,10 +10510,12 @@ pub fn stopped() -> Bool {
                             module: data::Text::Static("function_views"),
                             name: data::Text::Static("Erased"),
                             parameter_count: 0,
+                            lifetime: data::host::HostValueLifetime::Execution,
                         },
                         arguments: data::Storage::Static(&[]),
                     },
                 ]),
+                restorations: data::Storage::Static(&[]),
                 construction_customs: data::Storage::Static(&[]),
                 construction_externals: data::Storage::Static(&[
                     data::host::ExternalSchema {
@@ -10461,6 +10523,7 @@ pub fn stopped() -> Bool {
                         module: data::Text::Static("function_views"),
                         name: data::Text::Static("Erased"),
                         parameter_count: 0,
+                        lifetime: data::host::HostValueLifetime::Execution,
                     },
                 ]),
                 native_rules: Some(data::Storage::Static(&[
@@ -10470,6 +10533,7 @@ pub fn stopped() -> Bool {
                             module: data::Text::Static("function_views"),
                             name: data::Text::Static("Erased"),
                             parameter_count: 0,
+                            lifetime: data::host::HostValueLifetime::Execution,
                         },
                         arguments: data::Storage::Static(&[]),
                     },
@@ -11136,10 +11200,12 @@ pub fn stopped() -> Bool {
                             module: data::Text::Static("function_views"),
                             name: data::Text::Static("Erased"),
                             parameter_count: 0,
+                            lifetime: data::host::HostValueLifetime::Execution,
                         },
                         arguments: data::Storage::Static(&[]),
                     },
                 ]),
+                restorations: data::Storage::Static(&[]),
                 construction_customs: data::Storage::Static(&[]),
                 construction_externals: data::Storage::Static(&[
                     data::host::ExternalSchema {
@@ -11147,6 +11213,7 @@ pub fn stopped() -> Bool {
                         module: data::Text::Static("function_views"),
                         name: data::Text::Static("Erased"),
                         parameter_count: 0,
+                        lifetime: data::host::HostValueLifetime::Execution,
                     },
                 ]),
                 native_rules: Some(data::Storage::Static(&[
@@ -11156,6 +11223,7 @@ pub fn stopped() -> Bool {
                             module: data::Text::Static("function_views"),
                             name: data::Text::Static("Erased"),
                             parameter_count: 0,
+                            lifetime: data::host::HostValueLifetime::Execution,
                         },
                         arguments: data::Storage::Static(&[]),
                     },
@@ -11335,10 +11403,12 @@ pub fn stopped() -> Bool {
                             module: data::Text::Static("function_views"),
                             name: data::Text::Static("Erased"),
                             parameter_count: 0,
+                            lifetime: data::host::HostValueLifetime::Execution,
                         },
                         arguments: data::Storage::Static(&[]),
                     },
                 ]),
+                restorations: data::Storage::Static(&[]),
                 construction_customs: data::Storage::Static(&[]),
                 construction_externals: data::Storage::Static(&[
                     data::host::ExternalSchema {
@@ -11346,6 +11416,7 @@ pub fn stopped() -> Bool {
                         module: data::Text::Static("function_views"),
                         name: data::Text::Static("Erased"),
                         parameter_count: 0,
+                        lifetime: data::host::HostValueLifetime::Execution,
                     },
                 ]),
                 native_rules: Some(data::Storage::Static(&[
@@ -11355,6 +11426,7 @@ pub fn stopped() -> Bool {
                             module: data::Text::Static("function_views"),
                             name: data::Text::Static("Erased"),
                             parameter_count: 0,
+                            lifetime: data::host::HostValueLifetime::Execution,
                         },
                         arguments: data::Storage::Static(&[]),
                     },
@@ -11533,10 +11605,12 @@ pub fn stopped() -> Bool {
                             module: data::Text::Static("function_views"),
                             name: data::Text::Static("Erased"),
                             parameter_count: 0,
+                            lifetime: data::host::HostValueLifetime::Execution,
                         },
                         arguments: data::Storage::Static(&[]),
                     },
                 ]),
+                restorations: data::Storage::Static(&[]),
                 construction_customs: data::Storage::Static(&[]),
                 construction_externals: data::Storage::Static(&[
                     data::host::ExternalSchema {
@@ -11544,6 +11618,7 @@ pub fn stopped() -> Bool {
                         module: data::Text::Static("function_views"),
                         name: data::Text::Static("Erased"),
                         parameter_count: 0,
+                        lifetime: data::host::HostValueLifetime::Execution,
                     },
                 ]),
                 native_rules: Some(data::Storage::Static(&[
@@ -11553,6 +11628,7 @@ pub fn stopped() -> Bool {
                             module: data::Text::Static("function_views"),
                             name: data::Text::Static("Erased"),
                             parameter_count: 0,
+                            lifetime: data::host::HostValueLifetime::Execution,
                         },
                         arguments: data::Storage::Static(&[]),
                     },
@@ -11732,10 +11808,12 @@ pub fn stopped() -> Bool {
                             module: data::Text::Static("function_views"),
                             name: data::Text::Static("Erased"),
                             parameter_count: 0,
+                            lifetime: data::host::HostValueLifetime::Execution,
                         },
                         arguments: data::Storage::Static(&[]),
                     },
                 ]),
+                restorations: data::Storage::Static(&[]),
                 construction_customs: data::Storage::Static(&[]),
                 construction_externals: data::Storage::Static(&[
                     data::host::ExternalSchema {
@@ -11743,6 +11821,7 @@ pub fn stopped() -> Bool {
                         module: data::Text::Static("function_views"),
                         name: data::Text::Static("Erased"),
                         parameter_count: 0,
+                        lifetime: data::host::HostValueLifetime::Execution,
                     },
                 ]),
                 native_rules: Some(data::Storage::Static(&[
@@ -11752,6 +11831,7 @@ pub fn stopped() -> Bool {
                             module: data::Text::Static("function_views"),
                             name: data::Text::Static("Erased"),
                             parameter_count: 0,
+                            lifetime: data::host::HostValueLifetime::Execution,
                         },
                         arguments: data::Storage::Static(&[]),
                     },
@@ -11939,10 +12019,12 @@ pub fn stopped() -> Bool {
                             module: data::Text::Static("function_views"),
                             name: data::Text::Static("Erased"),
                             parameter_count: 0,
+                            lifetime: data::host::HostValueLifetime::Execution,
                         },
                         arguments: data::Storage::Static(&[]),
                     },
                 ]),
+                restorations: data::Storage::Static(&[]),
                 construction_customs: data::Storage::Static(&[]),
                 construction_externals: data::Storage::Static(&[
                     data::host::ExternalSchema {
@@ -11950,6 +12032,7 @@ pub fn stopped() -> Bool {
                         module: data::Text::Static("function_views"),
                         name: data::Text::Static("Erased"),
                         parameter_count: 0,
+                        lifetime: data::host::HostValueLifetime::Execution,
                     },
                 ]),
                 native_rules: Some(data::Storage::Static(&[
@@ -11959,6 +12042,7 @@ pub fn stopped() -> Bool {
                             module: data::Text::Static("function_views"),
                             name: data::Text::Static("Erased"),
                             parameter_count: 0,
+                            lifetime: data::host::HostValueLifetime::Execution,
                         },
                         arguments: data::Storage::Static(&[]),
                     },
@@ -12122,10 +12206,12 @@ pub fn stopped() -> Bool {
                             module: data::Text::Static("function_views"),
                             name: data::Text::Static("Erased"),
                             parameter_count: 0,
+                            lifetime: data::host::HostValueLifetime::Execution,
                         },
                         arguments: data::Storage::Static(&[]),
                     },
                 ]),
+                restorations: data::Storage::Static(&[]),
                 construction_customs: data::Storage::Static(&[]),
                 construction_externals: data::Storage::Static(&[
                     data::host::ExternalSchema {
@@ -12133,6 +12219,7 @@ pub fn stopped() -> Bool {
                         module: data::Text::Static("function_views"),
                         name: data::Text::Static("Erased"),
                         parameter_count: 0,
+                        lifetime: data::host::HostValueLifetime::Execution,
                     },
                 ]),
                 native_rules: Some(data::Storage::Static(&[
@@ -12142,6 +12229,7 @@ pub fn stopped() -> Bool {
                             module: data::Text::Static("function_views"),
                             name: data::Text::Static("Erased"),
                             parameter_count: 0,
+                            lifetime: data::host::HostValueLifetime::Execution,
                         },
                         arguments: data::Storage::Static(&[]),
                     },
@@ -12319,10 +12407,12 @@ pub fn stopped() -> Bool {
                             module: data::Text::Static("function_views"),
                             name: data::Text::Static("Erased"),
                             parameter_count: 0,
+                            lifetime: data::host::HostValueLifetime::Execution,
                         },
                         arguments: data::Storage::Static(&[]),
                     },
                 ]),
+                restorations: data::Storage::Static(&[]),
                 construction_customs: data::Storage::Static(&[]),
                 construction_externals: data::Storage::Static(&[
                     data::host::ExternalSchema {
@@ -12330,6 +12420,7 @@ pub fn stopped() -> Bool {
                         module: data::Text::Static("function_views"),
                         name: data::Text::Static("Erased"),
                         parameter_count: 0,
+                        lifetime: data::host::HostValueLifetime::Execution,
                     },
                 ]),
                 native_rules: Some(data::Storage::Static(&[
@@ -12339,6 +12430,7 @@ pub fn stopped() -> Bool {
                             module: data::Text::Static("function_views"),
                             name: data::Text::Static("Erased"),
                             parameter_count: 0,
+                            lifetime: data::host::HostValueLifetime::Execution,
                         },
                         arguments: data::Storage::Static(&[]),
                     },
@@ -12479,10 +12571,12 @@ pub fn stopped() -> Bool {
                             module: data::Text::Static("function_views"),
                             name: data::Text::Static("Erased"),
                             parameter_count: 0,
+                            lifetime: data::host::HostValueLifetime::Execution,
                         },
                         arguments: data::Storage::Static(&[]),
                     },
                 ]),
+                restorations: data::Storage::Static(&[]),
                 construction_customs: data::Storage::Static(&[]),
                 construction_externals: data::Storage::Static(&[
                     data::host::ExternalSchema {
@@ -12490,6 +12584,7 @@ pub fn stopped() -> Bool {
                         module: data::Text::Static("function_views"),
                         name: data::Text::Static("Erased"),
                         parameter_count: 0,
+                        lifetime: data::host::HostValueLifetime::Execution,
                     },
                 ]),
                 native_rules: Some(data::Storage::Static(&[
@@ -12499,6 +12594,7 @@ pub fn stopped() -> Bool {
                             module: data::Text::Static("function_views"),
                             name: data::Text::Static("Erased"),
                             parameter_count: 0,
+                            lifetime: data::host::HostValueLifetime::Execution,
                         },
                         arguments: data::Storage::Static(&[]),
                     },
@@ -12689,10 +12785,12 @@ pub fn stopped() -> Bool {
                             module: data::Text::Static("function_views"),
                             name: data::Text::Static("Erased"),
                             parameter_count: 0,
+                            lifetime: data::host::HostValueLifetime::Execution,
                         },
                         arguments: data::Storage::Static(&[]),
                     },
                 ]),
+                restorations: data::Storage::Static(&[]),
                 construction_customs: data::Storage::Static(&[]),
                 construction_externals: data::Storage::Static(&[
                     data::host::ExternalSchema {
@@ -12700,6 +12798,7 @@ pub fn stopped() -> Bool {
                         module: data::Text::Static("function_views"),
                         name: data::Text::Static("Erased"),
                         parameter_count: 0,
+                        lifetime: data::host::HostValueLifetime::Execution,
                     },
                 ]),
                 native_rules: Some(data::Storage::Static(&[
@@ -12709,6 +12808,7 @@ pub fn stopped() -> Bool {
                             module: data::Text::Static("function_views"),
                             name: data::Text::Static("Erased"),
                             parameter_count: 0,
+                            lifetime: data::host::HostValueLifetime::Execution,
                         },
                         arguments: data::Storage::Static(&[]),
                     },
@@ -12816,10 +12916,12 @@ pub fn stopped() -> Bool {
                             module: data::Text::Static("function_views"),
                             name: data::Text::Static("Erased"),
                             parameter_count: 0,
+                            lifetime: data::host::HostValueLifetime::Execution,
                         },
                         arguments: data::Storage::Static(&[]),
                     },
                 ]),
+                restorations: data::Storage::Static(&[]),
                 construction_customs: data::Storage::Static(&[]),
                 construction_externals: data::Storage::Static(&[
                     data::host::ExternalSchema {
@@ -12827,6 +12929,7 @@ pub fn stopped() -> Bool {
                         module: data::Text::Static("function_views"),
                         name: data::Text::Static("Erased"),
                         parameter_count: 0,
+                        lifetime: data::host::HostValueLifetime::Execution,
                     },
                 ]),
                 native_rules: Some(data::Storage::Static(&[
@@ -12836,6 +12939,7 @@ pub fn stopped() -> Bool {
                             module: data::Text::Static("function_views"),
                             name: data::Text::Static("Erased"),
                             parameter_count: 0,
+                            lifetime: data::host::HostValueLifetime::Execution,
                         },
                         arguments: data::Storage::Static(&[]),
                     },
@@ -13039,10 +13143,12 @@ pub fn stopped() -> Bool {
                             module: data::Text::Static("function_views"),
                             name: data::Text::Static("Erased"),
                             parameter_count: 0,
+                            lifetime: data::host::HostValueLifetime::Execution,
                         },
                         arguments: data::Storage::Static(&[]),
                     },
                 ]),
+                restorations: data::Storage::Static(&[]),
                 construction_customs: data::Storage::Static(&[]),
                 construction_externals: data::Storage::Static(&[
                     data::host::ExternalSchema {
@@ -13050,6 +13156,7 @@ pub fn stopped() -> Bool {
                         module: data::Text::Static("function_views"),
                         name: data::Text::Static("Erased"),
                         parameter_count: 0,
+                        lifetime: data::host::HostValueLifetime::Execution,
                     },
                 ]),
                 native_rules: Some(data::Storage::Static(&[
@@ -13059,6 +13166,7 @@ pub fn stopped() -> Bool {
                             module: data::Text::Static("function_views"),
                             name: data::Text::Static("Erased"),
                             parameter_count: 0,
+                            lifetime: data::host::HostValueLifetime::Execution,
                         },
                         arguments: data::Storage::Static(&[]),
                     },
@@ -13166,10 +13274,12 @@ pub fn stopped() -> Bool {
                             module: data::Text::Static("function_views"),
                             name: data::Text::Static("Erased"),
                             parameter_count: 0,
+                            lifetime: data::host::HostValueLifetime::Execution,
                         },
                         arguments: data::Storage::Static(&[]),
                     },
                 ]),
+                restorations: data::Storage::Static(&[]),
                 construction_customs: data::Storage::Static(&[]),
                 construction_externals: data::Storage::Static(&[
                     data::host::ExternalSchema {
@@ -13177,6 +13287,7 @@ pub fn stopped() -> Bool {
                         module: data::Text::Static("function_views"),
                         name: data::Text::Static("Erased"),
                         parameter_count: 0,
+                        lifetime: data::host::HostValueLifetime::Execution,
                     },
                 ]),
                 native_rules: Some(data::Storage::Static(&[
@@ -13186,6 +13297,7 @@ pub fn stopped() -> Bool {
                             module: data::Text::Static("function_views"),
                             name: data::Text::Static("Erased"),
                             parameter_count: 0,
+                            lifetime: data::host::HostValueLifetime::Execution,
                         },
                         arguments: data::Storage::Static(&[]),
                     },
@@ -13312,10 +13424,12 @@ pub fn stopped() -> Bool {
                             module: data::Text::Static("function_views"),
                             name: data::Text::Static("Erased"),
                             parameter_count: 0,
+                            lifetime: data::host::HostValueLifetime::Execution,
                         },
                         arguments: data::Storage::Static(&[]),
                     },
                 ]),
+                restorations: data::Storage::Static(&[]),
                 construction_customs: data::Storage::Static(&[]),
                 construction_externals: data::Storage::Static(&[
                     data::host::ExternalSchema {
@@ -13323,6 +13437,7 @@ pub fn stopped() -> Bool {
                         module: data::Text::Static("function_views"),
                         name: data::Text::Static("Erased"),
                         parameter_count: 0,
+                        lifetime: data::host::HostValueLifetime::Execution,
                     },
                 ]),
                 native_rules: Some(data::Storage::Static(&[
@@ -13332,6 +13447,7 @@ pub fn stopped() -> Bool {
                             module: data::Text::Static("function_views"),
                             name: data::Text::Static("Erased"),
                             parameter_count: 0,
+                            lifetime: data::host::HostValueLifetime::Execution,
                         },
                         arguments: data::Storage::Static(&[]),
                     },
@@ -13579,10 +13695,12 @@ pub fn stopped() -> Bool {
                             module: data::Text::Static("function_views"),
                             name: data::Text::Static("Erased"),
                             parameter_count: 0,
+                            lifetime: data::host::HostValueLifetime::Execution,
                         },
                         arguments: data::Storage::Static(&[]),
                     },
                 ]),
+                restorations: data::Storage::Static(&[]),
                 construction_customs: data::Storage::Static(&[]),
                 construction_externals: data::Storage::Static(&[
                     data::host::ExternalSchema {
@@ -13590,6 +13708,7 @@ pub fn stopped() -> Bool {
                         module: data::Text::Static("function_views"),
                         name: data::Text::Static("Erased"),
                         parameter_count: 0,
+                        lifetime: data::host::HostValueLifetime::Execution,
                     },
                 ]),
                 native_rules: Some(data::Storage::Static(&[
@@ -13599,6 +13718,7 @@ pub fn stopped() -> Bool {
                             module: data::Text::Static("function_views"),
                             name: data::Text::Static("Erased"),
                             parameter_count: 0,
+                            lifetime: data::host::HostValueLifetime::Execution,
                         },
                         arguments: data::Storage::Static(&[]),
                     },
@@ -13712,10 +13832,12 @@ pub fn stopped() -> Bool {
                             module: data::Text::Static("function_views"),
                             name: data::Text::Static("Erased"),
                             parameter_count: 0,
+                            lifetime: data::host::HostValueLifetime::Execution,
                         },
                         arguments: data::Storage::Static(&[]),
                     },
                 ]),
+                restorations: data::Storage::Static(&[]),
                 construction_customs: data::Storage::Static(&[]),
                 construction_externals: data::Storage::Static(&[
                     data::host::ExternalSchema {
@@ -13723,6 +13845,7 @@ pub fn stopped() -> Bool {
                         module: data::Text::Static("function_views"),
                         name: data::Text::Static("Erased"),
                         parameter_count: 0,
+                        lifetime: data::host::HostValueLifetime::Execution,
                     },
                 ]),
                 native_rules: Some(data::Storage::Static(&[
@@ -13732,6 +13855,7 @@ pub fn stopped() -> Bool {
                             module: data::Text::Static("function_views"),
                             name: data::Text::Static("Erased"),
                             parameter_count: 0,
+                            lifetime: data::host::HostValueLifetime::Execution,
                         },
                         arguments: data::Storage::Static(&[]),
                     },
@@ -13852,10 +13976,12 @@ pub fn stopped() -> Bool {
                             module: data::Text::Static("function_views"),
                             name: data::Text::Static("Erased"),
                             parameter_count: 0,
+                            lifetime: data::host::HostValueLifetime::Execution,
                         },
                         arguments: data::Storage::Static(&[]),
                     },
                 ]),
+                restorations: data::Storage::Static(&[]),
                 construction_customs: data::Storage::Static(&[]),
                 construction_externals: data::Storage::Static(&[
                     data::host::ExternalSchema {
@@ -13863,6 +13989,7 @@ pub fn stopped() -> Bool {
                         module: data::Text::Static("function_views"),
                         name: data::Text::Static("Erased"),
                         parameter_count: 0,
+                        lifetime: data::host::HostValueLifetime::Execution,
                     },
                 ]),
                 native_rules: Some(data::Storage::Static(&[
@@ -13872,6 +13999,7 @@ pub fn stopped() -> Bool {
                             module: data::Text::Static("function_views"),
                             name: data::Text::Static("Erased"),
                             parameter_count: 0,
+                            lifetime: data::host::HostValueLifetime::Execution,
                         },
                         arguments: data::Storage::Static(&[]),
                     },
@@ -13927,6 +14055,7 @@ pub fn stopped() -> Bool {
                 custom_schemas: data::Storage::Static(&[]),
                 external_schemas: data::Storage::Static(&[]),
                 constructions: data::Storage::Static(&[]),
+                restorations: data::Storage::Static(&[]),
                 construction_customs: data::Storage::Static(&[]),
                 construction_externals: data::Storage::Static(&[]),
                 native_rules: None,
@@ -14067,10 +14196,12 @@ pub fn stopped() -> Bool {
                             module: data::Text::Static("function_views"),
                             name: data::Text::Static("Erased"),
                             parameter_count: 0,
+                            lifetime: data::host::HostValueLifetime::Execution,
                         },
                         arguments: data::Storage::Static(&[]),
                     },
                 ]),
+                restorations: data::Storage::Static(&[]),
                 construction_customs: data::Storage::Static(&[]),
                 construction_externals: data::Storage::Static(&[
                     data::host::ExternalSchema {
@@ -14078,6 +14209,7 @@ pub fn stopped() -> Bool {
                         module: data::Text::Static("function_views"),
                         name: data::Text::Static("Erased"),
                         parameter_count: 0,
+                        lifetime: data::host::HostValueLifetime::Execution,
                     },
                 ]),
                 native_rules: Some(data::Storage::Static(&[
@@ -14087,6 +14219,7 @@ pub fn stopped() -> Bool {
                             module: data::Text::Static("function_views"),
                             name: data::Text::Static("Erased"),
                             parameter_count: 0,
+                            lifetime: data::host::HostValueLifetime::Execution,
                         },
                         arguments: data::Storage::Static(&[]),
                     },

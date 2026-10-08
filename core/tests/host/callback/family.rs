@@ -184,7 +184,7 @@ fn invoke_tuple<'call>(
                 )
                 .await?;
             Ok(geam_core::HostOwnedCompletion::new(move |mut call, _| {
-                let value = value.into_host(&mut call);
+                let value = value.into_host(&mut call)?;
                 Ok(call.return_value(value))
             }))
         })
@@ -207,7 +207,7 @@ fn invoke_list<'call>(
                 )
                 .await?;
             Ok(geam_core::HostOwnedCompletion::new(move |mut call, _| {
-                let value = value.into_host(&mut call);
+                let value = value.into_host(&mut call)?;
                 Ok(call.return_value(value))
             }))
         })
@@ -230,7 +230,7 @@ fn invoke_custom<'call>(
                 )
                 .await?;
             Ok(geam_core::HostOwnedCompletion::new(move |mut call, _| {
-                let value = value.into_host(&mut call);
+                let value = value.into_host(&mut call)?;
                 Ok(call.return_value(value))
             }))
         })
@@ -253,7 +253,7 @@ fn invoke_constructor<'call>(
                 )
                 .await?;
             Ok(geam_core::HostOwnedCompletion::new(move |mut call, _| {
-                let value = value.into_host(&mut call);
+                let value = value.into_host(&mut call)?;
                 Ok(call.return_value(value))
             }))
         })
@@ -300,9 +300,9 @@ fn invoke_with_function_argument<'call>(
     Ok(call.resume(constructions, move |context| {
         Box::pin(async move {
             let value = function
-                .invoke(
+                .try_invoke(
                     &context,
-                    move |mut call, _| (argument.into_host(&mut call), ()),
+                    move |mut call, _| Ok((argument.into_host(&mut call)?, ())),
                     |_, _, value| Ok(value),
                 )
                 .await?;

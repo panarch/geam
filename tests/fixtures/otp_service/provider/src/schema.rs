@@ -588,3 +588,22 @@ pub(super) type StaticStart<A> = HostCustomConstructorAt<
 pub(super) type StaticMfa<A> = HostTupleType<
     Three<Atom, Atom, HostListType<HostFunctionType<HostTypeListEnd, StartResult<A>>>>,
 >;
+
+// Typed projections remain available to the source module that owns these private types.
+type CustomIndex1 = HostCustomIndexNext<HostCustomIndex0>;
+type CustomIndex2 = HostCustomIndexNext<CustomIndex1>;
+type CustomIndex3 = HostCustomIndexNext<CustomIndex2>;
+type CustomIndex4 = HostCustomIndexNext<CustomIndex3>;
+type CustomIndex5 = HostCustomIndexNext<CustomIndex4>;
+pub(super) type StaticRestartProperty<A> =
+    HostCustomConstructorAt<StaticProperty<A>, CustomIndex2, StaticPropertyRestart>;
+pub(super) type StaticShutdownProperty<A> =
+    HostCustomConstructorAt<StaticProperty<A>, CustomIndex5, StaticPropertyShutdown>;
+pub(super) type StaticStrategyFlag<A> =
+    HostCustomConstructorAt<StaticFlag<A>, HostCustomIndex0, StaticFlagStrategy>;
+pub(super) type StaticIntensityFlag<A> =
+    HostCustomConstructorAt<StaticFlag<A>, CustomIndex1, StaticFlagIntensity>;
+pub(super) type StaticPeriodFlag<A> =
+    HostCustomConstructorAt<StaticFlag<A>, CustomIndex2, StaticFlagPeriod>;
+pub(super) type StaticAutoShutdownFlag<A> =
+    HostCustomConstructorAt<StaticFlag<A>, CustomIndex3, StaticFlagAutoShutdown>;

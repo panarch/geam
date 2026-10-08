@@ -78,6 +78,7 @@ impl NullaryLocal {
 #[cfg(test)]
 mod tests {
     use super::{CallLocal, CallTypes};
+    use crate::host::HostValueLifetime;
     use crate::plan::Text;
     use crate::plan::execution::graph::{
         CustomListLocalId, CustomLocal, CustomLocalId, IntLocalId, ListLocal, ParamLocal,
@@ -103,6 +104,8 @@ mod tests {
                     arguments: Vec::new().into(),
                 },
                 constructor_count: 8,
+                native_visible: true,
+                lifetime: HostValueLifetime::LoadedOwner,
                 constructors: vec![CustomConstructorDescriptor {
                     id: CustomConstructorId { type_id, index: 7 },
                     name: Text::Static("Before"),

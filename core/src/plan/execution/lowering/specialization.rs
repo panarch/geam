@@ -162,6 +162,7 @@ pub(super) enum FunctionArgumentsRepresentation {
 
 pub(super) struct RepresentationContext {
     custom_types: HashMap<CustomTypeName, crate::plan::CustomTypeDefinition>,
+    external_types: Vec<crate::plan::ExternalTypeDefinition>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -638,6 +639,20 @@ impl SpecializedValueShape {
 }
 
 impl RepresentationContext {
+    pub(super) fn with_external_types(
+        mut self,
+        external_types: Vec<crate::plan::ExternalTypeDefinition>,
+    ) -> Self {
+        self.external_types = external_types;
+        self
+    }
+
+    pub(super) fn external_definitions(
+        &self,
+    ) -> impl Iterator<Item = &crate::plan::ExternalTypeDefinition> {
+        self.external_types.iter()
+    }
+
     pub(super) fn definitions(&self) -> impl Iterator<Item = &crate::plan::CustomTypeDefinition> {
         self.custom_types.values()
     }
@@ -651,6 +666,7 @@ impl RepresentationContext {
 
     pub(super) fn new(custom_types: Vec<crate::plan::CustomTypeDefinition>) -> Self {
         Self {
+            external_types: Vec::new(),
             custom_types: custom_types
                 .into_iter()
                 .map(|definition| (definition.name().clone(), definition))
@@ -746,6 +762,22 @@ impl RepresentationContext {
             2
         } else {
             self.custom_types[name].constructors().len()
+        }
+    }
+
+    pub(super) fn native_visible(&self, name: &CustomTypeName) -> bool {
+        if is_result(name) {
+            true
+        } else {
+            let definition = &self.custom_types[name];
+            match definition.native_access() {
+                Some(crate::host::HostCustomAccess::Retained) => false,
+                Some(crate::host::HostCustomAccess::Shared) => true,
+                _ => {
+                    !definition.is_opaque()
+                        && definition.publicity() == crate::plan::CustomTypePublicity::Public
+                }
+            }
         }
     }
 

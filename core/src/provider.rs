@@ -1,6 +1,7 @@
 use std::fmt::{self, Display, Formatter};
 
 pub mod advanced;
+mod bindings;
 mod call;
 mod callback;
 mod codec;
@@ -8,11 +9,13 @@ mod factory;
 mod future;
 mod list;
 mod prelude;
+mod restore;
 mod stored;
 mod value;
 
 pub use crate::execution::{ExitStatus, InvalidExitStatus};
 pub use crate::{BitArrayValue, HostFailure, StringValue};
+pub use bindings::{ProviderCallBindings, ProviderNoCallBindings};
 pub use call::{Call, HostResult};
 #[doc(hidden)]
 pub use call::{
@@ -32,11 +35,11 @@ pub use callback::{
 pub use codec::{
     ProviderConstruction, ProviderConstructionIndex0, ProviderConstructionIndexNext,
     ProviderConstructionList, ProviderConstructionRequirementAt, ProviderConstructionRequirements,
-    ProviderConstructions, ProviderContextualValueForms, ProviderExternalCodec, ProviderInputValue,
-    ProviderListInputCodec, ProviderListInputValue, ProviderMarkerListForms,
-    ProviderNoConstructions, ProviderOutputValue, ProviderRootOutputValue,
-    ProviderRuntimeValueForms, ProviderStaticValueForms, ProviderTypedValue, ProviderValue,
-    ProviderValueForms,
+    ProviderConstructions, ProviderContextualValueForms, ProviderConvertedStorage,
+    ProviderExternalCodec, ProviderInputValue, ProviderListInputCodec, ProviderListInputValue,
+    ProviderMarkerListForms, ProviderNoConstructions, ProviderOutputStorage, ProviderOutputValue,
+    ProviderRootOutputValue, ProviderRuntimeValueForms, ProviderStaticValueForms,
+    ProviderStorageError, ProviderTypedValue, ProviderValue, ProviderValueForms,
 };
 #[doc(hidden)]
 pub use codec::{
@@ -47,8 +50,7 @@ pub use ecow::EcoString;
 pub use factory::Factory;
 #[doc(hidden)]
 pub use factory::{
-    ProviderFactoryBinding, ProviderFactoryBindings, ProviderFactoryCodec,
-    ProviderImmediateCaptures, ProviderNoFactories, ProviderOwnedCaptures,
+    ProviderFactoryBinding, ProviderFactoryCodec, ProviderImmediateCaptures, ProviderOwnedCaptures,
 };
 pub use future::Future;
 #[doc(hidden)]
@@ -57,6 +59,9 @@ pub use future::{
     ProviderFutureValueContext,
 };
 pub use num_bigint::BigInt;
+#[doc(hidden)]
+pub use restore::ProviderRestorationBinding;
+pub use restore::Restore;
 
 pub use list::List;
 #[doc(hidden)]
@@ -83,7 +88,9 @@ pub use stored::{
 };
 pub use value::Value;
 #[doc(hidden)]
-pub use value::{MissingValueContext, ProviderValueContext, ProviderValueListDecoder};
+pub use value::{
+    MissingValueContext, ProviderRetainedStorage, ProviderValueContext, ProviderValueListDecoder,
+};
 
 pub type Configuration = crate::HostProviderConfiguration;
 

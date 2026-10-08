@@ -16,7 +16,7 @@ pub(in crate::planner) enum ModuleConstantResolutionError {
 pub(in crate::planner) struct ProgramRegistry {
     by_name: HashMap<EcoString, ModuleId>,
     modules: Vec<ModuleRegistry>,
-    shared_custom_types: HashSet<CustomTypeName>,
+    shared_custom_types: HashMap<CustomTypeName, crate::host::HostCustomAccess>,
 }
 
 pub(in crate::planner) struct ModuleRegistry {
@@ -38,20 +38,24 @@ impl ProgramRegistry {
         Self {
             by_name,
             modules,
-            shared_custom_types: HashSet::new(),
+            shared_custom_types: HashMap::new(),
         }
     }
 
     pub(in crate::planner) fn with_shared_custom_types(
         mut self,
-        types: HashSet<CustomTypeName>,
+        types: HashMap<CustomTypeName, crate::host::HostCustomAccess>,
     ) -> Self {
         self.shared_custom_types = types;
         self
     }
 
     pub(in crate::planner) fn shares_custom_type(&self, name: &CustomTypeName) -> bool {
-        self.shared_custom_types.contains(name)
+        self.shared_custom_types.get(name) == Some(&crate::host::HostCustomAccess::Shared)
+    }
+
+    pub(in crate::planner) fn retains_custom_type(&self, name: &CustomTypeName) -> bool {
+        self.shared_custom_types.contains_key(name)
     }
 
     pub(in crate::planner) fn module_name(&self, module: ModuleId) -> &EcoString {
@@ -115,6 +119,28 @@ impl ProgramRegistry {
 
     pub(in crate::planner) fn custom_types(&self, module: ModuleId) -> &[CustomTypeDefinition] {
         &self.modules[module.index()].custom_types
+    }
+
+    pub(in crate::planner) fn external_type_schemas(
+        &self,
+    ) -> std::collections::HashMap<ExternalTypeName, crate::host::HostExternalTypeSchema> {
+        self.modules
+            .iter()
+            .flat_map(|module| &module.external_types)
+            .map(|definition| {
+                let name = definition.name();
+                (
+                    name.clone(),
+                    crate::host::HostExternalTypeSchema::new(
+                        name.package().clone(),
+                        name.module().clone(),
+                        name.name().clone(),
+                        definition.parameters().len(),
+                    )
+                    .with_lifetime(definition.lifetime()),
+                )
+            })
+            .collect()
     }
 
     pub(in crate::planner) fn external_type(

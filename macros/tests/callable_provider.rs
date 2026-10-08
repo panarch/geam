@@ -1,5 +1,7 @@
 use geam_core::execution::TokioHost;
-use geam_core::provider::{BigInt, Call, Callback, Factory, HostResult, Value};
+use geam_core::provider::{
+    BigInt, Call, Callback, Factory, HostResult, Restore, StringValue, Value,
+};
 use geam_core::{
     HostComponentProfile, HostProfile, HostProviderComponent, HostProviderComponentRegistration,
     HostProviderSet, HostedExecution, ModuleSource, PackageSource, compile_typed_host_program,
@@ -16,7 +18,10 @@ pub struct Component;
 
 #[geam_macros::module(path = "callables", crate_path = geam_core)]
 mod callables {
-    use super::{BigInt, Call, Callback, Factory, HostResult, State, Value};
+    use super::{BigInt, Call, Callback, Factory, HostResult, Restore, State, StringValue, Value};
+
+    struct PermissionValues;
+    impl geam_core::provider::ProviderStoredOwner for PermissionValues {}
 
     #[geam_macros::callable(factory = Add)]
     fn add(
@@ -109,11 +114,23 @@ mod callables {
     fn selected(
         #[geam_macros::call] call: &mut Call<State>,
         #[geam_macros::factory] first: Factory<Add>,
+        #[geam_macros::restore] integer: Restore<BigInt>,
         #[geam_macros::factory] second: Factory<Subtract>,
+        #[geam_macros::restore] text: Restore<StringValue>,
     ) -> HostResult<(
         Callback<fn(BigInt) -> BigInt>,
         Callback<fn(BigInt) -> BigInt>,
     )> {
+        let saved = call.store_dynamic::<BigInt, PermissionValues>(42.into());
+        assert_eq!(
+            call.restore_native(&integer, &saved.native_view()),
+            Some(42.into())
+        );
+        let saved = call.store_dynamic::<StringValue, PermissionValues>(StringValue::from("kept"));
+        assert_eq!(
+            call.restore_dynamic(&text, &saved),
+            Some(StringValue::from("kept"))
+        );
         Ok((
             call.create(&first, (3.into(),))?,
             call.create(&second, (4.into(),))?,

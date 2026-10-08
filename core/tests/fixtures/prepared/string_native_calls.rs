@@ -1,6 +1,6 @@
 data::HostedModuleArtifact {
     module: data::ModuleArtifact {
-        format: 28,
+        format: 29,
         program: data::ProgramTables {
             root: data::source::module_id(0),
             modules: data::Storage::Static(&[
@@ -3717,6 +3717,7 @@ pub fn source_string_caller(value: String) -> String {
                 types: data::Storage::Static(&[]),
                 tuple_items: data::Storage::Static(&[]),
                 function_items: data::Storage::Static(&[]),
+                lifetimes: data::Storage::Static(&[]),
             },
             custom_types: data::type_::CustomTypeTable {
                 types: data::Storage::Static(&[
@@ -3727,6 +3728,8 @@ pub fn source_string_caller(value: String) -> String {
                             name: data::Text::Static("Direction"),
                             arguments: data::Storage::Static(&[]),
                         },
+                        native_visible: true,
+                        lifetime: data::host::HostValueLifetime::LoadedOwner,
                         constructor_count: 2,
                         constructors: data::Storage::Static(&[
                             data::type_::CustomConstructorDescriptor {
@@ -3757,6 +3760,8 @@ pub fn source_string_caller(value: String) -> String {
                         name: data::Text::Static("Direction"),
                         publicity: data::type_::CustomTypePublicity::Public,
                         opaque: false,
+                        native_access: None,
+                        retention_lifetime: data::host::HostValueLifetime::LoadedOwner,
                         parameters: 0,
                         constructors: data::Storage::Static(&[
                             data::type_::ConstructorDefinition {
@@ -3773,6 +3778,8 @@ pub fn source_string_caller(value: String) -> String {
             },
             external_types: data::type_::ExternalTypeTable {
                 types: data::Storage::Static(&[]),
+                lifetimes: data::Storage::Static(&[]),
+                definitions: data::Storage::Static(&[]),
             },
             value_shapes: data::type_::ValueShapeTable {
                 shapes: data::Storage::Static(&[
@@ -4130,6 +4137,7 @@ pub fn source_string_caller(value: String) -> String {
                             module: data::Text::Static("string_native"),
                             name: data::Text::Static("Direction"),
                             parameter_count: 0,
+                            lifetime: data::host::HostValueLifetime::LoadedOwner,
                             constructors: data::Storage::Static(&[
                                 data::host::ConstructorSchema {
                                     name: data::Text::Static("Before"),
@@ -4140,7 +4148,7 @@ pub fn source_string_caller(value: String) -> String {
                                     fields: data::Storage::Static(&[]),
                                 },
                             ]),
-                            shared: false,
+                            access: data::host::HostCustomAccess::Declared,
                         },
                         arguments: data::Storage::Static(&[]),
                     },
@@ -4161,6 +4169,7 @@ pub fn source_string_caller(value: String) -> String {
                         module: data::Text::Static("string_native"),
                         name: data::Text::Static("Direction"),
                         parameter_count: 0,
+                        lifetime: data::host::HostValueLifetime::LoadedOwner,
                         constructors: data::Storage::Static(&[
                             data::host::ConstructorSchema {
                                 name: data::Text::Static("Before"),
@@ -4171,11 +4180,12 @@ pub fn source_string_caller(value: String) -> String {
                                 fields: data::Storage::Static(&[]),
                             },
                         ]),
-                        shared: false,
+                        access: data::host::HostCustomAccess::Declared,
                     },
                 ]),
                 external_schemas: data::Storage::Static(&[]),
                 constructions: data::Storage::Static(&[]),
+                restorations: data::Storage::Static(&[]),
                 construction_customs: data::Storage::Static(&[]),
                 construction_externals: data::Storage::Static(&[]),
                 native_rules: None,
@@ -4238,6 +4248,7 @@ pub fn source_string_caller(value: String) -> String {
                 custom_schemas: data::Storage::Static(&[]),
                 external_schemas: data::Storage::Static(&[]),
                 constructions: data::Storage::Static(&[]),
+                restorations: data::Storage::Static(&[]),
                 construction_customs: data::Storage::Static(&[]),
                 construction_externals: data::Storage::Static(&[]),
                 native_rules: None,
@@ -4302,6 +4313,7 @@ pub fn source_string_caller(value: String) -> String {
                 custom_schemas: data::Storage::Static(&[]),
                 external_schemas: data::Storage::Static(&[]),
                 constructions: data::Storage::Static(&[]),
+                restorations: data::Storage::Static(&[]),
                 construction_customs: data::Storage::Static(&[]),
                 construction_externals: data::Storage::Static(&[]),
                 native_rules: None,

@@ -1,5 +1,5 @@
 data::HostedEntryArtifact {
-    format: 28,
+    format: 29,
     program: data::ProgramTables {
         root: data::source::module_id(0),
         modules: data::Storage::Static(&[
@@ -1364,6 +1364,7 @@ pub fn bits_with_boolean_guard(
             types: data::Storage::Static(&[]),
             tuple_items: data::Storage::Static(&[]),
             function_items: data::Storage::Static(&[]),
+            lifetimes: data::Storage::Static(&[]),
         },
         custom_types: data::type_::CustomTypeTable {
             types: data::Storage::Static(&[]),
@@ -1371,6 +1372,8 @@ pub fn bits_with_boolean_guard(
         },
         external_types: data::type_::ExternalTypeTable {
             types: data::Storage::Static(&[]),
+            lifetimes: data::Storage::Static(&[]),
+            definitions: data::Storage::Static(&[]),
         },
         value_shapes: data::type_::ValueShapeTable {
             shapes: data::Storage::Static(&[

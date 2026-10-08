@@ -88,6 +88,17 @@ pub(super) fn plain(
     artifact: &ModuleArtifact<std::convert::Infallible>,
 ) -> Result<AdmittedModule<'_, std::convert::Infallible>, PreparedError> {
     format(artifact.format)?;
+    if artifact
+        .program
+        .custom_types
+        .definitions
+        .iter()
+        .any(|definition| definition.native_access.is_some())
+    {
+        return Err(PreparedError::from(
+            Error::<std::convert::Infallible>::Types(type_::TypeError::Definition),
+        ));
+    }
     module(artifact, &functions::InfallibleHosts).map_err(PreparedError::from)
 }
 
@@ -986,6 +997,9 @@ pub fn main() {
                     let mut list_types = artifact.program.list_types.types.to_vec();
                     list_types.push(ListStorageTypeId::Int(alias_type));
                     artifact.program.list_types.types = list_types.into();
+                    let mut lifetimes = artifact.program.list_types.lifetimes.to_vec();
+                    lifetimes.push(crate::HostValueLifetime::LoadedOwner);
+                    artifact.program.list_types.lifetimes = lifetimes.into();
                     let shapes = &mut artifact.program.value_shapes;
                     let alias_shape = ValueShapeId(shapes.shapes.len());
                     let mut descriptors = shapes.shapes.to_vec();
@@ -1368,6 +1382,28 @@ pub fn main() { calculate(7, #(2, True), Boxed(5), [20]) }
         assert_eq!(
             crate::run_main(&execution, &mut Vec::new()).unwrap(),
             crate::Value::Int(42.into())
+        );
+    }
+
+    #[test]
+    fn plain_artifacts_reject_a_host_only_custom_permission() {
+        let typed = crate::compile_typed_module(
+            "example",
+            "src/example.gleam",
+            "pub opaque type Handle { Handle(Int) }\npub fn main() { 42 }",
+        )
+        .unwrap();
+        let (bindings, _) = ModuleBuilder::new(typed)
+            .unwrap()
+            .function(FunctionDeclaration::<(), BigInt>::new("main"))
+            .unwrap();
+        let mut artifact = artifact(bindings.prepare());
+        let mut definitions = artifact.program.custom_types.definitions.to_vec();
+        definitions[0].native_access = Some(crate::HostCustomAccess::Retained);
+        artifact.program.custom_types.definitions = definitions.into();
+        assert_eq!(
+            plain(&artifact).err().unwrap().to_string(),
+            "invalid prepared program: Types(Definition); regenerate the prepared program"
         );
     }
 
@@ -1907,27 +1943,27 @@ pub fn main() { let assert 3 = choose(Ok(False)) Nil }
         for (format, expected) in [
             (
                 1,
-                "prepared format 1 is incompatible with format 28; regenerate the prepared program",
+                "prepared format 1 is incompatible with format 29; regenerate the prepared program",
             ),
             (
                 8,
-                "prepared format 8 is incompatible with format 28; regenerate the prepared program",
+                "prepared format 8 is incompatible with format 29; regenerate the prepared program",
             ),
             (
                 19,
-                "prepared format 19 is incompatible with format 28; regenerate the prepared program",
+                "prepared format 19 is incompatible with format 29; regenerate the prepared program",
             ),
             (
                 20,
-                "prepared format 20 is incompatible with format 28; regenerate the prepared program",
+                "prepared format 20 is incompatible with format 29; regenerate the prepared program",
             ),
             (
                 22,
-                "prepared format 22 is incompatible with format 28; regenerate the prepared program",
+                "prepared format 22 is incompatible with format 29; regenerate the prepared program",
             ),
             (
                 23,
-                "prepared format 23 is incompatible with format 28; regenerate the prepared program",
+                "prepared format 23 is incompatible with format 29; regenerate the prepared program",
             ),
         ] {
             artifact.format = format;
@@ -2045,7 +2081,7 @@ pub fn main() { let assert 3 = choose(Ok(False)) Nil }
             (
                 Change::Format,
                 Some(
-                    "prepared format 1 is incompatible with format 28; regenerate the prepared program",
+                    "prepared format 1 is incompatible with format 29; regenerate the prepared program",
                 ),
             ),
             (
@@ -2270,7 +2306,7 @@ pub fn main() { let assert 3 = choose(Ok(False)) Nil }
             (
                 Change::Format,
                 Some(
-                    "prepared format 1 is incompatible with format 28; regenerate the prepared program",
+                    "prepared format 1 is incompatible with format 29; regenerate the prepared program",
                 ),
             ),
             (

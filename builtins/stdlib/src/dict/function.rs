@@ -30,6 +30,7 @@ pub(super) mod provider {
         parameters = [Key, Item],
         input = DictInput,
         payload = DictPayload,
+        lifetime = loaded_owner,
         manual,
     )]
     pub struct DictValue<Key, Item>;
@@ -39,6 +40,7 @@ pub(super) mod provider {
         parameters = [Key, Item],
         input = TransientDictInput,
         payload = DictPayload,
+        lifetime = loaded_owner,
         manual,
     )]
     pub(super) struct TransientDictValue<Key, Item>;

@@ -200,7 +200,7 @@ fn retains_concrete_generic_keys_and_values() {
         stored: HostExternal<'call, StoreMap>,
     ) -> Result<HostCallCompletion<'call, FirstParameter>, HostCallError> {
         let payload = call.external_payload(stored);
-        let key = payload.restore_argument(&mut call, |payload| &payload.key);
+        let key = payload.restore_argument(&mut call, |payload| &payload.key)?;
         Ok(call.return_value(key))
     }
 
@@ -209,7 +209,7 @@ fn retains_concrete_generic_keys_and_values() {
         stored: HostExternal<'call, ValueMap>,
     ) -> Result<HostCallCompletion<'call, FirstParameter>, HostCallError> {
         let payload = call.external_payload(stored);
-        let value = payload.restore_argument(&mut call, |payload| &payload.value);
+        let value = payload.restore_argument(&mut call, |payload| &payload.value)?;
         Ok(call.return_value(value))
     }
 
@@ -338,7 +338,7 @@ fn constructs_retained_externals_inside_compound_returns() {
         stored: HostExternal<'call, StoreMap>,
     ) -> Result<HostCallCompletion<'call, FirstParameter>, HostCallError> {
         let payload = call.external_payload(stored);
-        let key = payload.restore_argument(&mut call, |payload| &payload.key);
+        let key = payload.restore_argument(&mut call, |payload| &payload.key)?;
         Ok(call.return_value(key))
     }
 
@@ -420,7 +420,7 @@ fn retains_nested_compounds_externals_and_function_identity() {
         stored: HostExternal<'call, StoreMap>,
     ) -> Result<HostCallCompletion<'call, FirstParameter>, HostCallError> {
         let payload = call.external_payload(stored);
-        let key = payload.restore_argument(&mut call, |payload| &payload.key);
+        let key = payload.restore_argument(&mut call, |payload| &payload.key)?;
         Ok(call.return_value(key))
     }
 
@@ -429,7 +429,7 @@ fn retains_nested_compounds_externals_and_function_identity() {
         stored: HostExternal<'call, ValueMap>,
     ) -> Result<HostCallCompletion<'call, FirstParameter>, HostCallError> {
         let payload = call.external_payload(stored);
-        let value = payload.restore_argument(&mut call, |payload| &payload.value);
+        let value = payload.restore_argument(&mut call, |payload| &payload.value)?;
         Ok(call.return_value(value))
     }
 
@@ -535,7 +535,7 @@ fn invokes_a_retained_callable_through_nested_host_reentry() {
         stored: HostExternal<'call, StoredCallback>,
     ) -> Result<HostCallCompletion<'call, IntFunction>, HostCallError> {
         let payload = call.external_payload(stored);
-        let function = payload.restore(&mut call, |payload| &payload.function);
+        let function = payload.restore(&mut call, |payload| &payload.function)?;
         Ok(call.return_value(function))
     }
 
@@ -546,7 +546,7 @@ fn invokes_a_retained_callable_through_nested_host_reentry() {
         value: BigInt,
     ) -> Result<geam_core::HostCallContinuation<'call, BigInt>, HostCallError> {
         let payload = call.external_payload(stored);
-        let function = payload.restore(&mut call, |payload| &payload.function);
+        let function = payload.restore(&mut call, |payload| &payload.function)?;
         let function = call.owned_callable(function, &constructions);
         drop(payload);
         Ok(call.resume(constructions, move |context| {

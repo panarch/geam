@@ -1,5 +1,5 @@
 data::HostedEntryArtifact {
-    format: 28,
+    format: 29,
     program: data::ProgramTables {
         root: data::source::module_id(2),
         modules: data::Storage::Static(&[
@@ -284,6 +284,7 @@ pub fn main() {
             types: data::Storage::Static(&[]),
             tuple_items: data::Storage::Static(&[]),
             function_items: data::Storage::Static(&[]),
+            lifetimes: data::Storage::Static(&[]),
         },
         custom_types: data::type_::CustomTypeTable {
             types: data::Storage::Static(&[]),
@@ -291,6 +292,16 @@ pub fn main() {
         },
         external_types: data::type_::ExternalTypeTable {
             types: data::Storage::Static(&[]),
+            lifetimes: data::Storage::Static(&[]),
+            definitions: data::Storage::Static(&[
+                data::host::ExternalSchema {
+                    package: data::Text::Static("work_fixture"),
+                    module: data::Text::Static("fixture/work"),
+                    name: data::Text::Static("Work"),
+                    parameter_count: 1,
+                    lifetime: data::host::HostValueLifetime::Execution,
+                },
+            ]),
         },
         value_shapes: data::type_::ValueShapeTable {
             shapes: data::Storage::Static(&[

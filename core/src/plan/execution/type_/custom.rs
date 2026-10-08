@@ -27,6 +27,8 @@ pub struct CustomTypeTable {
 #[derive(Clone)]
 pub struct CustomTypeDescriptor {
     pub type_: NominalTypeMetadata,
+    pub native_visible: bool,
+    pub lifetime: crate::host::HostValueLifetime,
     pub constructor_count: usize,
     pub constructors: Table<CustomConstructorDescriptor>,
 }
@@ -73,12 +75,15 @@ impl CustomConstructorId {
 
 impl CustomTypeTable {
     pub(crate) fn native_constructor_tags(&self) -> impl Iterator<Item = &str> {
-        self.types.iter().flat_map(|type_| {
-            type_
-                .constructors
-                .iter()
-                .map(|constructor| constructor.native_tag.as_str())
-        })
+        self.types
+            .iter()
+            .filter(|type_| type_.native_visible)
+            .flat_map(|type_| {
+                type_
+                    .constructors
+                    .iter()
+                    .map(|constructor| constructor.native_tag.as_str())
+            })
     }
 
     pub(in crate::plan::execution) fn new(
@@ -94,6 +99,10 @@ impl CustomTypeTable {
 
     pub(crate) fn value_type(&self, id: CustomTypeId) -> plan::CustomType {
         self.types[id.index()].type_.custom_type()
+    }
+
+    pub(crate) fn native_visible(&self, id: CustomTypeId) -> bool {
+        self.types[id.index()].native_visible
     }
 
     pub(crate) fn constructor(&self, id: CustomConstructorId) -> &CustomConstructorDescriptor {
@@ -129,10 +138,13 @@ impl CustomTypeDescriptor {
     pub(in crate::plan::execution) fn new(
         constructor_count: usize,
         type_: plan::CustomType,
+        native_visible: bool,
         constructors: Vec<CustomConstructorDescriptor>,
     ) -> Self {
         Self {
             type_: NominalTypeMetadata::from_custom(&type_),
+            native_visible,
+            lifetime: crate::host::HostValueLifetime::LoadedOwner,
             constructor_count,
             constructors: constructors.into(),
         }
@@ -233,6 +245,8 @@ impl Emit for CustomTypeDescriptor {
     fn emit(&self, output: &mut Rust) {
         let Self {
             type_,
+            native_visible,
+            lifetime,
             constructor_count,
             constructors,
         } = self;
@@ -240,6 +254,8 @@ impl Emit for CustomTypeDescriptor {
             "type_::CustomTypeDescriptor",
             &[
                 ("type_", type_),
+                ("native_visible", native_visible),
+                ("lifetime", lifetime),
                 ("constructor_count", constructor_count),
                 ("constructors", constructors),
             ],

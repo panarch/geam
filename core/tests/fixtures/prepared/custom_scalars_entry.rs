@@ -1,5 +1,5 @@
 data::HostedEntryArtifact {
-    format: 28,
+    format: 29,
     program: data::ProgramTables {
         root: data::source::module_id(0),
         modules: data::Storage::Static(&[
@@ -3853,6 +3853,7 @@ pub fn main() {
             types: data::Storage::Static(&[]),
             tuple_items: data::Storage::Static(&[]),
             function_items: data::Storage::Static(&[]),
+            lifetimes: data::Storage::Static(&[]),
         },
         custom_types: data::type_::CustomTypeTable {
             types: data::Storage::Static(&[
@@ -3863,6 +3864,8 @@ pub fn main() {
                         name: data::Text::Static("Entry"),
                         arguments: data::Storage::Static(&[]),
                     },
+                    native_visible: true,
+                    lifetime: data::host::HostValueLifetime::LoadedOwner,
                     constructor_count: 3,
                     constructors: data::Storage::Static(&[
                         data::type_::CustomConstructorDescriptor {
@@ -3915,6 +3918,8 @@ pub fn main() {
                         name: data::Text::Static("Data"),
                         arguments: data::Storage::Static(&[]),
                     },
+                    native_visible: true,
+                    lifetime: data::host::HostValueLifetime::LoadedOwner,
                     constructor_count: 1,
                     constructors: data::Storage::Static(&[
                         data::type_::CustomConstructorDescriptor {
@@ -3954,6 +3959,8 @@ pub fn main() {
                         name: data::Text::Static("Nested"),
                         arguments: data::Storage::Static(&[]),
                     },
+                    native_visible: false,
+                    lifetime: data::host::HostValueLifetime::LoadedOwner,
                     constructor_count: 1,
                     constructors: data::Storage::Static(&[
                         data::type_::CustomConstructorDescriptor {
@@ -3982,6 +3989,8 @@ pub fn main() {
                     name: data::Text::Static("Data"),
                     publicity: data::type_::CustomTypePublicity::Public,
                     opaque: false,
+                    native_access: None,
+                    retention_lifetime: data::host::HostValueLifetime::LoadedOwner,
                     parameters: 0,
                     constructors: data::Storage::Static(&[
                         data::type_::ConstructorDefinition {
@@ -4009,6 +4018,8 @@ pub fn main() {
                     name: data::Text::Static("Entry"),
                     publicity: data::type_::CustomTypePublicity::Public,
                     opaque: false,
+                    native_access: None,
+                    retention_lifetime: data::host::HostValueLifetime::LoadedOwner,
                     parameters: 0,
                     constructors: data::Storage::Static(&[
                         data::type_::ConstructorDefinition {
@@ -4041,6 +4052,8 @@ pub fn main() {
                     name: data::Text::Static("Nested"),
                     publicity: data::type_::CustomTypePublicity::Private,
                     opaque: false,
+                    native_access: None,
+                    retention_lifetime: data::host::HostValueLifetime::LoadedOwner,
                     parameters: 0,
                     constructors: data::Storage::Static(&[
                         data::type_::ConstructorDefinition {
@@ -4063,6 +4076,8 @@ pub fn main() {
         },
         external_types: data::type_::ExternalTypeTable {
             types: data::Storage::Static(&[]),
+            lifetimes: data::Storage::Static(&[]),
+            definitions: data::Storage::Static(&[]),
         },
         value_shapes: data::type_::ValueShapeTable {
             shapes: data::Storage::Static(&[

@@ -10,7 +10,7 @@ use geam_core::provider::advanced::{
     DynamicKind, Equality, Hashing, Index0, Inspection, Retained, RetainedExternalPayload,
     StoredDynamic,
 };
-use geam_core::provider::{Call, List, Stored, Value};
+use geam_core::provider::{Call, HostResult, List, Stored, Value};
 use geam_core::{
     EchoOutput, EchoSink, HostComponentProfile, HostModule, HostProfile, HostProviderComponent,
     HostProviderComponentRegistration, HostProviderSet, HostedExecution, ModuleSource,
@@ -88,9 +88,10 @@ mod dynamic_provider {
     use super::declarations;
     use super::declarations::Token;
     use super::{
-        BigInt, Call, DynamicKind, Equality, Hashing, Index0, Inspection, List, Retained,
-        RetainedExternalPayload, Stored, StoredDynamic, StringValue, Value,
+        BigInt, Call, DynamicKind, Equality, Hashing, HostResult, Index0, Inspection, List,
+        Retained, RetainedExternalPayload, Stored, StoredDynamic, StringValue, Value,
     };
+    use geam_core::provider::Restore;
 
     #[geam_macros::external(name = "Dynamic", retained)]
     struct Dynamic {
@@ -111,10 +112,11 @@ mod dynamic_provider {
     #[geam_macros::function]
     fn restore_envelope(
         #[geam_macros::call] call: &mut Call<()>,
+        #[geam_macros::restore] restore: Restore<Envelope>,
         value: &Dynamic,
     ) -> Result<BigInt, ()> {
         let EnvelopeInput::Count(declarations::CountInput::Count(number)) = call
-            .restore_dynamic::<Envelope, Dynamic>(&value.value)
+            .restore_dynamic::<Envelope, Dynamic>(&restore, &value.value)
             .ok_or(())?;
         Ok(number)
     }
@@ -122,10 +124,11 @@ mod dynamic_provider {
     #[geam_macros::function]
     fn restore_envelope_list(
         #[geam_macros::call] call: &mut Call<()>,
+        #[geam_macros::restore] restore: Restore<List<Envelope>>,
         value: &Dynamic,
     ) -> Result<BigInt, ()> {
         let values = call
-            .restore_dynamic::<List<Envelope>, Dynamic>(&value.value)
+            .restore_dynamic::<List<Envelope>, Dynamic>(&restore, &value.value)
             .ok_or(())?;
         let EnvelopeInput::Count(declarations::CountInput::Count(number)) =
             values.get(1).ok_or(())?;
@@ -167,24 +170,30 @@ mod dynamic_provider {
     }
 
     #[geam_macros::function]
-    fn cast<Item>(#[geam_macros::call] call: &mut Call<()>, value: Value<Item>) -> Dynamic {
-        Dynamic {
+    fn cast<Item>(
+        #[geam_macros::call] call: &mut Call<()>,
+        value: Value<Item>,
+    ) -> HostResult<Dynamic> {
+        Ok(Dynamic {
             value: call.store_dynamic(value),
-        }
+        })
     }
 
     #[geam_macros::function]
-    fn cast_int(#[geam_macros::call] call: &mut Call<()>, value: BigInt) -> Dynamic {
-        Dynamic {
+    fn cast_int(#[geam_macros::call] call: &mut Call<()>, value: BigInt) -> HostResult<Dynamic> {
+        Ok(Dynamic {
             value: call.store_dynamic(value),
-        }
+        })
     }
 
     #[geam_macros::function]
-    fn cast_int_list(#[geam_macros::call] call: &mut Call<()>, values: List<BigInt>) -> Dynamic {
-        Dynamic {
+    fn cast_int_list(
+        #[geam_macros::call] call: &mut Call<()>,
+        values: List<BigInt>,
+    ) -> HostResult<Dynamic> {
+        Ok(Dynamic {
             value: call.store_dynamic(values),
-        }
+        })
     }
 
     #[geam_macros::function]
@@ -236,18 +245,20 @@ mod dynamic_provider {
     #[geam_macros::function]
     fn restore_int(
         #[geam_macros::call] call: &mut Call<()>,
+        #[geam_macros::restore] restore: Restore<BigInt>,
         value: &Dynamic,
     ) -> Result<BigInt, ()> {
-        call.restore_dynamic::<BigInt, Dynamic>(&value.value)
+        call.restore_dynamic::<BigInt, Dynamic>(&restore, &value.value)
             .ok_or(())
     }
 
     #[geam_macros::function]
     fn restore_int_list_length(
         #[geam_macros::call] call: &mut Call<()>,
+        #[geam_macros::restore] restore: Restore<List<BigInt>>,
         value: &Dynamic,
     ) -> Result<BigInt, ()> {
-        call.restore_dynamic::<List<BigInt>, Dynamic>(&value.value)
+        call.restore_dynamic::<List<BigInt>, Dynamic>(&restore, &value.value)
             .map(|values| values.len().into())
             .ok_or(())
     }
@@ -265,10 +276,11 @@ mod dynamic_provider {
     #[geam_macros::function]
     fn token_text(
         #[geam_macros::call] call: &mut Call<()>,
+        #[geam_macros::restore] restore: Restore<Token>,
         value: &Dynamic,
     ) -> Result<StringValue, ()> {
         let token = call
-            .restore_dynamic::<Token, Dynamic>(&value.value)
+            .restore_dynamic::<Token, Dynamic>(&restore, &value.value)
             .ok_or(())?;
         Ok(token.0.clone())
     }
@@ -276,10 +288,11 @@ mod dynamic_provider {
     #[geam_macros::function]
     fn box_contains_nine(
         #[geam_macros::call] call: &mut Call<()>,
+        #[geam_macros::restore] restore: Restore<BoxValue<BigInt>>,
         value: &Dynamic,
     ) -> Result<bool, ()> {
         let boxed = call
-            .restore_dynamic::<BoxValue<BigInt>, Dynamic>(&value.value)
+            .restore_dynamic::<BoxValue<BigInt>, Dynamic>(&restore, &value.value)
             .ok_or(())?;
         let value = call.restore(boxed.value());
         Ok(call.inspect(&value) == "9")
@@ -288,40 +301,45 @@ mod dynamic_provider {
     #[geam_macros::function]
     fn boxed_token_text(
         #[geam_macros::call] call: &mut Call<()>,
+        #[geam_macros::restore] restore: Restore<BoxValue<Token>>,
         value: &Dynamic,
-    ) -> Result<StringValue, ()> {
-        let boxed = call
-            .restore_dynamic::<BoxValue<Token>, Dynamic>(&value.value)
-            .ok_or(())?;
+    ) -> HostResult<Result<StringValue, ()>> {
+        let Some(boxed) = call.restore_dynamic::<BoxValue<Token>, Dynamic>(&restore, &value.value)
+        else {
+            return Ok(Err(()));
+        };
         let token = call.restore(boxed.value());
-        Ok(call.external_payload(token).0.clone())
+        Ok(Ok(call.external_payload(token)?.0.clone()))
     }
 
     #[geam_macros::function]
-    fn tuple_size<Item>(#[geam_macros::call] call: &mut Call<()>, value: Value<Item>) -> BigInt {
+    fn tuple_size<Item>(
+        #[geam_macros::call] call: &mut Call<()>,
+        value: Value<Item>,
+    ) -> HostResult<BigInt> {
         let value = call.store_dynamic::<_, Dynamic>(value);
-        value
+        Ok(value
             .into_tuple_items()
             .map(|items| BigInt::from(items.len()))
-            .unwrap_or_default()
+            .unwrap_or_default())
     }
 
     #[geam_macros::function]
     fn nested_tuple_size<Item>(
         #[geam_macros::call] call: &mut Call<()>,
         value: Value<Item>,
-    ) -> BigInt {
+    ) -> HostResult<BigInt> {
         let value = call.store_dynamic::<_, Dynamic>(value);
         let Ok(items) = value.into_tuple_items() else {
-            return BigInt::default();
+            return Ok(BigInt::default());
         };
-        items
-            .into_vec()
-            .into_iter()
-            .nth(1)
-            .and_then(|value| value.into_tuple_items().ok())
-            .map(|items| BigInt::from(items.len()))
-            .unwrap_or_default()
+        let Some(value) = items.into_vec().into_iter().nth(1) else {
+            return Ok(BigInt::default());
+        };
+        Ok(match value.into_tuple_items() {
+            Ok(items) => BigInt::from(items.len()),
+            Err(_) => BigInt::default(),
+        })
     }
 
     #[geam_macros::function]

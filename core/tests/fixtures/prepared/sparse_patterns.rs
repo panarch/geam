@@ -1,5 +1,5 @@
 data::ModuleArtifact {
-    format: 28,
+    format: 29,
     program: data::ProgramTables {
         root: data::source::module_id(0),
         modules: data::Storage::Static(&[
@@ -1068,6 +1068,9 @@ data::ModuleArtifact {
             ]),
             tuple_items: data::Storage::Static(&[]),
             function_items: data::Storage::Static(&[]),
+            lifetimes: data::Storage::Static(&[
+                data::host::HostValueLifetime::LoadedOwner,
+            ]),
         },
         custom_types: data::type_::CustomTypeTable {
             types: data::Storage::Static(&[
@@ -1080,6 +1083,8 @@ data::ModuleArtifact {
                             data::type_::TypeMetadata::String,
                         ]),
                     },
+                    native_visible: true,
+                    lifetime: data::host::HostValueLifetime::LoadedOwner,
                     constructor_count: 2,
                     constructors: data::Storage::Static(&[
                         data::type_::CustomConstructorDescriptor {
@@ -1116,6 +1121,8 @@ data::ModuleArtifact {
                         name: data::Text::Static("Builder"),
                         arguments: data::Storage::Static(&[]),
                     },
+                    native_visible: true,
+                    lifetime: data::host::HostValueLifetime::LoadedOwner,
                     constructor_count: 1,
                     constructors: data::Storage::Static(&[
                         data::type_::CustomConstructorDescriptor {
@@ -1145,6 +1152,8 @@ data::ModuleArtifact {
                         name: data::Text::Static("Choice"),
                         arguments: data::Storage::Static(&[]),
                     },
+                    native_visible: true,
+                    lifetime: data::host::HostValueLifetime::LoadedOwner,
                     constructor_count: 2,
                     constructors: data::Storage::Static(&[
                         data::type_::CustomConstructorDescriptor {
@@ -1185,6 +1194,8 @@ data::ModuleArtifact {
                             data::type_::TypeMetadata::Int,
                         ]),
                     },
+                    native_visible: true,
+                    lifetime: data::host::HostValueLifetime::LoadedOwner,
                     constructor_count: 2,
                     constructors: data::Storage::Static(&[
                         data::type_::CustomConstructorDescriptor {
@@ -1223,6 +1234,8 @@ data::ModuleArtifact {
                             data::type_::TypeMetadata::String,
                         ]),
                     },
+                    native_visible: true,
+                    lifetime: data::host::HostValueLifetime::LoadedOwner,
                     constructor_count: 2,
                     constructors: data::Storage::Static(&[
                         data::type_::CustomConstructorDescriptor {
@@ -1269,6 +1282,8 @@ data::ModuleArtifact {
                             data::type_::TypeMetadata::String,
                         ]),
                     },
+                    native_visible: true,
+                    lifetime: data::host::HostValueLifetime::LoadedOwner,
                     constructor_count: 1,
                     constructors: data::Storage::Static(&[
                         data::type_::CustomConstructorDescriptor {
@@ -1298,6 +1313,8 @@ data::ModuleArtifact {
                             data::type_::TypeMetadata::List(data::Storage::Static(&data::type_::TypeMetadata::String)),
                         ]),
                     },
+                    native_visible: true,
+                    lifetime: data::host::HostValueLifetime::LoadedOwner,
                     constructor_count: 2,
                     constructors: data::Storage::Static(&[]),
                 },
@@ -1309,6 +1326,8 @@ data::ModuleArtifact {
                     name: data::Text::Static("Builder"),
                     publicity: data::type_::CustomTypePublicity::Public,
                     opaque: false,
+                    native_access: None,
+                    retention_lifetime: data::host::HostValueLifetime::LoadedOwner,
                     parameters: 0,
                     constructors: data::Storage::Static(&[
                         data::type_::ConstructorDefinition {
@@ -1335,6 +1354,8 @@ data::ModuleArtifact {
                     name: data::Text::Static("Choice"),
                     publicity: data::type_::CustomTypePublicity::Public,
                     opaque: false,
+                    native_access: None,
+                    retention_lifetime: data::host::HostValueLifetime::LoadedOwner,
                     parameters: 0,
                     constructors: data::Storage::Static(&[
                         data::type_::ConstructorDefinition {
@@ -1365,6 +1386,8 @@ data::ModuleArtifact {
                     name: data::Text::Static("Grow"),
                     publicity: data::type_::CustomTypePublicity::Public,
                     opaque: false,
+                    native_access: None,
+                    retention_lifetime: data::host::HostValueLifetime::LoadedOwner,
                     parameters: 1,
                     constructors: data::Storage::Static(&[
                         data::type_::ConstructorDefinition {
@@ -1399,6 +1422,8 @@ data::ModuleArtifact {
                     name: data::Text::Static("Option"),
                     publicity: data::type_::CustomTypePublicity::Public,
                     opaque: false,
+                    native_access: None,
+                    retention_lifetime: data::host::HostValueLifetime::LoadedOwner,
                     parameters: 1,
                     constructors: data::Storage::Static(&[
                         data::type_::ConstructorDefinition {
@@ -1422,6 +1447,8 @@ data::ModuleArtifact {
                     name: data::Text::Static("Wrapped"),
                     publicity: data::type_::CustomTypePublicity::Public,
                     opaque: false,
+                    native_access: None,
+                    retention_lifetime: data::host::HostValueLifetime::LoadedOwner,
                     parameters: 1,
                     constructors: data::Storage::Static(&[
                         data::type_::ConstructorDefinition {
@@ -1439,6 +1466,8 @@ data::ModuleArtifact {
         },
         external_types: data::type_::ExternalTypeTable {
             types: data::Storage::Static(&[]),
+            lifetimes: data::Storage::Static(&[]),
+            definitions: data::Storage::Static(&[]),
         },
         value_shapes: data::type_::ValueShapeTable {
             shapes: data::Storage::Static(&[

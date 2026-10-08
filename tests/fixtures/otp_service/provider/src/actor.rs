@@ -64,10 +64,10 @@ fn log_warning<'call, Profile: OtpProfile>(
     format: HostExternal<'call, Charlist>,
     arguments: HostList<'call, Charlist>,
 ) -> Result<HostCallCompletion<'call, ()>, HostCallError> {
-    let mut message = charlist_string(&mut call, format).to_string();
+    let mut message = charlist_string(&mut call, format)?.to_string();
     let mut index = 0;
     while let Some(argument) = call.list_item::<Charlist>(arguments, index) {
-        let argument = charlist_string(&mut call, argument).to_string();
+        let argument = charlist_string(&mut call, argument)?.to_string();
         message = message.replacen("~s", &argument, 1);
         index += 1;
     }
@@ -77,7 +77,134 @@ fn log_warning<'call, Profile: OtpProfile>(
 
 #[cfg(test)]
 mod tests {
-    use crate::test_support::{Profile, native_boundary, run_source};
+    use crate::test_support::{Profile, host_failure, native_boundary, run_source};
+    use geam::gleam_erlang::{Charlist, CharlistSchema, Component as ErlangComponent};
+    use geam::host::{
+        HostCallCompletion, HostCallError, HostConstructions, HostListType, HostProviderModule,
+        HostStoredValue, HostTypeIndex0, HostTypeIndexNext, HostTypeList, HostTypeListEnd,
+    };
+    use geam::{ModuleSource, PackageSource};
+    use std::sync::{Arc, Mutex};
+
+    type CharlistConstructions =
+        HostTypeList<Charlist, HostTypeList<HostListType<char>, HostTypeListEnd>>;
+
+    fn retained_characters(
+        previous: Arc<Mutex<Option<HostStoredValue<HostListType<char>>>>>,
+    ) -> impl for<'call> Fn(
+        crate::Call<'call, Profile, Charlist>,
+        HostConstructions<'call, CharlistConstructions>,
+    ) -> Result<HostCallCompletion<'call, Charlist>, HostCallError> {
+        move |mut call, constructions| {
+            let retained = previous.lock().unwrap().take();
+            let construction = constructions.at::<HostTypeIndex0>();
+            let value = match retained {
+                Some(characters) => call.construct_external_with_binding::<
+                    ErlangComponent<Profile>,
+                    CharlistSchema,
+                    HostTypeListEnd,
+                >(construction, characters),
+                None => {
+                    let characters = call.construct_list(
+                        constructions.at::<HostTypeIndexNext<HostTypeIndex0>>(),
+                        "retained".chars(),
+                    );
+                    call.construct_retained_external_with_binding::<
+                        ErlangComponent<Profile>,
+                        CharlistSchema,
+                        HostTypeListEnd,
+                    >(construction, |builder| {
+                        *previous.lock().unwrap() =
+                            Some(builder.store::<HostListType<char>>(characters));
+                        builder.store::<HostListType<char>>(characters)
+                    })
+                }
+            };
+            Ok(call.return_value(value))
+        }
+    }
+
+    #[test]
+    fn warning_format_and_arguments_reject_characters_from_another_loaded_program() {
+        for warning in [
+            "actor.log_warning(retained(), [])",
+            "actor.log_warning(charlist.from_string(\"~s\"), [retained()])",
+        ] {
+            let previous = Arc::new(Mutex::new(None));
+            for body in ["let _ = retained() Nil", warning] {
+                let providers = geam::gleam_erlang::host_providers::<Profile>()
+                    .unwrap()
+                    .into_iter()
+                    .filter(|module| module.module() == "gleam/erlang/charlist")
+                    .chain([
+                        HostProviderModule::new("application", "main")
+                            .unwrap()
+                            .with_scoped_function_and_constructions::<crate::Component<Profile>, (), Charlist, CharlistConstructions, _>(
+                                "retained", retained_characters(previous.clone()),
+                            ).unwrap(),
+                        HostProviderModule::new("gleam_otp", "gleam/otp/actor")
+                            .unwrap()
+                            .with_scoped_function::<crate::Component<Profile>, (Charlist, HostListType<Charlist>), (), _>(
+                                "log_warning", super::log_warning::<Profile>,
+                            ).unwrap(),
+                    ]);
+                let result = run_source(
+                    [
+                        PackageSource::new(
+                            "gleam_erlang",
+                            Vec::<String>::new(),
+                            [ModuleSource::new(
+                                "gleam/erlang/charlist",
+                                "charlist.gleam",
+                                r#"
+pub type Charlist
+@external(erlang, "unicode", "characters_to_list") pub fn from_string(value: String) -> Charlist
+@external(erlang, "unicode", "characters_to_binary") pub fn to_string(value: Charlist) -> String
+"#,
+                            )],
+                        ),
+                        PackageSource::new(
+                            "gleam_otp",
+                            ["gleam_erlang"],
+                            [ModuleSource::new(
+                                "gleam/otp/actor",
+                                "actor.gleam",
+                                r#"
+import gleam/erlang/charlist.{type Charlist}
+@external(erlang, "host", "log_warning") pub fn log_warning(format: Charlist, arguments: List(Charlist)) -> Nil
+"#,
+                            )],
+                        ),
+                        PackageSource::new(
+                            "application",
+                            ["gleam_erlang", "gleam_otp"],
+                            [ModuleSource::new(
+                                "main",
+                                "main.gleam",
+                                format!(
+                                    r#"
+import gleam/erlang/charlist
+import gleam/otp/actor
+@external(erlang, "host", "retained") fn retained() -> charlist.Charlist
+pub fn main() {{ {body} }}
+"#
+                                ),
+                            )],
+                        ),
+                    ],
+                    providers,
+                );
+                if body == warning {
+                    assert_eq!(
+                        host_failure(result).as_deref(),
+                        Some("retained value belongs to another owner or source type"),
+                    );
+                } else {
+                    assert_eq!(result.unwrap(), geam::Value::Nil);
+                }
+            }
+        }
+    }
 
     #[test]
     fn native_converter_restores_system_callbacks_and_preserves_unexpected_input() {

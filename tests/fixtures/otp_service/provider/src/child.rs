@@ -1,12 +1,12 @@
 use crate::schema::{StartError, StartResult, Started as StartedType, StartedConstructor};
-use crate::{Call, Component, One, OtpProfile};
+use crate::{Call, Component, OtpProfile};
 use geam::execution::ExecutionUnit;
 use geam::gleam_erlang::service::{Processes, with_current_process};
 use geam::gleam_erlang::{Component as ErlangComponent, Pid, PidSchema};
 use geam::gleam_stdlib::provider_support::{GleamError, GleamOk};
 use geam::host::{
-    HostCallError, HostCustom, HostExecutionContext, HostExecutionError, HostType, HostTypeIndex0,
-    HostTypeListEnd,
+    HostCallError, HostCustom, HostExecutionContext, HostExecutionError, HostType, HostTypeAt,
+    HostTypeIndex0, HostTypeListEnd, HostTypeSequence,
 };
 use geam::provider::advanced::NativeValue;
 use std::collections::VecDeque;
@@ -145,11 +145,14 @@ impl RestartBudget {
     }
 }
 
-pub(super) async fn stop<Profile: OtpProfile>(
-    context: &HostExecutionContext<'_, Profile, Component<Profile>, One<Pid>>,
+pub(super) async fn stop<Profile: OtpProfile, Permissions>(
+    context: &HostExecutionContext<'_, Profile, Component<Profile>, Permissions>,
     target: &ExecutionUnit,
     shutdown: Shutdown,
-) -> Result<(), HostExecutionError> {
+) -> Result<(), HostExecutionError>
+where
+    Permissions: HostTypeSequence + HostTypeAt<HostTypeIndex0, Type = Pid>,
+{
     let stopping = target.clone();
     let deadline = with_current_process(context, move |mut process, constructions| {
         let deadline = shutdown_deadline(process.call().clock().now(), shutdown)?;

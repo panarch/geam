@@ -99,6 +99,7 @@ pub(super) enum TypeError {
         name: String,
     },
     FunctionRepresentation,
+    Lifetime,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
@@ -147,6 +148,16 @@ impl<'data> Types<'data> {
     }
 
     fn validate(&self) -> Result<(), TypeError> {
+        let mut external_names = std::collections::BTreeSet::new();
+        for schema in self.externals.definitions.iter() {
+            if !external_names.insert((
+                schema.package.as_str(),
+                schema.module.as_str(),
+                schema.name.as_str(),
+            )) {
+                return Err(TypeError::Definition);
+            }
+        }
         self.definitions()?;
         let mut roots = Vec::new();
         for (index, list) in self.lists.types.iter().enumerate() {
@@ -198,6 +209,14 @@ impl<'data> Types<'data> {
             }
         }
         for descriptor in self.externals.types.iter() {
+            if !self.externals.definitions.iter().any(|schema| {
+                schema.package == descriptor.package
+                    && schema.module == descriptor.module
+                    && schema.name == descriptor.name
+                    && schema.parameter_count == descriptor.arguments.len()
+            }) {
+                return Err(TypeError::Definition);
+            }
             roots.extend(descriptor.arguments.iter().map(TypeRef::Metadata));
         }
         if self.shapes.shapes.len() != self.shapes.shape_types.len() {
@@ -263,6 +282,14 @@ impl<'data> Types<'data> {
                 }
             }
         }
+        if !crate::plan::execution::type_::lifetime::ValueLifetimes::new(
+            &self.customs.definitions,
+            &self.externals.definitions,
+        )
+        .matches(self.lists, self.customs, self.externals)
+        {
+            return Err(TypeError::Lifetime);
+        }
         Ok(())
     }
 
@@ -274,6 +301,12 @@ impl<'data> Types<'data> {
 
     pub(super) fn value(&self, value: &ValueType) -> Result<(), TypeError> {
         self.walk(vec![TypeRef::Value(value)])
+    }
+
+    pub(super) fn external_definitions(
+        &self,
+    ) -> &[crate::plan::execution::host::registration::ExternalSchema] {
+        &self.externals.definitions
     }
 
     pub(super) fn external_types(
@@ -380,7 +413,7 @@ impl<'data> Types<'data> {
             match value {
                 TypeRef::Value(value) => self.value_children(value, &mut children)?,
                 TypeRef::List(id) => self.list_children(id, &mut children)?,
-                TypeRef::Metadata(value) => Self::metadata_children(value, &mut children),
+                TypeRef::Metadata(value) => self.metadata_children(value, &mut children)?,
                 TypeRef::Shape(index) => self.shape_children(index, &mut children)?,
             }
             stack.extend(children.drain(..).map(Visit::Enter));
@@ -488,7 +521,11 @@ impl<'data> Types<'data> {
         Ok(())
     }
 
-    fn metadata_children<'value>(value: &'value TypeMetadata, stack: &mut Vec<TypeRef<'value>>) {
+    fn metadata_children<'value>(
+        &self,
+        value: &'value TypeMetadata,
+        stack: &mut Vec<TypeRef<'value>>,
+    ) -> Result<(), TypeError> {
         match value {
             TypeMetadata::Parameter(_)
             | TypeMetadata::Int
@@ -504,10 +541,23 @@ impl<'data> Types<'data> {
                 stack.extend(function.arguments.iter().map(TypeRef::Metadata));
                 stack.push(TypeRef::Metadata(&function.return_));
             }
-            TypeMetadata::Custom(nominal) | TypeMetadata::External(nominal) => {
+            TypeMetadata::Custom(nominal) => {
+                self.definition(nominal)?;
+                stack.extend(nominal.arguments.iter().map(TypeRef::Metadata));
+            }
+            TypeMetadata::External(nominal) => {
+                if !self.externals.definitions.iter().any(|schema| {
+                    schema.package == nominal.package
+                        && schema.module == nominal.module
+                        && schema.name == nominal.name
+                        && schema.parameter_count == nominal.arguments.len()
+                }) {
+                    return Err(TypeError::Definition);
+                }
                 stack.extend(nominal.arguments.iter().map(TypeRef::Metadata));
             }
         }
+        Ok(())
     }
 
     fn shape_children<'value>(
@@ -718,6 +768,7 @@ mod tests {
     };
 
     static LISTS: ListTypeTable = ListTypeTable {
+        lifetimes: Table::Static(&[]),
         types: Table::Static(&[]),
         tuple_items: Table::Static(&[]),
         function_items: Table::Static(&[]),
@@ -727,6 +778,8 @@ mod tests {
         types: Table::Static(&[]),
     };
     static EXTERNALS: ExternalTypeTable = ExternalTypeTable {
+        lifetimes: Table::Static(&[]),
+        definitions: Table::Static(&[]),
         types: Table::Static(&[]),
     };
     static SHAPES: ValueShapeTable = ValueShapeTable {
@@ -760,6 +813,141 @@ mod tests {
                 .map(|_| ()),
                 Ok(()),
                 "{source}"
+            );
+        }
+    }
+
+    #[test]
+    fn cached_lifetimes_cannot_relax_or_restrict_the_source_type_contract() {
+        use crate::HostValueLifetime::{Execution, LoadedOwner};
+        let typed = crate::compile_typed_module(
+            "example",
+            "src/example.gleam",
+            r#"
+pub opaque type Box(a) { Box(a) }
+pub fn main() { #([Box(42)], [Box(fn(value: Int) { value + 1 })]) }
+"#,
+        )
+        .unwrap();
+        let plan = crate::ExecutionPlan::from_module_plan(crate::plan_module(typed).unwrap());
+        let common = &plan.program.common;
+        assert_eq!(
+            common.list_types.lifetimes.as_ref(),
+            [LoadedOwner, Execution]
+        );
+        for cached in [
+            vec![],
+            vec![LoadedOwner],
+            vec![Execution, Execution],
+            vec![LoadedOwner, LoadedOwner],
+        ] {
+            let mut lists = common.list_types.as_ref().clone();
+            lists.lifetimes = cached.into();
+            assert_eq!(
+                Types::admit(
+                    &lists,
+                    &common.custom_types,
+                    &common.external_types,
+                    &common.value_shapes
+                )
+                .err(),
+                Some(TypeError::Lifetime)
+            );
+        }
+        for (index, lifetime) in [(0, Execution), (1, LoadedOwner)] {
+            let mut customs = common.custom_types.as_ref().clone();
+            let mut descriptors = customs.types.to_vec();
+            descriptors[index].lifetime = lifetime;
+            customs.types = descriptors.into();
+            assert_eq!(
+                Types::admit(
+                    &common.list_types,
+                    &customs,
+                    &common.external_types,
+                    &common.value_shapes
+                )
+                .err(),
+                Some(TypeError::Lifetime)
+            );
+        }
+        let mut customs = common.custom_types.as_ref().clone();
+        let mut definitions = customs.definitions.to_vec();
+        definitions[0].retention_lifetime = Execution;
+        customs.definitions = definitions.into();
+        assert_eq!(
+            Types::admit(
+                &common.list_types,
+                &customs,
+                &common.external_types,
+                &common.value_shapes
+            )
+            .err(),
+            Some(TypeError::Lifetime)
+        );
+    }
+
+    #[test]
+    fn external_lifetime_rows_require_complete_unambiguous_nominal_definitions() {
+        use crate::HostValueLifetime::{Execution, LoadedOwner};
+        let (program, _, _) = super::super::tests::lowered_native(
+            "pub type Key\n@external(erlang, \"native\", \"key\") fn key() -> Key\npub fn main() { key() }",
+        );
+        let common = &program.common;
+        let original = common.external_types.as_ref();
+        assert_eq!(original.lifetimes.as_ref(), [Execution]);
+        for definitions in [
+            vec![],
+            vec![
+                original.definitions[0].clone(),
+                original.definitions[0].clone(),
+            ],
+        ] {
+            let mut externals = original.clone();
+            externals.definitions = definitions.into();
+            assert_eq!(
+                Types::admit(
+                    &common.list_types,
+                    &common.custom_types,
+                    &externals,
+                    &common.value_shapes
+                )
+                .err(),
+                Some(TypeError::Definition)
+            );
+        }
+        for field in ["package", "module", "name", "arity"] {
+            let mut externals = original.clone();
+            let mut definitions = externals.definitions.to_vec();
+            match field {
+                "package" => definitions[0].package = "other".into(),
+                "module" => definitions[0].module = "other".into(),
+                "name" => definitions[0].name = "Other".into(),
+                _ => definitions[0].parameter_count = 1,
+            }
+            externals.definitions = definitions.into();
+            assert_eq!(
+                Types::admit(
+                    &common.list_types,
+                    &common.custom_types,
+                    &externals,
+                    &common.value_shapes
+                )
+                .err(),
+                Some(TypeError::Definition)
+            );
+        }
+        for lifetimes in [vec![], vec![Execution, Execution], vec![LoadedOwner]] {
+            let mut externals = original.clone();
+            externals.lifetimes = lifetimes.into();
+            assert_eq!(
+                Types::admit(
+                    &common.list_types,
+                    &common.custom_types,
+                    &externals,
+                    &common.value_shapes
+                )
+                .err(),
+                Some(TypeError::Lifetime)
             );
         }
     }
@@ -1116,6 +1304,7 @@ mod tests {
     #[test]
     fn list_shapes_must_preserve_the_storage_item_family() {
         let lists = ListTypeTable {
+            lifetimes: Table::Static(&[crate::HostValueLifetime::LoadedOwner]),
             types: vec![ListStorageTypeId::Int(IntListTypeId {
                 list_type: ListTypeId(0),
             })]

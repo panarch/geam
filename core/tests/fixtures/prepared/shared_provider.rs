@@ -64,7 +64,7 @@ mod producer {
         pub fn restore<'call>(
             self,
             call: &mut HostCall<'call, StatelessHostProfile, Provider, Host<T>>,
-        ) -> HostCustom<'call, Host<T>> {
+        ) -> Result<HostCustom<'call, Host<T>>, HostCallError> {
             self.value.into_host(call)
         }
     }
@@ -83,7 +83,7 @@ fn retain<'call, T: HostType>(
     value: HostCustom<'call, producer::Host<T>>,
 ) -> Result<HostCallCompletion<'call, producer::Host<T>>, HostCallError> {
     let handle = producer::Handle::<T>::retain(&call, value);
-    let restored = handle.restore(&mut call);
+    let restored = handle.restore(&mut call)?;
     assert!(call.equal::<producer::Host<T>>(value, restored));
     Ok(call.return_value(restored))
 }

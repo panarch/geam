@@ -1,5 +1,5 @@
 data::ModuleArtifact {
-    format: 28,
+    format: 29,
     program: data::ProgramTables {
         root: data::source::module_id(0),
         modules: data::Storage::Static(&[
@@ -4755,6 +4755,7 @@ data::ModuleArtifact {
             types: data::Storage::Static(&[]),
             tuple_items: data::Storage::Static(&[]),
             function_items: data::Storage::Static(&[]),
+            lifetimes: data::Storage::Static(&[]),
         },
         custom_types: data::type_::CustomTypeTable {
             types: data::Storage::Static(&[
@@ -4765,6 +4766,8 @@ data::ModuleArtifact {
                         name: data::Text::Static("InternalMessage"),
                         arguments: data::Storage::Static(&[]),
                     },
+                    native_visible: true,
+                    lifetime: data::host::HostValueLifetime::LoadedOwner,
                     constructor_count: 6,
                     constructors: data::Storage::Static(&[
                         data::type_::CustomConstructorDescriptor {
@@ -4846,6 +4849,8 @@ data::ModuleArtifact {
                             data::type_::TypeMetadata::Parameter(data::type_::parameter_id(0)),
                         ]),
                     },
+                    native_visible: true,
+                    lifetime: data::host::HostValueLifetime::LoadedOwner,
                     constructor_count: 2,
                     constructors: data::Storage::Static(&[
                         data::type_::CustomConstructorDescriptor {
@@ -4875,6 +4880,8 @@ data::ModuleArtifact {
                             data::type_::TypeMetadata::Parameter(data::type_::parameter_id(1)),
                         ]),
                     },
+                    native_visible: true,
+                    lifetime: data::host::HostValueLifetime::LoadedOwner,
                     constructor_count: 2,
                     constructors: data::Storage::Static(&[
                         data::type_::CustomConstructorDescriptor {
@@ -4904,6 +4911,8 @@ data::ModuleArtifact {
                             data::type_::TypeMetadata::Parameter(data::type_::parameter_id(2)),
                         ]),
                     },
+                    native_visible: true,
+                    lifetime: data::host::HostValueLifetime::LoadedOwner,
                     constructor_count: 2,
                     constructors: data::Storage::Static(&[
                         data::type_::CustomConstructorDescriptor {
@@ -4933,6 +4942,8 @@ data::ModuleArtifact {
                             data::type_::TypeMetadata::Nil,
                         ]),
                     },
+                    native_visible: true,
+                    lifetime: data::host::HostValueLifetime::LoadedOwner,
                     constructor_count: 2,
                     constructors: data::Storage::Static(&[
                         data::type_::CustomConstructorDescriptor {
@@ -4978,6 +4989,8 @@ data::ModuleArtifact {
                             data::type_::TypeMetadata::Parameter(data::type_::parameter_id(3)),
                         ]),
                     },
+                    native_visible: true,
+                    lifetime: data::host::HostValueLifetime::LoadedOwner,
                     constructor_count: 2,
                     constructors: data::Storage::Static(&[
                         data::type_::CustomConstructorDescriptor {
@@ -5007,6 +5020,8 @@ data::ModuleArtifact {
                             data::type_::TypeMetadata::Parameter(data::type_::parameter_id(4)),
                         ]),
                     },
+                    native_visible: true,
+                    lifetime: data::host::HostValueLifetime::LoadedOwner,
                     constructor_count: 2,
                     constructors: data::Storage::Static(&[
                         data::type_::CustomConstructorDescriptor {
@@ -5036,6 +5051,8 @@ data::ModuleArtifact {
                             data::type_::TypeMetadata::Parameter(data::type_::parameter_id(5)),
                         ]),
                     },
+                    native_visible: true,
+                    lifetime: data::host::HostValueLifetime::LoadedOwner,
                     constructor_count: 2,
                     constructors: data::Storage::Static(&[
                         data::type_::CustomConstructorDescriptor {
@@ -5064,6 +5081,8 @@ data::ModuleArtifact {
                     name: data::Text::Static("InternalMessage"),
                     publicity: data::type_::CustomTypePublicity::Public,
                     opaque: false,
+                    native_access: None,
+                    retention_lifetime: data::host::HostValueLifetime::LoadedOwner,
                     parameters: 0,
                     constructors: data::Storage::Static(&[
                         data::type_::ConstructorDefinition {
@@ -5108,6 +5127,8 @@ data::ModuleArtifact {
                     name: data::Text::Static("Message"),
                     publicity: data::type_::CustomTypePublicity::Public,
                     opaque: false,
+                    native_access: None,
+                    retention_lifetime: data::host::HostValueLifetime::LoadedOwner,
                     parameters: 1,
                     constructors: data::Storage::Static(&[
                         data::type_::ConstructorDefinition {
@@ -5139,6 +5160,8 @@ data::ModuleArtifact {
         },
         external_types: data::type_::ExternalTypeTable {
             types: data::Storage::Static(&[]),
+            lifetimes: data::Storage::Static(&[]),
+            definitions: data::Storage::Static(&[]),
         },
         value_shapes: data::type_::ValueShapeTable {
             shapes: data::Storage::Static(&[

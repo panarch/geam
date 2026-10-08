@@ -44,8 +44,15 @@ impl<'data> Types<'data> {
     pub(super) fn definitions(&self) -> Result<(), TypeError> {
         let mut previous = None;
         for definition in self.customs.definitions.iter() {
+            if definition.native_access != Some(crate::host::HostCustomAccess::Retained)
+                && definition.retention_lifetime != crate::host::HostValueLifetime::LoadedOwner
+            {
+                return Err(TypeError::Lifetime);
+            }
+
             let identity = definition.identity();
-            if identity == RESULT.identity()
+            if definition.native_access == Some(crate::host::HostCustomAccess::Declared)
+                || identity == RESULT.identity()
                 || previous.is_some_and(|previous| previous >= identity)
             {
                 return Err(TypeError::Definition);
@@ -74,7 +81,6 @@ impl<'data> Types<'data> {
                                 pending.push(function.return_.as_ref());
                             }
                             TypeMetadata::Custom(nominal) => {
-                                self.definition(nominal)?;
                                 pending.extend(nominal.arguments.iter());
                             }
                             TypeMetadata::External(nominal) => {
@@ -101,7 +107,9 @@ impl<'data> Types<'data> {
         descriptor: &CustomTypeDescriptor,
     ) -> Result<(), TypeError> {
         let definition = self.definition(&descriptor.type_)?;
-        if definition.constructors.len() != descriptor.constructor_count {
+        if definition.constructors.len() != descriptor.constructor_count
+            || definition.native_visible() != descriptor.native_visible
+        {
             return Err(TypeError::Definition);
         }
         for constructor in descriptor.constructors.iter() {
