@@ -7,7 +7,7 @@ error[E0308]: mismatched types
    |                 arguments to this method are incorrect
    |
    = note: expected reference `&Restore<BigInt>`
-              found reference `&Restore<StringValue>`
+              found reference `&Restore<geam_core::StringValue>`
 note: method defined here
   --> $WORKSPACE/core/src/provider/call.rs
    |
@@ -22,7 +22,7 @@ error[E0308]: mismatched types
    |         |
    |         arguments to this enum variant are incorrect
    |
-   = note: expected enum `Option<StringValue>`
+   = note: expected enum `Option<geam_core::StringValue>`
               found enum `Option<BigInt>`
 help: the type constructed contains `Option<BigInt>` due to the type of the argument passed
   --> tests/ui/restore_wrong_target.rs:18:9
