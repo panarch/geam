@@ -112,6 +112,7 @@ mod tests {
         HostCall, HostCallCompletion, HostCallError, HostProfile, HostProvider, HostProviderModule,
         HostProviderSet, HostTypeParameter, HostValue,
     };
+    use crate::provider::{ProviderConstructions, ProviderRootOutputValue};
     use crate::runtime::{BorrowedValue, StoredRuntimeValue};
     use crate::{ExecutionError, HostedExecution, ModuleSource, PackageSource};
 
@@ -148,8 +149,11 @@ mod tests {
             .scoped
             .replace(current.clone())
             .unwrap_or(current);
-        let value = retained.into_host(&mut call)?;
-        Ok(call.return_value(value))
+        <Scoped as ProviderRootOutputValue<Profile, Provider>>::complete(
+            retained,
+            call,
+            &ProviderConstructions::none(),
+        )
     }
 
     fn pure<'call>(
@@ -159,10 +163,10 @@ mod tests {
         let current = Pure::from_host(&call, value);
         let retained = call.state().pure.take().unwrap_or(current);
         call.state().pure = Some(retained.clone());
-        <Pure as crate::provider::ProviderRootOutputValue<Profile, Provider>>::complete(
+        <Pure as ProviderRootOutputValue<Profile, Provider>>::complete(
             retained,
             call,
-            &crate::provider::ProviderConstructions::none(),
+            &ProviderConstructions::none(),
         )
     }
 
@@ -188,7 +192,7 @@ mod tests {
     }
 
     #[test]
-    fn scoped_restore_rejects_the_wrong_specialization_in_the_original_execution() {
+    fn root_completion_rejects_the_wrong_specialization_in_the_original_execution() {
         let mut loaded = execution(
             r#"
 @external(erlang, "native", "scoped") fn scoped(value: a) -> a
@@ -208,7 +212,7 @@ pub fn main() { #(scoped(42), scoped("different source type")) }
     }
 
     #[test]
-    fn nested_scoped_values_reject_restoration_after_their_original_execution() {
+    fn root_completion_rejects_nested_scoped_values_after_their_original_execution() {
         for source in [
             r#"
 pub opaque type Secret { Secret(fn(Int) -> Int) }

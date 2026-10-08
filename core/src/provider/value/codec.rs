@@ -105,11 +105,12 @@ where
     }
 }
 
-impl<Profile, Provider, Type> ProviderRootOutputValue<Profile, Provider> for Retained<Type>
+impl<Profile, Provider, Type, Host> ProviderRootOutputValue<Profile, Provider>
+    for Value<Type, ProviderValueContext<Host>>
 where
     Profile: HostProfile,
     Provider: HostProvider<Profile>,
-    Type: ProviderValue,
+    Host: HostType,
 {
     fn complete<'call>(
         self,
@@ -185,7 +186,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::Retained;
+    use super::{ProviderValueContext, Retained};
     use crate::host::{HostCall, HostCallCompletion, HostCallError, HostProvider};
     use crate::provider::advanced::ProviderDynamicValue;
     use crate::provider::{
@@ -200,6 +201,7 @@ mod tests {
     type Profile = crate::host::ExternalTestProfile;
     type Parameter = HostTypeParameter<0>;
     type Opaque = Retained<Parameter>;
+    struct UnmappedSource;
     struct Provider;
     impl HostProvider<Profile> for Provider {
         type State = ();
@@ -285,8 +287,9 @@ mod tests {
             value, &mut call, &proof,
         )
         .expect("retained value belongs to this call");
-        let value = Opaque::from_host(&call, returned);
-        <Opaque as ProviderRootOutputValue<Profile, Provider>>::complete(value, call, &proof)
+        let value =
+            Value::<UnmappedSource, ProviderValueContext<Parameter>>::from_host(&call, returned);
+        ProviderRootOutputValue::<Profile, Provider>::complete(value, call, &proof)
     }
 
     fn selected<'call>(

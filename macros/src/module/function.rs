@@ -1287,11 +1287,12 @@ pub(super) fn generate_return(
             constructions: Vec::new(),
         },
         FunctionReturnType::Generic(_) => GeneratedReturn {
-            statements: (quote! {
-                let returned = returned.into_host(&mut call)?;
-            }),
+            statements: TokenStream::new(),
             completion: quote! {
-                ::core::result::Result::Ok(call.return_value(returned))
+                #support::ProviderRootOutputValue::<
+                    __GeamProfile,
+                    #provider,
+                >::complete(returned, call, &#support::ProviderConstructions::none())
             },
             constructions: Vec::new(),
         },
