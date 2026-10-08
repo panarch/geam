@@ -9,11 +9,12 @@ use geam_core::host::{
     HostProviderModule, HostRegistrationError, HostType,
 };
 use geam_core::provider::{
-    List, MissingListContext, ProviderConstruction, ProviderConstructions, ProviderExternalCodec,
-    ProviderExternalPayloadAccess, ProviderInputValue, ProviderListContext, ProviderListInputCodec,
-    ProviderListInputValue, ProviderListItemDecoder, ProviderListItemValue,
-    ProviderNoConstructions, ProviderOutputValue, ProviderOwnedExternal, ProviderRootOutputValue,
-    ProviderStaticValueForms, ProviderTypedListItemDecoder, ProviderValue, ProviderValueForms,
+    List, MissingListContext, ProviderConstruction, ProviderConstructions,
+    ProviderConvertedStorage, ProviderExternalCodec, ProviderExternalPayloadAccess,
+    ProviderInputValue, ProviderListContext, ProviderListInputCodec, ProviderListInputValue,
+    ProviderListItemDecoder, ProviderListItemValue, ProviderNoConstructions, ProviderOutputValue,
+    ProviderOwnedExternal, ProviderRootOutputValue, ProviderStaticValueForms,
+    ProviderTypedListItemDecoder, ProviderValue, ProviderValueForms,
 };
 use geam_core::provider_support::bit_array_pad_to_bytes;
 use std::convert::Infallible;
@@ -280,6 +281,7 @@ where
     Return: HostType,
 {
     type Error = Infallible;
+    type Storage = ProviderConvertedStorage;
 
     fn into_host<'call>(
         self,

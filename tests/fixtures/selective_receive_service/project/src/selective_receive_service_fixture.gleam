@@ -63,3 +63,36 @@ pub fn inspect_key() {
   echo identity
   Nil
 }
+
+pub fn key_callback() -> fn(reference.Reference) -> native.Key {
+  native.key
+}
+
+pub fn send_callback() -> fn(process.Pid, #(String, reference.Reference, Int)) ->
+  Nil {
+  native.send
+}
+
+pub fn current_process() {
+  process.self()
+}
+
+pub fn new_reference() {
+  reference.new()
+}
+
+pub fn keys_equal(left: native.Key, right: native.Key) {
+  left == right
+}
+
+pub fn next_message() {
+  native.next()
+}
+
+pub fn callable_mailbox_roundtrip() {
+  let owner = process.self()
+  let identity = reference.new()
+  let send = send_callback()
+  send(owner, #("tcp", identity, 42))
+  native.next()
+}

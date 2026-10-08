@@ -1,9 +1,10 @@
-use super::factory::FactoryConstructions;
+use super::bindings::CallConstructions;
 use super::{
-    Callback, Factory, ProviderCallbackContext, ProviderConstructions, ProviderExternalCodec,
-    ProviderExternalView, ProviderFactoryBinding, ProviderFactoryBindings, ProviderFactoryCodec,
-    ProviderNoFactories, ProviderOwnedStoredInput, ProviderStoredInput, ProviderStoredOutput,
-    ProviderStoredOwner, ProviderValueContext, ProviderValueForms, Stored, Value,
+    Callback, Factory, ProviderCallBindings, ProviderCallbackContext, ProviderConstructions,
+    ProviderExternalCodec, ProviderExternalView, ProviderFactoryBinding, ProviderFactoryCodec,
+    ProviderNoCallBindings, ProviderOwnedStoredInput, ProviderRestorationBinding,
+    ProviderStoredInput, ProviderStoredOutput, ProviderStoredOwner, ProviderValueContext,
+    ProviderValueForms, Restore, Stored, Value,
 };
 use crate::execution::ExitStatus;
 use crate::host::{HostExecutionContext, HostExecutionError, HostFutureContext, HostTypeSequence};
@@ -37,12 +38,12 @@ pub struct ProviderSharedCall<'state, State> {
 
 /// Active immediate call context for a transferable provider composition.
 #[doc(hidden)]
-pub struct ProviderActiveCall<'call, Profile, Provider, Return, Bindings = ProviderNoFactories>
+pub struct ProviderActiveCall<'call, Profile, Provider, Return, Bindings = ProviderNoCallBindings>
 where
     Profile: HostProfile,
     Provider: HostProvider<Profile>,
     Return: HostType,
-    Bindings: ProviderFactoryBindings,
+    Bindings: ProviderCallBindings,
 {
     call: HostCall<'call, Profile, Provider, Return>,
     constructions: ProviderConstructions<'call, Bindings::Requirements>,
@@ -55,13 +56,13 @@ pub struct ProviderExecutionCall<
     Profile,
     Provider,
     Observation = (),
-    Bindings = ProviderNoFactories,
+    Bindings = ProviderNoCallBindings,
 > where
     Profile: HostProfile,
     Provider: HostProvider<Profile>,
-    Bindings: ProviderFactoryBindings,
+    Bindings: ProviderCallBindings,
 {
-    execution: HostExecutionContext<'run, Profile, Provider, FactoryConstructions<Bindings>>,
+    execution: HostExecutionContext<'run, Profile, Provider, CallConstructions<Bindings>>,
     observation: Observation,
 }
 
@@ -71,7 +72,7 @@ pub struct ProviderWorkObservation {
 }
 
 #[doc(hidden)]
-pub type ProviderFutureCall<'run, Profile, Provider, Bindings = ProviderNoFactories> =
+pub type ProviderFutureCall<'run, Profile, Provider, Bindings = ProviderNoCallBindings> =
     ProviderExecutionCall<'run, Profile, Provider, ProviderWorkObservation, Bindings>;
 
 impl<'state, State> Call<State, ProviderSharedCall<'state, State>> {
@@ -94,7 +95,7 @@ where
     Profile: HostProfile,
     Provider: HostProvider<Profile>,
     Return: HostType,
-    Bindings: ProviderFactoryBindings,
+    Bindings: ProviderCallBindings,
 {
     /// Creates a fresh function value immediately from its declared captures.
     pub fn create<Declaration>(
@@ -103,8 +104,7 @@ where
         captures: Declaration::Captures,
     ) -> Result<Declaration::Output, HostCallError>
     where
-        Declaration:
-            ProviderFactoryCodec<Profile, <Bindings as ProviderFactoryBindings>::CaptureMode>,
+        Declaration: ProviderFactoryCodec<Profile, <Bindings as ProviderCallBindings>::CaptureMode>,
         Bindings: ProviderFactoryBinding<Declaration, Declaration::Requirements>,
     {
         let proof = Bindings::select(&self.context.constructions);
@@ -187,11 +187,7 @@ where
         Decoder: super::ProviderListItemDecoder<Item>,
     {
         let context = values.__geam_into_context();
-        let values = self
-            .context
-            .call
-            .restore_list_value::<HostItem>(context.retained());
-        self.context.call.native_tuple(values)
+        NativeValue::from_retained_list(context.retained())
     }
 
     pub fn inspect<Type, Host>(
@@ -257,18 +253,31 @@ where
     pub fn external_payload<Type>(
         &mut self,
         value: Value<Type, ProviderValueContext<Type::Host>>,
-    ) -> ProviderExternalView<Type::Output>
+    ) -> Result<ProviderExternalView<Type::Output>, crate::HostCallError>
     where
         Type: ProviderValueForms + super::ProviderValue,
         Type::Output: super::ProviderValue<Host = Type::Host>,
         Type::Output: ProviderExternalCodec<Profile>,
     {
-        let value = value.into_host(&mut self.context.call);
-        Type::Output::immediate_input(&self.context.call, value)
+        let value = value.into_host(&mut self.context.call)?;
+        Ok(Type::Output::immediate_input(&self.context.call, value))
     }
 
-    /// Retains one transferable value with its exact specialized type.
+    /// Retains an existing value or an infallible output at its exact source type.
     pub fn store_dynamic<Value, Owner>(&mut self, value: Value) -> StoredDynamic<Owner>
+    where
+        Value: ProviderDynamicValue<'call, Profile, Provider, Return, Error = std::convert::Infallible>,
+        Owner: ProviderStoredOwner,
+    {
+        self.try_store_dynamic(value)
+            .unwrap_or_else(|never| match never {})
+    }
+
+    /// Converts a fallible output and retains it without changing its original lifetime.
+    pub fn try_store_dynamic<Value, Owner>(
+        &mut self,
+        value: Value,
+    ) -> Result<StoredDynamic<Owner>, Value::Error>
     where
         Value: ProviderDynamicValue<'call, Profile, Provider, Return>,
         Owner: ProviderStoredOwner,
@@ -279,40 +288,36 @@ where
     /// Restores an existential transferable value only at its exact type.
     pub fn restore_dynamic<Type, Owner>(
         &mut self,
+        _restore: &Restore<Type>,
         value: &StoredDynamic<Owner>,
     ) -> Option<Type::View>
     where
         Type: ProviderDynamicInput<Profile, Provider, Return>,
+        Bindings: ProviderRestorationBinding<Type, Type::Host>,
         Owner: ProviderStoredOwner,
     {
-        if !self
-            .context
-            .call
-            .stored_has_type::<Type::Host>(value.stored())
-        {
-            return None;
-        }
+        let proof = Bindings::restoration(&self.context.constructions);
         let value = self
             .context
             .call
-            .restore_value::<Type::Host>(value.stored());
+            .try_restore_value_with(&proof, value.stored())?;
         Some(Type::from_host(&mut self.context.call, value))
     }
 
     /// Restores an exact source value carried by a declared native view.
     ///
     /// This does not construct a different source type from the native data.
-    pub fn restore_native<Type>(&mut self, value: &NativeValue) -> Option<Type::View>
+    pub fn restore_native<Type>(
+        &mut self,
+        _restore: &Restore<Type>,
+        value: &NativeValue,
+    ) -> Option<Type::View>
     where
         Type: ProviderDynamicInput<Profile, Provider, Return>,
+        Bindings: ProviderRestorationBinding<Type, Type::Host>,
     {
-        let value = value.find_source(|value| {
-            self.context
-                .call
-                .native_has_type::<Type::Host>(value)
-                .then(|| value.clone_retained())
-        })?;
-        let value = self.context.call.restore_value::<Type::Host>(&value);
+        let proof = Bindings::restoration(&self.context.constructions);
+        let value = self.context.call.restore_native(&proof, value)?;
         Some(Type::from_host(&mut self.context.call, value))
     }
 
@@ -328,12 +333,12 @@ where
     {
         self.context
             .call
-            .stored_has_type::<Host>(value.stored())
+            .can_restore_value::<Host>(value.stored())
             .then(|| Value::from_stored(value.stored().clone_retained()))
     }
 
     #[doc(hidden)]
-    pub fn from_host_call_with_factories(
+    pub fn from_host_call_with_bindings(
         call: HostCall<'call, Profile, Provider, Return>,
         constructions: ProviderConstructions<'call, Bindings::Requirements>,
     ) -> Self {
@@ -367,7 +372,7 @@ where
 {
     #[doc(hidden)]
     pub fn from_host_call(call: HostCall<'call, Profile, Provider, Return>) -> Self {
-        Self::from_host_call_with_factories(call, ProviderConstructions::none())
+        Self::from_host_call_with_bindings(call, ProviderConstructions::none())
     }
 }
 
@@ -376,7 +381,7 @@ impl<'run, Profile, Provider, Observation, Bindings>
 where
     Profile: HostProfile,
     Provider: HostProvider<Profile>,
-    Bindings: ProviderFactoryBindings,
+    Bindings: ProviderCallBindings,
 {
     /// Creates a function on this invocation's original execution with its exact permissions.
     pub async fn create<Declaration>(
@@ -385,8 +390,7 @@ where
         captures: Declaration::Captures,
     ) -> Result<Declaration::Output, HostExecutionError>
     where
-        Declaration:
-            ProviderFactoryCodec<Profile, <Bindings as ProviderFactoryBindings>::CaptureMode>,
+        Declaration: ProviderFactoryCodec<Profile, <Bindings as ProviderCallBindings>::CaptureMode>,
         Declaration::Captures: Send + 'static,
         Declaration::Output: Send + 'static,
         Bindings: ProviderFactoryBinding<Declaration, Declaration::Requirements>,
@@ -421,7 +425,7 @@ where
         self.context
             .execution
             .with_constructions(move |call, constructions| {
-                operation(&mut Call::from_host_call_with_factories(
+                operation(&mut Call::from_host_call_with_bindings(
                     call,
                     ProviderConstructions::new(&constructions),
                 ))
@@ -432,7 +436,7 @@ where
     #[doc(hidden)]
     pub fn execution_context(
         &self,
-    ) -> &HostExecutionContext<'run, Profile, Provider, FactoryConstructions<Bindings>> {
+    ) -> &HostExecutionContext<'run, Profile, Provider, CallConstructions<Bindings>> {
         &self.context.execution
     }
 
@@ -504,11 +508,11 @@ impl<'run, Profile, Provider, Bindings>
 where
     Profile: HostProfile,
     Provider: HostProvider<Profile>,
-    Bindings: ProviderFactoryBindings,
+    Bindings: ProviderCallBindings,
 {
     #[doc(hidden)]
-    pub fn from_execution_context_with_factories(
-        execution: HostExecutionContext<'run, Profile, Provider, FactoryConstructions<Bindings>>,
+    pub fn from_execution_context_with_bindings(
+        execution: HostExecutionContext<'run, Profile, Provider, CallConstructions<Bindings>>,
     ) -> Self {
         Self {
             context: ProviderExecutionCall {
@@ -544,7 +548,7 @@ impl<'work, Profile, Provider, Bindings>
 where
     Profile: HostProfile,
     Provider: HostProvider<Profile>,
-    Bindings: ProviderFactoryBindings,
+    Bindings: ProviderCallBindings,
 {
     /// Explicitly observes a Future returned by Gleam, sharing its original work.
     pub async fn observe<Value, Host, Output>(
@@ -559,8 +563,8 @@ where
     }
 
     #[doc(hidden)]
-    pub fn from_future_context_with_factories(
-        call: HostFutureContext<'work, Profile, Provider, FactoryConstructions<Bindings>>,
+    pub fn from_future_context_with_bindings(
+        call: HostFutureContext<'work, Profile, Provider, CallConstructions<Bindings>>,
     ) -> Self {
         let (execution, dependencies) = call.into_parts();
         Self {

@@ -181,6 +181,7 @@ impl<Value: Clone, Never: Clone + From<Value>, Views: crate::host::NativeViewImp
         )?;
         sealing::seal_callbacks(
             template,
+            &registered.constructions,
             key,
             &shape,
             &context.representations,

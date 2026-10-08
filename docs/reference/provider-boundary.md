@@ -646,6 +646,31 @@ eager Rust representation. `Call::restore` recreates only a call-scoped typed
 handle. Neither operation clones the source payload, and returning an old box
 does not reconstruct its external value.
 
+Restoration checks the same loaded owner and exact source specialization before
+issuing a typed handle. Immutable source data can re-enter a later execution of
+that owner. Functions, work, and values containing them retain their original
+live execution; ending it makes restoration fail. Cloning, lazy List access,
+generic retention, Dynamic storage, and native views preserve this origin.
+They cannot bind an old value to the current execution. Checked restore/output
+operations report a host failure; optional exact native/Dynamic restoration
+returns `None` when the owner, type, or execution does not match.
+
+Source custom fields and their type arguments determine this lifetime during
+planning, including private fields and recursive types. Opaque Rust payloads
+default to `HostValueLifetime::Execution`. A producer can declare
+`HostExternalSchema::LIFETIME = HostValueLifetime::LoadedOwner`, or use
+`#[geam::external(lifetime = loaded_owner)]`, only for immutable data without
+hidden execution capabilities. Execution-bearing type arguments still restrict
+that value. This declaration does not extend any callback or work lifetime.
+Prepared loading checks the frozen lifetime against the source graph and the
+actual producer registration.
+
+`Call::store_dynamic` preserves an existing handle and its original lifetime;
+it does not restore that value into the current execution. It also accepts
+infallible provider outputs. Use `Call::try_store_dynamic` when constructing the
+stored value requires a fallible output conversion; that conversion's error is
+preserved. Neither operation grants permission to restore another mapping.
+
 Providers with a persistent Rust collection of retained entries use the
 explicit advanced form instead of pretending that collection is a generic Rust
 payload:
@@ -708,9 +733,50 @@ assert decode.run(value, decoder) == Ok(#("visits", 42))
 ```
 
 Native access and exact restoration are different operations.
-`Call::restore_native` restores only a retained value of the requested exact
-source type from the same loaded execution, including its type arguments.
+Declare each ad hoc restoration target with a `#[geam::restore]` parameter.
+The macro seals that target's mapping into the function registration:
+
+```rust
+use geam::gleam_stdlib::Dynamic;
+use geam::provider::{BigInt, Call, Restore, Value};
+
+#[geam::function]
+fn exact_int<Item>(
+    #[geam::call] call: &mut Call<()>,
+    #[geam::restore] restore: Restore<BigInt>,
+    value: Value<Item>,
+) -> Option<BigInt> {
+    let retained = call.store_dynamic::<_, Dynamic>(value);
+    call.restore_native(&restore, &retained.native_view())
+}
+```
+
+`Call::restore_native(&restore, &value)` and
+`Call::restore_dynamic(&restore, &stored)` restore only a retained value of the requested exact
+source type from the same loaded owner, including its type arguments and its
+original execution requirement.
 A record view does not turn its original payload into a different source type.
+
+`Restore<T>` is a declaration marker, not an independent permission. Each call's
+registered proof authorizes its exact target. Full custom mappings still require
+the producer's representation grant; a nominal retained mapping cannot authorize
+private fields, constructors, or callbacks. Planning and prepared loading reject
+an omitted, replaced, or unauthorized target before execution.
+
+The typed-host SDK registers `HostRestoredType<T>` in the function's existing
+permission sequence. Selecting that entry and calling `.restoration()` produces
+a call-scoped `HostRestoration<T>`, which `HostCall::restore_native` and
+`HostExternalPayloadView::decode` require. This entry supplies restoration rights
+without construction or native conversion rights. Returning an existing typed
+handle or restoring a `Stored<T>` field preserves its original typed witness;
+it does not require an ad hoc mapping declaration.
+
+A custom value has a structural native view only when its source representation
+is public or its producer explicitly shares that representation. Other customs
+have `NativeKind::Opaque`: no length, tag, indexed field, or private callable is
+exposed, and inspection identifies only `<opaque package:module.Type>`.
+An outer public tuple/List/custom view does not disclose a hidden inner custom.
+Nominal retention and exact restoration do not grant structural access.
 
 The typed-host SDK also supports checked conversion to registered targets.
 `HostProviderModule::with_native_function` seals the target types, `NativeRules`,
@@ -724,7 +790,7 @@ Function values can also have a checked view with another signature. Register
 `NativeRules::retained_views::<Sources>()` to permit this conversion. The source
 descriptors are bound to the registration's type parameters. The finite
 structural closure of Sources and the declared targets includes functions
-inside tuples, lists, and custom fields. Custom views preserve the nominal
+inside tuples, lists, and publicly accessible custom fields. Custom views preserve the nominal
 type and constructor, and convert its fields using that type's declaration.
 This permission does not grant arbitrary custom construction.
 
@@ -1176,6 +1242,52 @@ again. This API does not promise zero-copy or cache flattened trees.
 The [independent BytesTree fixture](../../tests/fixtures/bytes_tree_service)
 contains complete original-source, typed embedding, native suspension and
 standalone examples.
+
+## Retaining Standard-Library Decoders
+
+Enable `provider,gleam-stdlib` to receive the original
+`gleam/dynamic/decode.Decoder(Item)` through its producer SDK:
+
+```rust
+use geam::gleam_stdlib::service as stdlib_service;
+
+#[geam::function]
+fn keep<Item>(decoder: stdlib_service::Decoder<Item>) -> stdlib_service::Decoder<Item> {
+    decoder.clone()
+}
+
+#[geam::custom(input = MessageInput)]
+pub enum Message<Item> {
+    Configure(stdlib_service::Decoder<Item>),
+    Dispatch(geam::provider::Value<Item>),
+}
+```
+
+The macro selects the producer's concrete value forms using the host profile;
+qualified SDK declarations, tuples, lazy Lists, generic wrappers, and ordinary
+custom fields use that same selection. This also permits
+`geam::gleam_erlang::service::Subject<Message<Item>>` when `gleam-erlang` is
+enabled. Ordinary Rust helpers can be separate from registered provider
+functions; a registered signature may have a profile parameter even when its
+current selected value form is static.
+
+The stdlib registers Decoder's nominal identity and arity with
+`HostProviderModule::with_retained_custom_type`. The consumer does not copy its
+private constructors, field schema, callback, or storage. The low-level typed
+boundary uses `HostRetainedCustomType<Schema, Arguments>` with a
+`HostRetainedCustomSchema`; that descriptor grants only delivery of an existing
+value. Representation sharing and construction require their separate producer
+grants. A manual provider uses the SDK's profile-selected Host/input/output forms
+and its ordinary checked codecs, as shown in the
+[Decoder consumer](../../tests/fixtures/decoder_service).
+
+Providers can retain, clone, and return a Decoder in its original live
+execution. Its exact specialization, identity, and captured values survive.
+`decode.run` in Gleam performs decoding; the SDK exposes no Rust decoder
+constructor, private callback extraction, or Rust decoding method. Native and
+Dynamic inspection keep Decoder opaque. A fresh execution cannot restore a
+Decoder from an ended execution, even through a generic or native handle.
+This transfer boundary is usable independently of a full Lustre provider.
 
 ## Standalone CLI Boundary
 

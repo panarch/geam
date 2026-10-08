@@ -80,7 +80,7 @@ impl<Profile: GleamErlangHostProfile> Receive<Profile> {
     ) -> impl Future<Output = Result<Option<NativeValue>, HostExecutionError>> + Send + 'request
     where
         Provider: HostProvider<Profile>,
-        Bindings: geam_core::provider::ProviderFactoryBindings,
+        Bindings: geam_core::provider::ProviderCallBindings,
         'run: 'request,
     {
         self.wait(call.execution_context())
@@ -103,7 +103,7 @@ impl<Profile: GleamErlangHostProfile> Receive<Profile> {
     ) -> impl Future<Output = Result<NativeValue, HostExecutionError>> + Send + 'request
     where
         Provider: HostProvider<Profile>,
-        Bindings: geam_core::provider::ProviderFactoryBindings,
+        Bindings: geam_core::provider::ProviderCallBindings,
         'run: 'request,
     {
         self.wait_forever(call.execution_context())

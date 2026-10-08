@@ -71,13 +71,18 @@ fn snapshot<'call>(
 fn recall(
     mut call: HostCall<'_, Profile, Observer, HostFutureType<BigInt>>,
 ) -> Result<HostCallCompletion<'_, HostFutureType<BigInt>>, HostCallError> {
-    let work = call.state().retained.take().expect("observed work");
-    let value = call.provider_external_from_item::<HostFutureSchema, geam_core::HostTypeList<BigInt, geam_core::HostTypeListEnd>, _>(work);
+    let work = call
+        .state()
+        .retained
+        .as_ref()
+        .expect("observed work")
+        .clone();
+    let value = call.provider_external_from_item::<HostFutureSchema, geam_core::HostTypeList<BigInt, geam_core::HostTypeListEnd>, _>(work)?;
     Ok(call.return_value(value))
 }
 
 #[test]
-fn source_hash_and_inspection_survive_completion_and_scope_cancellation() {
+fn source_hash_and_inspection_preserve_identity_without_restoring_closed_work() {
     let execution_host = crate::execution_fixture::TestHost::default();
 
     let mut providers = FutureComponent::providers::<Profile>().expect("Future registration");
@@ -159,38 +164,50 @@ pub fn check() { let work = recall() snapshot(work) work }
                             .expect("completion")
                             .read(|value| assert_eq!(value, &BigInt::from(42)));
                     }
+                    let retained = scope
+                        .call(&check, ())
+                        .await
+                        .expect("same execution restore");
+                    if complete {
+                        scope
+                            .observe(&retained)
+                            .await
+                            .expect("shared completion")
+                            .read(|value| assert_eq!(value, &BigInt::from(42)));
+                    }
                 },
             ))
             .expect("caller drives ready dependencies")
             .try_into_value()
             .unwrap();
-        assert_eq!(state.observations.len(), 1);
+        assert_eq!(state.observations.len(), 2);
+        let retained_hash = state
+            .retained
+            .as_ref()
+            .unwrap()
+            .with(HostFuturePayload::operation_hash);
         execution_host
             .block_on(module.with_execution(
                 &execution_host,
                 &mut state,
                 &mut echo,
                 async |scope| {
-                    let original = scope
-                        .call(&check, ())
-                        .await
-                        .expect("source semantics after scope exit");
-                    match scope.observe(&original).await {
-                        Ok(result) => {
-                            assert!(complete);
-                            result.read(|value| assert_eq!(value, &BigInt::from(42)));
-                        }
-                        Err(geam_core::embedding::ObservationError::Cancelled) => {
-                            assert!(!complete)
-                        }
-                        Err(error) => panic!("unexpected observation: {error}"),
-                    }
+                    assert_eq!(scope.call(&check, ()).await.map(|_| ()).unwrap_err().to_string(),
+                        "host function application::library.recall failed: retained value belongs to another execution");
                 },
             ))
             .expect("no work is restarted")
             .try_into_value()
             .unwrap();
         assert_eq!(state.observations.len(), 2);
+        assert_eq!(
+            state
+                .retained
+                .as_ref()
+                .unwrap()
+                .with(HostFuturePayload::operation_hash),
+            retained_hash,
+        );
         let (before_hash, before_inspection) = &state.observations[0];
         let (after_hash, after_inspection) = &state.observations[1];
         assert_eq!(before_hash, after_hash);

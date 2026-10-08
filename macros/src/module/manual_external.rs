@@ -60,107 +60,108 @@ pub(super) fn declaration(
     });
 
     quote! {
-            impl<#(#parameters,)* __GeamArguments> #input<
-                #(#parameters,)* #support::ProviderExternalInputContext<#payload, __GeamArguments>,
-            >
-            where
-                __GeamArguments: #support::HostTypeSequence,
-                #payload: ::core::marker::Send + 'static,
-            {
-                fn __geam_from_host(context: #support::ProviderExternalInputContext<
-                    #payload, __GeamArguments,
-                >) -> Self {
-                    Self { __geam_context: context, __geam_parameters: ::core::marker::PhantomData }
-                }
-
-                #visibility fn payload(&self) -> &#payload { self.__geam_context.payload() }
-
-                #visibility fn into_value(self) -> #output_type {
-                    #output {
-                        __geam_context: self.__geam_context.into_output(),
-                        __geam_parameters: ::core::marker::PhantomData,
-                    }
-                }
-
-                #(#accessors)*
+        impl<#(#parameters,)* __GeamArguments> #input<
+            #(#parameters,)* #support::ProviderExternalInputContext<#payload, __GeamArguments>,
+        >
+        where
+            __GeamArguments: #support::HostTypeSequence,
+            #payload: ::core::marker::Send + 'static,
+        {
+            fn __geam_from_host(context: #support::ProviderExternalInputContext<
+                #payload, __GeamArguments,
+            >) -> Self {
+                Self { __geam_context: context, __geam_parameters: ::core::marker::PhantomData }
             }
 
-            impl<#(#parameters,)* __GeamArguments> #input<
-                #(#parameters,)* #support::ProviderOwnedExternalInputContext<#payload, __GeamArguments>,
-            >
-            where
-                __GeamArguments: #support::HostTypeSequence,
-                #payload: ::core::marker::Send + 'static,
-            {
-                fn __geam_from_async_host(context: #support::ProviderOwnedExternalInputContext<
-                    #payload, __GeamArguments,
-                >) -> Self {
-                    Self { __geam_context: context, __geam_parameters: ::core::marker::PhantomData }
-                }
+            #visibility fn payload(&self) -> &#payload { self.__geam_context.payload() }
 
-                #visibility fn with_payload<__GeamOutput>(
-                    &self, read: impl ::core::ops::FnOnce(&#payload) -> __GeamOutput,
-                ) -> __GeamOutput { self.__geam_context.with_payload(read) }
-
-                #visibility fn into_value(self) -> #output_type {
-                    #output {
-                        __geam_context: self.__geam_context.into_output(),
-                        __geam_parameters: ::core::marker::PhantomData,
-                    }
-                }
-
-                #(#owned_accessors)*
-            }
-
-            impl<#(#parameters,)* __GeamProfile, __GeamProviderBinding, __GeamReturn>
-                #support::ProviderOutputValue<__GeamProfile, __GeamProviderBinding, __GeamReturn> for #output_type
-            where
-                __GeamProfile: __GeamModuleProfile,
-                __GeamProviderBinding: #support::HostProvider<__GeamProfile>,
-                __GeamReturn: #support::HostType,
-                #(#parameters: #support::ProviderValue,)*
-                #payload: ::core::marker::Send + 'static,
-            {
-                type Error = ::core::convert::Infallible;
-
-    fn into_host<'__geam_call>(
-                    self,
-                    call: &mut #support::HostCall<'__geam_call, __GeamProfile, __GeamProviderBinding, __GeamReturn>,
-                    construction: &#support::ProviderConstructions<'__geam_call, Self::OutputRequirements>,
-                ) -> ::core::result::Result<<Self::Host as #support::HostType>::Value<'__geam_call>, Self::Error> {
-                    ::core::result::Result::Ok(match self.__geam_context.into_value() {
-                        ::core::result::Result::Ok(payload) => call.construct_external_with_binding::<
-                            __GeamProvider, #schema, #arguments,
-                        >(construction.token(), payload),
-                        ::core::result::Result::Err(value) => call.provider_external_from_return::<
-                            #schema, #arguments, _,
-                        >(value),
-                    })
+            #visibility fn into_value(self) -> #output_type {
+                #output {
+                    __geam_context: self.__geam_context.into_output(),
+                    __geam_parameters: ::core::marker::PhantomData,
                 }
             }
 
-            impl<#(#parameters,)* __GeamProfile, __GeamProviderBinding>
-                #support::ProviderRootOutputValue<__GeamProfile, __GeamProviderBinding> for #output_type
-            where
-                __GeamProfile: __GeamModuleProfile,
-                __GeamProviderBinding: #support::HostProvider<__GeamProfile>,
-                #(#parameters: #support::ProviderValue,)*
-                #payload: ::core::marker::Send + 'static,
-            {
-                fn complete<'__geam_call>(
-                    self,
-                    mut call: #support::HostCall<'__geam_call, __GeamProfile, __GeamProviderBinding, Self::Host>,
-                    _constructions: &#support::ProviderConstructions<'__geam_call, Self::RootRequirements>,
-                ) -> ::core::result::Result<#support::HostCallCompletion<'__geam_call, Self::Host>, #support::HostCallError> {
-                    let value = match self.__geam_context.into_value() {
-                        ::core::result::Result::Ok(payload) => call.create_external_with_binding::<__GeamProvider>(payload),
-                        ::core::result::Result::Err(value) => call.provider_external_from_return::<
-                            #schema, #arguments, _,
-                        >(value),
-                    };
-                    ::core::result::Result::Ok(call.return_value(value))
-                }
-            }
-
+            #(#accessors)*
         }
+
+        impl<#(#parameters,)* __GeamArguments> #input<
+            #(#parameters,)* #support::ProviderOwnedExternalInputContext<#payload, __GeamArguments>,
+        >
+        where
+            __GeamArguments: #support::HostTypeSequence,
+            #payload: ::core::marker::Send + 'static,
+        {
+            fn __geam_from_async_host(context: #support::ProviderOwnedExternalInputContext<
+                #payload, __GeamArguments,
+            >) -> Self {
+                Self { __geam_context: context, __geam_parameters: ::core::marker::PhantomData }
+            }
+
+            #visibility fn with_payload<__GeamOutput>(
+                &self, read: impl ::core::ops::FnOnce(&#payload) -> __GeamOutput,
+            ) -> __GeamOutput { self.__geam_context.with_payload(read) }
+
+            #visibility fn into_value(self) -> #output_type {
+                #output {
+                    __geam_context: self.__geam_context.into_output(),
+                    __geam_parameters: ::core::marker::PhantomData,
+                }
+            }
+
+            #(#owned_accessors)*
+        }
+
+        impl<#(#parameters,)* __GeamProfile, __GeamProviderBinding, __GeamReturn>
+            #support::ProviderOutputValue<__GeamProfile, __GeamProviderBinding, __GeamReturn> for #output_type
+        where
+            __GeamProfile: __GeamModuleProfile,
+            __GeamProviderBinding: #support::HostProvider<__GeamProfile>,
+            __GeamReturn: #support::HostType,
+            #(#parameters: #support::ProviderValue,)*
+            #payload: ::core::marker::Send + 'static,
+        {
+            type Error = #support::HostCallError;
+            type Storage = #support::ProviderConvertedStorage;
+
+            fn into_host<'__geam_call>(
+                self,
+                call: &mut #support::HostCall<'__geam_call, __GeamProfile, __GeamProviderBinding, __GeamReturn>,
+                construction: &#support::ProviderConstructions<'__geam_call, Self::OutputRequirements>,
+            ) -> ::core::result::Result<<Self::Host as #support::HostType>::Value<'__geam_call>, Self::Error> {
+                ::core::result::Result::Ok(match self.__geam_context.into_value() {
+                    ::core::result::Result::Ok(payload) => call.construct_external_with_binding::<
+                        __GeamProvider, #schema, #arguments,
+                    >(construction.token(), payload),
+                    ::core::result::Result::Err(value) => call.provider_external_from_return::<
+                        #schema, #arguments, _,
+                    >(value)?,
+                })
+            }
+        }
+
+        impl<#(#parameters,)* __GeamProfile, __GeamProviderBinding>
+            #support::ProviderRootOutputValue<__GeamProfile, __GeamProviderBinding> for #output_type
+        where
+            __GeamProfile: __GeamModuleProfile,
+            __GeamProviderBinding: #support::HostProvider<__GeamProfile>,
+            #(#parameters: #support::ProviderValue,)*
+            #payload: ::core::marker::Send + 'static,
+        {
+            fn complete<'__geam_call>(
+                self,
+                mut call: #support::HostCall<'__geam_call, __GeamProfile, __GeamProviderBinding, Self::Host>,
+                _constructions: &#support::ProviderConstructions<'__geam_call, Self::RootRequirements>,
+            ) -> ::core::result::Result<#support::HostCallCompletion<'__geam_call, Self::Host>, #support::HostCallError> {
+                let value = match self.__geam_context.into_value() {
+                    ::core::result::Result::Ok(payload) => call.create_external_with_binding::<__GeamProvider>(payload),
+                    ::core::result::Result::Err(value) => call.provider_external_from_return::<
+                        #schema, #arguments, _,
+                    >(value)?,
+                };
+                ::core::result::Result::Ok(call.return_value(value))
+            }
+        }
+
+    }
 }

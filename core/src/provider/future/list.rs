@@ -13,7 +13,6 @@ where
     Host: HostType,
 {
     retention: crate::host::FutureRetention<Profile>,
-    values: crate::runtime::ValueRetention,
     decode: Decode<Profile, Host, Output>,
     callable_base: usize,
 }
@@ -36,7 +35,6 @@ where
     {
         Self {
             retention: call.future_retention(),
-            values: call.value_retention(),
             decode: decode::<Profile, Provider, Codec>,
             callable_base: constructions.host().callable_base(),
         }
@@ -51,7 +49,6 @@ where
     fn clone(&self) -> Self {
         Self {
             retention: self.retention.clone(),
-            values: self.values.clone(),
             decode: self.decode,
             callable_base: self.callable_base,
         }
@@ -67,7 +64,7 @@ where
     type View = Future<Source, ProviderFutureValueContext<Profile, Host, Output>>;
 
     fn decode(&self, value: ProviderListItemValue<'_>) -> Self::View {
-        let (value, lease) = value.into_stored_external(&self.values);
+        let (value, lease) = value.into_stored_external();
         Future {
             context: ProviderFutureValueContext {
                 work: self.retention.bind::<FutureProvider, Host>(value, &lease),

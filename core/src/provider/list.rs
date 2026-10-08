@@ -2,7 +2,7 @@ use crate::host::{HostExternalStore, HostType};
 use crate::runtime::{
     ExternalPayloadLease, ExternalPayloadView, RetainedFunctionValue, StoredRuntimeList,
     StoredRuntimeListCustomFields, StoredRuntimeListItem, StoredRuntimeListTupleItems,
-    ValueRetention,
+    StoredRuntimeValue,
 };
 use std::marker::PhantomData;
 use std::ops::Deref;
@@ -63,6 +63,7 @@ pub struct ProviderExternalPayloadAccess<Payload> {
 pub struct ProviderOwnedExternal<Payload> {
     access: ProviderExternalPayloadAccess<Payload>,
     lease: ExternalPayloadLease,
+    stored: StoredRuntimeValue,
 }
 
 impl<Payload: Send + 'static> Clone for ProviderOwnedExternal<Payload> {
@@ -70,6 +71,7 @@ impl<Payload: Send + 'static> Clone for ProviderOwnedExternal<Payload> {
         Self {
             access: self.access.clone(),
             lease: self.lease.clone(),
+            stored: self.stored.clone_retained(),
         }
     }
 }
@@ -78,7 +80,7 @@ impl<Payload: Send + 'static> Clone for ProviderOwnedExternal<Payload> {
 #[doc(hidden)]
 pub struct ProviderExternalView<Payload> {
     value: ExternalPayloadView<Payload>,
-    lease: ExternalPayloadLease,
+    stored: StoredRuntimeValue,
 }
 
 /// Profile-independent decoder for one scalar List item.
@@ -189,7 +191,8 @@ impl<'value> ProviderListItemValue<'value> {
     where
         Payload: Send + 'static,
     {
-        ProviderOwnedExternal::new(access.clone(), self.value.into_external_lease())
+        let (stored, lease) = self.value.into_stored_external();
+        ProviderOwnedExternal::new(access.clone(), lease, stored)
     }
 
     #[doc(hidden)]
@@ -200,9 +203,9 @@ impl<'value> ProviderListItemValue<'value> {
     where
         Payload: Send + 'static,
     {
-        let lease = self.value.into_external_lease();
+        let (stored, lease) = self.value.into_stored_external();
         let value = access.store.view(&lease);
-        ProviderExternalView::new(value, lease)
+        ProviderExternalView::new(value, stored)
     }
 
     #[doc(hidden)]
@@ -255,26 +258,20 @@ impl ProviderListCustomFields<'_> {
 }
 
 impl ProviderListItemValue<'_> {
-    pub(crate) fn into_stored_external(
-        self,
-        retention: &crate::runtime::ValueRetention,
-    ) -> (crate::runtime::StoredRuntimeValue, ExternalPayloadLease) {
-        self.value.into_stored_external(retention)
+    pub(crate) fn into_stored_external(self) -> (StoredRuntimeValue, ExternalPayloadLease) {
+        self.value.into_stored_external()
     }
 
-    pub(crate) fn into_stored(
-        self,
-        retention: &crate::runtime::ValueRetention,
-    ) -> crate::runtime::StoredRuntimeValue {
-        self.value.into_stored(retention)
+    pub(crate) fn into_stored(self) -> StoredRuntimeValue {
+        self.value.into_stored()
     }
 
     pub(crate) fn into_callable(self) -> crate::runtime::RetainedCallable {
         self.value.into_callable()
     }
 
-    pub(crate) fn into_function_value(self, retention: &ValueRetention) -> RetainedFunctionValue {
-        self.value.into_function_value(retention)
+    pub(crate) fn into_function_value(self) -> RetainedFunctionValue {
+        self.value.into_function_value()
     }
 }
 
@@ -298,16 +295,21 @@ impl<Payload: Send + 'static> ProviderOwnedExternal<Payload> {
     pub(crate) fn new(
         access: ProviderExternalPayloadAccess<Payload>,
         lease: ExternalPayloadLease,
+        stored: StoredRuntimeValue,
     ) -> Self {
-        Self { access, lease }
+        Self {
+            access,
+            lease,
+            stored,
+        }
     }
 
     pub fn with<Output>(&self, read: impl FnOnce(&Payload) -> Output) -> Output {
         self.access.store.with_view(&self.lease, read)
     }
 
-    pub(crate) fn into_lease(self) -> ExternalPayloadLease {
-        self.lease
+    pub(crate) fn into_stored(self) -> StoredRuntimeValue {
+        self.stored
     }
 }
 
@@ -320,12 +322,12 @@ impl<Payload> Deref for ProviderExternalView<Payload> {
 }
 
 impl<Payload> ProviderExternalView<Payload> {
-    pub(crate) fn new(value: ExternalPayloadView<Payload>, lease: ExternalPayloadLease) -> Self {
-        Self { value, lease }
+    pub(crate) fn new(value: ExternalPayloadView<Payload>, stored: StoredRuntimeValue) -> Self {
+        Self { value, stored }
     }
 
-    pub(crate) fn into_lease(self) -> ExternalPayloadLease {
-        self.lease
+    pub(crate) fn into_stored(self) -> StoredRuntimeValue {
+        self.stored
     }
 }
 
@@ -472,20 +474,109 @@ mod tests {
 
     #[test]
     fn owned_external_aliases_share_a_non_clone_payload_until_the_last_drop() {
-        let (sender, receiver) = std::sync::mpsc::channel::<usize>();
-        let store = HostExternalStore::default();
-        let label = crate::host::HostStoredValue::<BigInt>::new(
-            crate::runtime::StoredRuntimeValue::test_int(7.into()),
+        use crate::host::{
+            HostCall, HostCallCompletion, HostCallError, HostExternalBinding, HostExternalEquality,
+            HostExternalHashing, HostExternalInspection, HostExternalSchema, HostExternalStorage,
+            HostExternalType, HostProfile, HostProvider, HostProviderModule, HostProviderSet,
+            HostStoredValue,
+        };
+        use crate::{HostedExecution, ModuleSource, PackageSource, Value};
+        use std::sync::mpsc::Sender;
+
+        type Payload = (Receiver<usize>, HostStoredValue<BigInt>);
+        type State = (
+            Option<Sender<usize>>,
+            Option<ProviderOwnedExternal<Payload>>,
         );
-        let lease = store.insert(
-            (receiver, label),
-            |context, left, right| context.stored_values_equal(&left.1, &right.1),
-            |context, value| context.stored_value_hash(&value.1),
-            |context, value| format!("Receiver({})", context.inspect_stored_value(&value.1)).into(),
-            |_| None,
+        struct Profile;
+        struct Provider;
+        struct Schema;
+        struct Storage;
+        impl HostProfile for Profile {
+            type RunState = State;
+            type ExternalStores = HostExternalStore<Payload>;
+            type ExecutionState = ();
+        }
+        impl HostProvider<Profile> for Provider {
+            type State = State;
+            fn project(state: &mut State) -> &mut State {
+                state
+            }
+        }
+        impl HostExternalSchema for Schema {
+            const PACKAGE: &'static str = "application";
+            const MODULE: &'static str = "main";
+            const NAME: &'static str = "Receiver";
+            const PARAMETER_COUNT: usize = 0;
+        }
+        impl HostExternalBinding<Profile, Schema> for Provider {
+            type Storage = Storage;
+        }
+        impl HostExternalStorage<Profile, Schema> for Storage {
+            type Payload = Payload;
+            fn store(stores: &HostExternalStore<Payload>) -> &HostExternalStore<Payload> {
+                stores
+            }
+            fn source_equal(
+                context: &HostExternalEquality<'_>,
+                left: &Payload,
+                right: &Payload,
+            ) -> bool {
+                context.stored_values_equal(&left.1, &right.1)
+            }
+            fn source_hash(context: &HostExternalHashing<'_>, value: &Payload) -> u64 {
+                context.stored_value_hash(&value.1)
+            }
+            fn inspect(context: &HostExternalInspection<'_>, value: &Payload) -> ecow::EcoString {
+                format!("Receiver({})", context.inspect_stored_value(&value.1)).into()
+            }
+        }
+        fn create<'call>(
+            mut call: HostCall<'call, Profile, Provider, HostExternalType<Schema>>,
+        ) -> Result<HostCallCompletion<'call, HostExternalType<Schema>>, HostCallError> {
+            let (sender, receiver) = std::sync::mpsc::channel();
+            let label = HostStoredValue::<BigInt>::new(
+                crate::runtime::StoredRuntimeValue::test_int(7.into()),
+            );
+            let value = call.create_external((receiver, label));
+            let original =
+                call.provider_external_item_with::<Provider, Schema, crate::HostTypeListEnd>(value);
+            *call.state() = (Some(sender), Some(original));
+            Ok(call.return_value(value))
+        }
+        let provider = HostProviderModule::<Profile>::new("application", "main")
+            .unwrap()
+            .with_external_type::<Provider, Schema>()
+            .unwrap()
+            .with_scoped_function::<Provider, (), HostExternalType<Schema>, _>("create", create)
+            .unwrap();
+        let source = r#"
+@external(erlang, "host", "Receiver")
+pub type Receiver
+@external(erlang, "host", "create")
+fn create() -> Receiver
+pub fn main() { let _ = create() 42 }
+"#;
+        let typed = crate::compile_typed_host_program(
+            "application",
+            "main",
+            [PackageSource::new(
+                "application",
+                Vec::<ecow::EcoString>::new(),
+                [ModuleSource::new("main", "src/main.gleam", source)],
+            )],
+            HostProviderSet::with_providers(Vec::new(), [provider]).unwrap(),
+        )
+        .unwrap();
+        let mut execution =
+            HostedExecution::try_from_module_plan(crate::plan_host_program(typed).unwrap())
+                .unwrap();
+        let mut state = (None, None);
+        assert_eq!(
+            crate::execution_fixture::run(&mut execution, &mut state, &mut Vec::new()),
+            Ok(Value::Int(42.into()))
         );
-        let original =
-            ProviderOwnedExternal::new(ProviderExternalPayloadAccess::new(&store), lease);
+        let (sender, original) = (state.0.unwrap(), state.1.unwrap());
         let alias = original.clone();
         assert_eq!(original.lease.identity(), alias.lease.identity());
         let equal = crate::host::RetainedValueEquality::new(&|_, _| true);
@@ -500,7 +591,7 @@ mod tests {
         sender.send(7).unwrap();
         assert_eq!(original.with(|payload| payload.0.try_recv().unwrap()), 7);
         drop(original);
-        drop(store);
+        drop(execution);
         sender.send(9).unwrap();
         assert_eq!(alias.lease.inspection(&inspect), "Receiver(7)");
         assert_eq!(alias.with(|payload| payload.0.try_recv().unwrap()), 9);

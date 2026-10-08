@@ -272,6 +272,7 @@ pub fn main() {
         let key = ExternalTypeId(0);
         let key_list = ExternalListTypeId::new(ListTypeId(0), key);
         let lists = ListTypeTable {
+            lifetimes: Table::Static(&[HostValueLifetime::Execution]),
             types: vec![ListStorageTypeId::External(key_list)].into(),
             tuple_items: Table::Static(&[]),
             function_items: Table::Static(&[]),
@@ -280,7 +281,18 @@ pub fn main() {
             definitions: Table::Static(&[]),
             types: Table::Static(&[]),
         };
+        use crate::host::HostValueLifetime;
+        use crate::plan::execution::host::registration::ExternalSchema;
         let externals = ExternalTypeTable {
+            lifetimes: vec![HostValueLifetime::Execution].into(),
+            definitions: vec![ExternalSchema {
+                package: "app".into(),
+                module: "main".into(),
+                name: "Key".into(),
+                parameter_count: 0,
+                lifetime: HostValueLifetime::Execution,
+            }]
+            .into(),
             types: vec![NominalTypeMetadata {
                 package: "app".into(),
                 module: "main".into(),

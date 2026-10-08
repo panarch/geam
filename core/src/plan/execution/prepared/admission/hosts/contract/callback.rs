@@ -28,6 +28,7 @@ pub(super) fn admit(
         schemas: schema
             .custom_schemas()
             .iter()
+            .chain(registration.constructions.custom_schemas())
             .map(|schema| {
                 (
                     (
@@ -41,7 +42,12 @@ pub(super) fn admit(
             .collect(),
         active: Vec::new(),
     };
-    for parameter in schema.parameters().iter().chain(schema.captures()) {
+    for parameter in schema
+        .parameters()
+        .iter()
+        .chain(schema.captures())
+        .chain(registration.constructions.restorations())
+    {
         search.check(parameter)?;
     }
     if returns_value {
@@ -150,6 +156,107 @@ impl Callbacks<'_, '_> {
 mod tests {
     use super::{Callbacks, ContractError, HostCustomTypeSchema, HostTypeDescriptor, Types};
     use crate::host::{HostCustomConstructorSchema, HostCustomFieldSchema, HostSchemaType};
+
+    #[test]
+    fn restoration_targets_keep_invocation_and_storage_contracts_distinct() {
+        use super::admit;
+        use crate::host::test::StatelessTestProvider;
+        use crate::host::{
+            HostCall, HostCallCompletion, HostCallError, HostConstructions, HostFunctionType,
+            HostFunctionValue, HostFunctionValueType, HostProviderModule, HostProviderSet,
+            HostRestoredType, HostType, HostTypeList, HostTypeListEnd, HostTypeParameter,
+            StatelessHostProfile,
+        };
+        use crate::plan::execution::host::HostTypeArgument;
+        use crate::plan::execution::prepared::admission::hosts::{NativeFunctions, tests::lowered};
+        use crate::plan::execution::type_::{TypeMetadata, ValueShapeDescriptor, ValueShapeId};
+        use num_bigint::BigInt;
+
+        type Arguments = HostTypeList<HostTypeParameter<0>, HostTypeListEnd>;
+        type Stored = HostFunctionValueType<Arguments, BigInt>;
+        type Invocable = HostFunctionType<Arguments, BigInt>;
+        type Permissions<Type> = HostTypeList<HostRestoredType<Type>, HostTypeListEnd>;
+        fn accept<'call, Type: HostType>(
+            call: HostCall<'call, StatelessHostProfile, StatelessTestProvider, bool>,
+            _: HostConstructions<'call, Permissions<Type>>,
+            _: HostFunctionValue<'call, Arguments, BigInt>,
+        ) -> Result<HostCallCompletion<'call, bool>, HostCallError> {
+            Ok(call.return_value(true))
+        }
+        let providers = |invocable| {
+            let module = HostProviderModule::new("app", "main").unwrap();
+            let module = if invocable {
+                module.with_scoped_function_and_constructions::<StatelessTestProvider, (Stored,), bool, Permissions<Invocable>, _>("accept", accept::<Invocable>)
+            } else {
+                module.with_scoped_function_and_constructions::<StatelessTestProvider, (Stored,), bool, Permissions<Stored>, _>("accept", accept::<Stored>)
+            }.unwrap();
+            HostProviderSet::from_providers([module]).unwrap()
+        };
+        let source = r#"
+@external(erlang, "native", "accept")
+fn accept(callback: fn(a) -> Int) -> Bool
+pub fn main() {
+  echo fn(value) { value }
+  accept(fn(value: Int) { value + 1 })
+}
+"#;
+        for invocable in [false, true] {
+            let (program, values, nevers) = lowered(source, providers(invocable));
+            let registered = NativeFunctions::new(&values, &nevers, providers(invocable))
+                .unwrap()
+                .registrations
+                .pop()
+                .unwrap();
+            let common = &program.common;
+            let types = Types::admit(
+                &common.list_types,
+                &common.custom_types,
+                &common.external_types,
+                &common.value_shapes,
+            )
+            .unwrap();
+            assert_eq!(
+                admit(&registered, &values[0].type_arguments, &types, true),
+                Ok(())
+            );
+            let symbolic = common
+                .value_shapes
+                .shapes
+                .iter()
+                .position(|shape| matches!(shape, ValueShapeDescriptor::Parameter(_)))
+                .unwrap();
+            let arguments = [HostTypeArgument {
+                type_: TypeMetadata::Parameter(crate::plan::TypeParameterId(0)),
+                shape: ValueShapeId(symbolic),
+            }];
+            assert_eq!(
+                admit(&registered, &arguments, &types, true),
+                if invocable {
+                    Err(ContractError::Callback)
+                } else {
+                    Ok(())
+                }
+            );
+        }
+        let typed = crate::compile_typed_host_program(
+            "app",
+            "main",
+            [crate::PackageSource::new(
+                "app",
+                Vec::<&str>::new(),
+                [crate::ModuleSource::new("main", "main.gleam", source)],
+            )],
+            providers(false),
+        )
+        .unwrap();
+        let mut execution =
+            crate::HostedExecution::try_from_module_plan(crate::plan_host_program(typed).unwrap())
+                .unwrap();
+        assert_eq!(
+            crate::execution_fixture::run(&mut execution, &mut (), &mut Vec::new()).unwrap(),
+            crate::Value::Bool(true)
+        );
+    }
 
     #[test]
     fn registration_custom_schemas_validate_callbacks_before_native_execution() {

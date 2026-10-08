@@ -1,5 +1,5 @@
 data::HostedEntryArtifact {
-    format: 24,
+    format: 25,
     program: data::ProgramTables {
         root: data::source::module_id(0),
         modules: data::Storage::Static(&[
@@ -5864,6 +5864,9 @@ pub fn main() -> Int {
             ]),
             tuple_items: data::Storage::Static(&[]),
             function_items: data::Storage::Static(&[]),
+            lifetimes: data::Storage::Static(&[
+                data::host::HostValueLifetime::LoadedOwner,
+            ]),
         },
         custom_types: data::type_::CustomTypeTable {
             types: data::Storage::Static(&[]),
@@ -5871,6 +5874,8 @@ pub fn main() -> Int {
         },
         external_types: data::type_::ExternalTypeTable {
             types: data::Storage::Static(&[]),
+            lifetimes: data::Storage::Static(&[]),
+            definitions: data::Storage::Static(&[]),
         },
         value_shapes: data::type_::ValueShapeTable {
             shapes: data::Storage::Static(&[

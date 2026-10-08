@@ -12,6 +12,139 @@ use geam::gleam_stdlib::{GleamStdlibRunState, IoStream};
 use support::{execution, execution_fixture};
 
 #[test]
+fn original_warning_boundary_rejects_foreign_character_storage_before_emitting_a_warning() {
+    use geam::gleam_erlang::{Charlist, CharlistSchema, Component as ErlangComponent};
+    use geam::host::{
+        HostCall, HostCallCompletion, HostCallError, HostConstructions, HostListType,
+        HostProviderComponentRegistration, HostProviderModule, HostProviderSet, HostStoredValue,
+        HostTypeIndex0, HostTypeIndexNext, HostTypeList, HostTypeListEnd,
+    };
+    use geam::{
+        HostedExecution, ModuleSource, PackageSource, compile_typed_host_program, plan_host_program,
+    };
+    use std::path::Path;
+    use std::sync::{Arc, Mutex};
+    use support::Profile;
+
+    type Constructions = HostTypeList<Charlist, HostTypeList<HostListType<char>, HostTypeListEnd>>;
+    type Call<'call> = HostCall<'call, Profile, ErlangComponent<Profile>, Charlist>;
+    type Completion<'call> = Result<HostCallCompletion<'call, Charlist>, HostCallError>;
+    fn retained(
+        previous: Arc<Mutex<Option<HostStoredValue<HostListType<char>>>>>,
+    ) -> impl for<'call> Fn(Call<'call>, HostConstructions<'call, Constructions>) -> Completion<'call>
+    {
+        move |mut call, constructions| {
+            let saved = previous.lock().unwrap().take();
+            let construction = constructions.at::<HostTypeIndex0>();
+            let value = match saved {
+                Some(characters) => call.construct_external(construction, characters),
+                None => {
+                    let characters = call.construct_list(
+                        constructions.at::<HostTypeIndexNext<HostTypeIndex0>>(),
+                        "retained".chars(),
+                    );
+                    call.construct_external_with::<CharlistSchema, HostTypeListEnd>(
+                        construction,
+                        |builder| {
+                            *previous.lock().unwrap() =
+                                Some(builder.store::<HostListType<char>>(characters));
+                            builder.store::<HostListType<char>>(characters)
+                        },
+                    )
+                }
+            };
+            Ok(call.return_value(value))
+        }
+    }
+    fn modules(root: &Path, directory: &Path, output: &mut Vec<ModuleSource>) {
+        for entry in std::fs::read_dir(directory).unwrap() {
+            let path = entry.unwrap().path();
+            if path.is_dir() {
+                modules(root, &path, output);
+            } else if path
+                .extension()
+                .is_some_and(|extension| extension == "gleam")
+            {
+                let name = path.strip_prefix(root).unwrap().with_extension("");
+                let name = name.to_str().unwrap().replace('\\', "/");
+                let mut source = std::fs::read_to_string(&path).unwrap();
+                if name == "gleam/otp/actor" {
+                    // The original private source body stays unchanged; this test
+                    // entry calls its native boundary with host-supplied Charlist values.
+                    source.push_str("\npub fn probe_warning(format: Charlist, arguments: List(Charlist)) { log_warning(format, arguments) }\n");
+                }
+                output.push(ModuleSource::new(name, path.to_str().unwrap(), source));
+            }
+        }
+    }
+    let (_, mut state) = execution("otp_service_fixture");
+    let packages = Path::new(env!("CARGO_MANIFEST_DIR")).join("../project/build/packages");
+    let mut dependencies = Vec::new();
+    for (package, requires) in [
+        ("gleam_stdlib", vec![]),
+        ("gleam_erlang", vec!["gleam_stdlib"]),
+        ("gleam_otp", vec!["gleam_stdlib", "gleam_erlang"]),
+    ] {
+        let root = packages.join(package).join("src");
+        let mut sources = Vec::new();
+        modules(&root, &root, &mut sources);
+        dependencies.push(PackageSource::new(package, requires, sources));
+    }
+    let host = execution_fixture::TestHost::default();
+    for warning in [
+        "actor.probe_warning(retained(), [])",
+        "actor.probe_warning(charlist.from_string(\"~s\"), [retained()])",
+    ] {
+        let previous = Arc::new(Mutex::new(None));
+        for body in ["let _ = retained() Nil", warning] {
+            let mut sources = dependencies.clone();
+            sources.push(PackageSource::new(
+                "application",
+                ["gleam_stdlib", "gleam_erlang", "gleam_otp"],
+                [ModuleSource::new(
+                    "main",
+                    "main.gleam",
+                    format!(
+                        r#"
+import gleam/erlang/charlist
+import gleam/otp/actor
+@external(erlang, "host", "retained") fn retained() -> charlist.Charlist
+pub fn main() {{ {body} }}
+"#
+                    ),
+                )],
+            ));
+            let mut providers = geam::gleam_stdlib::host_providers::<Profile>().unwrap();
+            providers.extend(geam::gleam_erlang::host_providers::<Profile>().unwrap());
+            providers.extend(<geam_otp_service_fixture::Component<Profile> as HostProviderComponentRegistration<Profile>>::providers().unwrap().into_iter().filter(|module| module.package() == "gleam_otp"));
+            providers.push(HostProviderModule::new("application", "main").unwrap()
+                .with_scoped_function_and_constructions::<ErlangComponent<Profile>, (), Charlist, Constructions, _>("retained", retained(previous.clone())).unwrap());
+            let typed = compile_typed_host_program(
+                "application",
+                "main",
+                sources,
+                HostProviderSet::from_providers(providers).unwrap(),
+            )
+            .unwrap();
+            let mut execution =
+                HostedExecution::try_from_module_plan(plan_host_program(typed).unwrap()).unwrap();
+            let mut echo = Vec::new();
+            let result = host.block_on(execution.run_main(&host, &mut state, &mut echo));
+            if body == warning {
+                assert_eq!(
+                    result.err().unwrap().to_string(),
+                    "host function gleam_otp::gleam/otp/actor.log_warning failed: retained value belongs to another owner or source type"
+                );
+            } else {
+                assert_eq!(result.unwrap().try_into_value().unwrap(), Value::Nil);
+            }
+            assert!(echo.is_empty());
+            assert!(state.provider.warnings.is_empty());
+        }
+    }
+}
+
+#[test]
 fn original_actor_system_callbacks_share_the_mailbox_and_receiver() {
     let (mut execution, mut state) = execution("otp_service_fixture");
     let host = execution_fixture::TestHost::default();

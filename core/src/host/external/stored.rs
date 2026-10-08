@@ -146,7 +146,7 @@ where
         &self,
         call: &mut HostCall<'call, Profile, Provider, Return>,
         select: impl FnOnce(&Payload) -> &HostStoredValue<Type>,
-    ) -> Type::Value<'call>
+    ) -> Result<Type::Value<'call>, crate::host::HostCallError>
     where
         Profile: HostProfile,
         Provider: HostProvider<Profile>,
@@ -161,7 +161,10 @@ where
         &self,
         call: &mut HostCall<'call, Profile, Provider, Return>,
         select: impl FnOnce(&Payload) -> &HostStoredValue<HostStoredType<Index>>,
-    ) -> <<Arguments as HostTypeAt<Index>>::Type as HostType>::Value<'call>
+    ) -> Result<
+        <<Arguments as HostTypeAt<Index>>::Type as HostType>::Value<'call>,
+        crate::host::HostCallError,
+    >
     where
         Profile: HostProfile,
         Provider: HostProvider<Profile>,

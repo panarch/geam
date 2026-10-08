@@ -19,6 +19,7 @@ on:
           - charlist_service
           - dict_service
           - bytes_tree_service
+          - decoder_service
           - selective_receive_service
           - application_exit
           - native_function_views
@@ -481,6 +482,7 @@ jobs:
             "charlist_service",
             "dict_service",
             "bytes_tree_service",
+            "decoder_service",
             "selective_receive_service",
             "application_exit",
             "native_function_views",
@@ -501,6 +503,7 @@ jobs:
                 "charlist_service": "tests/fixtures/charlist_service/provider",
                 "dict_service": "tests/fixtures/dict_service/provider",
                 "bytes_tree_service": "tests/fixtures/bytes_tree_service/provider",
+                "decoder_service": "tests/fixtures/decoder_service/provider",
                 "selective_receive_service": "tests/fixtures/selective_receive_service/provider",
                 "application_exit": "tests/fixtures/application_exit/provider",
                 "native_function_views": "tests/fixtures/native_function_views/provider",
@@ -523,6 +526,7 @@ jobs:
                   "tests/fixtures/charlist_service/provider",
                   "tests/fixtures/dict_service/provider",
                   "tests/fixtures/bytes_tree_service/provider",
+                  "tests/fixtures/decoder_service/provider",
                   "tests/fixtures/raw_string_values/provider"
                 ]
               }

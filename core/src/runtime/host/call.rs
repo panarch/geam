@@ -365,7 +365,8 @@ where
     fn native_tuple(&self, value: HostListToken) -> crate::runtime::NativeValue {
         crate::runtime::NativeValue::tuple_from_list(
             self.scoped.list_value(value),
-            self.plan.value_metadata(),
+            crate::runtime::ValueRetention::new(self.plan.value_metadata())
+                .with_endpoint(self.execution().endpoint()),
         )
     }
 
@@ -401,7 +402,7 @@ where
                 &crate::runtime::BorrowedValue::from_stored(value).list(),
                 index,
             )
-            .map(|value| StoredRuntimeValue::new(value, self.plan.value_metadata()))
+            .map(|item| StoredRuntimeValue::from_retention(item, value.retention()))
     }
 
     fn complete(&mut self, value: HostScopedValue) -> HostValueToken {
@@ -551,7 +552,13 @@ where
 
     fn retain_stored(&self, value: HostScopedValue) -> StoredRuntimeValue {
         let value = self.scoped.value_from_scoped(value);
-        StoredRuntimeValue::new(value, self.plan.value_metadata())
+        StoredRuntimeValue::from_retention(
+            value,
+            super::ValueRetentionRef {
+                metadata: self.plan.value_metadata(),
+                endpoint: Some(&self.execution().endpoint()),
+            },
+        )
     }
 
     fn owns_stored(&self, value: &StoredRuntimeValue) -> bool {
@@ -559,7 +566,11 @@ where
     }
 
     fn retain_list(&self, value: HostListToken) -> StoredRuntimeList {
-        StoredRuntimeList::new(self.scoped.list_value(value))
+        StoredRuntimeList::new(
+            self.scoped.list_value(value),
+            crate::runtime::ValueRetention::new(self.plan.value_metadata())
+                .with_endpoint(self.execution().endpoint()),
+        )
     }
 
     fn restore_list(&mut self, value: &StoredRuntimeList) -> HostListToken {

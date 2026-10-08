@@ -22,6 +22,10 @@ pub trait HostExternalSchema: Send + Sync + 'static {
     const MODULE: &'static str;
     const NAME: &'static str;
     const PARAMETER_COUNT: usize;
+
+    /// Opaque payloads default to their original live execution.
+    /// Choose `LoadedOwner` only for immutable data without hidden execution capabilities.
+    const LIFETIME: crate::host::HostValueLifetime = crate::host::HostValueLifetime::Execution;
 }
 
 /// Provider-owned storage and Gleam source semantics for one external schema.
@@ -138,6 +142,7 @@ pub struct HostExternalTypeSchema {
     module: EcoString,
     name: EcoString,
     parameter_count: usize,
+    lifetime: crate::host::HostValueLifetime,
 }
 
 impl HostExternalTypeSchema {
@@ -148,6 +153,7 @@ impl HostExternalTypeSchema {
             Schema::NAME,
             Schema::PARAMETER_COUNT,
         )
+        .with_lifetime(Schema::LIFETIME)
     }
 
     pub fn new(
@@ -161,7 +167,17 @@ impl HostExternalTypeSchema {
             module: module.into(),
             name: name.into(),
             parameter_count,
+            lifetime: crate::host::HostValueLifetime::Execution,
         }
+    }
+
+    pub fn lifetime(&self) -> crate::host::HostValueLifetime {
+        self.lifetime
+    }
+
+    pub(crate) fn with_lifetime(mut self, lifetime: crate::host::HostValueLifetime) -> Self {
+        self.lifetime = lifetime;
+        self
     }
 
     pub fn package(&self) -> &EcoString {
@@ -741,7 +757,9 @@ pub fn run(i: Int, f: Float, s: String, b: BitArray, c: UtfCodepoint, flag: Bool
                         )
                         .await?;
                     Ok(crate::HostOwnedCompletion::new(move |mut call, _| {
-                        let value = value.into_host(&mut call);
+                        let value = value
+                            .into_host(&mut call)
+                            .expect("value belongs to this execution");
                         Ok(call.return_value(value))
                     }))
                 })

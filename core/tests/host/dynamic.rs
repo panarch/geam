@@ -1,12 +1,12 @@
 use ecow::EcoString;
 use geam_core::{
-    BitArrayValue, ExecutionError, HostCall, HostCallCompletion, HostCallError, HostExternal,
-    HostExternalBinding, HostExternalEquality, HostExternalHashing, HostExternalInspection,
-    HostExternalSchema, HostExternalStorage, HostExternalStore, HostExternalType, HostFailure,
-    HostFunctionType, HostProfile, HostProvider, HostProviderModule, HostProviderSet,
-    HostStoredDynamic, HostTypeList, HostTypeListEnd, HostTypeParameter, HostValue,
-    HostedExecution, ModuleSource, PackageSource, PanicKind, Value, compile_typed_host_program,
-    plan_host_program,
+    BitArrayValue, ExecutionError, HostCall, HostCallCompletion, HostCallError, HostConstructions,
+    HostExternal, HostExternalBinding, HostExternalEquality, HostExternalHashing,
+    HostExternalInspection, HostExternalSchema, HostExternalStorage, HostExternalStore,
+    HostExternalType, HostFailure, HostFunctionType, HostProfile, HostProvider, HostProviderModule,
+    HostProviderSet, HostRegistrationError, HostRestoredType, HostStoredDynamic, HostTypeIndex0,
+    HostTypeList, HostTypeListEnd, HostTypeParameter, HostValue, HostedExecution, ModuleSource,
+    PackageSource, PanicKind, Value, compile_typed_host_program, plan_host_program,
 };
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -35,6 +35,8 @@ struct DynamicPayload {
 }
 
 struct PayloadDrop(Arc<AtomicUsize>);
+
+type Restorations<Type> = HostTypeList<HostRestoredType<Type>, HostTypeListEnd>;
 
 type Parameter = HostTypeParameter<0>;
 type Dynamic = HostExternalType<DynamicSchema>;
@@ -110,25 +112,34 @@ fn encode<'call>(
 
 fn decode<'call>(
     mut call: HostCall<'call, DynamicProfile, DynamicProvider, Parameter>,
+    permissions: HostConstructions<'call, Restorations<Parameter>>,
     dynamic: HostExternal<'call, Dynamic>,
     fallback: HostValue<'call, Parameter>,
 ) -> Result<HostCallCompletion<'call, Parameter>, HostCallError> {
     let payload = call.external_payload(dynamic);
     let value = payload
-        .decode::<_, _, _, Parameter>(&mut call, |payload| &payload.value)
+        .decode::<_, _, _, Parameter>(
+            &mut call,
+            &permissions.at::<HostTypeIndex0>().restoration(),
+            |payload| &payload.value,
+        )
         .unwrap_or(fallback);
     Ok(call.return_value(value))
 }
 
 fn invoke_dynamic<'call>(
     mut call: HostCall<'call, DynamicProfile, DynamicProvider, num_bigint::BigInt>,
-    constructions: geam_core::HostConstructions<'call, geam_core::HostTypeListEnd>,
+    constructions: HostConstructions<'call, Restorations<IntFunction>>,
     dynamic: HostExternal<'call, Dynamic>,
     value: num_bigint::BigInt,
 ) -> Result<geam_core::HostCallContinuation<'call, num_bigint::BigInt>, HostCallError> {
     let payload = call.external_payload(dynamic);
     let function = payload
-        .decode::<_, _, _, IntFunction>(&mut call, |payload| &payload.value)
+        .decode::<_, _, _, IntFunction>(
+            &mut call,
+            &constructions.at::<HostTypeIndex0>().restoration(),
+            |payload| &payload.value,
+        )
         .ok_or_else(|| HostFailure::new("dynamic value is not fn(Int) -> Int"))?;
     let function = call.owned_callable(function, &constructions);
     drop(payload);
@@ -146,23 +157,33 @@ fn invoke_dynamic<'call>(
 
 fn has_unresolved_type<'call>(
     mut call: HostCall<'call, DynamicProfile, DynamicProvider, bool>,
+    permissions: HostConstructions<'call, Restorations<Parameter>>,
     dynamic: HostExternal<'call, Dynamic>,
 ) -> Result<HostCallCompletion<'call, bool>, HostCallError> {
     let payload = call.external_payload(dynamic);
     let unresolved = payload
-        .decode::<_, _, _, HostTypeParameter<0>>(&mut call, |payload| &payload.value)
+        .decode::<_, _, _, HostTypeParameter<0>>(
+            &mut call,
+            &permissions.at::<HostTypeIndex0>().restoration(),
+            |payload| &payload.value,
+        )
         .is_none();
     Ok(call.return_value(unresolved))
 }
 
 fn has_resolved_type<'call>(
     mut call: HostCall<'call, DynamicProfile, DynamicProvider, bool>,
+    permissions: HostConstructions<'call, Restorations<Parameter>>,
     dynamic: HostExternal<'call, Dynamic>,
     _witness: HostValue<'call, HostTypeParameter<0>>,
 ) -> Result<HostCallCompletion<'call, bool>, HostCallError> {
     let payload = call.external_payload(dynamic);
     let resolved = payload
-        .decode::<_, _, _, HostTypeParameter<0>>(&mut call, |payload| &payload.value)
+        .decode::<_, _, _, HostTypeParameter<0>>(
+            &mut call,
+            &permissions.at::<HostTypeIndex0>().restoration(),
+            |payload| &payload.value,
+        )
         .is_some();
     Ok(call.return_value(resolved))
 }
@@ -175,7 +196,7 @@ fn decodes_every_scalar_and_rejects_mismatched_shapes() {
         .expect("dynamic type should be valid")
         .with_scoped_function::<DynamicProvider, (Parameter,), Dynamic, _>("encode", encode)
         .expect("encode provider should be valid")
-        .with_scoped_function::<DynamicProvider, (Dynamic, Parameter), Parameter, _>(
+        .with_scoped_function_and_constructions::<DynamicProvider, (Dynamic, Parameter), Parameter, Restorations<Parameter>, _>(
             "decode", decode,
         )
         .expect("decode provider should be valid");
@@ -253,7 +274,7 @@ fn decodes_compounds_functions_and_nested_external_values() {
         .expect("dynamic type should be valid")
         .with_scoped_function::<DynamicProvider, (Parameter,), Dynamic, _>("encode", encode)
         .expect("encode provider should be valid")
-        .with_scoped_function::<DynamicProvider, (Dynamic, Parameter), Parameter, _>(
+        .with_scoped_function_and_constructions::<DynamicProvider, (Dynamic, Parameter), Parameter, Restorations<Parameter>, _>(
             "decode", decode,
         )
         .expect("decode provider should be valid");
@@ -345,7 +366,7 @@ fn invokes_a_decoded_callable_through_nested_host_reentry() {
             DynamicProvider,
             (Dynamic, num_bigint::BigInt),
             num_bigint::BigInt,
-            geam_core::HostTypeListEnd, _,
+            Restorations<IntFunction>, _,
         >("invoke_dynamic", invoke_dynamic)
         .expect("dynamic invocation provider should be valid")
         .with_function("increment", |value: num_bigint::BigInt| value + 1)
@@ -406,7 +427,7 @@ fn reports_decode_mismatch_as_provider_semantics() {
             DynamicProvider,
             (Dynamic, num_bigint::BigInt),
             num_bigint::BigInt,
-            geam_core::HostTypeListEnd, _,
+            Restorations<IntFunction>, _,
         >("invoke_dynamic", invoke_dynamic)
         .expect("dynamic invocation provider should be valid");
     let source = r#"
@@ -451,19 +472,25 @@ pub fn main() {
 }
 
 #[test]
-fn distinguishes_unresolved_resolved_and_mismatched_parameters() {
+fn rejects_unbound_restoration_and_distinguishes_exact_specialization() {
+    let error = HostProviderModule::<DynamicProfile>::new("application", "main")
+        .expect("provider module should be valid")
+        .with_scoped_function_and_constructions::<DynamicProvider, (Dynamic,), bool, Restorations<Parameter>, _>("has_unresolved_type", has_unresolved_type)
+        .err().expect("unbound restoration type must fail at registration");
+    assert_eq!(
+        error,
+        HostRegistrationError::UnboundConstructionTypeParameters {
+            function: "has_unresolved_type".into(),
+            parameters: Box::new([0]),
+        }
+    );
     let provider = HostProviderModule::<DynamicProfile>::new("application", "main")
         .expect("provider module should be valid")
         .with_external_type::<DynamicProvider, DynamicSchema>()
         .expect("dynamic type should be valid")
         .with_scoped_function::<DynamicProvider, (Parameter,), Dynamic, _>("encode", encode)
         .expect("encode provider should be valid")
-        .with_scoped_function::<DynamicProvider, (Dynamic,), bool, _>(
-            "has_unresolved_type",
-            has_unresolved_type,
-        )
-        .expect("unresolved type provider should be valid")
-        .with_scoped_function::<DynamicProvider, (Dynamic, Parameter), bool, _>(
+        .with_scoped_function_and_constructions::<DynamicProvider, (Dynamic, Parameter), bool, Restorations<Parameter>, _>(
             "has_resolved_type",
             has_resolved_type,
         )
@@ -475,15 +502,11 @@ pub type Dynamic
 @external(erlang, "host", "encode")
 fn encode(value: value) -> Dynamic
 
-@external(erlang, "host", "has_unresolved_type")
-fn has_unresolved_type(value: Dynamic) -> Bool
-
 @external(erlang, "host", "has_resolved_type")
 fn has_resolved_type(value: Dynamic, witness: value) -> Bool
 
 pub fn main() {
   #(
-    has_unresolved_type(encode(42)),
     has_resolved_type(encode(42), 0),
     has_resolved_type(encode(42), True),
   )
@@ -510,13 +533,9 @@ pub fn main() {
 
     assert_eq!(
         actual,
-        Ok(Value::Tuple(vec![
-            Value::Bool(true),
-            Value::Bool(true),
-            Value::Bool(false),
-        ])),
+        Ok(Value::Tuple(vec![Value::Bool(true), Value::Bool(false),])),
     );
-    assert_eq!(state.drops.load(Ordering::Relaxed), 3);
+    assert_eq!(state.drops.load(Ordering::Relaxed), 2);
 }
 
 #[test]

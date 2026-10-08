@@ -65,7 +65,8 @@ struct StoredValue {
     integer_reads: SharedIntegerReads,
     value: EvaluatedValue,
     type_: crate::plan::ValueType,
-    metadata: crate::plan::execution::runtime::OwnedRuntimeValueMetadata,
+    retention: ValueRetention,
+    requires_execution: bool,
 }
 
 /// Borrowed invocable function storage selected at the native conversion boundary.
@@ -85,20 +86,47 @@ impl StoredRuntimeFunction<'_> {
 pub(crate) struct StoredRuntimeList {
     retained: RetainedList<ListValueId>,
     item_values: RefCell<ScopedValues>,
+    retention: ValueRetention,
 }
 
 #[derive(Clone)]
-pub(crate) struct ValueRetention(crate::plan::execution::runtime::OwnedRuntimeValueMetadata);
+pub(crate) struct ValueRetention {
+    metadata: crate::plan::execution::runtime::OwnedRuntimeValueMetadata,
+    endpoint: Option<crate::runtime::execution::ExecutionEndpoint>,
+}
+
+#[derive(Clone, Copy)]
+pub(in crate::runtime) struct ValueRetentionRef<'value> {
+    pub(in crate::runtime) metadata: crate::plan::execution::runtime::RuntimeValueMetadata<'value>,
+    pub(in crate::runtime) endpoint: Option<&'value crate::runtime::execution::ExecutionEndpoint>,
+}
 
 impl ValueRetention {
-    pub(in crate::runtime) fn new(
-        metadata: crate::plan::execution::runtime::RuntimeValueMetadata<'_>,
+    pub(crate) fn with_endpoint(
+        mut self,
+        endpoint: crate::runtime::execution::ExecutionEndpoint,
     ) -> Self {
-        Self(metadata.to_owned())
+        self.endpoint = Some(endpoint);
+        self
+    }
+
+    pub(in crate::runtime) fn as_borrowed(&self) -> ValueRetentionRef<'_> {
+        ValueRetentionRef {
+            metadata: self.metadata.as_borrowed(),
+            endpoint: self.endpoint.as_ref(),
+        }
+    }
+
+    pub(crate) fn new(metadata: crate::plan::execution::runtime::RuntimeValueMetadata<'_>) -> Self {
+        Self {
+            metadata: metadata.to_owned(),
+            endpoint: None,
+        }
     }
 }
 
 pub(crate) struct StoredRuntimeListItem<'value> {
+    retention: &'value ValueRetention,
     values: &'value mut ScopedValues,
     token: HostValueToken,
 }
@@ -112,11 +140,13 @@ impl Drop for ListItemScratch<'_> {
 }
 
 pub(crate) struct StoredRuntimeListTupleItems<'value> {
+    retention: &'value ValueRetention,
     item_values: &'value mut ScopedValues,
     values: Vec<EvaluatedValue>,
 }
 
 pub(crate) struct StoredRuntimeListCustomFields<'value> {
+    retention: &'value ValueRetention,
     constructor: usize,
     item_values: &'value mut ScopedValues,
     values: Vec<EvaluatedValue>,
@@ -127,12 +157,34 @@ impl StoredRuntimeValue {
         value: EvaluatedValue,
         metadata: crate::plan::execution::runtime::RuntimeValueMetadata<'_>,
     ) -> Self {
+        Self::from_retention(
+            value,
+            ValueRetentionRef {
+                metadata,
+                endpoint: None,
+            },
+        )
+    }
+
+    pub(in crate::runtime) fn from_retention(
+        value: EvaluatedValue,
+        retention: ValueRetentionRef<'_>,
+    ) -> Self {
+        let requires_execution = value.requires_execution(retention.metadata);
         Self {
             retained: Arc::new(StoredValue {
                 integer_reads: Default::default(),
-                type_: value.value_type(metadata),
+                type_: value.value_type(retention.metadata),
                 value,
-                metadata: metadata.to_owned(),
+                retention: ValueRetention {
+                    metadata: retention.metadata.to_owned(),
+                    endpoint: if requires_execution {
+                        retention.endpoint.cloned()
+                    } else {
+                        None
+                    },
+                },
+                requires_execution,
             }),
         }
     }
@@ -150,6 +202,23 @@ impl StoredRuntimeValue {
 
     pub(in crate::runtime) fn value(&self) -> &EvaluatedValue {
         &self.retained.value
+    }
+
+    pub(crate) fn belongs_to<Profile: crate::host::HostProfile>(
+        &self,
+        execution: &crate::runtime::execution::ExecutionContext<Profile>,
+    ) -> bool {
+        !self.retained.requires_execution
+            || self
+                .retained
+                .retention
+                .endpoint
+                .as_ref()
+                .is_some_and(|endpoint| endpoint.belongs_to(execution))
+    }
+
+    pub(in crate::runtime) fn retention(&self) -> ValueRetentionRef<'_> {
+        self.retained.retention.as_borrowed()
     }
 
     pub(crate) fn invocable_function(&self) -> Option<StoredRuntimeFunction<'_>> {
@@ -174,7 +243,7 @@ impl StoredRuntimeValue {
     pub(in crate::runtime) fn metadata(
         &self,
     ) -> crate::plan::execution::runtime::RuntimeValueMetadata<'_> {
-        self.retained.metadata.as_borrowed()
+        self.retained.retention.metadata.as_borrowed()
     }
 
     pub(crate) fn has_external_schema<Schema>(&self) -> bool
@@ -217,11 +286,11 @@ impl StoredRuntimeValue {
         match Arc::unwrap_or_clone(self.retained) {
             StoredValue {
                 value: EvaluatedValue::Tuple(values),
-                metadata,
+                retention,
                 ..
             } => Ok(values
                 .into_iter()
-                .map(|value| map(Self::new(value, metadata.as_borrowed())))
+                .map(|value| map(Self::from_retention(value, retention.as_borrowed())))
                 .collect()),
             mut retained => {
                 // This new allocation has new scalar addresses. Do not carry
@@ -246,11 +315,54 @@ impl StoredRuntimeValue {
 }
 
 impl StoredRuntimeList {
-    pub(in crate::runtime) fn new(value: ListValueId) -> Self {
+    pub(in crate::runtime) fn new(value: ListValueId, mut retention: ValueRetention) -> Self {
+        if !retention
+            .metadata
+            .as_borrowed()
+            .list_lifetime(value.list_type())
+            .requires_execution()
+        {
+            retention.endpoint = None;
+        }
         Self {
+            retention,
             retained: RetainedList::new(value),
             item_values: RefCell::new(ScopedValues::default()),
         }
+    }
+
+    pub(crate) fn has_type(
+        &self,
+        metadata: crate::plan::execution::runtime::RuntimeValueMetadata<'_>,
+        requested: &crate::plan::ValueType,
+    ) -> bool {
+        metadata.shares_owner(self.retention.metadata.as_borrowed())
+            && metadata.list_value_type(self.retained.handle().list_type()) == *requested
+    }
+
+    pub(crate) fn belongs_to<Profile: crate::HostProfile>(
+        &self,
+        execution: &crate::runtime::execution::ExecutionContext<Profile>,
+    ) -> bool {
+        !self
+            .retention
+            .metadata
+            .as_borrowed()
+            .list_lifetime(self.retained.handle().list_type())
+            .requires_execution()
+            || self
+                .retention
+                .endpoint
+                .as_ref()
+                .is_some_and(|endpoint| endpoint.belongs_to(execution))
+    }
+
+    pub(in crate::runtime) fn retention(&self) -> &ValueRetention {
+        &self.retention
+    }
+
+    pub(crate) fn retained_value(&self) -> StoredRuntimeValue {
+        StoredRuntimeValue::from_retention(self.handle().into(), self.retention.as_borrowed())
     }
 
     pub(crate) fn len(&self) -> usize {
@@ -265,7 +377,7 @@ impl StoredRuntimeList {
         let value = self.retained.item(index)?;
         let mut item_values = self.item_values.borrow_mut();
         let scratch = ListItemScratch(&mut item_values);
-        let item = StoredRuntimeListItem::new(scratch.0, value);
+        let item = StoredRuntimeListItem::new(scratch.0, value, &self.retention);
         Some(decode(item))
     }
 
@@ -279,7 +391,12 @@ impl StoredRuntimeList {
         let type_id = plan.int_list_function_id(0).type_id();
         let storage = crate::runtime::state::list::RuntimeListStorage::default();
         let value = storage.int(type_id, values.into_iter().map(Into::into).collect());
-        Self::new(value.into())
+        Self::new(
+            value.into(),
+            ValueRetention::new(
+                crate::plan::execution::runtime::RuntimeExecutionPlan::value_metadata(&plan),
+            ),
+        )
     }
 
     #[cfg(test)]
@@ -289,9 +406,17 @@ impl StoredRuntimeList {
 }
 
 impl<'value> StoredRuntimeListItem<'value> {
-    fn new(values: &'value mut ScopedValues, value: EvaluatedValue) -> Self {
+    fn new(
+        values: &'value mut ScopedValues,
+        value: EvaluatedValue,
+        retention: &'value ValueRetention,
+    ) -> Self {
         let token = values.push(value);
-        Self { values, token }
+        Self {
+            values,
+            token,
+            retention,
+        }
     }
 
     pub(crate) fn into_int(self) -> BigInt {
@@ -328,18 +453,19 @@ impl<'value> StoredRuntimeListItem<'value> {
 
     pub(crate) fn into_stored_external(
         self,
-        retention: &ValueRetention,
     ) -> (StoredRuntimeValue, crate::runtime::ExternalPayloadLease) {
         let external = self.values.take_external(self.token);
         let lease = external.lease().clone();
-        let value = StoredRuntimeValue::new(
-            EvaluatedValue::External(external),
-            retention.0.as_borrowed(),
-        );
-        (value, lease)
+        (
+            StoredRuntimeValue::from_retention(
+                EvaluatedValue::External(external),
+                self.retention.as_borrowed(),
+            ),
+            lease,
+        )
     }
 
-    pub(crate) fn into_stored(self, retention: &ValueRetention) -> StoredRuntimeValue {
+    pub(crate) fn into_stored(self) -> StoredRuntimeValue {
         let value = match self.token.family {
             HostValueFamily::Int => EvaluatedValue::Int(self.values.take_integer(self.token)),
             HostValueFamily::Float => EvaluatedValue::Float(self.values.take_float(self.token)),
@@ -363,20 +489,20 @@ impl<'value> StoredRuntimeListItem<'value> {
             | HostValueFamily::Function
             | HostValueFamily::SymbolicFunction => self.values.value(self.token),
         };
-        StoredRuntimeValue::new(value, retention.0.as_borrowed())
+        StoredRuntimeValue::from_retention(value, self.retention.as_borrowed())
     }
 
     pub(crate) fn into_callable(self) -> crate::runtime::RetainedCallable {
         self.values.function(self.values.function_token(self.token))
     }
 
-    pub(crate) fn into_function_value(self, retention: &ValueRetention) -> RetainedFunctionValue {
+    pub(crate) fn into_function_value(self) -> RetainedFunctionValue {
         match self.values.function_value_token(self.token) {
             HostFunctionValueToken::Invocable(index) => {
                 RetainedFunctionValue::Invocable(self.values.function(HostFunctionToken(index)))
             }
             HostFunctionValueToken::Symbolic(_) => {
-                RetainedFunctionValue::Symbolic(self.into_stored(retention))
+                RetainedFunctionValue::Symbolic(self.into_stored())
             }
         }
     }
@@ -385,6 +511,7 @@ impl<'value> StoredRuntimeListItem<'value> {
         StoredRuntimeListTupleItems {
             values: self.values.take_tuple(self.token),
             item_values: self.values,
+            retention: self.retention,
         }
     }
 
@@ -392,7 +519,7 @@ impl<'value> StoredRuntimeListItem<'value> {
         let value = self
             .values
             .list_value(self.values.list_tokens[self.token.index]);
-        StoredRuntimeList::new(value)
+        StoredRuntimeList::new(value, self.retention.clone())
     }
 
     pub(crate) fn into_custom_fields(self) -> StoredRuntimeListCustomFields<'value> {
@@ -402,13 +529,18 @@ impl<'value> StoredRuntimeListItem<'value> {
             constructor: constructor.index(),
             values: fields.into_vec(),
             item_values: self.values,
+            retention: self.retention,
         }
     }
 }
 
 impl<'value> StoredRuntimeListTupleItems<'value> {
     pub(crate) fn take_item(&mut self, index: usize) -> StoredRuntimeListItem<'_> {
-        StoredRuntimeListItem::new(self.item_values, self.values.swap_remove(index))
+        StoredRuntimeListItem::new(
+            self.item_values,
+            self.values.swap_remove(index),
+            self.retention,
+        )
     }
 }
 
@@ -418,7 +550,11 @@ impl<'value> StoredRuntimeListCustomFields<'value> {
     }
 
     pub(crate) fn take_field(&mut self, index: usize) -> StoredRuntimeListItem<'_> {
-        StoredRuntimeListItem::new(self.item_values, self.values.swap_remove(index))
+        StoredRuntimeListItem::new(
+            self.item_values,
+            self.values.swap_remove(index),
+            self.retention,
+        )
     }
 }
 
@@ -1332,36 +1468,48 @@ mod tests {
     #[test]
     fn stored_list_items_decode_every_supported_scalar_family() {
         let bits = BitArrayValue::from_bytes(vec![1]);
+        let plan = crate::runtime::plan_src("pub fn main() { 42 }");
+        let retention = super::ValueRetention::new(plan.value_metadata());
         let mut values = ScopedValues::default();
 
         assert_eq!(
-            StoredRuntimeListItem::new(&mut values, EvaluatedValue::Int(7.into())).into_int(),
+            StoredRuntimeListItem::new(&mut values, EvaluatedValue::Int(7.into()), &retention)
+                .into_int(),
             BigInt::from(7),
         );
         assert_eq!(
-            StoredRuntimeListItem::new(&mut values, EvaluatedValue::Float(1.5)).into_float(),
+            StoredRuntimeListItem::new(&mut values, EvaluatedValue::Float(1.5), &retention)
+                .into_float(),
             1.5,
         );
         assert_eq!(
-            StoredRuntimeListItem::new(&mut values, EvaluatedValue::String("text".into()),)
-                .into_string(),
+            StoredRuntimeListItem::new(
+                &mut values,
+                EvaluatedValue::String("text".into()),
+                &retention
+            )
+            .into_string(),
             StringValue::from("text"),
         );
         assert_eq!(
             StoredRuntimeListItem::new(
                 &mut values,
                 EvaluatedValue::BitArray(EvaluatedBitArray::from_value(bits.clone())),
+                &retention
             )
             .into_bit_array(),
             bits,
         );
         assert_eq!(
-            StoredRuntimeListItem::new(&mut values, EvaluatedValue::UtfCodepoint('A'),)
+            StoredRuntimeListItem::new(&mut values, EvaluatedValue::UtfCodepoint('A'), &retention)
                 .into_utf_codepoint(),
             'A',
         );
-        assert!(StoredRuntimeListItem::new(&mut values, EvaluatedValue::Bool(true)).into_bool());
-        StoredRuntimeListItem::new(&mut values, EvaluatedValue::Nil).into_nil();
+        assert!(
+            StoredRuntimeListItem::new(&mut values, EvaluatedValue::Bool(true), &retention)
+                .into_bool()
+        );
+        StoredRuntimeListItem::new(&mut values, EvaluatedValue::Nil, &retention).into_nil();
     }
 
     #[test]
@@ -1384,9 +1532,12 @@ mod tests {
             lease.clone(),
         );
 
+        let plan = crate::runtime::plan_src("pub fn main() { 42 }");
+        let retention = super::ValueRetention::new(plan.value_metadata());
         let mut values = ScopedValues::default();
-        let retained = StoredRuntimeListItem::new(&mut values, EvaluatedValue::External(external))
-            .into_external_lease();
+        let retained =
+            StoredRuntimeListItem::new(&mut values, EvaluatedValue::External(external), &retention)
+                .into_external_lease();
         assert_eq!(retained.identity(), lease.identity());
         let stored_equal =
             |_: &crate::runtime::RetainedValueRef, _: &crate::runtime::RetainedValueRef| false;
@@ -1405,6 +1556,7 @@ mod tests {
                 EvaluatedValue::Int(1.into()),
                 EvaluatedValue::String("second".into()),
             ]),
+            &retention,
         )
         .into_tuple_items();
         let second = tuple.take_item(1).into_string();
@@ -1428,10 +1580,12 @@ mod tests {
             ]
             .into_boxed_slice(),
         );
+        let retention = super::ValueRetention::new(plan.value_metadata());
         let mut values = ScopedValues::default();
 
-        let mut fields = StoredRuntimeListItem::new(&mut values, EvaluatedValue::Custom(custom))
-            .into_custom_fields();
+        let mut fields =
+            StoredRuntimeListItem::new(&mut values, EvaluatedValue::Custom(custom), &retention)
+                .into_custom_fields();
 
         assert_eq!(fields.constructor(), 0);
         let nested = fields.take_field(1).into_list();

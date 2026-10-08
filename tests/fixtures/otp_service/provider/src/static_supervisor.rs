@@ -1,14 +1,17 @@
 use crate::child::{Restart, RestartBudget, Shutdown, property};
 use crate::schema::{
-    StartError, StartResult, StaticChildSpec, StaticChildSpecSchema, StaticFlag, StaticFlags,
-    StaticFlagsSchema, StaticProperty, StaticStart, StaticTimeout, StaticTimeoutSchema,
+    Restart as RestartType, StartError, StartResult, StaticAutoShutdown, StaticAutoShutdownFlag,
+    StaticChildSpec, StaticChildSpecSchema, StaticFlag, StaticFlags, StaticFlagsSchema,
+    StaticIntensityFlag, StaticPeriodFlag, StaticProperty, StaticRestartProperty,
+    StaticShutdownProperty, StaticStart, StaticStrategy, StaticStrategyFlag, StaticTimeout,
+    StaticTimeoutSchema,
 };
 use crate::{A, Call, Component, Four, One, OtpProfile, Two};
 use geam::execution::ExecutionUnit;
 use geam::gleam_erlang::service::{
-    CurrentProcess, Pid as ProcessId, Processes, new_reference, pid_value, with_current_process,
+    CurrentProcess, Processes, new_reference, pid_value, with_current_process,
 };
-use geam::gleam_erlang::{Atom, Pid, Reference};
+use geam::gleam_erlang::{Atom, Component as ErlangComponent, Pid, PidSchema, Reference};
 use geam::gleam_stdlib::provider_support::{
     Dynamic, DynamicSchema, GleamError, GleamOk, GleamResult,
 };
@@ -19,8 +22,8 @@ use geam::host::{
     HostExecutionError, HostExternal, HostExternalBinding, HostExternalEquality,
     HostExternalHashing, HostExternalInspection, HostExternalStorage, HostExternalStore,
     HostFunctionType, HostList, HostListType, HostOwnedCallable, HostOwnedCompletion, HostProfile,
-    HostProviderModule, HostRegistrationError, HostReturns, HostTuple, HostTupleType,
-    HostTypeIndex0, HostTypeIndexNext, HostTypeListEnd,
+    HostProviderModule, HostRegistrationError, HostRestoredType, HostReturns, HostTuple,
+    HostTupleType, HostTypeIndex0, HostTypeIndexNext, HostTypeListEnd,
 };
 use geam::provider::BigInt;
 use geam::provider::advanced::NativeValue;
@@ -87,7 +90,7 @@ impl HostCallableSchema for SupervisorBody {
     type Arguments = HostTypeListEnd;
     type Return = ();
     type Captures = Captures;
-    type Constructions = One<Pid>;
+    type Constructions = Two<Pid, HostRestoredType<Pid>>;
     type Completion = HostReturns;
 }
 
@@ -111,6 +114,7 @@ fn make_child<'call, Profile: OtpProfile>(
     properties: HostList<'call, StaticProperty<A>>,
 ) -> Result<HostCallCompletion<'call, StaticChildSpec>, HostCallError> {
     let mut callback = None;
+    let mut policies = Vec::new();
     let mut index = 0;
     while let Some(property) = call.list_item::<StaticProperty<A>>(properties, index) {
         if let Some((mfa, ())) = call.custom_fields::<StaticStart<A>>(property) {
@@ -118,15 +122,28 @@ fn make_child<'call, Profile: OtpProfile>(
             callback =
                 call.list_item::<HostFunctionType<HostTypeListEnd, StartResult<A>>>(callbacks, 0);
         }
+        if let Some((restart, ())) = call.custom_fields::<StaticRestartProperty<A>>(property) {
+            policies.push(NativeValue::tuple([
+                NativeValue::symbol("restart"),
+                call.native_value::<RestartType>(restart),
+            ]));
+        }
+        if let Some((shutdown, ())) = call.custom_fields::<StaticShutdownProperty<A>>(property) {
+            policies.push(NativeValue::tuple([
+                NativeValue::symbol("shutdown"),
+                call.external_payload(shutdown).clone(),
+            ]));
+        }
         index += 1;
     }
     let callback = callback
         .ok_or_else(|| geam::HostFailure::new("child specification has no start callback"))?;
     let callback = call.owned_callable(callback, &constructions);
     let properties = call.native_value::<HostListType<StaticProperty<A>>>(properties);
+    let policies = NativeValue::tuple(policies);
     let child = Child {
-        restart: Restart::from_properties(&properties)?,
-        shutdown: Shutdown::from_properties(&properties)?,
+        restart: Restart::from_properties(&policies)?,
+        shutdown: Shutdown::from_properties(&policies)?,
         properties,
         start: callback,
     };
@@ -138,7 +155,36 @@ fn make_flags<'call, Profile: OtpProfile>(
     mut call: Call<'call, Profile, StaticFlags>,
     flags: HostList<'call, StaticFlag<A>>,
 ) -> Result<HostCallCompletion<'call, StaticFlags>, HostCallError> {
-    let value = call.native_value::<HostListType<StaticFlag<A>>>(flags);
+    let mut properties = Vec::new();
+    let mut index = 0;
+    while let Some(flag) = call.list_item(flags, index) {
+        if let Some((value, ())) = call.custom_fields::<StaticStrategyFlag<A>>(flag) {
+            properties.push(NativeValue::tuple([
+                NativeValue::symbol("strategy"),
+                call.native_value::<StaticStrategy>(value),
+            ]));
+        }
+        if let Some((value, ())) = call.custom_fields::<StaticIntensityFlag<A>>(flag) {
+            properties.push(NativeValue::tuple([
+                NativeValue::symbol("intensity"),
+                call.native_value::<BigInt>(value),
+            ]));
+        }
+        if let Some((value, ())) = call.custom_fields::<StaticPeriodFlag<A>>(flag) {
+            properties.push(NativeValue::tuple([
+                NativeValue::symbol("period"),
+                call.native_value::<BigInt>(value),
+            ]));
+        }
+        if let Some((value, ())) = call.custom_fields::<StaticAutoShutdownFlag<A>>(flag) {
+            properties.push(NativeValue::tuple([
+                NativeValue::symbol("auto_shutdown"),
+                call.native_value::<StaticAutoShutdown>(value),
+            ]));
+        }
+        index += 1;
+    }
+    let value = NativeValue::tuple(properties);
     let value = call.create_external(value);
     Ok(call.return_value(value))
 }
@@ -222,7 +268,7 @@ struct Running<Profile: HostProfile> {
 fn supervisor_body<'call, Profile: OtpProfile>(
     call: Call<'call, Profile, ()>,
     captures: HostCaptures<'call, Captures>,
-    constructions: HostConstructions<'call, One<Pid>>,
+    constructions: HostConstructions<'call, Two<Pid, HostRestoredType<Pid>>>,
 ) -> Result<HostCallContinuation<'call, ()>, HostCallError> {
     CurrentProcess::with(call, |mut process| {
         let call = process.call();
@@ -321,21 +367,30 @@ fn validate_flags(flags: &NativeValue) -> Result<(), HostCallError> {
     Ok(())
 }
 async fn restore_pid<Profile: OtpProfile>(
-    context: &HostExecutionContext<'_, Profile, Component<Profile>, One<Pid>>,
+    context: &HostExecutionContext<
+        '_,
+        Profile,
+        Component<Profile>,
+        Two<Pid, HostRestoredType<Pid>>,
+    >,
     pid: NativeValue,
 ) -> Result<ExecutionUnit, HostExecutionError> {
     context
-        .with_call(move |call| {
-            let mut call = geam::provider::Call::from_host_call(call);
-            call.restore_native::<ProcessId>(&pid)
-                .map(|pid| pid.execution_unit())
+        .with_constructions(move |mut call, permissions| {
+            call.restore_native(&permissions.at::<Index1>().restoration(), &pid)
+                .map(|pid| call.external_payload_with::<ErlangComponent<Profile>, PidSchema, HostTypeListEnd>(pid).clone())
                 .ok_or_else(|| geam::HostFailure::new("exit message has no source Pid"))
         })
         .await?
         .map_err(Into::into)
 }
 async fn run_child<Profile: OtpProfile>(
-    context: &HostExecutionContext<'_, Profile, Component<Profile>, One<Pid>>,
+    context: &HostExecutionContext<
+        '_,
+        Profile,
+        Component<Profile>,
+        Two<Pid, HostRestoredType<Pid>>,
+    >,
     specification: Arc<Child<Profile>>,
 ) -> Result<Result<Running<Profile>, NativeValue>, HostExecutionError> {
     let result = specification
@@ -364,7 +419,12 @@ async fn run_child<Profile: OtpProfile>(
     }))
 }
 async fn respond<Profile: OtpProfile>(
-    context: &HostExecutionContext<'_, Profile, Component<Profile>, One<Pid>>,
+    context: &HostExecutionContext<
+        '_,
+        Profile,
+        Component<Profile>,
+        Two<Pid, HostRestoredType<Pid>>,
+    >,
     parent: ExecutionUnit,
     tag: NativeValue,
     result: NativeValue,
@@ -376,7 +436,12 @@ async fn respond<Profile: OtpProfile>(
         .await
 }
 async fn stop_children<Profile: OtpProfile>(
-    context: &HostExecutionContext<'_, Profile, Component<Profile>, One<Pid>>,
+    context: &HostExecutionContext<
+        '_,
+        Profile,
+        Component<Profile>,
+        Two<Pid, HostRestoredType<Pid>>,
+    >,
     children: &[Running<Profile>],
 ) -> Result<(), HostExecutionError> {
     for child in children.iter().rev() {

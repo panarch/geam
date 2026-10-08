@@ -113,6 +113,7 @@ mod tests {
     };
 
     static LISTS: ListTypeTable = ListTypeTable {
+        lifetimes: Table::Static(&[]),
         types: Table::Static(&[]),
         tuple_items: Table::Static(&[]),
         function_items: Table::Static(&[]),
@@ -122,6 +123,8 @@ mod tests {
         types: Table::Static(&[]),
     };
     static EXTERNALS: ExternalTypeTable = ExternalTypeTable {
+        lifetimes: Table::Static(&[]),
+        definitions: Table::Static(&[]),
         types: Table::Static(&[]),
     };
     static SHAPES: ValueShapeTable = ValueShapeTable {

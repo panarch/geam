@@ -1,7 +1,108 @@
 error[E0277]: the trait bound `geam_core::provider::advanced::ProviderInvocationRequired: geam_core::provider::advanced::ProviderNoInvocations` is not satisfied
-  --> tests/ui/generic/opaque_custom_not_callback.rs:48:14
+  --> tests/ui/generic/opaque_custom_not_callback.rs:19:1
    |
-48 |         call.restore_dynamic::<Message, Dynamic>(&value.value).is_some()
+19 | #[geam_macros::module(path = "opaque", crate_path = geam_core)]
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ unsatisfied trait bound
+   |
+   = help: the trait `geam_core::provider::advanced::ProviderNoInvocations` is not implemented for `geam_core::provider::advanced::ProviderInvocationRequired`
+help: the following other types implement trait `geam_core::provider::advanced::ProviderNoInvocations`
+  --> $WORKSPACE/core/src/provider/advanced.rs
+   |
+   |   impl ProviderNoInvocations for () {}
+   |   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `()`
+   | / impl<Head: ProviderNoInvocations, Tail: ProviderNoInvocations> ProviderNoInvocations
+   | |     for (Head, Tail)
+   | |____________________^ `(Head, Tail)`
+   = note: required for `opaque::Message` to implement `geam_core::provider::advanced::ProviderDynamicInput<__GeamProfile, opaque::__GeamProvider, bool>`
+   = note: this error originates in the attribute macro `geam_macros::module` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0277]: the trait bound `geam_core::provider::advanced::ProviderInvocationRequired: geam_core::provider::advanced::ProviderNoInvocations` is not satisfied
+  --> tests/ui/generic/opaque_custom_not_callback.rs:19:1
+   |
+19 | #[geam_macros::module(path = "opaque", crate_path = geam_core)]
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ unsatisfied trait bound
+   |
+   = help: the trait `geam_core::provider::advanced::ProviderNoInvocations` is not implemented for `geam_core::provider::advanced::ProviderInvocationRequired`
+help: the following other types implement trait `geam_core::provider::advanced::ProviderNoInvocations`
+  --> $WORKSPACE/core/src/provider/advanced.rs
+   |
+   |   impl ProviderNoInvocations for () {}
+   |   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `()`
+   | / impl<Head: ProviderNoInvocations, Tail: ProviderNoInvocations> ProviderNoInvocations
+   | |     for (Head, Tail)
+   | |____________________^ `(Head, Tail)`
+   = note: required for `opaque::Message` to implement `geam_core::provider::advanced::ProviderDynamicInput<__GeamProfile, opaque::__GeamProvider, bool>`
+note: required for `__GeamPermissions_recover_callback<__GeamProfile>` to implement `geam_core::provider::ProviderCallBindings`
+  --> tests/ui/generic/opaque_custom_not_callback.rs:19:1
+   |
+19 | #[geam_macros::module(path = "opaque", crate_path = geam_core)]
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   = note: this error originates in the attribute macro `geam_macros::module` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0277]: the trait bound `geam_core::provider::advanced::ProviderInvocationRequired: geam_core::provider::advanced::ProviderNoInvocations` is not satisfied
+  --> tests/ui/generic/opaque_custom_not_callback.rs:19:1
+   |
+19 | #[geam_macros::module(path = "opaque", crate_path = geam_core)]
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ unsatisfied trait bound
+   |
+   = help: the trait `geam_core::provider::advanced::ProviderNoInvocations` is not implemented for `geam_core::provider::advanced::ProviderInvocationRequired`
+help: the following other types implement trait `geam_core::provider::advanced::ProviderNoInvocations`
+  --> $WORKSPACE/core/src/provider/advanced.rs
+   |
+   |   impl ProviderNoInvocations for () {}
+   |   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `()`
+   | / impl<Head: ProviderNoInvocations, Tail: ProviderNoInvocations> ProviderNoInvocations
+   | |     for (Head, Tail)
+   | |____________________^ `(Head, Tail)`
+   = note: required for `(geam_core::provider::advanced::ProviderInvocationRequired, ())` to implement `geam_core::provider::advanced::ProviderNoInvocations`
+   = note: required for `Batch` to implement `geam_core::provider::advanced::ProviderDynamicInput<__GeamProfile, opaque::__GeamProvider, bool>`
+   = note: this error originates in the attribute macro `geam_macros::module` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0277]: the trait bound `geam_core::provider::advanced::ProviderInvocationRequired: geam_core::provider::advanced::ProviderNoInvocations` is not satisfied
+  --> tests/ui/generic/opaque_custom_not_callback.rs:19:1
+   |
+19 | #[geam_macros::module(path = "opaque", crate_path = geam_core)]
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ unsatisfied trait bound
+   |
+   = help: the trait `geam_core::provider::advanced::ProviderNoInvocations` is not implemented for `geam_core::provider::advanced::ProviderInvocationRequired`
+help: the following other types implement trait `geam_core::provider::advanced::ProviderNoInvocations`
+  --> $WORKSPACE/core/src/provider/advanced.rs
+   |
+   |   impl ProviderNoInvocations for () {}
+   |   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `()`
+   | / impl<Head: ProviderNoInvocations, Tail: ProviderNoInvocations> ProviderNoInvocations
+   | |     for (Head, Tail)
+   | |____________________^ `(Head, Tail)`
+   = note: required for `(geam_core::provider::advanced::ProviderInvocationRequired, ())` to implement `geam_core::provider::advanced::ProviderNoInvocations`
+   = note: required for `Batch` to implement `geam_core::provider::advanced::ProviderDynamicInput<__GeamProfile, opaque::__GeamProvider, bool>`
+note: required for `__GeamPermissions_recover_nested_callback<__GeamProfile>` to implement `geam_core::provider::ProviderCallBindings`
+  --> tests/ui/generic/opaque_custom_not_callback.rs:19:1
+   |
+19 | #[geam_macros::module(path = "opaque", crate_path = geam_core)]
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   = note: this error originates in the attribute macro `geam_macros::module` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0277]: the trait bound `geam_core::provider::advanced::ProviderInvocationRequired: geam_core::provider::advanced::ProviderNoInvocations` is not satisfied
+  --> tests/ui/generic/opaque_custom_not_callback.rs:20:5
+   |
+20 | mod opaque {
+   |     ^^^^^^ unsatisfied trait bound
+   |
+   = help: the trait `geam_core::provider::advanced::ProviderNoInvocations` is not implemented for `geam_core::provider::advanced::ProviderInvocationRequired`
+help: the following other types implement trait `geam_core::provider::advanced::ProviderNoInvocations`
+  --> $WORKSPACE/core/src/provider/advanced.rs
+   |
+   |   impl ProviderNoInvocations for () {}
+   |   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `()`
+   | / impl<Head: ProviderNoInvocations, Tail: ProviderNoInvocations> ProviderNoInvocations
+   | |     for (Head, Tail)
+   | |____________________^ `(Head, Tail)`
+   = note: required for `opaque::Message` to implement `geam_core::provider::advanced::ProviderDynamicInput<__GeamProfile, opaque::__GeamProvider, bool>`
+
+error[E0277]: the trait bound `geam_core::provider::advanced::ProviderInvocationRequired: geam_core::provider::advanced::ProviderNoInvocations` is not satisfied
+  --> tests/ui/generic/opaque_custom_not_callback.rs:59:14
+   |
+59 |         call.restore_dynamic::<Message, Dynamic>(&restore, &value.value)
    |              ^^^^^^^^^^^^^^^ unsatisfied trait bound
    |
    = help: the trait `geam_core::provider::advanced::ProviderNoInvocations` is not implemented for `geam_core::provider::advanced::ProviderInvocationRequired`
@@ -16,9 +117,9 @@ help: the following other types implement trait `geam_core::provider::advanced::
    = note: required for `opaque::Message` to implement `geam_core::provider::advanced::ProviderDynamicInput<__GeamProfile, opaque::__GeamProvider, bool>`
 
 error[E0277]: the trait bound `geam_core::provider::advanced::ProviderInvocationRequired: geam_core::provider::advanced::ProviderNoInvocations` is not satisfied
-  --> tests/ui/generic/opaque_custom_not_callback.rs:53:14
+  --> tests/ui/generic/opaque_custom_not_callback.rs:69:14
    |
-53 |         call.restore_dynamic::<Batch, Dynamic>(&value.value).is_some()
+69 |         call.restore_dynamic::<Batch, Dynamic>(&restore, &value.value)
    |              ^^^^^^^^^^^^^^^ unsatisfied trait bound
    |
    = help: the trait `geam_core::provider::advanced::ProviderNoInvocations` is not implemented for `geam_core::provider::advanced::ProviderInvocationRequired`
@@ -32,3 +133,41 @@ help: the following other types implement trait `geam_core::provider::advanced::
    | |____________________^ `(Head, Tail)`
    = note: required for `(geam_core::provider::advanced::ProviderInvocationRequired, ())` to implement `geam_core::provider::advanced::ProviderNoInvocations`
    = note: required for `Batch` to implement `geam_core::provider::advanced::ProviderDynamicInput<__GeamProfile, opaque::__GeamProvider, bool>`
+
+error[E0599]: the associated function or constant `from_host_call_with_bindings` exists for struct `geam_core::provider::Call<_, geam_core::provider::ProviderActiveCall<'_, __GeamProfile, opaque::__GeamProvider, bool, __GeamPermissions_recover_callback<__GeamProfile>>>`, but its trait bounds were not satisfied
+  --> tests/ui/generic/opaque_custom_not_callback.rs:19:1
+   |
+19 | #[geam_macros::module(path = "opaque", crate_path = geam_core)]
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   | |
+   | associated function or constant cannot be called due to unsatisfied trait bounds
+   | doesn't satisfy `_: ProviderCallBindings`
+   |
+  ::: $WORKSPACE/core/src/provider/advanced.rs
+   |
+   | pub struct ProviderInvocationRequired;
+   | ------------------------------------- doesn't satisfy `_: ProviderNoInvocations`
+   |
+   = note: the following trait bounds were not satisfied:
+           `geam_core::provider::advanced::ProviderInvocationRequired: geam_core::provider::advanced::ProviderNoInvocations`
+           which is required by `__GeamPermissions_recover_callback<__GeamProfile>: geam_core::provider::ProviderCallBindings`
+   = note: this error originates in the attribute macro `geam_macros::module` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0599]: the associated function or constant `from_host_call_with_bindings` exists for struct `geam_core::provider::Call<_, geam_core::provider::ProviderActiveCall<'_, __GeamProfile, opaque::__GeamProvider, bool, __GeamPermissions_recover_nested_callback<__GeamProfile>>>`, but its trait bounds were not satisfied
+  --> tests/ui/generic/opaque_custom_not_callback.rs:19:1
+   |
+19 | #[geam_macros::module(path = "opaque", crate_path = geam_core)]
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   | |
+   | associated function or constant cannot be called due to unsatisfied trait bounds
+   | doesn't satisfy `_: ProviderCallBindings`
+   |
+  ::: $WORKSPACE/core/src/provider/advanced.rs
+   |
+   | pub struct ProviderInvocationRequired;
+   | ------------------------------------- doesn't satisfy `_: ProviderNoInvocations`
+   |
+   = note: the following trait bounds were not satisfied:
+           `geam_core::provider::advanced::ProviderInvocationRequired: geam_core::provider::advanced::ProviderNoInvocations`
+           which is required by `__GeamPermissions_recover_nested_callback<__GeamProfile>: geam_core::provider::ProviderCallBindings`
+   = note: this error originates in the attribute macro `geam_macros::module` (in Nightly builds, run with -Z macro-backtrace for more info)

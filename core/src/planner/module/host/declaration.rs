@@ -4,7 +4,7 @@ use crate::plan::{ExternalTypeDefinition, ModuleId, SourceContext};
 use crate::planner::error::{HostProviderLinkReason, PlanError};
 use ecow::EcoString;
 use gleam_compiler_core::ast::TypedFunction;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 
 pub(super) enum HostedModuleDeclaration {
     Source {
@@ -17,7 +17,7 @@ pub(super) enum HostedModuleDeclaration {
         functions: Vec<TypedFunction>,
         constants: Vec<gleam_compiler_core::ast::TypedModuleConstant>,
         providers: Vec<RegisteredHostFunction>,
-        shared_custom_types: Vec<crate::plan::CustomTypeName>,
+        shared_custom_types: Vec<(crate::plan::CustomTypeName, crate::host::HostCustomAccess)>,
     },
     Host {
         id: ModuleId,
@@ -52,17 +52,24 @@ pub(super) fn collect_hosted_module_declarations(
             )
         })
         .collect::<BTreeMap<_, _>>();
-    let external_types = provider_modules
+    let external_schemas = provider_modules
         .iter()
         .flat_map(|((package, module), items)| {
             items.external_types.iter().map(|schema| {
-                crate::plan::ExternalTypeName::new(
-                    package.clone(),
-                    module.clone(),
-                    schema.name().clone(),
+                (
+                    crate::plan::ExternalTypeName::new(
+                        package.clone(),
+                        module.clone(),
+                        schema.name().clone(),
+                    ),
+                    schema.clone(),
                 )
             })
         })
+        .collect::<HashMap<_, _>>();
+    let external_types = external_schemas
+        .keys()
+        .cloned()
         .collect::<std::collections::HashSet<_>>();
     modules
         .into_iter()
@@ -73,6 +80,7 @@ pub(super) fn collect_hosted_module_declarations(
                 module,
                 &mut provider_modules,
                 &external_types,
+                &external_schemas,
             )
         })
         .collect::<Result<Vec<_>, _>>()
@@ -131,6 +139,7 @@ fn hosted_module_declaration(
     module: HostedTypedProgramModule,
     provider_modules: &mut BTreeMap<(EcoString, EcoString), RegisteredProviderItems>,
     external_types: &std::collections::HashSet<crate::plan::ExternalTypeName>,
+    external_schemas: &HashMap<crate::plan::ExternalTypeName, HostExternalTypeSchema>,
 ) -> Result<HostedModuleDeclaration, PlanError> {
     match module {
         HostedTypedProgramModule::Source(module) => {
@@ -153,17 +162,30 @@ fn hosted_module_declaration(
                 providers.external_types,
                 external_types,
             )
-            .and_then(|types| {
+            .and_then(|mut types| {
                 let shared_custom_types = super::shared_custom::validate(
                     &package,
                     &module_name,
                     &types.custom_types,
                     providers.shared_custom_types,
+                    external_schemas,
                 )?;
+                for definition in &mut types.custom_types {
+                    if let Some((_, access, lifetime)) = shared_custom_types
+                        .iter()
+                        .find(|(name, _, _)| name == definition.name())
+                    {
+                        definition.set_native_access(*access);
+                        definition.set_retention_lifetime(*lifetime);
+                    }
+                }
                 Ok(HostedModuleDeclaration::Source {
                     id,
                     providers: providers.functions,
-                    shared_custom_types,
+                    shared_custom_types: shared_custom_types
+                        .into_iter()
+                        .map(|(name, access, _)| (name, access))
+                        .collect(),
                     package,
                     module_name,
                     source_context: Some(SourceContext::new(path, source)),

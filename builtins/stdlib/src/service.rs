@@ -7,3 +7,7 @@
 pub use crate::bytes_tree::{BytesTreeInput, BytesTreeOutput};
 pub use crate::dict::dict_from_entries;
 pub use crate::dynamic::with_native_dynamic;
+
+mod decoder;
+pub use decoder::Decoder;
+pub(crate) use decoder::DecoderSchema;

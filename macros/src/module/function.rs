@@ -1287,11 +1287,12 @@ pub(super) fn generate_return(
             constructions: Vec::new(),
         },
         FunctionReturnType::Generic(_) => GeneratedReturn {
-            statements: (quote! {
-                let returned = returned.into_host(&mut call);
-            }),
+            statements: TokenStream::new(),
             completion: quote! {
-                ::core::result::Result::Ok(call.return_value(returned))
+                #support::ProviderRootOutputValue::<
+                    __GeamProfile,
+                    #provider,
+                >::complete(returned, call, &#support::ProviderConstructions::none())
             },
             constructions: Vec::new(),
         },
@@ -1315,6 +1316,7 @@ pub(super) fn generate_return(
                     quote!(provider_external_from_return)
                 }
             };
+            let restore = quote!(?);
             let statements = quote! {
                 #statements
                 let returned = match #payload {
@@ -1326,7 +1328,7 @@ pub(super) fn generate_return(
                             #schema,
                             #arguments,
                             _,
-                        >(value)
+                        >(value)#restore
                     }
                 };
             };
@@ -1343,7 +1345,7 @@ pub(super) fn generate_return(
         }
         FunctionReturnType::List(_) => GeneratedReturn {
             statements: (quote! {
-                let returned = call.provider_list_from_input(returned);
+                let returned = call.provider_list_from_input(returned)?;
             }),
             completion: quote! {
                 ::core::result::Result::Ok(call.return_value(returned))
@@ -2038,7 +2040,7 @@ fn encode_function_output_intermediate(
         }
         FunctionOutputValueType::Generic(_) => {
             let value = state.names.next("returned_generic");
-            let conversion = { quote!(#input.into_host(&mut call)) };
+            let conversion = output_conversion(quote!(#input.into_host(&mut call)));
             GeneratedValue {
                 statements: quote! {
                     let #value = #conversion;
@@ -2294,7 +2296,7 @@ fn encode_callback_argument(
         }
         FunctionReturnType::Generic(_) => GeneratedValue {
             statements: TokenStream::new(),
-            value: ({ quote!(#input.into_host(&mut call)) }),
+            value: ({ quote!(#input.into_host(&mut call)?) }),
         },
         FunctionReturnType::External(external) => {
             let generated =
@@ -2324,6 +2326,7 @@ fn encode_callback_argument(
                     quote!(provider_external_from_return)
                 }
             };
+            let restore = quote!(?);
             GeneratedValue {
                 statements: quote! {
                     #statements
@@ -2336,7 +2339,7 @@ fn encode_callback_argument(
                             >(#construction.token(), payload)
                         }
                         ::core::result::Result::Err(value) => {
-                            call.#from_item::<#schema, #arguments, _>(value)
+                            call.#from_item::<#schema, #arguments, _>(value)#restore
                         }
                     };
                 },
@@ -2345,7 +2348,7 @@ fn encode_callback_argument(
         }
         FunctionReturnType::List(_) => GeneratedValue {
             statements: TokenStream::new(),
-            value: ({ quote!(call.provider_list_from_input(#input)) }),
+            value: ({ quote!(call.provider_list_from_input(#input)?) }),
         },
         FunctionReturnType::Value(value) => {
             let mut state = OutputState {

@@ -474,6 +474,7 @@ mod tests {
     #[test]
     fn rejects_missing_or_disagreeing_slot_shapes_and_function_returns() {
         let lists = ListTypeTable {
+            lifetimes: Table::Static(&[]),
             types: Table::Static(&[]),
             tuple_items: Table::Static(&[]),
             function_items: Table::Static(&[]),
@@ -483,6 +484,8 @@ mod tests {
             types: Table::Static(&[]),
         };
         let externals = ExternalTypeTable {
+            lifetimes: Table::Static(&[]),
+            definitions: Table::Static(&[]),
             types: Table::Static(&[]),
         };
         let shapes = ValueShapeTable {
@@ -533,6 +536,7 @@ mod tests {
             return_: Node::Static(&RECURSIVE),
         });
         let lists = ListTypeTable {
+            lifetimes: Table::Static(&[]),
             types: Table::Static(&[]),
             tuple_items: Table::Static(&[]),
             function_items: Table::Static(&[]),
@@ -542,6 +546,8 @@ mod tests {
             types: Table::Static(&[]),
         };
         let externals = ExternalTypeTable {
+            lifetimes: Table::Static(&[]),
+            definitions: Table::Static(&[]),
             types: Table::Static(&[]),
         };
         let shapes = ValueShapeTable {

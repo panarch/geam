@@ -1,4 +1,5 @@
 use super::{HostCustomSchema, HostCustomSchemaId, HostCustomType, HostCustomTypeSchema};
+use super::{HostRetainedCustomSchema, HostRetainedCustomType};
 use super::{HostSchemaType, collect_custom_type_schema};
 use crate::BitArrayValue;
 use crate::StringValue;
@@ -60,6 +61,52 @@ where
 #[doc(hidden)]
 pub trait HostNominalCustomField<Arguments: CustomFieldTypeSequence>: HostType {
     type Field: CustomFieldType;
+}
+
+impl<Schema, Source, Arguments> HostNominalCustomField<Arguments>
+    for HostRetainedCustomType<Schema, Source>
+where
+    Schema: HostRetainedCustomSchema,
+    Source: HostTypeSequence,
+    Arguments: CustomFieldTypeSequence,
+{
+    type Field = HostRetainedCustomType<Schema, Arguments>;
+}
+
+impl<Schema, TypeArguments> CustomFieldType for HostRetainedCustomType<Schema, TypeArguments>
+where
+    Schema: HostRetainedCustomSchema,
+    TypeArguments: CustomFieldTypeSequence,
+{
+    fn schema_type() -> HostSchemaType {
+        HostSchemaType::custom(
+            Schema::PACKAGE,
+            Schema::MODULE,
+            Schema::NAME,
+            TypeArguments::schema_types(),
+        )
+    }
+
+    fn collect_custom_schemas(
+        output: &mut Vec<HostCustomTypeSchema>,
+        visited: &mut HashSet<HostCustomSchemaId>,
+    ) {
+        let schema = HostCustomTypeSchema::retained::<Schema>();
+        if !output.contains(&schema) {
+            output.push(schema);
+        }
+        TypeArguments::collect_custom_schemas(output, visited);
+    }
+}
+
+impl<Arguments, Schema, TypeArguments> ResolveCustomFieldType<Arguments>
+    for HostRetainedCustomType<Schema, TypeArguments>
+where
+    Arguments: HostTypeSequence,
+    Schema: HostRetainedCustomSchema,
+    TypeArguments: ResolveCustomFieldTypeSequence<Arguments>,
+{
+    type Type = HostRetainedCustomType<Schema, TypeArguments::Types>;
 }
 
 impl<Schema, Source, Arguments> HostNominalCustomField<Arguments> for HostCustomType<Schema, Source>

@@ -56,12 +56,14 @@ pub(in crate::plan::execution) fn retained_types<'definition>(
                     self.visit(function.return_.as_ref().clone());
                 }
                 TypeMetadata::Custom(nominal) => {
-                    for argument in nominal.arguments.iter() {
-                        self.visit(argument.clone());
-                    }
                     let id = identity(&nominal);
                     self.active.insert(id.clone(), nominal.clone());
-                    if let Some(definition) = (self.definition)(&nominal) {
+                    if let Some(definition) = (self.definition)(&nominal)
+                        && definition.native_visible()
+                    {
+                        for argument in nominal.arguments.iter() {
+                            self.visit(argument.clone());
+                        }
                         for constructor in definition.constructors.iter() {
                             for field in constructor.fields.iter() {
                                 self.visit(substitute(&field.type_, &nominal.arguments));

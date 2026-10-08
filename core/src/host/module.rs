@@ -509,8 +509,8 @@ impl<Profile: HostProfile> HostProviderModule<Profile> {
                     Constructions,
                     Function,
                 >(name, function)
-            })?;
-        Ok(self)
+            })
+            .map(|()| self)
     }
 
     /// Registers native conversion targets, external rules, and their callback together.
@@ -590,6 +590,18 @@ impl<Profile: HostProfile> HostProviderModule<Profile> {
     ) -> Result<Self, HostRegistrationError> {
         self.shared_custom_types
             .register(&self.identity, super::HostCustomTypeSchema::of::<Schema>())?;
+        Ok(self)
+    }
+
+    /// Allows native consumers to retain this owner's nominal custom values.
+    /// This grant does not expose constructors, fields, or callable contents.
+    pub fn with_retained_custom_type<Schema: super::HostRetainedCustomSchema>(
+        mut self,
+    ) -> Result<Self, HostRegistrationError> {
+        self.shared_custom_types.register(
+            &self.identity,
+            super::HostCustomTypeSchema::retained::<Schema>(),
+        )?;
         Ok(self)
     }
 
@@ -2592,7 +2604,9 @@ pub fn run(fails: Bool) { case fails { True -> stop() False -> construct() } }
                         )
                         .await?;
                     Ok(crate::HostOwnedCompletion::new(move |mut call, _| {
-                        let value = value.into_host(&mut call);
+                        let value = value
+                            .into_host(&mut call)
+                            .expect("value belongs to this execution");
                         Ok(call.return_value(value))
                     }))
                 })
@@ -2783,5 +2797,26 @@ pub fn run(mode: Int) {
                 second_package: "second".into(),
             })
         );
+    }
+
+    #[test]
+    fn scoped_definition_failure_leaves_the_registered_set_empty() {
+        let module = EcoString::from("library");
+        let mut functions = RegisteredFunctions::<Profile>::new();
+        assert_eq!(
+            functions.register(&module, "identity".into(), |name| {
+                HostFunctionDefinition::new_scoped::<
+                    WorkComponent,
+                    (HostTypeParameter<1>,),
+                    HostTypeParameter<1>,
+                    _,
+                >(name, identity::<HostTypeParameter<1>>)
+            }),
+            Err(HostRegistrationError::NonContiguousTypeParameters {
+                function: "identity".into(),
+                parameters: Box::new([1]),
+            }),
+        );
+        assert_eq!(functions.schemas().len(), 0);
     }
 }

@@ -745,8 +745,15 @@ mod tests {
     fn restore_opaque<'call>(
         mut call: HostCall<'call, Profile, Producer, OpaqueFunction>,
     ) -> Result<HostCallCompletion<'call, OpaqueFunction>, HostCallError> {
-        let callback = call.state().opaque.lock().unwrap().take().unwrap();
-        let callback = callback.into_host(&mut call);
+        let callback = call
+            .state()
+            .opaque
+            .lock()
+            .unwrap()
+            .as_ref()
+            .unwrap()
+            .clone();
+        let callback = callback.into_host(&mut call)?;
         let retained = SavedOpaque::from_host(&call, callback);
         *call.state().opaque.lock().unwrap() = Some(retained);
         Ok(call.return_value(callback))
@@ -1103,8 +1110,8 @@ pub fn wrap(callback: fn(Int) -> Int) { fn(value) { callback(value) } }
                     foreign
                         .with_execution(&host, &mut foreign_state, &mut drop, async |other| {
                             assert_eq!(
-                                other.call(&foreign_later, ()).await,
-                                Err(crate::embedding::CallError::Cancelled)
+                                other.call(&foreign_later, ()).await.unwrap_err().to_string(),
+                                "host function application::library.restore_opaque failed: retained value belongs to another owner or source type"
                             );
                         })
                         .await
@@ -1129,7 +1136,10 @@ pub fn wrap(callback: fn(Int) -> Int) { fn(value) { callback(value) } }
                 .unwrap()
                 .try_into_value()
                 .unwrap();
-            assert_eq!(result, Err(crate::embedding::CallError::Cancelled));
+            assert_eq!(
+                result.unwrap_err().to_string(),
+                "host function application::library.restore_opaque failed: retained value belongs to another execution"
+            );
             assert_eq!(state.native_calls.get(), 2);
         }
     }

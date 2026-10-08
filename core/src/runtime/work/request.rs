@@ -16,6 +16,17 @@ pub(crate) struct Sender<Request> {
     queue: Weak<Mutex<Queue<Request>>>,
 }
 
+/// A weak view of this queue's existing admission and identity. It cannot
+/// submit requests and does not expose the request payload's recursive type.
+#[derive(Clone)]
+pub(crate) struct QueueEndpoint {
+    queue: Weak<dyn RequestAdmission>,
+}
+
+trait RequestAdmission: Send + Sync {
+    fn is_open(&self) -> bool;
+}
+
 pub(crate) struct Submitted<Request, Output> {
     message: Arc<Message<Request>>,
     response: oneshot::Receiver<Output>,
@@ -100,6 +111,15 @@ impl<Request> Sender<Request> {
         self.queue.ptr_eq(&other.queue)
     }
 
+    pub(crate) fn endpoint(&self) -> QueueEndpoint
+    where
+        Request: Send + 'static,
+    {
+        QueueEndpoint {
+            queue: self.queue.clone(),
+        }
+    }
+
     pub(crate) fn submit<Output>(
         &self,
         request: impl FnOnce(Reply<Output>) -> Request,
@@ -134,6 +154,19 @@ impl<Request> Sender<Request> {
             }
         }
         Submitted { message, response }
+    }
+}
+
+impl QueueEndpoint {
+    pub(crate) fn belongs_to<Request>(&self, caller: &Sender<Request>) -> bool {
+        std::ptr::addr_eq(self.queue.as_ptr(), caller.queue.as_ptr())
+            && self.queue.upgrade().is_some_and(|queue| queue.is_open())
+    }
+}
+
+impl<Request: Send> RequestAdmission for Mutex<Queue<Request>> {
+    fn is_open(&self) -> bool {
+        self.lock().accepting
     }
 }
 
@@ -179,6 +212,23 @@ mod tests {
     use std::sync::Arc;
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::task::{Context, Poll, Wake, Waker};
+
+    #[test]
+    fn retained_endpoint_preserves_the_original_queue_without_owning_it() {
+        let requests = Requests::<()>::new();
+        let sender = requests.sender();
+        let endpoint = sender.endpoint();
+        let alias = endpoint.clone();
+        let foreign = Requests::<()>::new();
+        assert!(endpoint.belongs_to(&sender));
+        assert!(alias.belongs_to(&sender));
+        assert!(!endpoint.belongs_to(&foreign.sender()));
+        requests.close();
+        assert!(!endpoint.belongs_to(&sender));
+        drop(requests);
+        assert!(!alias.belongs_to(&sender));
+        assert!(!endpoint.belongs_to(&foreign.sender()));
+    }
 
     struct Request {
         input: Input,

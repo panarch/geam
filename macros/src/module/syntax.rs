@@ -15,9 +15,9 @@ use super::type_syntax::{
 };
 use super::{
     CallAccess, CallbackType, ClassifiedGenericHostType, CollectionType, DeclaredInput,
-    ExternalArguments, ExternalModel, ExternalSemantics, FunctionArguments, FunctionCallAccess,
-    FunctionCallParameter, FunctionInputType, FunctionInputValueType, FunctionModel,
-    FunctionOutputCollectionType, FunctionOutputLeafType, FunctionOutputValueType,
+    ExternalArguments, ExternalLifetime, ExternalModel, ExternalSemantics, FunctionArguments,
+    FunctionCallAccess, FunctionCallParameter, FunctionInputType, FunctionInputValueType,
+    FunctionModel, FunctionOutputCollectionType, FunctionOutputLeafType, FunctionOutputValueType,
     FunctionParameter, FunctionProfile, FunctionReturnType, FunctionRootOutputValueType,
     FunctionSourceParameter, GenericExternalModel, GenericExternalStorage, GenericExternalType,
     GenericHostType, GenericInputSource, GenericParameterScope, GenericValueType, InputOwnership,
@@ -218,6 +218,26 @@ impl Parse for ExternalArguments {
                         ));
                     }
                 }
+                "lifetime" => {
+                    input.parse::<Token![=]>()?;
+                    let value = input.parse::<Ident>()?;
+                    let lifetime = match value.to_string().as_str() {
+                        "loaded_owner" => ExternalLifetime::LoadedOwner,
+                        "execution" => ExternalLifetime::Execution,
+                        _ => {
+                            return Err(syn::Error::new(
+                                value.span(),
+                                "external lifetime must be `loaded_owner` or `execution`",
+                            ));
+                        }
+                    };
+                    if partial.lifetime.replace(lifetime).is_some() {
+                        return Err(syn::Error::new(
+                            field.span(),
+                            "duplicate external argument `lifetime`",
+                        ));
+                    }
+                }
                 "manual" => {
                     if partial.manual.replace(field.clone()).is_some() {
                         return Err(syn::Error::new(
@@ -305,6 +325,7 @@ impl Parse for ExternalArguments {
         }
         Ok(Self {
             name,
+            lifetime: partial.lifetime.unwrap_or_default(),
             manual: partial.manual.is_some(),
             retained: partial.retained.is_some(),
             parameters: partial.parameters.unwrap_or_default(),
@@ -677,6 +698,7 @@ pub(super) fn build_external_model(
         ident,
         payload,
         name: arguments.name,
+        lifetime: arguments.lifetime,
         semantics: if arguments.retained {
             ExternalSemantics::Retained
         } else if arguments.manual {
@@ -809,10 +831,10 @@ pub(super) fn validate_function(
         found: false,
     };
     syn::visit::Visit::visit_signature(&mut nominal, &function.sig);
-    let has_factories = function.sig.inputs.iter().any(|argument| matches!(argument,
-        FnArg::Typed(argument) if argument.attrs.iter().any(|attribute| is_marker(attribute, "factory"))
+    let has_permissions = function.sig.inputs.iter().any(|argument| matches!(argument,
+        FnArg::Typed(argument) if argument.attrs.iter().any(|attribute| is_marker(attribute, "factory") || is_marker(attribute, "restore"))
     ));
-    generic_scope.nominal = nominal.found || arguments.callable.is_some() || has_factories;
+    generic_scope.nominal = nominal.found || arguments.callable.is_some() || has_permissions;
     generic_scope.declared_hosts = generic_scope.nominal;
 
     let profile = match (arguments.profile, module_profile) {
@@ -850,7 +872,7 @@ pub(super) fn validate_function(
     };
     let mut parameters = Vec::new();
     let callable_factory = arguments.callable;
-    let mut factories = Vec::new();
+    let mut permissions = Vec::new();
     let mut captures = Vec::new();
     let mut argument_count = 0;
     for (index, argument) in function.sig.inputs.iter_mut().enumerate() {
@@ -862,11 +884,17 @@ pub(super) fn validate_function(
         };
         let is_call = take_marker(&mut argument.attrs, "call")?;
         let is_factory = take_marker(&mut argument.attrs, "factory")?;
+        let is_restore = take_marker(&mut argument.attrs, "restore")?;
         let is_capture = take_marker(&mut argument.attrs, "capture")?;
-        if usize::from(is_call) + usize::from(is_factory) + usize::from(is_capture) > 1 {
+        if usize::from(is_call)
+            + usize::from(is_factory)
+            + usize::from(is_restore)
+            + usize::from(is_capture)
+            > 1
+        {
             return Err(syn::Error::new_spanned(
                 argument,
-                "call, factory and capture parameters are distinct",
+                "call, factory, restore and capture parameters are distinct",
             ));
         }
         if is_capture && callable_factory.is_none() {
@@ -904,22 +932,30 @@ pub(super) fn validate_function(
                 }
                 call = FunctionCallAccess::Immediate(CallAccess::Shared);
             }
-        } else if is_factory {
+        } else if is_factory || is_restore {
             if !call.is_mutable() || argument_count != 0 {
                 return Err(syn::Error::new_spanned(
                     argument,
-                    "factory parameters must follow a mutable Call and precede source arguments",
+                    "permission parameters must follow a mutable Call and precede source arguments",
                 ));
             }
-            let declaration = super::callable::factory_parameter(&argument.ty)?;
-            if factories.contains(&declaration) {
+            let permission = if is_factory {
+                super::FunctionPermission::Factory(super::callable::factory_parameter(
+                    &argument.ty,
+                )?)
+            } else {
+                super::FunctionPermission::Restore(super::permission::restore_parameter(
+                    &argument.ty,
+                )?)
+            };
+            if permissions.contains(&permission) {
                 return Err(syn::Error::new_spanned(
                     argument,
-                    "duplicate factory declaration parameter",
+                    "duplicate permission declaration parameter",
                 ));
             }
-            factories.push(declaration);
-            parameters.push(FunctionParameter::Factory(argument.clone()));
+            permissions.push(permission);
+            parameters.push(FunctionParameter::Permission(argument.clone()));
         } else {
             if is_call_type(&argument.ty) {
                 return Err(syn::Error::new_spanned(
@@ -1015,7 +1051,7 @@ pub(super) fn validate_function(
         return_,
         host_result: host_result.is_some(),
         profile: profile.is_some(),
-        factories,
+        permissions,
         callable,
     };
 
@@ -1104,8 +1140,8 @@ pub(super) fn apply_function_signature(
             quote!(#ident)
         })
         .unwrap_or_else(|| quote!(__GeamProfile));
-    let factory_bindings = super::callable::bindings_type(model, &active_profile);
-    let factory_context = (!model.factories.is_empty()).then(|| quote!(#factory_bindings,));
+    let factory_bindings = super::permission::bindings_type(model, &active_profile);
+    let factory_context = (!model.permissions.is_empty()).then(|| quote!(#factory_bindings,));
 
     function.sig.inputs = validated
         .parameters
@@ -1131,7 +1167,7 @@ pub(super) fn apply_function_signature(
                                     super::SourceCompletion::Ordinary => quote!(#support::ProviderExecutionCall),
                                     super::SourceCompletion::Work => quote!(#support::ProviderFutureCall),
                                 };
-                                let observation = (validated.completion == super::SourceCompletion::Ordinary && !model.factories.is_empty()).then(|| quote!((),));
+                                let observation = (validated.completion == super::SourceCompletion::Ordinary && !model.permissions.is_empty()).then(|| quote!((),));
                                 syn::parse_quote!(#context<'__geam_call, #active_profile, __GeamProvider, #observation #factory_context>)
                             }
                         }
@@ -1148,7 +1184,7 @@ pub(super) fn apply_function_signature(
                     };
                     argument
                 }
-                FunctionParameter::Factory(argument) => argument.clone(),
+                FunctionParameter::Permission(argument) => argument.clone(),
                 FunctionParameter::Source(source) => {
                     let mut argument = source.syntax.clone();
                     match &model.arguments[source.index] {
@@ -1289,7 +1325,7 @@ pub(super) fn apply_function_signature(
             .predicates
             .push(syn::parse_quote!(#active_profile: #support::HostWorkProfile));
     }
-    if !model.factories.is_empty() {
+    if !model.permissions.is_empty() {
         let capture_mode = super::callable::capture_mode(flavor, support);
         function
             .sig
@@ -1297,7 +1333,7 @@ pub(super) fn apply_function_signature(
             .make_where_clause()
             .predicates
             .push(syn::parse_quote!(
-                #factory_bindings: #support::ProviderFactoryBindings<CaptureMode = #capture_mode>
+                #factory_bindings: #support::ProviderCallBindings<CaptureMode = #capture_mode>
             ));
     }
     if function_contains_callback(model, customs) {
@@ -1682,9 +1718,9 @@ pub(super) fn function_contains_callback(
     !super::callback::callbacks(function, customs).is_empty()
 }
 
-// Local declarations expose their contextual fields to this expansion. Preserve
-// that context for forwarding without changing ordinary qualified helper calls;
-// qualified contextual declarations use the explicit Call or profile parameter.
+// A declared producer chooses its concrete value forms after the profile is
+// known. Preserve that selection in the authored signature as well as the
+// generated codec, including qualified declarations from another crate.
 pub(super) fn function_uses_contextual_forms(
     function: &FunctionModel,
     customs: &[CustomModel],
@@ -1696,35 +1732,35 @@ pub(super) fn function_uses_contextual_forms(
     }
     impl VisitMut for ProfiledHost<'_> {
         fn visit_type_path_mut(&mut self, path: &mut TypePath) {
-            if path.qself.is_some()
+            if let Some(owner) = &path.qself
                 && path
                     .path
                     .segments
                     .iter()
                     .any(|segment| segment.ident == "ProviderContextualValueForms")
-                && path
-                    .path
-                    .segments
-                    .last()
-                    .is_some_and(|segment| segment.ident == "Host")
             {
-                self.found = true;
-            }
-            if let Some(owner) = &path.qself
-                && path.path.segments.last().is_some_and(|segment| {
-                    segment.ident == "ImmediateInput" || segment.ident == "OwnedInput"
-                })
-                && let Type::Path(source) = &*owner.ty
-                && let Some(name) = source.path.get_ident()
-            {
-                self.found |= self.customs.iter().any(|custom| {
-                    (&custom.ident == name
-                        || custom
-                            .input
-                            .as_ref()
-                            .is_some_and(|input| &input.ident == name))
-                        && super::custom_context::has_profile(custom, self.customs)
-                });
+                let local = match &*owner.ty {
+                    Type::Path(source) if source.path.segments.len() == 1 => {
+                        let name = &source.path.segments[0].ident;
+                        self.customs.iter().find(|custom| {
+                            &custom.ident == name
+                                || custom
+                                    .input
+                                    .as_ref()
+                                    .is_some_and(|input| &input.ident == name)
+                        })
+                    }
+                    _ => None,
+                };
+                // Only local declarations can be proven static here. A
+                // qualified producer may select another form for this profile.
+                self.found |= local
+                    .is_none_or(|custom| super::custom_context::has_profile(custom, self.customs))
+                    || path
+                        .path
+                        .segments
+                        .last()
+                        .is_some_and(|segment| segment.ident == "Host");
             }
             syn::visit_mut::visit_type_path_mut(self, path);
         }
@@ -3791,6 +3827,88 @@ mod tests {
             assert_eq!(find_unwrapped_generic(&type_, &generics), None);
         }
     }
+    #[test]
+    fn external_lifetime_is_a_static_producer_contract() {
+        use crate::module::ExternalLifetime;
+        for (arguments, expected) in [
+            (quote!(name = "Token"), ExternalLifetime::Execution),
+            (
+                quote!(name = "Token", lifetime = execution),
+                ExternalLifetime::Execution,
+            ),
+            (
+                quote!(name = "Token", lifetime = loaded_owner),
+                ExternalLifetime::LoadedOwner,
+            ),
+        ] {
+            assert_eq!(
+                syn::parse2::<ExternalArguments>(arguments)
+                    .unwrap()
+                    .lifetime,
+                expected
+            );
+        }
+        for (arguments, expected) in [
+            (quote!(name = "Token", lifetime execution), "expected `=`"),
+            (
+                quote!(name = "Token", lifetime =),
+                "unexpected end of input, expected identifier",
+            ),
+            (
+                quote!(name = "Token", lifetime = unknown),
+                "external lifetime must be `loaded_owner` or `execution`",
+            ),
+            (
+                quote!(
+                    name = "Token",
+                    lifetime = execution,
+                    lifetime = loaded_owner
+                ),
+                "duplicate external argument `lifetime`",
+            ),
+        ] {
+            assert_eq!(
+                syn::parse2::<ExternalArguments>(arguments)
+                    .err()
+                    .map(|error| error.to_string())
+                    .as_deref(),
+                Some(expected),
+            );
+        }
+    }
+
+    #[test]
+    fn restoration_parameters_require_one_explicit_target() {
+        for (parameter, expected) in [
+            (
+                quote!(#[geam::restore] permission: Restore<bool, String>),
+                "Restore requires exactly one type argument",
+            ),
+            (
+                quote!(#[geam::restore(unexpected)] permission: Restore<bool>),
+                "`#[geam::restore]` does not accept arguments",
+            ),
+            (
+                quote!(#[geam::restore] #[geam::restore] permission: Restore<bool>),
+                "duplicate `#[geam::restore]` attribute",
+            ),
+        ] {
+            let result = crate::module::expand(
+                quote!(path = "native", crate_path = geam_core),
+                quote! {
+                    mod native {
+                        #[geam::function]
+                        fn restore(
+                            #[geam::call] call: &mut Call<State>,
+                            #parameter,
+                        ) -> bool { true }
+                    }
+                },
+            );
+            assert_eq!(result.unwrap_err().to_string(), expected);
+        }
+    }
+
     #[test]
     fn external_arguments_require_a_name_and_bare_semantics_flags() {
         let automatic = syn::parse2::<ExternalArguments>(quote!(name = "Metrics"))

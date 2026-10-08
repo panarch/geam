@@ -583,7 +583,9 @@ pub fn main() {{ echo "before" cancel() }}
                         )
                         .await?;
                     Ok(HostOwnedCompletion::new(move |mut call, _| {
-                        let value = work.into_host(&mut call);
+                        let value = work
+                            .into_host(&mut call)
+                            .expect("work belongs to this execution");
                         Ok(call.return_value(value))
                     }))
                 })

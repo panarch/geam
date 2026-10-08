@@ -573,25 +573,48 @@ impl TypeInterner {
         ExternalTypeTable,
         ValueShapeTable,
     ) {
+        let mut lists =
+            ListTypeTable::from_parts(self.types, self.tuple_items, self.function_items);
+        let mut customs = CustomTypeTable::new(
+            self.custom_types
+                .into_iter()
+                .map(|type_| {
+                    let native_visible = representations.native_visible(type_.type_.type_name());
+                    CustomTypeDescriptor::new(
+                        representations.constructor_count(type_.type_.type_name()),
+                        type_.type_,
+                        native_visible,
+                        type_.constructors.into_values().collect(),
+                    )
+                })
+                .collect(),
+            representations
+                .definitions()
+                .map(crate::plan::execution::type_::custom::CustomDefinition::from_definition)
+                .collect(),
+        );
+        let mut externals = ExternalTypeTable::new(self.external_types);
+        externals.definitions = representations
+            .external_definitions()
+            .map(
+                |definition| crate::plan::execution::host::registration::ExternalSchema {
+                    package: definition.name().package().clone().into(),
+                    module: definition.name().module().clone().into(),
+                    name: definition.name().name().clone().into(),
+                    parameter_count: definition.parameters().len(),
+                    lifetime: definition.lifetime(),
+                },
+            )
+            .collect();
+        crate::plan::execution::type_::lifetime::ValueLifetimes::new(
+            &customs.definitions,
+            &externals.definitions,
+        )
+        .seal(&mut lists, &mut customs, &mut externals);
         (
-            ListTypeTable::from_parts(self.types, self.tuple_items, self.function_items),
-            CustomTypeTable::new(
-                self.custom_types
-                    .into_iter()
-                    .map(|type_| {
-                        CustomTypeDescriptor::new(
-                            representations.constructor_count(type_.type_.type_name()),
-                            type_.type_,
-                            type_.constructors.into_values().collect(),
-                        )
-                    })
-                    .collect(),
-                representations
-                    .definitions()
-                    .map(crate::plan::execution::type_::custom::CustomDefinition::from_definition)
-                    .collect(),
-            ),
-            ExternalTypeTable::new(self.external_types),
+            lists,
+            customs,
+            externals,
             ValueShapeTable::new(self.shapes, self.shape_types, self.custom_shapes),
         )
     }

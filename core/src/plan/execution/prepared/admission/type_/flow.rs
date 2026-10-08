@@ -163,6 +163,10 @@ mod tests {
         use crate::plan::execution::type_::IntListTypeId;
 
         let lists = ListTypeTable {
+            lifetimes: Table::Static(&[
+                crate::HostValueLifetime::LoadedOwner,
+                crate::HostValueLifetime::LoadedOwner,
+            ]),
             types: [0, 1]
                 .into_iter()
                 .map(|index| {
@@ -176,6 +180,8 @@ mod tests {
         };
         let customs = CustomTypeTable::new(Vec::new(), Vec::new());
         let externals = ExternalTypeTable {
+            lifetimes: Table::Static(&[]),
+            definitions: Table::Static(&[]),
             types: Table::Static(&[]),
         };
         let shapes = ValueShapeTable {
@@ -211,6 +217,7 @@ mod tests {
     fn preserves_constructor_widening_and_function_variance_over_borrowed_shapes() {
         let custom = CustomTypeId(0);
         let lists = ListTypeTable {
+            lifetimes: Table::Static(&[crate::HostValueLifetime::LoadedOwner]),
             types: vec![ListStorageTypeId::Custom(
                 crate::plan::execution::type_::CustomListTypeId {
                     list_type: ListTypeId(0),
@@ -223,11 +230,13 @@ mod tests {
         };
         let customs = CustomTypeTable {
             definitions: vec![crate::plan::execution::type_::custom::CustomDefinition {
+                retention_lifetime: crate::HostValueLifetime::LoadedOwner,
                 package: Text::Static("example"),
                 module: Text::Static("example"),
                 name: Text::Static("Choice"),
                 publicity: crate::plan::CustomTypePublicity::Public,
                 opaque: false,
+                native_access: None,
                 parameters: 0,
                 constructors: ["First", "Second"]
                     .into_iter()
@@ -241,6 +250,8 @@ mod tests {
             }]
             .into(),
             types: vec![CustomTypeDescriptor {
+                lifetime: crate::HostValueLifetime::LoadedOwner,
+                native_visible: true,
                 constructor_count: 2,
                 type_: NominalTypeMetadata {
                     package: Text::Static("example"),
@@ -265,6 +276,8 @@ mod tests {
             .into(),
         };
         let externals = ExternalTypeTable {
+            lifetimes: Table::Static(&[]),
+            definitions: Table::Static(&[]),
             types: Table::Static(&[]),
         };
         let mut descriptors = vec![
@@ -418,7 +431,27 @@ mod tests {
         use crate::plan::{TypeParameterId, execution::type_::ExternalTypeId};
         let lists = ListTypeTable::default();
         let customs = CustomTypeTable::new(Vec::new(), Vec::new());
+        use crate::host::HostValueLifetime;
+        use crate::plan::execution::host::registration::ExternalSchema;
         let externals = ExternalTypeTable {
+            lifetimes: vec![HostValueLifetime::Execution, HostValueLifetime::Execution].into(),
+            definitions: vec![
+                ExternalSchema {
+                    package: "app".into(),
+                    module: "native".into(),
+                    name: "First".into(),
+                    parameter_count: 0,
+                    lifetime: HostValueLifetime::Execution,
+                },
+                ExternalSchema {
+                    package: "app".into(),
+                    module: "native".into(),
+                    name: "Second".into(),
+                    parameter_count: 0,
+                    lifetime: HostValueLifetime::Execution,
+                },
+            ]
+            .into(),
             types: vec![
                 NominalTypeMetadata {
                     package: "app".into(),

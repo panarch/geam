@@ -83,6 +83,10 @@ mod main {
 
     #[geam_macros::function]
     fn status_text(value: values::StatusInput) -> StringValue {
+        format_status(value)
+    }
+
+    fn format_status(value: values::StatusInput) -> StringValue {
         match value {
             values::StatusInput::Ready => "ready".into(),
             values::StatusInput::Count(value) => format!("count:{value}").into(),
@@ -113,9 +117,11 @@ mod main {
     #[geam_macros::function]
     fn envelope_text(value: EnvelopeInput) -> StringValue {
         match value {
-            EnvelopeInput::One(value) => StringValue::from("one:").concat(&status_text(value)),
+            EnvelopeInput::One(value) => StringValue::from("one:").concat(&format_status(value)),
             EnvelopeInput::Many(values) => {
-                let second = values.get(1).map_or_else(|| "missing".into(), status_text);
+                let second = values
+                    .get(1)
+                    .map_or_else(|| "missing".into(), format_status);
                 StringValue::from(format!("many:{}:", values.len())).concat(&second)
             }
             EnvelopeInput::Token(value) => StringValue::from("token:").concat(&value.0),
@@ -124,7 +130,9 @@ mod main {
 
     #[geam_macros::function]
     fn first(values: geam_core::List<values::StatusInput>) -> StringValue {
-        values.get(0).map_or_else(|| "missing".into(), status_text)
+        values
+            .get(0)
+            .map_or_else(|| "missing".into(), format_status)
     }
 
     #[geam_macros::function]

@@ -2,7 +2,7 @@ mod native;
 mod schema;
 
 use super::{ContractError, Registration, Types};
-use crate::host::{HostCustomTypeSchema, HostSchemaType, HostTypeDescriptor};
+use crate::host::{HostCustomAccess, HostCustomTypeSchema, HostSchemaType, HostTypeDescriptor};
 use crate::plan::ValueType as Nominal;
 use crate::plan::execution::host::construction::ConstructionIndex;
 use crate::plan::execution::host::{HostConstructionTypes, HostedFunctionMetadata};
@@ -212,19 +212,26 @@ impl Walk<'_, '_> {
         nominal: &Nominal,
     ) -> Result<(), ContractError> {
         let (_, id) = find(&self.indexes.customs, nominal)?;
+        let stored = &self.types.customs.types[id.index()];
+        if stored.type_.arguments.len() != schema.parameter_count() {
+            return Err(ContractError::Construction);
+        }
+        // Nominal retention grants neither fields nor construction conversions.
+        // Producer identity and permission were checked by custom admission.
+        if schema.access() == HostCustomAccess::Retained {
+            return Ok(());
+        }
         if !self.expanded.insert(id) {
             return Ok(());
         }
         // The admitted index already fixes both the target and its nominal arguments.
-        let stored = &self.types.customs.types[id.index()];
         let arguments = stored
             .type_
             .arguments
             .iter()
             .map(TypeMetadata::materialize)
             .collect::<Vec<_>>();
-        if arguments.len() != schema.parameter_count()
-            || stored.constructor_count != schema.constructors().len()
+        if stored.constructor_count != schema.constructors().len()
             || stored.constructors.len() != schema.constructors().len()
         {
             return Err(ContractError::Construction);
@@ -298,14 +305,15 @@ mod tests {
         Walk, admit, index,
     };
     use crate::host::{
-        HostCustomConstructorSchema, HostCustomFieldSchema, HostProviderModule, HostProviderSet,
-        RegisteredHostConstructions, StatelessHostProfile,
+        HostCustomAccess, HostCustomConstructorSchema, HostCustomFieldSchema, HostProviderModule,
+        HostProviderSet, RegisteredHostConstructions, StatelessHostProfile,
     };
     use crate::plan::execution::prepared::admission::hosts::tests::lowered;
     use crate::plan::execution::storage::{Node, Table};
     use crate::plan::execution::type_::{
         CustomTypeId, ExternalTypeId, ListStorageTypeId, ListTypeId,
     };
+    use crate::plan::{CustomType, CustomTypeName};
     use std::collections::HashSet;
 
     #[test]
@@ -718,6 +726,16 @@ pub fn main() { #([42], ["text"], [[42]], Box(42), Box([42]), Box(fn(x: Int) { x
         };
         let box_field =
             HostSchemaType::custom("app", "main", "Box", [HostSchemaType::Parameter(0)]);
+        let mut retention = walk();
+        let nominal = Nominal::Custom(CustomType::new(
+            CustomTypeName::new("app".into(), "main".into(), "Box".into()),
+            vec![Nominal::Int],
+        ));
+        let retained_schema = box_schema.clone().with_access(HostCustomAccess::Retained);
+        assert_eq!(retention.custom(&retained_schema, &nominal), Ok(()));
+        assert!(retention.expanded.is_empty());
+        assert_eq!(retention.custom(&box_schema, &nominal), Ok(()));
+        assert_eq!(retention.expanded.len(), 1);
         assert_eq!(walk().schema(&box_field, &[Nominal::Int]), Ok(()));
         assert_eq!(
             walk().schema(
@@ -964,7 +982,18 @@ pub fn main() { #([42], ["text"], [[42]], Box(42), Box([42]), Box(fn(x: Int) { x
             name: "Token".into(),
             arguments: vec![TypeMetadata::List(Node::Static(&TypeMetadata::Int))].into(),
         };
+        use crate::host::HostValueLifetime;
+        use crate::plan::execution::host::registration::ExternalSchema;
         let externals = ExternalTypeTable {
+            lifetimes: vec![HostValueLifetime::Execution].into(),
+            definitions: vec![ExternalSchema {
+                package: "app".into(),
+                module: "main".into(),
+                name: "Token".into(),
+                parameter_count: 1,
+                lifetime: HostValueLifetime::Execution,
+            }]
+            .into(),
             types: vec![nominal.clone()].into(),
         };
         let types = Types::admit(

@@ -16,7 +16,8 @@ pub struct Component;
 
 mod converted {
     use geam_core::provider::{
-        ProviderNoConstructions, ProviderOutputValue, ProviderValue, ProviderValueForms,
+        ProviderConvertedStorage, ProviderNoConstructions, ProviderOutputValue, ProviderValue,
+        ProviderValueForms,
     };
     use geam_core::{HostCall, HostCallError, HostFailure, HostProfile, HostProvider, HostType};
     use num_bigint::BigInt;
@@ -51,6 +52,8 @@ mod converted {
         Return: HostType,
     {
         type Error = HostCallError;
+        type Storage = ProviderConvertedStorage;
+
         fn into_host<'call>(
             self,
             _: &mut HostCall<'call, Profile, Provider, Return>,

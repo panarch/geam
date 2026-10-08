@@ -4,5 +4,5 @@ error[E0308]: mismatched types
 78 |         let stored = first.stored_item(|_| &second.payload().value);
    |                                            ^^^^^^^^^^^^^^^^^^^^^^^ expected `&Retained<FirstPayload, HostTypeIndex0>`, found `&Retained<SecondPayload, HostTypeIndex0>`
    |
-   = note: expected reference `&Retained<FirstPayload, HostTypeIndex0>`
-              found reference `&Retained<SecondPayload, HostTypeIndex0>`
+   = note: expected reference `&geam_core::provider::advanced::Retained<FirstPayload, HostTypeIndex0>`
+              found reference `&geam_core::provider::advanced::Retained<SecondPayload, HostTypeIndex0>`
