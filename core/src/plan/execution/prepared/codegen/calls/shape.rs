@@ -4762,4 +4762,35 @@ pub fn main() { calculate(<<1, 2, 3>>) }
         .unwrap();
         assert_eq!(test_expression(&test), "int2 != int3");
     }
+
+    #[test]
+    fn unconnected_boolean_wrappers_keep_canonical_execution_and_echo_order() {
+        use crate::{ExecutionPlan, Value, compile_typed_module, plan_module, run_main};
+
+        let source = r#"
+fn accepted() -> Bool { echo "accepted" True }
+pub fn verify() -> Bool {
+  let assert True = accepted()
+  accepted()
+}
+pub fn main() { let _ = verify() Nil }
+"#;
+        let typed = compile_typed_module("example", "src/example.gleam", source).unwrap();
+        let plan = ExecutionPlan::from_module_plan(plan_module(typed).unwrap());
+        let calls = CallProgram::inspect(
+            &plan.program.functions,
+            &plan.program.common.custom_types,
+            &plan.program.common.value_shapes,
+        );
+        assert!(calls.functions.is_empty());
+        let mut echo = Vec::new();
+        assert_eq!(run_main(&plan, &mut echo).unwrap(), Value::Nil);
+        assert_eq!(
+            echo.iter().map(|output| output.value()).collect::<Vec<_>>(),
+            [
+                &Value::String("accepted".into()),
+                &Value::String("accepted".into())
+            ]
+        );
+    }
 }

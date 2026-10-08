@@ -44,9 +44,11 @@ impl<Graph: ExecutionGraphProfile> CallGroupCodegen<'_, '_, Graph> {
         source: &mut Code,
         family: CallFamily,
         native: bool,
-        prefix: &str,
-        suffix: &str,
+        returning: bool,
     ) {
+        let (prefix, suffix) = if native { ("Ok(Some(", "))") } else { ("", "") };
+        let return_prefix = if returning { "return " } else { "" };
+        let return_suffix = if returning { ";" } else { "" };
         if native {
             source.open(&format!("if let CallNativeOps::{family} {{ function: target, native }} = native && *target == function {{\n"));
             source.open("if *budget == 0 {\n");
@@ -59,7 +61,9 @@ impl<Graph: ExecutionGraphProfile> CallGroupCodegen<'_, '_, Graph> {
             source.push_str("*budget -= 1;\ncaller.resume(returned.into_value())\n");
             source.alternative("} else {\n");
         }
-        source.open(&format!("return {prefix}CallProgress::{family}Scalar {{\n"));
+        source.open(&format!(
+            "{return_prefix}{prefix}CallProgress::{family}Scalar {{\n"
+        ));
         source.push_str("function, site, input,\n");
         source.open("resume: Box::new(move |value| {\n");
         source.push_str(&format!(
@@ -67,7 +71,7 @@ impl<Graph: ExecutionGraphProfile> CallGroupCodegen<'_, '_, Graph> {
             self.active("caller.resume(value)")
         ));
         source.close("}),\n");
-        source.close(&format!("}}{suffix};\n"));
+        source.close(&format!("}}{suffix}{return_suffix}\n"));
         if native {
             source.close("}\n");
         }
@@ -116,7 +120,7 @@ impl<Graph: ExecutionGraphProfile> CallGroupCodegen<'_, '_, Graph> {
             .any(|family| self.has_step(*family, StepKind::Tail));
         // A String Native request hands off once; only internal state changes
         // require another function_step in this invocation.
-        let transitions = self.has_native_calls()
+        let transitions = (native && self.has_native_calls())
             || self.return_families().into_iter().any(|family| {
                 self.has_step(family, StepKind::Call)
                     || self.has_step(family, StepKind::Tail)
@@ -124,27 +128,24 @@ impl<Graph: ExecutionGraphProfile> CallGroupCodegen<'_, '_, Graph> {
             });
         let handoff_prefix = if transitions { "return " } else { "" };
         let handoff_suffix = if transitions { ";" } else { "" };
-        let mutable = if !self.has_native_calls() && transitions {
-            "mut "
-        } else {
-            ""
-        };
+        let mutable = if transitions { "mut " } else { "" };
+        let initial_mutable = if self.has_native_calls() { "" } else { mutable };
         if self.has_native() {
             self.write_native_delivery(source, native);
         }
         source.push_str(&format!(
-            "let Some({mutable}active) = self.active.take() else {{ return {}; }};\n",
+            "let Some({initial_mutable}active) = self.active.take() else {{ return {}; }};\n",
             progress("CallProgress::Yield(self)")
         ));
         if self.has_native_calls() {
-            source.open("let mut active = match active {\n");
+            source.open(&format!("let {mutable}active = match active {{\n"));
             source.push_str("FunctionActive::Running(active) => active,\n");
             for family in [CallFamily::Int, CallFamily::Bool] {
                 if self.has_native_bridge(family) {
                     source.open(&format!(
                         "FunctionActive::{family}Call {{ function, site, input, caller }} => {{\n"
                     ));
-                    self.write_native_bridge(source, family, native, prefix, suffix);
+                    self.write_native_bridge(source, family, native, true);
                     source.close("},\n");
                     source.open(&format!(
                         "FunctionActive::{family}Return {{ caller, returned }} => {{\n"
@@ -229,7 +230,7 @@ impl<Graph: ExecutionGraphProfile> CallGroupCodegen<'_, '_, Graph> {
                 if native {
                     source.open("active = {\n");
                 }
-                self.write_native_bridge(source, family, native, prefix, suffix);
+                self.write_native_bridge(source, family, native, transitions);
                 if native {
                     source.close("};\n");
                 }
@@ -285,7 +286,7 @@ impl<Graph: ExecutionGraphProfile> CallGroupCodegen<'_, '_, Graph> {
 mod tests {
     use super::super::shape::CallProgram;
     use super::{CallGroupCodegen, CallTarget, Code};
-    use crate::plan::execution::function::StringFunctionId;
+    use crate::plan::execution::function::{BoolFunctionId, StringFunctionId};
     use crate::{ExecutionPlan, compile_typed_module, plan_module};
     use std::collections::BTreeSet;
 
@@ -514,5 +515,238 @@ pub fn main() -> String {
 }
 "#
         );
+    }
+    #[test]
+    fn terminal_native_bridge_only_loops_when_resuming_native_calls_locally() {
+        use crate::{
+            HostProviderModule, HostProviderSet, HostedExecution, ModuleSource, PackageSource,
+            StatelessHostProfile, compile_typed_host_program, plan_host_program,
+        };
+        let input = r#"
+@external(erlang, "native", "accepted")
+fn accepted(flag: Bool) -> Bool
+pub fn verify(flag: Bool) -> Bool {
+  let assert True = accepted(flag)
+  accepted(flag)
+}
+pub fn main() { let _ = verify(True) Nil }
+"#;
+        let native = HostProviderModule::<StatelessHostProfile>::new("example", "example")
+            .unwrap()
+            .with_function::<(bool,), bool, _>("accepted", |value| value)
+            .unwrap();
+        let typed = compile_typed_host_program(
+            "example",
+            "example",
+            [PackageSource::new(
+                "example",
+                Vec::<String>::new(),
+                [ModuleSource::new("example", "src/example.gleam", input)],
+            )],
+            HostProviderSet::from_providers([native]).unwrap(),
+        )
+        .unwrap();
+        let mut plan =
+            HostedExecution::try_from_module_plan(plan_host_program(typed).unwrap()).unwrap();
+        let program = &plan.execution().program;
+        let calls = CallProgram::inspect(
+            &program.functions,
+            &program.common.custom_types,
+            &program.common.value_shapes,
+        );
+        let groups = super::super::group::CallGroup::inspect(&calls.functions);
+        let group = groups
+            .iter()
+            .find(|group| {
+                group.entries.iter().any(|&entry| {
+                    calls.functions[entry].target == CallTarget::Bool(BoolFunctionId(0))
+                })
+            })
+            .unwrap();
+        assert_eq!(group.members.len(), 1);
+        let codegen = CallGroupCodegen::new(
+            group
+                .members
+                .iter()
+                .map(|&member| &calls.functions[member])
+                .collect(),
+            group
+                .entries
+                .iter()
+                .map(|&entry| calls.functions[entry].target)
+                .collect(),
+            BTreeSet::new(),
+        );
+        let mut protocol = Code::default();
+        codegen.write_protocol(&mut protocol);
+        let expected_protocol = r#"#[allow(clippy::large_enum_variant, reason = "Typed locals stay inline to avoid allocating at each generated step.")]
+enum FunctionStep {
+    Yield(FunctionState),
+    Canonical { target: data::compiled::CallTarget, point: data::compiled::CompiledCheckpoint, values: Box<CallValues> },
+    BoolScalarBridge { function: data::function::BoolFunctionId, site: data::source::HostCallSite, input: CallNativeInput, caller: BoolReturn },
+}
+"#;
+        assert_eq!(protocol.as_str(), expected_protocol);
+        let mut ordinary = Code::default();
+        codegen.write_advance(&mut ordinary, false);
+        let expected_ordinary = r#"fn advance(mut self: Box<Self>, ops: &mut CallOps<'_>, budget: &mut usize) -> CallProgress {
+    let Some(active) = self.active.take() else { return CallProgress::Yield(self); };
+    let active = match active {
+        FunctionActive::Running(active) => active,
+        FunctionActive::BoolCall { function, site, input, caller } => {
+            return CallProgress::BoolScalar {
+                function, site, input,
+                resume: Box::new(move |value| {
+                    self.active = Some(FunctionActive::Running(caller.resume(value)));
+                    self
+                }),
+            };
+        },
+        FunctionActive::BoolReturn { caller, returned } => {
+            if *budget == 0 {
+                self.active = Some(FunctionActive::BoolReturn { caller, returned });
+                return CallProgress::Yield(self);
+            }
+            *budget -= 1;
+            caller.resume(returned.into_value())
+        },
+    };
+    match function_step(active, ops, budget) {
+        FunctionStep::Yield(active) => {
+            self.active = Some(FunctionActive::Running(active));
+            CallProgress::Yield(self)
+        },
+        FunctionStep::BoolScalarBridge { function, site, input, caller } => {
+            CallProgress::BoolScalar {
+                function, site, input,
+                resume: Box::new(move |value| {
+                    self.active = Some(FunctionActive::Running(caller.resume(value)));
+                    self
+                }),
+            }
+        },
+        FunctionStep::Canonical { target, point, values } => {
+            match target {
+                data::compiled::CallTarget::Bool(function) => {
+                    if let Some(caller) = self.boolean_returns.pop() {
+                        let site = caller.site();
+                        return CallProgress::InterpretedBool {
+                            function, site, point, values,
+                            resume: Box::new(move |value| {
+                                self.active = Some(FunctionActive::Running(caller.resume(value)));
+                                self
+                            }),
+                        };
+                    }
+                    CallProgress::Interpreted { target, point, values }
+                },
+                _ => CallProgress::Interpreted { target, point, values },
+            }
+        },
+    }
+}
+"#;
+        assert_eq!(ordinary.as_str(), expected_ordinary);
+        let mut native = Code::default();
+        codegen.write_advance(&mut native, true);
+        let expected_native = r#"fn advance_native(mut self: Box<Self>, ops: &mut CallOps<'_>, budget: &mut usize, native: &mut CallNativeOps<'_>) -> Result<Option<CallProgress>, CallNativeFailure> {
+    let Some(active) = self.active.take() else { return Ok(Some(CallProgress::Yield(self))); };
+    let mut active = match active {
+        FunctionActive::Running(active) => active,
+        FunctionActive::BoolCall { function, site, input, caller } => {
+            if let CallNativeOps::Bool { function: target, native } = native && *target == function {
+                if *budget == 0 {
+                    self.active = Some(FunctionActive::BoolCall { function, site, input, caller });
+                    return Ok(Some(CallProgress::Yield(self)));
+                }
+                *budget -= 1;
+                let Some(returned) = native.call(input, site)? else { return Ok(None); };
+                if *budget == 0 {
+                    self.active = Some(FunctionActive::BoolReturn { caller, returned });
+                    return Ok(Some(CallProgress::Yield(self)));
+                }
+                *budget -= 1;
+                caller.resume(returned.into_value())
+            } else {
+                return Ok(Some(CallProgress::BoolScalar {
+                    function, site, input,
+                    resume: Box::new(move |value| {
+                        self.active = Some(FunctionActive::Running(caller.resume(value)));
+                        self
+                    }),
+                }));
+            }
+        },
+        FunctionActive::BoolReturn { caller, returned } => {
+            if *budget == 0 {
+                self.active = Some(FunctionActive::BoolReturn { caller, returned });
+                return Ok(Some(CallProgress::Yield(self)));
+            }
+            *budget -= 1;
+            caller.resume(returned.into_value())
+        },
+    };
+    loop {
+        match function_step(active, ops, budget) {
+            FunctionStep::Yield(active) => {
+                self.active = Some(FunctionActive::Running(active));
+                return Ok(Some(CallProgress::Yield(self)));
+            },
+            FunctionStep::BoolScalarBridge { function, site, input, caller } => {
+                active = {
+                    if let CallNativeOps::Bool { function: target, native } = native && *target == function {
+                        if *budget == 0 {
+                            self.active = Some(FunctionActive::BoolCall { function, site, input, caller });
+                            return Ok(Some(CallProgress::Yield(self)));
+                        }
+                        *budget -= 1;
+                        let Some(returned) = native.call(input, site)? else { return Ok(None); };
+                        if *budget == 0 {
+                            self.active = Some(FunctionActive::BoolReturn { caller, returned });
+                            return Ok(Some(CallProgress::Yield(self)));
+                        }
+                        *budget -= 1;
+                        caller.resume(returned.into_value())
+                    } else {
+                        return Ok(Some(CallProgress::BoolScalar {
+                            function, site, input,
+                            resume: Box::new(move |value| {
+                                self.active = Some(FunctionActive::Running(caller.resume(value)));
+                                self
+                            }),
+                        }));
+                    }
+                };
+            },
+            FunctionStep::Canonical { target, point, values } => {
+                match target {
+                    data::compiled::CallTarget::Bool(function) => {
+                        if let Some(caller) = self.boolean_returns.pop() {
+                            let site = caller.site();
+                            return Ok(Some(CallProgress::InterpretedBool {
+                                function, site, point, values,
+                                resume: Box::new(move |value| {
+                                    self.active = Some(FunctionActive::Running(caller.resume(value)));
+                                    self
+                                }),
+                            }));
+                        }
+                        return Ok(Some(CallProgress::Interpreted { target, point, values }));
+                    },
+                    _ => return Ok(Some(CallProgress::Interpreted { target, point, values })),
+                }
+            },
+        }
+    }
+}
+"#;
+        assert_eq!(native.as_str(), expected_native);
+
+        let mut echo = Vec::new();
+        assert_eq!(
+            crate::execution_fixture::run(&mut plan, &mut (), &mut echo).unwrap(),
+            crate::Value::Nil
+        );
+        assert!(echo.is_empty());
     }
 }

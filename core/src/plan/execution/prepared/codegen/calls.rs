@@ -649,7 +649,10 @@ impl<'codegen, 'graph, Graph: ExecutionGraphProfile> CallGroupCodegen<'codegen, 
                 };
                 match kind {
                     StepKind::Call => direct,
-                    _ => !matches!(call.target, CallContractTarget::Static(_)) || !direct,
+                    _ => {
+                        (!matches!(call.target, CallContractTarget::Static(_)) || !direct)
+                            && Self::native_input(call).is_none()
+                    }
                 }
             }),
         })
@@ -2324,7 +2327,7 @@ pub fn main() { let _ = integer(7) let _ = boolean(True) Nil }
         assert!(group.has_native_bridge(CallFamily::Bool));
         for (family, name) in [(CallFamily::Int, "Int"), (CallFamily::Bool, "Bool")] {
             let mut native = Code::default();
-            group.write_native_bridge(&mut native, family, true, "Ok(Some(", "))");
+            group.write_native_bridge(&mut native, family, true, true);
             assert_eq!(
                 native.as_str(),
                 r#"if let CallNativeOps::FAMILY { function: target, native } = native && *target == function {
@@ -2352,7 +2355,7 @@ pub fn main() { let _ = integer(7) let _ = boolean(True) Nil }
 "#.replace("FAMILY", name)
             );
             let mut ordinary = Code::default();
-            group.write_native_bridge(&mut ordinary, family, false, "", "");
+            group.write_native_bridge(&mut ordinary, family, false, true);
             assert_eq!(
                 ordinary.as_str(),
                 r#"return CallProgress::FAMILYScalar {
@@ -2362,6 +2365,20 @@ pub fn main() { let _ = integer(7) let _ = boolean(True) Nil }
         self
     }),
 };
+"#
+                .replace("FAMILY", name)
+            );
+            let mut terminal = Code::default();
+            group.write_native_bridge(&mut terminal, family, false, false);
+            assert_eq!(
+                terminal.as_str(),
+                r#"CallProgress::FAMILYScalar {
+    function, site, input,
+    resume: Box::new(move |value| {
+        self.active = Some(FunctionActive::Running(caller.resume(value)));
+        self
+    }),
+}
 "#
                 .replace("FAMILY", name)
             );
@@ -3437,8 +3454,44 @@ FunctionState::Bool0Point2 { bool0, bool1, bool2 } => calls_bool_0_run(Bool0Stat
 "#
         );
         let mut execution = Code::default();
-        codegen.write_execution(&mut execution);
-        assert!(!execution.as_str().contains("FunctionStep::Canonical"));
+        codegen.write_advance(&mut execution, false);
+        assert_eq!(
+            execution.as_str(),
+            r#"fn advance(mut self: Box<Self>, ops: &mut CallOps<'_>, budget: &mut usize) -> CallProgress {
+    let Some(mut active) = self.active.take() else { return CallProgress::Yield(self); };
+    loop {
+        match function_step(active, ops, budget) {
+            FunctionStep::Yield(active) => {
+                self.active = Some(active);
+                return CallProgress::Yield(self);
+            },
+            FunctionStep::BoolCall { callee, caller } => {
+                self.boolean_returns.push(caller);
+                active = callee;
+            },
+            FunctionStep::Bool { value } => {
+                if let Some(caller) = self.boolean_returns.pop() {
+                    active = caller.small(value);
+                } else {
+                    self.boolean_returns.clear();
+                    self.nil_returns.clear();
+                    return CallProgress::Complete { output: CallOutput::Bool(value), execution: self };
+                }
+            },
+            FunctionStep::Nil { value } => {
+                if let Some(caller) = self.nil_returns.pop() {
+                    active = caller.small(value);
+                } else {
+                    self.boolean_returns.clear();
+                    self.nil_returns.clear();
+                    return CallProgress::Complete { output: CallOutput::Nil(value), execution: self };
+                }
+            },
+        }
+    }
+}
+"#
+        );
         let mut continuation = Code::default();
         codegen.write_continuations(&mut continuation, CallFamily::Bool);
         assert_eq!(
@@ -3769,6 +3822,67 @@ enum FunctionStep {
     Bool { value: bool },
     IntFunction { value: IntCallable },
     BoolFunction { value: BoolCallable },
+}
+"#
+        );
+        let mut advance = Code::default();
+        codegen.write_advance(&mut advance, false);
+        assert_eq!(
+            advance.as_str(),
+            r#"fn advance(mut self: Box<Self>, ops: &mut CallOps<'_>, budget: &mut usize) -> CallProgress {
+    let Some(mut active) = self.active.take() else { return CallProgress::Yield(self); };
+    loop {
+        match function_step(active, ops, budget) {
+            FunctionStep::Yield(active) => {
+                self.active = Some(active);
+                return CallProgress::Yield(self);
+            },
+            FunctionStep::Int { value } => {
+                if let Some(caller) = self.integer_returns.pop() {
+                    active = caller.small(value);
+                } else {
+                    self.integer_returns.clear();
+                    self.boolean_returns.clear();
+                    self.integer_function_returns.clear();
+                    self.boolean_function_returns.clear();
+                    return CallProgress::Complete { output: CallOutput::Int(value.into()), execution: self };
+                }
+            },
+            FunctionStep::Bool { value } => {
+                if let Some(caller) = self.boolean_returns.pop() {
+                    active = caller.small(value);
+                } else {
+                    self.integer_returns.clear();
+                    self.boolean_returns.clear();
+                    self.integer_function_returns.clear();
+                    self.boolean_function_returns.clear();
+                    return CallProgress::Complete { output: CallOutput::Bool(value), execution: self };
+                }
+            },
+            FunctionStep::IntFunction { value } => {
+                if let Some(caller) = self.integer_function_returns.pop() {
+                    active = caller.small(value);
+                } else {
+                    self.integer_returns.clear();
+                    self.boolean_returns.clear();
+                    self.integer_function_returns.clear();
+                    self.boolean_function_returns.clear();
+                    return CallProgress::Complete { output: CallOutput::IntFunction(value), execution: self };
+                }
+            },
+            FunctionStep::BoolFunction { value } => {
+                if let Some(caller) = self.boolean_function_returns.pop() {
+                    active = caller.small(value);
+                } else {
+                    self.integer_returns.clear();
+                    self.boolean_returns.clear();
+                    self.integer_function_returns.clear();
+                    self.boolean_function_returns.clear();
+                    return CallProgress::Complete { output: CallOutput::BoolFunction(value), execution: self };
+                }
+            },
+        }
+    }
 }
 "#
         );
