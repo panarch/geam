@@ -46,10 +46,23 @@ jobs:
     name: Core and macros
     if: ${{ github.event_name != 'workflow_dispatch' || inputs.target == 'all' || inputs.target == 'core-macros' }}
     runs-on: ubuntu-latest
+    env:
+      CARGO_PROFILE_DEV_DEBUG: "0"
+      CARGO_PROFILE_TEST_DEBUG: "0"
 
     steps:
       - name: Checkout
         uses: actions/checkout@v7
+
+      - name: Add memory headroom for Core tests and coverage
+        run: |
+          free -h
+          df -h "$RUNNER_TEMP"
+          sudo fallocate -l 8G "$RUNNER_TEMP/geam-core.swap"
+          sudo chmod 600 "$RUNNER_TEMP/geam-core.swap"
+          sudo mkswap "$RUNNER_TEMP/geam-core.swap"
+          sudo swapon "$RUNNER_TEMP/geam-core.swap"
+          free -h
 
       - name: Install Rust toolchain
         uses: actions-rust-lang/setup-rust-toolchain@v1
