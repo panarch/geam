@@ -1,9 +1,9 @@
 use super::HostExecutionError;
 use crate::execution::ExitStatus;
 use crate::host::{
-    HostCall, HostCallError, HostCallable, HostCodecScope, HostConstructions, HostFunctionToken,
-    HostFunctionValue, HostFunctionValueToken, HostProfile, HostProvider, HostScopedValue,
-    HostType, HostTypeSequence,
+    HostCall, HostCallError, HostCallRuntime, HostCallable, HostCodecScope, HostConstructions,
+    HostFunctionToken, HostFunctionType, HostFunctionValue, HostFunctionValueToken, HostProfile,
+    HostProvider, HostScopedValue, HostType, HostTypeDescriptor, HostTypeSequence,
 };
 use crate::runtime::execution::ExecutionContext;
 use crate::runtime::{HostCallOrigin, RetainedCallable, RetainedFunctionValue};
@@ -207,6 +207,25 @@ impl<Profile: HostProfile, Provider: HostProvider<Profile>> CallableRetention<Pr
             signature: PhantomData,
         }
     }
+
+    fn validate_restoration(
+        &self,
+        runtime: &dyn HostCallRuntime<Profile>,
+        descriptor: &HostTypeDescriptor,
+    ) -> Result<(), HostCallError> {
+        self.execution
+            .for_invocation(&runtime.execution())
+            .map_err(|_| crate::HostFailure::new("callback belongs to another execution"))?;
+        match (
+            self.codec.function().resolve_type(descriptor),
+            runtime.resolve_host_type(descriptor),
+        ) {
+            (Some(original), Some(requested)) if original == requested => Ok(()),
+            _ => Err(
+                crate::HostFailure::new("callback does not match the requested source type").into(),
+            ),
+        }
+    }
 }
 
 /// A retained executable Gleam callback with its original execution endpoint.
@@ -296,6 +315,7 @@ where
     }
 
     /// Restores the original function and captures within its execution domain.
+    /// The current call must resolve the same argument and return source types.
     pub fn restore<'call, CallerProvider, Output>(
         &self,
         call: &mut HostCall<'call, Profile, CallerProvider, Output>,
@@ -304,10 +324,10 @@ where
         CallerProvider: HostProvider<Profile>,
         Output: HostType,
     {
-        self.retention
-            .execution
-            .for_invocation(&call.runtime.execution())
-            .map_err(|_| crate::HostFailure::new("callback belongs to another execution"))?;
+        self.retention.validate_restoration(
+            call.runtime,
+            &HostTypeDescriptor::of::<HostFunctionType<Arguments, Return>>(),
+        )?;
         let token = match &self.function {
             RetainedFunctionValue::Invocable(callable) => {
                 HostFunctionValueToken::Invocable(call.runtime.restore_callable(callable.clone()).0)
@@ -436,7 +456,7 @@ where
     /// Restores this exact function value into an active call in its original execution.
     ///
     /// The restored value preserves identity and shares its retained captures.
-    /// A different execution is rejected before a callable token is produced.
+    /// A different execution or source signature is rejected before a token is produced.
     pub fn restore<'call, CallerProvider, Output>(
         &self,
         call: &mut HostCall<'call, Profile, CallerProvider, Output>,
@@ -445,10 +465,10 @@ where
         CallerProvider: HostProvider<Profile>,
         Output: HostType,
     {
-        self.retention
-            .execution
-            .for_invocation(&call.runtime.execution())
-            .map_err(|_| crate::HostFailure::new("callback belongs to another execution"))?;
+        self.retention.validate_restoration(
+            call.runtime,
+            &HostTypeDescriptor::of::<HostFunctionType<Arguments, Return>>(),
+        )?;
         Ok(HostCallable::new(
             call.runtime.restore_callable(self.callable.clone()),
         ))
@@ -581,6 +601,14 @@ mod tests {
     type PolymorphicFunction = HostFunctionValueType<One<HostTypeParameter<0>>, BigInt>;
     type RetainedPolymorphic =
         HostOwnedFunctionValue<Profile, Producer, One<HostTypeParameter<0>>, BigInt, End>;
+    type GenericArguments = One<HostTypeParameter<0>>;
+    type GenericReturn = HostTypeParameter<1>;
+    type GenericValue = HostFunctionValueType<GenericArguments, GenericReturn>;
+    type GenericCallable = HostFunctionType<GenericArguments, GenericReturn>;
+    type SavedGenericValue =
+        HostOwnedFunctionValue<Profile, Producer, GenericArguments, GenericReturn, End>;
+    type SavedGenericCallable =
+        HostOwnedCallable<Profile, Producer, GenericArguments, GenericReturn, End>;
     type EmbeddedFunction = CallableType<(BigInt,), BigInt>;
     type OpaqueFunction = crate::provider_support::HostOpaqueFunctionType<One<BigInt>, BigInt>;
     type SavedOpaque = crate::provider::Value<
@@ -595,6 +623,8 @@ mod tests {
         general: Arc<Mutex<Option<RetainedGeneral>>>,
         polymorphic: Arc<Mutex<Option<RetainedPolymorphic>>>,
         opaque: Arc<Mutex<Option<SavedOpaque>>>,
+        generic_value: Option<SavedGenericValue>,
+        generic_callable: Option<SavedGenericCallable>,
         native_calls: Cell<usize>,
     }
     impl HostProfile for Profile {
@@ -757,6 +787,56 @@ mod tests {
         let retained = SavedOpaque::from_host(&call, callback);
         *call.state().opaque.lock().unwrap() = Some(retained);
         Ok(call.return_value(callback))
+    }
+
+    fn save_generic_value<'call>(
+        mut call: HostCall<'call, Profile, Producer, ()>,
+        constructions: HostConstructions<'call, End>,
+        function: HostFunctionValue<'call, GenericArguments, GenericReturn>,
+    ) -> Result<HostCallCompletion<'call, ()>, HostCallError> {
+        call.state().generic_value = Some(call.owned_function_value(function, &constructions));
+        Ok(call.return_value(()))
+    }
+
+    fn restore_generic_value<'call>(
+        mut call: HostCall<'call, Profile, Receiver, GenericValue>,
+    ) -> Result<HostCallCompletion<'call, GenericValue>, HostCallError> {
+        let function = call.state().generic_value.as_ref().unwrap().clone();
+        let restored = function.restore(&mut call)?;
+        Ok(call.return_value(restored))
+    }
+
+    fn restore_unused_generic_value<'call>(
+        mut call: HostCall<'call, Profile, Receiver, ()>,
+    ) -> Result<HostCallCompletion<'call, ()>, HostCallError> {
+        let function = call.state().generic_value.as_ref().unwrap().clone();
+        let error = function.restore(&mut call).err().unwrap();
+        Err(error)
+    }
+
+    fn save_generic_callable<'call>(
+        mut call: HostCall<'call, Profile, Producer, ()>,
+        constructions: HostConstructions<'call, End>,
+        function: HostCallable<'call, GenericArguments, GenericReturn>,
+    ) -> Result<HostCallCompletion<'call, ()>, HostCallError> {
+        call.state().generic_callable = Some(call.owned_callable(function, &constructions));
+        Ok(call.return_value(()))
+    }
+
+    fn restore_generic_callable<'call>(
+        mut call: HostCall<'call, Profile, Receiver, GenericCallable>,
+    ) -> Result<HostCallCompletion<'call, GenericCallable>, HostCallError> {
+        let function = call.state().generic_callable.as_ref().unwrap().clone();
+        let restored = function.restore(&mut call)?;
+        Ok(call.return_value(restored))
+    }
+
+    fn restore_unused_generic_callable<'call>(
+        mut call: HostCall<'call, Profile, Receiver, ()>,
+    ) -> Result<HostCallCompletion<'call, ()>, HostCallError> {
+        let function = call.state().generic_callable.as_ref().unwrap().clone();
+        let error = function.restore(&mut call).err().unwrap();
+        Err(error)
     }
 
     fn program() -> HostedModuleBuilder<Profile> {
@@ -1058,6 +1138,139 @@ pub fn wrap(callback: fn(Int) -> Int) { fn(value) { callback(value) } }
                 assert_eq!(echo.value(), &crate::Value::String("source".into()));
             }
             assert!(foreign_echoes.is_empty());
+        }
+    }
+
+    #[test]
+    fn generic_restoration_checks_the_resolved_source_signature() {
+        for callable in [false, true] {
+            let providers = || {
+                let provider = HostProviderModule::new("application", "library").unwrap();
+                let provider = if callable {
+                    provider
+                    .with_scoped_function_and_constructions::<
+                        Producer, (GenericCallable,), (), End, _,
+                    >("save", save_generic_callable)
+                    .unwrap()
+                    .with_scoped_function::<Receiver, (), GenericCallable, _>(
+                        "restore", restore_generic_callable,
+                    )
+                    .unwrap()
+                    .with_scoped_function::<Receiver, (), (), _>(
+                        "restore_unused", restore_unused_generic_callable,
+                    )
+                    .unwrap()
+                } else {
+                    provider
+                    .with_scoped_function_and_constructions::<
+                        Producer, (GenericValue,), (), End, _,
+                    >("save", save_generic_value)
+                    .unwrap()
+                    .with_scoped_function::<Receiver, (), GenericValue, _>(
+                        "restore", restore_generic_value,
+                    )
+                    .unwrap()
+                    .with_scoped_function::<Receiver, (), (), _>(
+                        "restore_unused", restore_unused_generic_value,
+                    )
+                    .unwrap()
+                };
+                HostProviderSet::from_providers([provider]).unwrap()
+            };
+            for (body, failure) in [
+                (
+                    r#"
+  let offset = 40
+  let original = fn(value: Int) { value + offset }
+  save(original)
+  let restored: fn(Int) -> Int = restore()
+  original == restored && restored(2) == 42
+"#,
+                    None,
+                ),
+                (
+                    r#"
+  save(fn(value: Int) { echo "must not run" value + 40 })
+  let wrong: fn(String) -> Int = restore()
+  wrong("wrong input") == 42
+"#,
+                    Some("restore"),
+                ),
+                (
+                    r#"
+  save(fn(value: Int) { echo "must not run" value + 40 })
+  let wrong: fn(Int) -> String = restore()
+  wrong(2) == "wrong return"
+"#,
+                    Some("restore"),
+                ),
+                (
+                    r#"
+  let offset = 40
+  let original = fn(values: List(Int)) { case values { [value] -> value + offset _ -> 0 } }
+  save(original)
+  let restored: fn(List(Int)) -> Int = restore()
+  original == restored && restored([2]) == 42
+"#,
+                    None,
+                ),
+                (
+                    r#"
+  save(fn(values: List(Int)) { echo "must not run" case values { [value] -> value _ -> 0 } })
+  let wrong: fn(List(String)) -> Int = restore()
+  wrong(["wrong nested input"]) == 42
+"#,
+                    Some("restore"),
+                ),
+                (
+                    r#"
+  save(fn(value: Int) { echo "must not run" value + 40 })
+  restore_unused()
+  True
+"#,
+                    Some("restore_unused"),
+                ),
+            ] {
+                let source = format!(
+                    r#"
+@external(erlang, "native", "save") fn save(function: fn(a) -> b) -> Nil
+@external(erlang, "native", "restore") fn restore() -> fn(a) -> b
+@external(erlang, "native", "restore_unused") fn restore_unused() -> Nil
+pub fn main() {{ {body} }}
+"#
+                );
+                let typed = crate::compile_typed_host_program(
+                    "application",
+                    "library",
+                    [PackageSource::new(
+                        "application",
+                        Vec::<String>::new(),
+                        [ModuleSource::new("library", "library.gleam", source)],
+                    )],
+                    providers(),
+                )
+                .unwrap();
+                let mut execution = crate::HostedExecution::try_from_module_plan(
+                    crate::plan_host_program(typed).unwrap(),
+                )
+                .unwrap();
+                let mut echoes = Vec::new();
+                let result = crate::execution_fixture::run(
+                    &mut execution,
+                    &mut State::default(),
+                    &mut echoes,
+                );
+                match failure {
+                    None => assert_eq!(result.unwrap(), crate::Value::Bool(true)),
+                    Some(name) => assert_eq!(
+                        result.unwrap_err().to_string(),
+                        format!(
+                            "host function application::library.{name} failed: callback does not match the requested source type"
+                        )
+                    ),
+                }
+                assert!(echoes.is_empty());
+            }
         }
     }
 
