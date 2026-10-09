@@ -6,6 +6,7 @@ pub(crate) mod int_list;
 pub(crate) mod native_calls;
 pub(crate) mod native_loop;
 pub(crate) mod numeric;
+pub(crate) mod primitive_list;
 pub(crate) mod string;
 
 use crate::plan::execution::graph::BlockGraphExitId;
@@ -33,6 +34,8 @@ pub(crate) mod tests {
     use super::int_list::{IntListOps, IntListValues};
     use super::numeric::NumericValues;
     use super::string::StringValues;
+    use crate::runtime::graph::BlockEnvironment;
+    use crate::runtime::graph::RetainedValues;
     use crate::runtime::state::list::RuntimeListStorage;
 
     // Admission and static-link fixtures describe metadata, never execution.
@@ -140,7 +143,7 @@ pub(crate) mod tests {
     fn function_call_metadata_fixture_rejects_execution() {
         metadata_calls(
             0,
-            CallInputs::new(&[], &[], &[], &[], &[]),
+            CallInputs::new(&BlockEnvironment::from_retained(RetainedValues::empty())),
             &mut CallStorage::default(),
         );
     }

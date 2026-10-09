@@ -193,7 +193,7 @@ fn inspect_range(pattern: &BitArrayBindingPattern, bindings: &mut BTreeMap<usize
     }
 }
 
-impl<Graph: ExecutionGraphProfile> FunctionCodegen<'_, Graph> {
+impl<Graph: ExecutionGraphProfile> FunctionCodegen<'_, '_, Graph> {
     /// Forward labels preserve shared failure/guard joins without copying blocks
     /// or adding dispatch to the entry loop. Entry back-edges remain `continue`.
     pub(super) fn bit_loop(&self, source: &mut Code) {
@@ -529,8 +529,8 @@ pub fn main() { walk(<<1, 2, 3>>, 0) }
         let shape =
             CompiledShape::inspect_bits(plan.int_function(IntFunctionId(1)).body()).unwrap();
         let function = FunctionCodegen {
-            name: "walk".into(),
-            shape,
+            name: "walk",
+            shape: &shape,
         };
         let mut code = Code::default();
         function.write_code(&mut code, function.resumes_next());
@@ -984,8 +984,8 @@ pub fn main() { read(<<7:64>>, 3, True, <<1>>) }
             }]));
         let point = shape.checkpoints[shape.start(shape.graph.entry())];
         let codegen = FunctionCodegen {
-            name: "numeric_int_1".to_owned(),
-            shape,
+            name: "numeric_int_1",
+            shape: &shape,
         };
         let mut code = Code::default();
         codegen.branch(
@@ -1036,8 +1036,8 @@ pub fn main() { read(<<7:64, 2>>, 3, True, <<1>>) }
         );
         let body = plan.int_function(IntFunctionId(1)).body();
         let function = FunctionCodegen {
-            name: "selected".into(),
-            shape: CompiledShape::inspect_bits(body).unwrap(),
+            name: "selected",
+            shape: &CompiledShape::inspect_bits(body).unwrap(),
         };
         let mut dispatcher = Code::default();
         function.write_code(&mut dispatcher, function.resumes_next());

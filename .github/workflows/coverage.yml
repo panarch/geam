@@ -41,6 +41,28 @@ permissions:
 
 env:
   CARGO_TERM_COLOR: always
+  # llvm-cov summary totals keep full line/region scope without exporting
+  # every function instantiation solely to check a threshold.
+  COVERAGE_GATE: |
+    . as $report
+    | reduce .data[].totals as $totals (
+        {lines: 0, covered_lines: 0, regions: 0, covered_regions: 0};
+        .lines += $totals.lines.count
+        | .covered_lines += $totals.lines.covered
+        | .regions += $totals.regions.count
+        | .covered_regions += $totals.regions.covered
+      )
+    | "Lines: \(.covered_lines)/\(.lines); regions: \(.covered_regions)/\(.regions)",
+      if .lines > 0 and .regions > 0
+        and .covered_lines == .lines and .covered_regions == .regions
+      then "Full-scope line and region coverage: 100%"
+      else
+        ($report.data[].files[]?
+          | select(.summary.lines.covered < .summary.lines.count
+            or .summary.regions.covered < .summary.regions.count)
+          | "\(.filename): lines \(.summary.lines.covered)/\(.summary.lines.count); regions \(.summary.regions.covered)/\(.summary.regions.count)"),
+        error("Full-scope line and region coverage must be 100%")
+      end
 
 jobs:
   core-macros-coverage:
@@ -78,11 +100,15 @@ jobs:
 
       - name: Check geam-core coverage
         if: ${{ !cancelled() && steps.collect.outcome == 'success' }}
-        run: cargo llvm-cov report --package geam-core --summary-only --fail-under-lines 100 --fail-under-regions 100
+        run: |
+          set -o pipefail
+          cargo llvm-cov report --package geam-core --json --summary-only | jq -er "$COVERAGE_GATE"
 
       - name: Check geam-macros coverage
         if: ${{ !cancelled() && steps.collect.outcome == 'success' }}
-        run: cargo llvm-cov report --package geam-macros --summary-only --fail-under-lines 100 --fail-under-regions 100
+        run: |
+          set -o pipefail
+          cargo llvm-cov report --package geam-macros --json --summary-only | jq -er "$COVERAGE_GATE"
 
       - name: Export coverage diagnostics
         if: >-
@@ -210,23 +236,33 @@ jobs:
 
       - name: Check geam-erlang coverage
         if: ${{ !cancelled() && steps.collect.outcome == 'success' }}
-        run: cargo llvm-cov report --package geam-erlang --summary-only --fail-under-lines 100 --fail-under-regions 100
+        run: |
+          set -o pipefail
+          cargo llvm-cov report --package geam-erlang --json --summary-only | jq -er "$COVERAGE_GATE"
 
       - name: Check geam-builtin coverage
         if: ${{ !cancelled() && steps.collect.outcome == 'success' }}
-        run: cargo llvm-cov report --package geam-builtin --summary-only --fail-under-lines 100 --fail-under-regions 100
+        run: |
+          set -o pipefail
+          cargo llvm-cov report --package geam-builtin --json --summary-only | jq -er "$COVERAGE_GATE"
 
       - name: Check geam-stdlib coverage
         if: ${{ !cancelled() && steps.collect.outcome == 'success' }}
-        run: cargo llvm-cov report --package geam-stdlib --summary-only --fail-under-lines 100 --fail-under-regions 100
+        run: |
+          set -o pipefail
+          cargo llvm-cov report --package geam-stdlib --json --summary-only | jq -er "$COVERAGE_GATE"
 
       - name: Check geam-json coverage
         if: ${{ !cancelled() && steps.collect.outcome == 'success' }}
-        run: cargo llvm-cov report --package geam-json --summary-only --fail-under-lines 100 --fail-under-regions 100
+        run: |
+          set -o pipefail
+          cargo llvm-cov report --package geam-json --json --summary-only | jq -er "$COVERAGE_GATE"
 
       - name: Check geam-time coverage
         if: ${{ !cancelled() && steps.collect.outcome == 'success' }}
-        run: cargo llvm-cov report --package geam-time --summary-only --fail-under-lines 100 --fail-under-regions 100
+        run: |
+          set -o pipefail
+          cargo llvm-cov report --package geam-time --json --summary-only | jq -er "$COVERAGE_GATE"
 
       - name: Export coverage diagnostics
         if: >-
@@ -296,11 +332,15 @@ jobs:
 
       - name: Check geam-cli coverage
         if: ${{ !cancelled() && steps.collect.outcome == 'success' }}
-        run: cargo llvm-cov report --package geam-cli --summary-only --fail-under-lines 100 --fail-under-regions 100
+        run: |
+          set -o pipefail
+          cargo llvm-cov report --package geam-cli --json --summary-only | jq -er "$COVERAGE_GATE"
 
       - name: Check geam binary coverage
         if: ${{ !cancelled() && steps.collect.outcome == 'success' }}
-        run: cargo llvm-cov report --package geam --summary-only --fail-under-lines 100 --fail-under-regions 100
+        run: |
+          set -o pipefail
+          cargo llvm-cov report --package geam --json --summary-only | jq -er "$COVERAGE_GATE"
 
       - name: Export coverage diagnostics
         if: >-
@@ -380,11 +420,15 @@ jobs:
 
       - name: Check geam-bench coverage
         if: ${{ !cancelled() && steps.collect.outcome == 'success' }}
-        run: cargo llvm-cov report --manifest-path benchmarks/Cargo.toml --package geam-bench --summary-only --fail-under-lines 100 --fail-under-regions 100
+        run: |
+          set -o pipefail
+          cargo llvm-cov report --manifest-path benchmarks/Cargo.toml --package geam-bench --json --summary-only | jq -er "$COVERAGE_GATE"
 
       - name: Check geam-benchmark-support coverage
         if: ${{ !cancelled() && steps.collect.outcome == 'success' }}
-        run: cargo llvm-cov report --manifest-path benchmarks/Cargo.toml --package geam-benchmark-support --summary-only --fail-under-lines 100 --fail-under-regions 100
+        run: |
+          set -o pipefail
+          cargo llvm-cov report --manifest-path benchmarks/Cargo.toml --package geam-benchmark-support --json --summary-only | jq -er "$COVERAGE_GATE"
 
       - name: Export coverage diagnostics
         if: >-
@@ -448,7 +492,9 @@ jobs:
 
       - name: Check application argument provider coverage
         if: ${{ !cancelled() && steps.collect.outcome == 'success' }}
-        run: cargo llvm-cov report --package geam-arguments-fixture --summary-only --fail-under-lines 100 --fail-under-regions 100
+        run: |
+          set -o pipefail
+          cargo llvm-cov report --package geam-arguments-fixture --json --summary-only | jq -er "$COVERAGE_GATE"
 
       - name: Export coverage diagnostics
         if: >-
@@ -594,7 +640,8 @@ jobs:
             printf 'manifests=%s\n' "${manifests[*]}" >> "$GITHUB_OUTPUT"
             (
               cd "$directory"
-              cargo llvm-cov report --summary-only --fail-under-lines 100 --fail-under-regions 100
+              set -o pipefail
+              cargo llvm-cov report --json --summary-only | jq -er "$COVERAGE_GATE"
             )
             echo "::endgroup::"
           done

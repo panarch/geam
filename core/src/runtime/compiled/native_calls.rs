@@ -4,11 +4,13 @@ use crate::plan::HostCallSite;
 use crate::plan::execution::compiled::NativeLoopTarget;
 use crate::plan::execution::function::{BoolFunctionId, IntFunctionId};
 use crate::plan::execution::runtime::RuntimeValueMetadata;
+use crate::runtime::compiled::bit_array::BitArrayValues;
 use crate::runtime::compiled::calls::{
     CallExecution, CallInteger, CallNativeInput, CallOps, CallProgress,
 };
 use crate::runtime::compiled::native_loop::NativeLoopOps;
 use crate::runtime::compiled::numeric::NumericValues;
+use crate::runtime::compiled::string::StringValues;
 use crate::runtime::error::HostCallOrigin;
 use crate::runtime::evaluated::EvaluatedValue;
 use crate::runtime::state::list::RuntimeListStorage;
@@ -24,18 +26,19 @@ pub(in crate::runtime) struct NativeCallsState<Binding> {
 pub(in crate::runtime) struct NativeCallsMachine {
     target: CallNativeTarget,
     numeric: NumericValues,
+    strings: Option<Box<StringValues>>,
+    bit_arrays: Option<Box<BitArrayValues>>,
+    root_tail_entry: bool,
     execution: Box<dyn CallExecution>,
 }
 
-#[expect(
-    clippy::large_enum_variant,
-    reason = "The canonical handoff reuses its owned call progress without another allocation."
-)]
 pub(in crate::runtime) enum NativeCallsProgress {
     Running(NativeCallsMachine),
     Canonical {
         progress: CallProgress,
         numeric: NumericValues,
+        strings: Option<Box<StringValues>>,
+        bit_arrays: Option<Box<BitArrayValues>>,
     },
 }
 
@@ -87,8 +90,23 @@ impl NativeCallsMachine {
         Self {
             target,
             numeric,
+            strings: None,
+            bit_arrays: None,
+            root_tail_entry: false,
             execution,
         }
+    }
+
+    pub fn with_workspace(
+        mut self,
+        strings: Option<Box<StringValues>>,
+        bit_arrays: Option<Box<BitArrayValues>>,
+        root_tail_entry: bool,
+    ) -> Self {
+        self.strings = strings;
+        self.bit_arrays = bit_arrays;
+        self.root_tail_entry = root_tail_entry;
+        self
     }
 
     pub fn run(
@@ -124,7 +142,14 @@ impl NativeCallsMachine {
                 },
             };
             self.execution.advance_native(
-                &mut CallOps::new(captures, &mut self.numeric, lists),
+                &mut CallOps::new(
+                    captures,
+                    &mut self.numeric,
+                    lists,
+                    &mut self.strings,
+                    &mut self.bit_arrays,
+                )
+                .with_root_tail_entry(self.root_tail_entry),
                 budget,
                 &mut native,
             )?
@@ -136,11 +161,16 @@ impl NativeCallsMachine {
             CallProgress::Yield(execution) if ran => NativeCallsProgress::Running(Self {
                 target: self.target,
                 numeric: self.numeric,
+                strings: self.strings,
+                bit_arrays: self.bit_arrays,
+                root_tail_entry: self.root_tail_entry,
                 execution,
             }),
             progress => NativeCallsProgress::Canonical {
                 progress,
                 numeric: self.numeric,
+                strings: self.strings,
+                bit_arrays: self.bit_arrays,
             },
         }))
     }
@@ -210,6 +240,7 @@ mod tests {
     use crate::runtime::compiled::native_loop::NativeLoopOps;
     use crate::runtime::compiled::numeric::NumericValues;
     use crate::runtime::evaluated::EvaluatedValue;
+    use crate::runtime::graph::{BlockEnvironment, RetainedValues};
     use crate::runtime::state::list::RuntimeListStorage;
     use crate::runtime::{BorrowedValue, CaptureStorage, StoredRuntimeValue};
     use std::sync::atomic::{AtomicUsize, Ordering};
@@ -401,7 +432,7 @@ mod tests {
                 assert!(!execution.restart(
                     CallTarget::Int(IntFunctionId(2)),
                     0,
-                    CallInputs::new(&[], &[], &[], &[], &[]),
+                    CallInputs::new(&BlockEnvironment::from_retained(RetainedValues::empty())),
                 ));
                 let machine = NativeCallsMachine::new(
                     CallNativeTarget::select(target).unwrap(),

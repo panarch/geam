@@ -1,5 +1,5 @@
-use super::{Activation, Execution, Frame, Progress, Storage, calls};
-use crate::plan::execution::compiled::{CompiledImplementation, NativeLoopContract};
+use super::{Activation, CallFrame, Execution, Progress, Storage, calls};
+use crate::plan::execution::compiled::{FunctionCallsImplementation, NativeLoopContract};
 use crate::runtime::ExecutableRuntimePlan;
 use crate::runtime::compiled::native_calls::{
     CallNativeTarget, NativeCallsMachine, NativeCallsProgress, NativeCallsState,
@@ -8,38 +8,44 @@ use crate::runtime::error::ExecutionResult;
 use crate::runtime::graph::RuntimeGraphState;
 
 pub(in crate::runtime::graph) struct NativeCallsExecution<'plan, Plan: ExecutableRuntimePlan> {
-    frame: Frame<'plan, Plan>,
+    frame: CallFrame<'plan, Plan>,
     state: NativeCallsState<Plan::NativeLoopBinding>,
 }
 
 impl<'plan, Plan: ExecutableRuntimePlan> NativeCallsExecution<'plan, Plan> {
     pub(super) fn enter(
-        mut frame: Frame<'plan, Plan>,
-        fallback: &'plan CompiledImplementation,
+        frame: CallFrame<'plan, Plan>,
+        fallback: &'plan FunctionCallsImplementation,
         contract: &NativeLoopContract,
         plan: &'plan Plan,
         state: &mut impl RuntimeGraphState<Error = crate::ExecutionError>,
         storage: &mut Storage<'plan, Plan>,
         remaining: &mut usize,
     ) -> ExecutionResult<Progress<'plan, Plan>> {
-        if let CompiledImplementation::FunctionCalls(calls) = fallback
-            && let Some(target) = CallNativeTarget::select(contract.native)
+        if let Some(target) = CallNativeTarget::select(contract.native)
             && let Some(binding) = plan.bind_native_loop(contract)
-            && let Some(execution) = (calls.start)(
-                fallback.entry(),
-                frame.position.environment.call_inputs(),
-                &mut storage.function_calls,
-            )
         {
-            frame.position.environment.clear_call_values();
-            let numeric = std::mem::take(&mut storage.numeric);
+            let entered = calls::enter(frame, fallback, fallback.entry, storage);
+            let (frame, execution) = match entered {
+                calls::CallEntry::Running(frame, execution) => (frame, execution),
+                canonical @ calls::CallEntry::Canonical(_) => {
+                    return calls::advance_entry(canonical, plan, state, storage, remaining)
+                        .map(|active| Progress::Continue(Execution { active }));
+                }
+            };
+            let root_tail_entry = frame.exit.root_tail_entry();
+            let machine =
+                NativeCallsMachine::new(target, std::mem::take(&mut storage.numeric), execution)
+                    .with_workspace(
+                        storage.string.take(),
+                        storage.bit_array_loop.take(),
+                        root_tail_entry,
+                    );
             let selected = Self {
                 frame,
                 state: NativeCallsState {
                     binding,
-                    progress: NativeCallsProgress::Running(NativeCallsMachine::new(
-                        target, numeric, execution,
-                    )),
+                    progress: NativeCallsProgress::Running(machine),
                 },
             };
             return selected.advance(plan, state, storage, remaining);
@@ -47,7 +53,7 @@ impl<'plan, Plan: ExecutableRuntimePlan> NativeCallsExecution<'plan, Plan> {
         calls::advance(
             frame,
             fallback,
-            fallback.entry(),
+            fallback.entry,
             plan,
             state,
             storage,
@@ -69,8 +75,15 @@ impl<'plan, Plan: ExecutableRuntimePlan> NativeCallsExecution<'plan, Plan> {
         } = self;
         let NativeCallsState { binding, progress } = selected;
         match progress {
-            NativeCallsProgress::Canonical { numeric, progress } => {
+            NativeCallsProgress::Canonical {
+                numeric,
+                strings,
+                bit_arrays,
+                progress,
+            } => {
                 storage.numeric = numeric;
+                storage.string = strings;
+                storage.bit_array_loop = bit_arrays;
                 // Delivery is not a new source step: the generated advance
                 // already paid for this bridge/return, or stopped before the
                 // original interpreted checkpoint.
@@ -103,7 +116,6 @@ mod tests {
     use crate::plan::execution::function::{
         ExecutionFunctionEntry, ExecutionFunctionRef, IntFunctionId, TupleFunctionId,
     };
-    use crate::plan::execution::graph::{BlockGraphExitId, IntLocalId};
     use crate::plan::execution::runtime::RuntimeExecutionPlan;
     use crate::runtime::compiled::calls::{
         CallExecution, CallInputs, CallInteger, CallOps, CallOutput, CallProgress,
@@ -113,9 +125,9 @@ mod tests {
     use crate::runtime::compiled::numeric::NumericValues;
     use crate::runtime::execution::Domain;
     use crate::runtime::graph::activation::{
-        Activation, Execution, Frame, Progress, RootExit, Storage,
+        Activation, CallFrame, Execution, Progress, RootExit, Storage,
     };
-    use crate::runtime::graph::{BlockEnvironment, CompletedGraph, GraphPosition, RetainedValues};
+    use crate::runtime::graph::{BlockEnvironment, GraphPosition, RetainedValues};
     use crate::runtime::state::RuntimeState;
     use crate::runtime::{
         BorrowedValue, EvaluatedValue, ExecutableRuntimePlan, HostCallOrigin, RuntimeListStorage,
@@ -148,12 +160,10 @@ mod tests {
             Ok(call.return_value(value + 1))
         }
 
-        // This fixture represents only a completed legacy protocol boundary.
-        // It carries the actual native return through canonical delivery and
-        // original graph exit; it does not evaluate the source or replay it.
+        // This fixture carries the actual native result through delivery to
+        // its original return destination. It never replays the source body.
         struct CompletedNative {
             returned: StoredRuntimeValue,
-            exit: BlockGraphExitId,
             drops: Arc<AtomicUsize>,
         }
         impl Drop for CompletedNative {
@@ -171,7 +181,6 @@ mod tests {
             fn advance(self: Box<Self>, _: &mut CallOps<'_>, budget: &mut usize) -> CallProgress {
                 *budget -= 1;
                 CallProgress::Complete {
-                    exit: self.exit,
                     output: CallOutput::Int(CallInteger(
                         BorrowedValue::from_stored(&self.returned).int().clone(),
                     )),
@@ -298,7 +307,6 @@ pub fn main() { #(cycle, captured(7)) }
                 let drops = Arc::new(AtomicUsize::new(0));
                 let workspace = Box::new(CompletedNative {
                     returned,
-                    exit: contract.exit,
                     drops: Arc::clone(&drops),
                 });
                 assert_eq!(
@@ -330,7 +338,7 @@ pub fn main() { #(cycle, captured(7)) }
                 position.environment.clear_call_values();
                 let execution = Execution {
                     active: Activation::NativeCalls(Box::new(NativeCallsExecution {
-                        frame: Frame {
+                        frame: CallFrame {
                             graph,
                             position,
                             exit: Box::new(RootExit),
@@ -355,11 +363,7 @@ pub fn main() { #(cycle, captured(7)) }
                         .unwrap();
                 }
                 let completed = completed(progress);
-                assert_eq!(completed.exit(), contract.exit);
-                assert_eq!(
-                    completed.into_value(&IntLocalId(0)).into_bigint(),
-                    BigInt::from(8)
-                );
+                assert_eq!(completed.0.into_bigint(), BigInt::from(8));
                 assert_eq!(calls.load(Ordering::SeqCst), 1);
                 assert_eq!(drops.load(Ordering::SeqCst), 0);
                 let mut inputs = RetainedValues::empty();
@@ -382,9 +386,9 @@ pub fn main() { #(cycle, captured(7)) }
         }
     }
 
-    fn completed(progress: Progress<'_, HostedProgram<StatelessHostProfile>>) -> CompletedGraph {
+    fn completed(progress: Progress<'_, HostedProgram<StatelessHostProfile>>) -> CallInteger {
         match progress {
-            Progress::Complete(completed) => completed,
+            Progress::CallComplete(CallOutput::Int(completed)) => completed,
             _ => panic!("native workspace fixture must have completed"),
         }
     }

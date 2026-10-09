@@ -174,7 +174,7 @@ impl<'graph> IntListElement<'graph> {
     }
 }
 
-impl<Graph: ExecutionGraphProfile> FunctionCodegen<'_, Graph> {
+impl<Graph: ExecutionGraphProfile> FunctionCodegen<'_, '_, Graph> {
     pub(super) fn list_preflight(
         &self,
         source: &mut Code,
@@ -435,8 +435,8 @@ mod tests {
         let plan = crate::ExecutionPlan::from_module_plan(crate::plan_module(typed).unwrap());
         let id = plan.int_list_function_id(1);
         let function = FunctionCodegen {
-            name: "int_list_int_list_1".to_owned(),
-            shape: CompiledShape::inspect(plan.int_list_function(id).body()).unwrap(),
+            name: "int_list_int_list_1",
+            shape: &CompiledShape::inspect(plan.int_list_function(id).body()).unwrap(),
         };
         let mut source = Code::default();
         let block = function.shape.block(BlockId(0));
@@ -612,8 +612,8 @@ data::compiled::CompiledFunction {
         let point = shape.checkpoints[shape.start(shape.graph.entry())];
         assert_eq!((point.ints, point.bools, point.int_lists), (0, 0, 1));
         let function = FunctionCodegen {
-            name: "head".into(),
-            shape,
+            name: "head",
+            shape: &shape,
         };
         let terminator = CompiledTerminator::Match(view);
         let mut source = Code::default();
@@ -696,8 +696,8 @@ match _matched {
         let plan = crate::ExecutionPlan::from_module_plan(crate::plan_module(typed).unwrap());
         let shape = CompiledShape::inspect(plan.int_function(IntFunctionId(1)).body()).unwrap();
         let function = FunctionCodegen {
-            name: "head".into(),
-            shape,
+            name: "head",
+            shape: &shape,
         };
         for (pattern, expected_lists, expected_length) in [
             (
@@ -929,8 +929,8 @@ let _matched = {
             "fn head(values: List(Int)) { let assert [first, ..] = values first } pub fn main() { head([1]) }").unwrap();
         let plan = crate::ExecutionPlan::from_module_plan(crate::plan_module(typed).unwrap());
         let function = FunctionCodegen {
-            name: "head".into(),
-            shape: CompiledShape::inspect(plan.int_function(IntFunctionId(1)).body()).unwrap(),
+            name: "head",
+            shape: &CompiledShape::inspect(plan.int_function(IntFunctionId(1)).body()).unwrap(),
         };
         let type_id = IntListTypeId {
             list_type: ListTypeId(0),

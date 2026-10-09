@@ -1,4 +1,4 @@
-use super::{Activation, Execution, Frame, NativeCallsExecution, Progress, Storage};
+use super::{Activation, CallFrame, Execution, NativeCallsExecution, Progress, Storage};
 use crate::plan::execution::compiled::{NativeLoopImplementation, NativeLoopProducer};
 use crate::plan::execution::function::{
     ExecutionFunctionRef, FunctionBodyOwner, FunctionExit, NilFunctionId,
@@ -15,14 +15,14 @@ use crate::runtime::{ExecutableRuntimePlan, RuntimeGraph, StoredRuntimeValue};
 use std::ops::ControlFlow;
 
 pub(in crate::runtime::graph) struct NativeLoopExecution<'plan, Plan: ExecutableRuntimePlan> {
-    frame: Frame<'plan, Plan>,
+    frame: CallFrame<'plan, Plan>,
     implementation: &'plan NativeLoopImplementation,
     state: NativeLoopState<Plan::NativeLoopBinding>,
 }
 
 impl<'plan, Plan: ExecutableRuntimePlan> NativeLoopExecution<'plan, Plan> {
     pub(super) fn enter(
-        frame: Frame<'plan, Plan>,
+        frame: CallFrame<'plan, Plan>,
         implementation: &'plan NativeLoopImplementation,
         plan: &'plan Plan,
         state: &mut impl RuntimeGraphState<Error = crate::ExecutionError>,
@@ -44,14 +44,14 @@ impl<'plan, Plan: ExecutableRuntimePlan> NativeLoopExecution<'plan, Plan> {
                     remaining,
                 );
             } else {
-                frame.advance(plan, state, storage, remaining)
+                frame.into_graph().advance(plan, state, storage, remaining)
             };
             active.map(|active| Progress::Continue(Execution { active }))
         }
     }
 
     fn select(
-        frame: &Frame<'plan, Plan>,
+        frame: &CallFrame<'plan, Plan>,
         implementation: &NativeLoopImplementation,
         plan: &Plan,
         state: &impl RuntimeGraphState<Error = crate::ExecutionError>,
@@ -103,7 +103,7 @@ impl<'plan, Plan: ExecutableRuntimePlan> NativeLoopExecution<'plan, Plan> {
     }
 
     fn new(
-        frame: Frame<'plan, Plan>,
+        frame: CallFrame<'plan, Plan>,
         implementation: &'plan NativeLoopImplementation,
         state: NativeLoopState<Plan::NativeLoopBinding>,
     ) -> Self {
@@ -138,7 +138,6 @@ impl<'plan, Plan: ExecutableRuntimePlan> NativeLoopExecution<'plan, Plan> {
                     CompletedGraph {
                         exit: implementation.contract.exit,
                         environment: BlockEnvironment::from_retained(values),
-                        direct_return: false,
                     },
                     storage,
                 )?;
@@ -251,7 +250,7 @@ mod tests {
 
     #[test]
     fn a_completed_native_loop_preserves_the_existing_fallible_return_mapper() {
-        use super::super::{Frame, FunctionContinuation, RootExit, Storage};
+        use super::super::{CallFrame, Frame, FunctionContinuation, RootExit, Storage};
         use crate::plan::execution::compiled::{
             NativeLoopContract, NativeLoopImplementation, NativeLoopTarget,
         };
@@ -395,7 +394,7 @@ pub fn main() {
             let failure = expected.clone();
             let mapped = Arc::new(AtomicUsize::new(0));
             let observed = Arc::clone(&mapped);
-            let frame = Frame {
+            let frame = CallFrame {
                 graph,
                 position: GraphPosition::new(graph.entry(), inputs),
                 exit: Box::new(FunctionContinuation {

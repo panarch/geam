@@ -107,7 +107,6 @@ impl<'plan, Plan: ExecutableRuntimePlan> CustomLoopExecution<'plan, Plan> {
                     CompletedGraph {
                         exit,
                         environment: self.frame.position.environment,
-                        direct_return: false,
                     },
                     storage,
                 )
@@ -264,7 +263,7 @@ struct CallbackExit<'plan, Plan: ExecutableRuntimePlan, Local> {
 
 impl<'plan, Plan, Local> GraphExit<'plan, Plan> for CallbackExit<'plan, Plan, Local>
 where
-    Plan: ExecutableRuntimePlan,
+    Plan: ExecutableRuntimePlan + 'plan,
     Local: GraphValue + Sync + 'plan,
     Local::Evaluated: ReturnValue,
 {

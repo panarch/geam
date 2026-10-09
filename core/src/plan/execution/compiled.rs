@@ -266,7 +266,25 @@ impl CompiledFunctions {
     }
 
     pub(crate) fn call_root(&self, target: CallTarget) -> Option<&CompiledImplementation> {
-        self.call(target).filter(|implementation| matches!(implementation, CompiledImplementation::FunctionCalls(calls) if calls.root))
+        self.call_root_entry(target)
+            .map(|(implementation, _)| implementation)
+    }
+
+    pub(crate) fn root_calls(&self, target: CallTarget) -> Option<&FunctionCallsImplementation> {
+        self.call_root_entry(target).map(|(_, calls)| calls)
+    }
+
+    fn call_root_entry(
+        &self,
+        target: CallTarget,
+    ) -> Option<(&CompiledImplementation, &FunctionCallsImplementation)> {
+        let implementation = self.call(target)?;
+        match implementation {
+            CompiledImplementation::FunctionCalls(calls) if calls.root => {
+                Some((implementation, calls))
+            }
+            _ => None,
+        }
     }
 
     pub(crate) fn call(&self, target: CallTarget) -> Option<&CompiledImplementation> {

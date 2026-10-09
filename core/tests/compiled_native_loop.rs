@@ -7,7 +7,8 @@ use geam_core::embedding::{
 #[path = "fixtures/prepared/native_loop_provider.rs"]
 mod native_loop_provider;
 
-static NATIVE_LOOP: data::HostedModuleArtifact = include!("fixtures/prepared/native_loop.rs");
+const NATIVE_LOOP_DATA: data::HostedModuleArtifact = include!("fixtures/prepared/native_loop.rs");
+static NATIVE_LOOP: data::HostedModuleArtifact = NATIVE_LOOP_DATA;
 
 #[test]
 fn public_generation_keeps_the_native_loop_and_existing_call_fallback() {
@@ -41,6 +42,76 @@ fn public_generation_keeps_the_native_loop_and_existing_call_fallback() {
         .load(native_loop_provider::hosts(false))
         .unwrap();
     NATIVE_LOOP.load(native_loop_provider::hosts(true)).unwrap();
+}
+
+#[cfg(feature = "tokio")]
+#[test]
+fn ordinary_and_dynamic_callers_preserve_the_native_loops_retained_binding() {
+    use geam_core::execution::TokioHost;
+    use native_loop_provider::{AUDIT, Audit};
+    let _serial = native_loop_provider::TEST_LOCK.lock().unwrap();
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .build()
+        .unwrap();
+    let host = TokioHost::new(runtime.handle().clone());
+    let dispatch = NATIVE_LOOP
+        .module
+        .program
+        .compiled
+        .function_calls
+        .iter()
+        .find_map(|entry| {
+            let data::compiled::CompiledImplementation::FunctionCalls(calls) =
+                &entry.implementation
+            else {
+                panic!("call table must contain generated calls");
+            };
+            calls
+                .calls
+                .iter()
+                .find(|call| call.site.function() == "dispatch_repeat")
+        })
+        .unwrap();
+    assert!(matches!(
+        dispatch.target,
+        data::compiled::CallContractTarget::IntValue(_)
+    ));
+    assert_eq!(dispatch.args.len(), 2);
+    for retained in [false, true] {
+        let mut bindings = NATIVE_LOOP
+            .load(native_loop_provider::hosts(retained))
+            .unwrap();
+        let mut callers = Vec::new();
+        for (name, expected) in [
+            ("ordinary_computed", 14),
+            ("dynamic_computed", 14),
+            ("dynamic_computed_cancellable", 14),
+        ] {
+            callers.push((
+                bindings
+                    .function(FunctionDeclaration::<(BigInt, BigInt), BigInt>::new(name))
+                    .unwrap(),
+                expected,
+            ));
+        }
+        let mut module = bindings.seal();
+        for (caller, expected) in callers {
+            *AUDIT.lock().unwrap() = Audit::default();
+            let result = runtime
+                .block_on(
+                    module.with_execution(&host, &mut (), &mut Vec::new(), async |scope| {
+                        scope.call(&caller, (5.into(), 7.into())).await
+                    }),
+                )
+                .unwrap()
+                .try_into_value()
+                .unwrap();
+            assert_eq!(result, Ok(expected.into()));
+            let audit = AUDIT.lock().unwrap();
+            assert_eq!(audit.inputs, vec![8.into(); 5]);
+            assert_eq!(audit.retained, if retained { 5 } else { 0 });
+        }
+    }
 }
 
 #[cfg(feature = "tokio")]
@@ -128,6 +199,157 @@ fn graph_callees_and_artifacts_without_native_loops_keep_ordinary_execution() {
             .unwrap(),
         Ok(BigInt::from(7))
     );
+}
+
+#[cfg(feature = "tokio")]
+#[test]
+fn declined_generated_entry_preserves_native_loop_inputs_and_effects() {
+    use data::compiled::calls::{CallExecution, CallInputs, CallStorage};
+    use data::compiled::{CompiledFunction, CompiledImplementation, FunctionCallsImplementation};
+    use geam_core::execution::TokioHost;
+    use native_loop_provider::{AUDIT, Audit};
+    let _serial = native_loop_provider::TEST_LOCK.lock().unwrap();
+
+    fn decline(_: usize, _: CallInputs<'_>, _: &mut CallStorage) -> Option<Box<dyn CallExecution>> {
+        None
+    }
+    // A start sidecar may decline while the admitted graph and contract remain
+    // valid. The canonical fallback must receive the original inputs exactly once.
+    let mut artifact = NATIVE_LOOP_DATA;
+    artifact.module.program.compiled.function_calls = NATIVE_LOOP
+        .module
+        .program
+        .compiled
+        .function_calls
+        .iter()
+        .map(|row| {
+            let CompiledImplementation::FunctionCalls(body) = &row.implementation else {
+                panic!("call table contains generated calls")
+            };
+            CompiledFunction {
+                function: row.function,
+                implementation: CompiledImplementation::FunctionCalls(
+                    Box::new(FunctionCallsImplementation {
+                        root: body.root,
+                        entry: body.entry,
+                        checkpoints: body.checkpoints.clone(),
+                        locals: body.locals.clone(),
+                        calls: body.calls.clone(),
+                        creations: body.creations.clone(),
+                        returns: body.returns.clone(),
+                        tails: body.tails.clone(),
+                        start: decline,
+                    })
+                    .into(),
+                ),
+            }
+        })
+        .collect();
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .build()
+        .unwrap();
+    let host = TokioHost::new(runtime.handle().clone());
+    let mut bindings = Box::leak(Box::new(artifact))
+        .load(native_loop_provider::hosts(true))
+        .unwrap();
+    let computed = bindings
+        .function(FunctionDeclaration::<(BigInt, BigInt), BigInt>::new(
+            "computed",
+        ))
+        .unwrap();
+    let mut module = bindings.seal();
+    *AUDIT.lock().unwrap() = Audit::default();
+    let result = runtime
+        .block_on(
+            module.with_execution(&host, &mut (), &mut Vec::new(), async |scope| {
+                scope
+                    .call(&computed, (BigInt::from(3), BigInt::from(7)))
+                    .await
+            }),
+        )
+        .unwrap()
+        .try_into_value()
+        .unwrap();
+    assert_eq!(result, Ok(BigInt::from(11)));
+    let audit = AUDIT.lock().unwrap();
+    assert_eq!(
+        audit.inputs,
+        [BigInt::from(8), BigInt::from(8), BigInt::from(8)]
+    );
+    assert_eq!(audit.retained, 0);
+}
+
+#[cfg(feature = "tokio")]
+#[test]
+fn declined_calls_propagate_producer_panics_before_any_native_effect() {
+    use data::compiled::calls::{CallExecution, CallInputs, CallStorage};
+    use data::compiled::{CompiledFunction, CompiledImplementation, FunctionCallsImplementation};
+    use geam_core::execution::TokioHost;
+    use native_loop_provider::{AUDIT, Audit};
+    let _serial = native_loop_provider::TEST_LOCK.lock().unwrap();
+    fn decline(_: usize, _: CallInputs<'_>, _: &mut CallStorage) -> Option<Box<dyn CallExecution>> {
+        None
+    }
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .build()
+        .unwrap();
+    let host = TokioHost::new(runtime.handle().clone());
+    for native_loop in [false, true] {
+        let mut artifact = NATIVE_LOOP_DATA;
+        artifact.module.program.compiled.function_calls = NATIVE_LOOP
+            .module
+            .program
+            .compiled
+            .function_calls
+            .iter()
+            .map(|row| {
+                let CompiledImplementation::FunctionCalls(body) = &row.implementation else {
+                    panic!("call table contains generated calls");
+                };
+                CompiledFunction {
+                    function: row.function,
+                    implementation: CompiledImplementation::FunctionCalls(
+                        Box::new(FunctionCallsImplementation {
+                            root: body.root,
+                            entry: body.entry,
+                            checkpoints: body.checkpoints.clone(),
+                            locals: body.locals.clone(),
+                            calls: body.calls.clone(),
+                            creations: body.creations.clone(),
+                            returns: body.returns.clone(),
+                            tails: body.tails.clone(),
+                            start: decline,
+                        })
+                        .into(),
+                    ),
+                }
+            })
+            .collect();
+        if !native_loop {
+            artifact.module.program.compiled.native_loops = Vec::new().into();
+        }
+        let mut bindings = Box::leak(Box::new(artifact))
+            .load(native_loop_provider::hosts(true))
+            .unwrap();
+        let failure = bindings
+            .function(FunctionDeclaration::<(BigInt,), BigInt>::new(
+                "producer_failure",
+            ))
+            .unwrap();
+        let mut module = bindings.seal();
+        *AUDIT.lock().unwrap() = Audit::default();
+        let result = runtime
+            .block_on(
+                module.with_execution(&host, &mut (), &mut Vec::new(), async |scope| {
+                    scope.call(&failure, (BigInt::from(1),)).await
+                }),
+            )
+            .unwrap()
+            .try_into_value()
+            .unwrap();
+        assert_eq!(result.unwrap_err().to_string(), "panic: producer failed");
+        assert!(AUDIT.lock().unwrap().inputs.is_empty());
+    }
 }
 
 #[cfg(feature = "tokio")]
@@ -348,6 +570,7 @@ fn generated_and_canonical_loops_preserve_each_native_result_failure_and_cancell
                 BigInt::from(0),
                 BigInt::from(-3),
                 BigInt::from(i64::MAX) + 1,
+                BigInt::from(i128::MAX) + 1,
             ] {
                 *AUDIT.lock().unwrap() = Audit {
                     cancel_at: Some(5),

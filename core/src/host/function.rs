@@ -26,6 +26,7 @@ pub(crate) use return_::HostNeverFunction;
 pub(crate) use return_::{
     HostCallReturn, HostFunctionBinding, HostFunctionImplementation, HostNativeViewFactory,
     HostRetainedCallback, HostValueFunction, NativeViewBinding, NativeViewImplementation,
+    SynchronousValueFunction,
 };
 #[cfg(test)]
 pub(crate) use return_::{

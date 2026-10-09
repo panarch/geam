@@ -1,4 +1,6 @@
-use super::compiled::{CompiledCallbackBodies, CompiledCallbacks, CompiledImplementation};
+use super::compiled::{
+    CompiledCallbackBodies, CompiledCallbacks, CompiledImplementation, FunctionCallsImplementation,
+};
 use super::constant::{ConstantId, ConstantValue, ProfiledConstantProgram};
 use super::function::{
     BitArrayFunctionFunctionId, BitArrayFunctionId, BitArrayListFunctionId, BoolFunctionFunctionId,
@@ -59,14 +61,14 @@ pub(crate) trait RuntimeExecutionPlan: Sized {
     fn native_loop_fallback(
         &self,
         id: super::compiled::NativeLoopTarget,
-    ) -> Option<&CompiledImplementation> {
+    ) -> Option<&FunctionCallsImplementation> {
         use super::compiled::{CallTarget, NativeLoopTarget};
         let target = match id {
             NativeLoopTarget::Int(id) => CallTarget::Int(id),
             NativeLoopTarget::Bool(id) => CallTarget::Bool(id),
             _ => return None,
         };
-        self.program().compiled.call_root(target)
+        self.program().compiled.root_calls(target)
     }
 
     fn compiled_float_function(&self, id: FloatFunctionId) -> Option<&CompiledImplementation> {
@@ -127,6 +129,41 @@ pub(crate) trait RuntimeExecutionPlan: Sized {
         id: BoolFunctionFunctionId,
     ) -> Option<&CompiledImplementation> {
         self.program().compiled_entries.bool_function(id)
+    }
+
+    fn compiled_float_function_function(
+        &self,
+        id: FloatFunctionFunctionId,
+    ) -> Option<&CompiledImplementation> {
+        self.program().compiled_entries.float_function(id)
+    }
+
+    fn compiled_string_function_function(
+        &self,
+        id: StringFunctionFunctionId,
+    ) -> Option<&CompiledImplementation> {
+        self.program().compiled_entries.string_function(id)
+    }
+
+    fn compiled_bit_array_function_function(
+        &self,
+        id: BitArrayFunctionFunctionId,
+    ) -> Option<&CompiledImplementation> {
+        self.program().compiled_entries.bit_array_function(id)
+    }
+
+    fn compiled_utf_codepoint_function_function(
+        &self,
+        id: UtfCodepointFunctionFunctionId,
+    ) -> Option<&CompiledImplementation> {
+        self.program().compiled_entries.utf_codepoint_function(id)
+    }
+
+    fn compiled_nil_function_function(
+        &self,
+        id: NilFunctionFunctionId,
+    ) -> Option<&CompiledImplementation> {
+        self.program().compiled_entries.nil_function(id)
     }
 
     fn value_metadata(&self) -> RuntimeValueMetadata<'_> {

@@ -8,6 +8,9 @@ use crate::plan::execution::function::{
 };
 use crate::plan::execution::host::{HostedFunctionTarget, HostedValueFunction};
 use crate::plan::execution::runtime::RuntimeExecutionPlan;
+use crate::runtime::compiled::calls::{
+    CallOps, CallProgress, GeneratedNativePhase, GeneratedNativeState,
+};
 use crate::runtime::compiled::native_calls::{NativeCallsMachine, NativeCallsState};
 use crate::runtime::compiled::native_loop::{
     NativeLoopBinding, NativeLoopOps, NativeLoopProgress, NativeLoopState,
@@ -36,6 +39,19 @@ pub(in crate::runtime) trait ExecutableRuntimePlan:
         Self: 'plan;
 
     type NativeLoopBinding: Send + 'static;
+
+    fn synchronous_strings(&self) -> &[bool] {
+        &[]
+    }
+
+    fn prepare_generated_native<'plan>(
+        &'plan self,
+        state: Box<GeneratedNativeState>,
+        _allowance: usize,
+    ) -> Result<Self::HostInvocation<'plan, Box<GeneratedNativeState>>, Box<GeneratedNativeState>>
+    {
+        Err(state)
+    }
 
     fn bind_native_loop(&self, contract: &NativeLoopContract) -> Option<Self::NativeLoopBinding>;
 
@@ -209,6 +225,139 @@ impl<Profile: crate::HostProfile> ExecutableRuntimePlan
     type HostInvocation<'plan, Output: Send + 'plan> = Invocation<'plan, Self, Output>;
 
     type NativeLoopBinding = NativeLoopBinding;
+
+    fn synchronous_strings(&self) -> &[bool] {
+        self.synchronous_strings.enabled()
+    }
+
+    fn prepare_generated_native<'plan>(
+        &'plan self,
+        mut state: Box<GeneratedNativeState>,
+        allowance: usize,
+    ) -> Result<Invocation<'plan, Self, Box<GeneratedNativeState>>, Box<GeneratedNativeState>> {
+        if let GeneratedNativePhase::Progress(CallProgress::StringNative(request)) = &state.phase
+            && self.synchronous_strings.get(request.function).is_none()
+        {
+            return Err(state);
+        }
+        Ok(Invocation::bounded(
+            allowance,
+            move |plan: &Self, runtime, unit, mut remaining| {
+                loop {
+                    if unit.is_some_and(|unit| !unit.is_active()) {
+                        return Ok(NativeReturn::Exited);
+                    }
+                    match state.phase {
+                        GeneratedNativePhase::Progress(CallProgress::StringNative(request)) => {
+                            let before = if request.root_tail { 2 } else { 1 };
+                            state.prepaid_completion = request.root_tail;
+                            state.phase = GeneratedNativePhase::Invoke { request, before };
+                        }
+                        GeneratedNativePhase::Invoke {
+                            request,
+                            mut before,
+                        } => {
+                            let Some(binding) = plan.synchronous_strings.get(request.function)
+                            else {
+                                state.phase = GeneratedNativePhase::Progress(
+                                    CallProgress::StringNative(request),
+                                );
+                                return Ok(NativeReturn::Immediate(state));
+                            };
+                            while before > 0 && remaining > 0 {
+                                before -= 1;
+                                remaining -= 1;
+                            }
+                            if before > 0 || remaining == 0 {
+                                state.phase = GeneratedNativePhase::Invoke { request, before };
+                                return Ok(NativeReturn::Immediate(state));
+                            }
+                            remaining -= 1;
+                            let value = host::invoke_synchronous_string(
+                                plan,
+                                runtime,
+                                binding,
+                                HostCallOrigin::source(request.site),
+                                request.arguments.into_retained(),
+                            )?;
+                            match value {
+                                host::SynchronousStringReturn::Value(value) => {
+                                    state.phase = GeneratedNativePhase::Deliver {
+                                        value,
+                                        execution: request.execution,
+                                        charge: !request.root_tail,
+                                    };
+                                }
+                                host::SynchronousStringReturn::Exited => {
+                                    return Ok(NativeReturn::Exited);
+                                }
+                            }
+                        }
+                        GeneratedNativePhase::Deliver {
+                            value,
+                            execution,
+                            charge,
+                        } => {
+                            if charge && remaining == 0 {
+                                state.phase = GeneratedNativePhase::Deliver {
+                                    value,
+                                    execution,
+                                    charge,
+                                };
+                                return Ok(NativeReturn::Immediate(state));
+                            }
+                            if charge {
+                                remaining -= 1;
+                            }
+                            state.phase = GeneratedNativePhase::Progress(CallProgress::Yield(
+                                execution.resume_native(value),
+                            ));
+                        }
+                        GeneratedNativePhase::Progress(CallProgress::Yield(execution)) => {
+                            // A delivered root Native can complete without another
+                            // source instruction even at the allowance boundary.
+                            let progress = execution.advance(
+                                &mut CallOps::new(
+                                    runtime.captures(),
+                                    &mut state.numeric,
+                                    runtime.lists(),
+                                    &mut state.strings,
+                                    &mut state.bit_arrays,
+                                )
+                                .with_root_tail_entry(state.root_tail_entry)
+                                .with_synchronous_strings(plan.synchronous_strings.enabled()),
+                                &mut remaining,
+                            );
+                            let yielded = matches!(progress, CallProgress::Yield(_));
+                            state.phase = GeneratedNativePhase::Progress(progress);
+                            if yielded {
+                                return Ok(NativeReturn::Immediate(state));
+                            }
+                        }
+                        GeneratedNativePhase::Progress(
+                            progress @ CallProgress::Complete { .. },
+                        ) => {
+                            if !state.prepaid_completion {
+                                if remaining == 0 {
+                                    state.phase = GeneratedNativePhase::Progress(progress);
+                                    return Ok(NativeReturn::Immediate(state));
+                                }
+                                // This final publication uses the positive grant;
+                                // no further source work runs in this operation.
+                                state.prepaid_completion = true;
+                            }
+                            state.phase = GeneratedNativePhase::Progress(progress);
+                            return Ok(NativeReturn::Immediate(state));
+                        }
+                        GeneratedNativePhase::Progress(progress) => {
+                            state.phase = GeneratedNativePhase::Progress(progress);
+                            return Ok(NativeReturn::Immediate(state));
+                        }
+                    }
+                }
+            },
+        ))
+    }
 
     fn bind_native_loop(&self, contract: &NativeLoopContract) -> Option<NativeLoopBinding> {
         let function = match contract.native {

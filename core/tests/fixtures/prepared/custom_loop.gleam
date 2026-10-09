@@ -185,3 +185,26 @@ pub fn guarded(seed: Int, value: Int, enabled: Bool) -> Int {
 pub fn main() -> Int {
   run(2, 9) + chosen(1, True) + captured(0, 3, True) + empty() + unsupported(2)
 }
+
+pub type Marker {
+  Marker
+}
+
+fn fold_markers(
+  items: List(Marker),
+  total: Int,
+  apply: fn(Int, Marker) -> Int,
+) -> Int {
+  case items {
+    [] -> total
+    [head, ..tail] -> fold_markers(tail, apply(total, head), apply)
+  }
+}
+
+fn bump_marker(total: Int, _marker: Marker) -> Int {
+  extra(total) + 2
+}
+
+pub fn markers(seed: Int) -> Int {
+  fold_markers([Marker, Marker], seed, bump_marker)
+}

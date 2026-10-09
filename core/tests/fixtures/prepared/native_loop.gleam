@@ -20,6 +20,27 @@ pub fn computed_cancellable(count: Int, value: Int) -> Int {
   repeat(count, fn() { value + 1 })
 }
 
+pub fn ordinary_computed(count: Int, value: Int) -> Int {
+  repeat(count, fn() { value + 1 }) + 1
+}
+
+pub fn dynamic_computed(count: Int, value: Int) -> Int {
+  dispatch_repeat(repeat, count, fn() { value + 1 })
+}
+
+pub fn dynamic_computed_cancellable(count: Int, value: Int) -> Int {
+  begin()
+  dispatch_repeat(repeat, count, fn() { value + 1 })
+}
+
+fn dispatch_repeat(
+  loop: fn(Int, fn() -> Int) -> Int,
+  count: Int,
+  producer: fn() -> Int,
+) -> Int {
+  loop(count, producer) + 1
+}
+
 pub fn cancellable(count: Int, value: Int) -> Int {
   begin()
   repeat(count, fn() { value })
@@ -211,4 +232,12 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
     1 -> result
     _ -> repeat_graph(count - 1, producer)
   }
+}
+
+fn failing_producer() -> Int {
+  panic as "producer failed"
+}
+
+pub fn producer_failure(count: Int) -> Int {
+  repeat(count, failing_producer)
 }

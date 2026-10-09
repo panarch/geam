@@ -1,6 +1,6 @@
 data::HostedModuleArtifact {
     module: data::ModuleArtifact {
-        format: 25,
+        format: 29,
         program: data::ProgramTables {
             root: data::source::module_id(1),
             modules: data::Storage::Static(&[
@@ -2593,57 +2593,289 @@ pub fn invoke(value: Captured) -> work.Work(Int) {
                 enum CompiledResume {
                     Exit(data::compiled::CompiledProgress),
                 }
-                use data::compiled::calls::{BoolCallable, CallArguments, CallCapture, CallCaptureInputs, CallExecution, CallInputs, CallInteger, CallOps, CallOutput, CallProgress, CallStorage, CallValues, IntCallable};
-                enum FunctionState {
-                    Int0Point0 { int0: i128, int1: i128 },
-                    Int0Point1 { int0: i128, int1: i128, int2: i128 },
-                    Int2Point0 { int0: i128 },
-                    Int3Point0 { int0: i128, int_function0: IntCallable },
-                    Int3Point1 { int0: i128, int_function0: IntCallable, int1: i128 },
-                    Int5Point0 { int0: i128, int_function0: IntCallable },
-                    Int5Point1 { int0: i128, int_function0: IntCallable, int1: i128 },
-                    Int5Point2 { int0: i128, int_function0: IntCallable, int1: i128, int2: i128 },
-                    IntFunction0Point0 { int0: i128, int_function0: IntCallable },
-                    IntFunction0Point1 { int_function0: IntCallable },
-                    IntFunction0Point2 { int0: i128, int_function0: IntCallable },
-                    IntFunction0Point3 { int0: i128, int_function0: IntCallable, int1: i128 },
-                    IntFunction0Point4 { int0: i128, int_function0: IntCallable, int1: i128, int_function1: IntCallable },
-                    Canonical { target: data::compiled::CallTarget, point: data::compiled::CompiledCheckpoint, values: CallValues },
-                }
-                enum IntReturn {
-                    Int3Call0 { int0: i128, int_function0: IntCallable },
-                    Int5Call0 { int0: i128, int_function0: IntCallable },
-                }
-                impl IntReturn {
-                    fn site(&self) -> data::source::HostCallSite {
-                        match *self {
-                            Self::Int3Call0 { .. } => data::source::HostCallSite::from_static("app", "<anonymous:6>", data::source::SourceSpan::new(1255, 1270)),
-                            Self::Int5Call0 { .. } => data::source::HostCallSite::from_static("app", "<anonymous:4>", data::source::SourceSpan::new(892, 907)),
+                const CALL_GROUP_0: [data::compiled::calls::CallStart; 4] = {
+                    use data::compiled::calls::{CallArguments, CallCaptureInputs, CallExecution, CallInputs, CallInteger, CallOps, CallOutput, CallProgress, CallStorage, CallValues, IntCallable};
+                    enum FunctionState {
+                        Int0Point0 { int0: i128, int1: i128 },
+                        Int0Point1 { int0: i128, int1: i128, int2: i128 },
+                        Int2Point0 { int0: i128 },
+                        Int3Point0 { int0: i128, int_function0: IntCallable },
+                        Int3Point1 { int0: i128, int_function0: IntCallable, int1: i128 },
+                        Int5Point0 { int0: i128, int_function0: IntCallable },
+                        Int5Point1 { int0: i128, int_function0: IntCallable, int1: i128 },
+                        Int5Point2 { int0: i128, int_function0: IntCallable, int1: i128, int2: i128 },
+                        Canonical { target: data::compiled::CallTarget, point: data::compiled::CompiledCheckpoint, values: Box<CallValues> },
+                    }
+                    enum IntReturn {
+                        Int3Call0 { int0: i128, int_function0: IntCallable },
+                        Int5Call0 { int0: i128, int_function0: IntCallable },
+                    }
+                    impl IntReturn {
+                        fn site(&self) -> data::source::HostCallSite {
+                            match *self {
+                                Self::Int3Call0 { .. } => data::source::HostCallSite::from_static("app", "<anonymous:6>", data::source::SourceSpan::new(1255, 1270)),
+                                Self::Int5Call0 { .. } => data::source::HostCallSite::from_static("app", "<anonymous:4>", data::source::SourceSpan::new(892, 907)),
+                            }
+                        }
+                        fn small(self, result: i128) -> FunctionState {
+                            match self {
+                                Self::Int3Call0 { int0, int_function0 } => {
+                                    let int1 = result;
+                                    FunctionState::Int3Point1 { int0, int_function0, int1 }
+                                },
+                                Self::Int5Call0 { int0, int_function0 } => {
+                                    let int1 = result;
+                                    FunctionState::Int5Point1 { int0, int_function0, int1 }
+                                },
+                            }
+                        }
+                        fn resume(self, result: CallInteger) -> FunctionState {
+                            if let Some(result) = result.small() {
+                                return self.small(result);
+                            }
+                            match self {
+                                Self::Int3Call0 { int0, int_function0 } => {
+                                    let int1 = result;
+                                    FunctionState::Canonical { target: data::compiled::CallTarget::Int(data::function::IntFunctionId(3)), point: data::compiled::CompiledCheckpoint {
+                                        block: data::graph::BlockId(0),
+                                        instruction: 1,
+                                        ints: 2,
+                                        bools: 0,
+                                        bit_arrays: 0,
+                                        int_lists: 0,
+                                        strings: 0,
+                                        customs: 0,
+                                        custom_lists: 0,
+                                        int_functions: 1,
+                                        bool_functions: 0,
+                                    }, values: Box::new(CallValues { ints: vec![int0.into(), int1], int_functions: vec![int_function0], ..CallValues::default() }) }
+                                },
+                                Self::Int5Call0 { int0, int_function0 } => {
+                                    let int1 = result;
+                                    FunctionState::Canonical { target: data::compiled::CallTarget::Int(data::function::IntFunctionId(5)), point: data::compiled::CompiledCheckpoint {
+                                        block: data::graph::BlockId(0),
+                                        instruction: 1,
+                                        ints: 2,
+                                        bools: 0,
+                                        bit_arrays: 0,
+                                        int_lists: 0,
+                                        strings: 0,
+                                        customs: 0,
+                                        custom_lists: 0,
+                                        int_functions: 1,
+                                        bool_functions: 0,
+                                    }, values: Box::new(CallValues { ints: vec![int0.into(), int1], int_functions: vec![int_function0], ..CallValues::default() }) }
+                                },
+                            }
                         }
                     }
-                    fn small(self, result: i128) -> FunctionState {
-                        match self {
-                            Self::Int3Call0 { int0, int_function0 } => {
-                                let int1 = result;
-                                FunctionState::Int3Point1 { int0, int_function0, int1 }
-                            },
-                            Self::Int5Call0 { int0, int_function0 } => {
-                                let int1 = result;
-                                FunctionState::Int5Point1 { int0, int_function0, int1 }
-                            },
+                    #[allow(clippy::large_enum_variant, reason = "Typed locals stay inline to avoid allocating at each generated step.")]
+                    enum FunctionStep {
+                        Yield(FunctionState),
+                        Canonical { target: data::compiled::CallTarget, point: data::compiled::CompiledCheckpoint, values: Box<CallValues> },
+                        IntCall { callee: FunctionState, caller: IntReturn },
+                        Int { value: i128 },
+                        IntBridge { function: data::function::IntFunctionId, site: data::source::HostCallSite, arguments: CallArguments, caller: IntReturn },
+                    }
+                    struct FunctionExecution {
+                        active: Option<FunctionState>,
+                        integer_returns: Vec<IntReturn>,
+                    }
+                    impl FunctionExecution {
+                        fn new(active: FunctionState) -> Self {
+                            Self {
+                                active: Some(active),
+                                integer_returns: Vec::new(),
+                            }
                         }
                     }
-                    fn resume(self, result: CallInteger) -> FunctionState {
-                        if let Some(result) = result.small() {
-                            return self.small(result);
+                    impl CallExecution for FunctionExecution {
+                        fn restart(&mut self, target: data::compiled::CallTarget, point: usize, values: CallInputs<'_>) -> bool {
+                            if self.active.is_some() { return false; }
+                            let active = match target {
+                                data::compiled::CallTarget::Int(data::function::IntFunctionId(0)) => calls_int_0_state(point, values),
+                                data::compiled::CallTarget::Int(data::function::IntFunctionId(2)) => calls_int_2_state(point, values),
+                                data::compiled::CallTarget::Int(data::function::IntFunctionId(3)) => calls_int_3_state(point, values),
+                                data::compiled::CallTarget::Int(data::function::IntFunctionId(5)) => calls_int_5_state(point, values),
+                                _ => None,
+                            };
+                            let Some(active) = active else { return false; };
+                            self.active = Some(active);
+                            true
                         }
-                        match self {
-                            Self::Int3Call0 { int0, int_function0 } => {
-                                let int1 = result;
-                                FunctionState::Canonical { target: data::compiled::CallTarget::Int(data::function::IntFunctionId(3)), point: data::compiled::CompiledCheckpoint {
+                        fn retained_bytes(&self) -> usize {
+                            std::mem::size_of::<Self>() + self.integer_returns.capacity() * std::mem::size_of::<IntReturn>()
+                        }
+                        fn advance(mut self: Box<Self>, ops: &mut CallOps<'_>, budget: &mut usize) -> CallProgress {
+                            let Some(mut active) = self.active.take() else { return CallProgress::Yield(self); };
+                            loop {
+                                match function_step(active, ops, budget) {
+                                    FunctionStep::Yield(active) => {
+                                        self.active = Some(active);
+                                        return CallProgress::Yield(self);
+                                    },
+                                    FunctionStep::IntCall { callee, caller } => {
+                                        self.integer_returns.push(caller);
+                                        active = callee;
+                                    },
+                                    FunctionStep::Int { value } => {
+                                        if let Some(caller) = self.integer_returns.pop() {
+                                            active = caller.small(value);
+                                        } else {
+                                            self.integer_returns.clear();
+                                            return CallProgress::Complete { output: CallOutput::Int(value.into()), execution: self };
+                                        }
+                                    },
+                                    FunctionStep::IntBridge { function, site, arguments, caller } => return CallProgress::Int {
+                                        function, site, arguments,
+                                        resume: Box::new(move |value| {
+                                            self.active = Some(caller.resume(value));
+                                            self
+                                        }),
+                                    },
+                                    FunctionStep::Canonical { target, point, values } => {
+                                        match target {
+                                            data::compiled::CallTarget::Int(function) => {
+                                                if let Some(caller) = self.integer_returns.pop() {
+                                                    let site = caller.site();
+                                                    return CallProgress::InterpretedInt {
+                                                        function, site, point, values,
+                                                        resume: Box::new(move |value| {
+                                                            self.active = Some(caller.resume(value));
+                                                            self
+                                                        }),
+                                                    };
+                                                }
+                                                return CallProgress::Interpreted { target, point, values };
+                                            },
+                                            _ => return CallProgress::Interpreted { target, point, values },
+                                        }
+                                    },
+                                }
+                            }
+                        }
+                    }
+                    fn function_step(active: FunctionState, ops: &mut CallOps<'_>, budget: &mut usize) -> FunctionStep {
+                        match active {
+                            FunctionState::Canonical { target, point, values } => FunctionStep::Canonical { target, point, values },
+                            FunctionState::Int0Point0 { int0, int1 } => calls_int_0_run(Int0State::Point0 { int0, int1 }, ops, budget),
+                            FunctionState::Int0Point1 { int0, int1, int2 } => calls_int_0_run(Int0State::Point1 { int0, int1, int2 }, ops, budget),
+                            FunctionState::Int2Point0 { int0 } => calls_int_2_run(Int2State::Point0 { int0 }, ops, budget),
+                            FunctionState::Int3Point0 { int0, int_function0 } => calls_int_3_run(Int3State::Point0 { int0, int_function0 }, ops, budget),
+                            FunctionState::Int3Point1 { int0, int_function0, int1 } => calls_int_3_run(Int3State::Point1 { int0, int_function0, int1 }, ops, budget),
+                            FunctionState::Int5Point0 { int0, int_function0 } => calls_int_5_run(Int5State::Point0 { int0, int_function0 }, ops, budget),
+                            FunctionState::Int5Point1 { int0, int_function0, int1 } => calls_int_5_run(Int5State::Point1 { int0, int_function0, int1 }, ops, budget),
+                            FunctionState::Int5Point2 { int0, int_function0, int1, int2 } => calls_int_5_run(Int5State::Point2 { int0, int_function0, int1, int2 }, ops, budget),
+                        }
+                    }
+                    enum Int0State {
+                        Point0 { int0: i128, int1: i128 },
+                        Point1 { int0: i128, int1: i128, int2: i128 },
+                    }
+                    fn calls_int_0_run(active: Int0State, _ops: &mut CallOps<'_>, budget: &mut usize) -> FunctionStep {
+                        match active {
+                            Int0State::Point0 { int0, int1 } => {
+                                if *budget == 0 { return FunctionStep::Yield(FunctionState::Int0Point0 { int0, int1 }); }
+                                *budget -= 1;
+                                let int2 = int0 + int1;
+                                if int2 < i128::from(i64::MIN) || int2 > i128::from(i64::MAX) { return FunctionStep::Canonical { target: data::compiled::CallTarget::Int(data::function::IntFunctionId(0)), point: data::compiled::CompiledCheckpoint {
                                     block: data::graph::BlockId(0),
                                     instruction: 1,
-                                    ints: 2,
+                                    ints: 3,
+                                    bools: 0,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
+                                }, values: Box::new(CallValues { ints: vec![int0.into(), int1.into(), int2.into()], ..CallValues::default() }) }; }
+                                if *budget == 0 { return FunctionStep::Yield(FunctionState::Int0Point1 { int0, int1, int2 }); }
+                                *budget -= 1;
+                                {
+                                    FunctionStep::Int { value: int2 }
+                                }
+                            },
+                            Int0State::Point1 { int0, int1, int2 } => {
+                                if *budget == 0 { return FunctionStep::Yield(FunctionState::Int0Point1 { int0, int1, int2 }); }
+                                *budget -= 1;
+                                {
+                                    FunctionStep::Int { value: int2 }
+                                }
+                            },
+                        }
+                    }
+                    enum Int2State {
+                        Point0 { int0: i128 },
+                    }
+                    fn calls_int_2_run(active: Int2State, _ops: &mut CallOps<'_>, budget: &mut usize) -> FunctionStep {
+                        match active {
+                            Int2State::Point0 { int0 } => {
+                                if *budget == 0 { return FunctionStep::Yield(FunctionState::Int2Point0 { int0 }); }
+                                *budget -= 1;
+                                {
+                                    FunctionStep::Int { value: int0 }
+                                }
+                            },
+                        }
+                    }
+                    enum Int3State {
+                        Point0 { int0: i128, int_function0: IntCallable },
+                        Point1 { int0: i128, int_function0: IntCallable, int1: i128 },
+                    }
+                    fn calls_int_3_run(active: Int3State, ops: &mut CallOps<'_>, budget: &mut usize) -> FunctionStep {
+                        match active {
+                            Int3State::Point0 { int0, int_function0 } => {
+                                if *budget == 0 { return FunctionStep::Yield(FunctionState::Int3Point0 { int0, int_function0 }); }
+                                *budget -= 1;
+                                {
+                                    let callable = &int_function0;
+                                    let captures = callable.captures();
+                                    let target = callable.target();
+                                    if ops.belongs_to_execution(&captures) && let Some(callee) = calls_entry_0(target, &captures, (int0,)) {
+                                        return FunctionStep::IntCall { callee, caller: IntReturn::Int3Call0 { int0, int_function0 } };
+                                    }
+                                    FunctionStep::IntBridge { function: target, site: data::source::HostCallSite::from_static("app", "<anonymous:6>", data::source::SourceSpan::new(1255, 1270)), arguments: CallArguments { values: Box::new(CallValues { ints: vec![int0.into()], ..CallValues::default() }), captures: Some(captures.retain()) }, caller: IntReturn::Int3Call0 { int0, int_function0 } }
+                                }
+                            },
+                            Int3State::Point1 { int0, int_function0, int1 } => {
+                                if *budget == 0 { return FunctionStep::Yield(FunctionState::Int3Point1 { int0, int_function0, int1 }); }
+                                *budget -= 1;
+                                {
+                                    FunctionStep::Int { value: int1 }
+                                }
+                            },
+                        }
+                    }
+                    enum Int5State {
+                        Point0 { int0: i128, int_function0: IntCallable },
+                        Point1 { int0: i128, int_function0: IntCallable, int1: i128 },
+                        Point2 { int0: i128, int_function0: IntCallable, int1: i128, int2: i128 },
+                    }
+                    fn calls_int_5_run(active: Int5State, ops: &mut CallOps<'_>, budget: &mut usize) -> FunctionStep {
+                        match active {
+                            Int5State::Point0 { int0, int_function0 } => {
+                                if *budget == 0 { return FunctionStep::Yield(FunctionState::Int5Point0 { int0, int_function0 }); }
+                                *budget -= 1;
+                                {
+                                    let callable = &int_function0;
+                                    let captures = callable.captures();
+                                    let target = callable.target();
+                                    if ops.belongs_to_execution(&captures) && let Some(callee) = calls_entry_0(target, &captures, (int0,)) {
+                                        return FunctionStep::IntCall { callee, caller: IntReturn::Int5Call0 { int0, int_function0 } };
+                                    }
+                                    FunctionStep::IntBridge { function: target, site: data::source::HostCallSite::from_static("app", "<anonymous:4>", data::source::SourceSpan::new(892, 907)), arguments: CallArguments { values: Box::new(CallValues { ints: vec![int0.into()], ..CallValues::default() }), captures: Some(captures.retain()) }, caller: IntReturn::Int5Call0 { int0, int_function0 } }
+                                }
+                            },
+                            Int5State::Point1 { int0, int_function0, int1 } => {
+                                if *budget == 0 { return FunctionStep::Yield(FunctionState::Int5Point1 { int0, int_function0, int1 }); }
+                                *budget -= 1;
+                                let int2 = int1 + 1_i128;
+                                if int2 < i128::from(i64::MIN) || int2 > i128::from(i64::MAX) { return FunctionStep::Canonical { target: data::compiled::CallTarget::Int(data::function::IntFunctionId(5)), point: data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(0),
+                                    instruction: 2,
+                                    ints: 3,
                                     bools: 0,
                                     bit_arrays: 0,
                                     int_lists: 0,
@@ -2652,438 +2884,295 @@ pub fn invoke(value: Captured) -> work.Work(Int) {
                                     custom_lists: 0,
                                     int_functions: 1,
                                     bool_functions: 0,
-                                }, values: CallValues { ints: vec![int0.into(), int1], bools: vec![], int_lists: vec![], int_functions: vec![int_function0], bool_functions: vec![] } }
+                                }, values: Box::new(CallValues { ints: vec![int0.into(), int1.into(), int2.into()], int_functions: vec![int_function0], ..CallValues::default() }) }; }
+                                if *budget == 0 { return FunctionStep::Yield(FunctionState::Int5Point2 { int0, int_function0, int1, int2 }); }
+                                *budget -= 1;
+                                {
+                                    FunctionStep::Int { value: int2 }
+                                }
                             },
-                            Self::Int5Call0 { int0, int_function0 } => {
-                                let int1 = result;
-                                FunctionState::Canonical { target: data::compiled::CallTarget::Int(data::function::IntFunctionId(5)), point: data::compiled::CompiledCheckpoint {
-                                    block: data::graph::BlockId(0),
-                                    instruction: 1,
-                                    ints: 2,
-                                    bools: 0,
-                                    bit_arrays: 0,
-                                    int_lists: 0,
-                                    strings: 0,
-                                    customs: 0,
-                                    custom_lists: 0,
-                                    int_functions: 1,
-                                    bool_functions: 0,
-                                }, values: CallValues { ints: vec![int0.into(), int1], bools: vec![], int_lists: vec![], int_functions: vec![int_function0], bool_functions: vec![] } }
+                            Int5State::Point2 { int0, int_function0, int1, int2 } => {
+                                if *budget == 0 { return FunctionStep::Yield(FunctionState::Int5Point2 { int0, int_function0, int1, int2 }); }
+                                *budget -= 1;
+                                {
+                                    FunctionStep::Int { value: int2 }
+                                }
                             },
                         }
                     }
-                }
-                enum BoolReturn {
-                }
-                impl BoolReturn {
-                    fn site(&self) -> data::source::HostCallSite {
-                        match *self {
-                        }
-                    }
-                    fn small(self, result: bool) -> FunctionState {
-                        let _ = result;
-                        match self {
-                        }
-                    }
-                    fn resume(self, result: bool) -> FunctionState { self.small(result) }
-                }
-                enum IntFunctionReturn {
-                }
-                impl IntFunctionReturn {
-                    fn site(&self) -> data::source::HostCallSite {
-                        match *self {
-                        }
-                    }
-                    fn small(self, result: IntCallable) -> FunctionState {
-                        let _ = result;
-                        match self {
-                        }
-                    }
-                    fn resume(self, result: IntCallable) -> FunctionState { self.small(result) }
-                }
-                enum BoolFunctionReturn {
-                }
-                impl BoolFunctionReturn {
-                    fn site(&self) -> data::source::HostCallSite {
-                        match *self {
-                        }
-                    }
-                    fn small(self, result: BoolCallable) -> FunctionState {
-                        let _ = result;
-                        match self {
-                        }
-                    }
-                    fn resume(self, result: BoolCallable) -> FunctionState { self.small(result) }
-                }
-                #[allow(clippy::large_enum_variant, reason = "Typed locals stay inline to avoid allocating at each generated step.")]
-                enum FunctionStep {
-                    Next(FunctionState),
-                    Yield(FunctionState),
-                    Canonical { target: data::compiled::CallTarget, point: data::compiled::CompiledCheckpoint, values: CallValues },
-                    IntCall { callee: FunctionState, caller: IntReturn },
-                    Int { value: i128, exit: data::graph::BlockGraphExitId },
-                    IntBridge { function: data::function::IntFunctionId, site: data::source::HostCallSite, arguments: CallArguments, caller: IntReturn },
-                    IntFunction { value: IntCallable, exit: data::graph::BlockGraphExitId },
-                }
-                struct FunctionExecution {
-                    active: Option<FunctionState>,
-                    integer_returns: Vec<IntReturn>,
-                    boolean_returns: Vec<BoolReturn>,
-                    integer_function_returns: Vec<IntFunctionReturn>,
-                    boolean_function_returns: Vec<BoolFunctionReturn>,
-                }
-                impl FunctionExecution {
-                    fn new(active: FunctionState) -> Self {
-                        Self {
-                            active: Some(active),
-                            integer_returns: Vec::new(),
-                            boolean_returns: Vec::new(),
-                            integer_function_returns: Vec::new(),
-                            boolean_function_returns: Vec::new(),
-                        }
-                    }
-                }
-                impl CallExecution for FunctionExecution {
-                    fn restart(&mut self, target: data::compiled::CallTarget, point: usize, values: CallInputs<'_>) -> bool {
-                        if self.active.is_some() { return false; }
-                        let active = match target {
-                            data::compiled::CallTarget::Int(data::function::IntFunctionId(0)) => calls_int_0_state(point, values),
-                            data::compiled::CallTarget::Int(data::function::IntFunctionId(2)) => calls_int_2_state(point, values),
-                            data::compiled::CallTarget::Int(data::function::IntFunctionId(3)) => calls_int_3_state(point, values),
-                            data::compiled::CallTarget::Int(data::function::IntFunctionId(5)) => calls_int_5_state(point, values),
-                            data::compiled::CallTarget::IntFunction(data::function::IntFunctionFunctionId(0)) => calls_intfunction_0_state(point, values),
+                    fn calls_entry_0(target: data::function::IntFunctionId, captures: &CallCaptureInputs<'_>, inputs: (i128,)) -> Option<FunctionState> {
+                        let (argument0,) = inputs;
+                        match target.0 {
+                            0 => Some(FunctionState::Int0Point0 { int0: argument0, int1: captures.int(data::graph::IntLocalId(1))? }),
+                            2 => Some(FunctionState::Int2Point0 { int0: argument0 }),
+                            3 => Some(FunctionState::Int3Point0 { int0: argument0, int_function0: captures.int_function(data::graph::IntFunctionLocalId(0))? }),
+                            5 => Some(FunctionState::Int5Point0 { int0: argument0, int_function0: captures.int_function(data::graph::IntFunctionLocalId(0))? }),
                             _ => None,
+                        }
+                    }
+                    fn calls_int_0_state(point: usize, values: CallInputs<'_>) -> Option<FunctionState> {
+                        let active = match point {
+                            0 => FunctionState::Int0Point0 { int0: values.int(0)?, int1: values.int(1)? },
+                            1 => FunctionState::Int0Point1 { int0: values.int(0)?, int1: values.int(1)?, int2: values.int(2)? },
+                            _ => return None,
                         };
-                        let Some(active) = active else { return false; };
-                        self.active = Some(active);
-                        true
+                        Some(active)
                     }
-                    fn retained_bytes(&self) -> usize {
-                        std::mem::size_of::<Self>() + self.integer_returns.capacity() * std::mem::size_of::<IntReturn>() + self.boolean_returns.capacity() * std::mem::size_of::<BoolReturn>() + self.integer_function_returns.capacity() * std::mem::size_of::<IntFunctionReturn>() + self.boolean_function_returns.capacity() * std::mem::size_of::<BoolFunctionReturn>()
+                    fn calls_int_0_start(point: usize, values: CallInputs<'_>, storage: &mut CallStorage) -> Option<Box<dyn CallExecution>> {
+                        if let Some(execution) = storage.reuse(data::compiled::CallTarget::Int(data::function::IntFunctionId(0)), point, values) { return Some(execution); }
+                        let active = calls_int_0_state(point, values)?;
+                        Some(Box::new(FunctionExecution::new(active)))
                     }
-                    fn advance(mut self: Box<Self>, ops: &mut CallOps<'_>, budget: &mut usize) -> CallProgress {
-                        let Some(mut active) = self.active.take() else { return CallProgress::Yield(self); };
+                    fn calls_int_2_state(point: usize, values: CallInputs<'_>) -> Option<FunctionState> {
+                        let active = match point {
+                            0 => FunctionState::Int2Point0 { int0: values.int(0)? },
+                            _ => return None,
+                        };
+                        Some(active)
+                    }
+                    fn calls_int_2_start(point: usize, values: CallInputs<'_>, storage: &mut CallStorage) -> Option<Box<dyn CallExecution>> {
+                        if let Some(execution) = storage.reuse(data::compiled::CallTarget::Int(data::function::IntFunctionId(2)), point, values) { return Some(execution); }
+                        let active = calls_int_2_state(point, values)?;
+                        Some(Box::new(FunctionExecution::new(active)))
+                    }
+                    fn calls_int_3_state(point: usize, values: CallInputs<'_>) -> Option<FunctionState> {
+                        let active = match point {
+                            0 => {
+                                if !matches!(values.int_function_target(0)?, data::function::IntFunctionId(0) | data::function::IntFunctionId(2) | data::function::IntFunctionId(3) | data::function::IntFunctionId(5)) { return None; }
+                                FunctionState::Int3Point0 { int0: values.int(0)?, int_function0: values.int_function(0)? }
+                            },
+                            1 => FunctionState::Int3Point1 { int0: values.int(0)?, int_function0: values.int_function(0)?, int1: values.int(1)? },
+                            _ => return None,
+                        };
+                        Some(active)
+                    }
+                    fn calls_int_3_start(point: usize, values: CallInputs<'_>, storage: &mut CallStorage) -> Option<Box<dyn CallExecution>> {
+                        if let Some(execution) = storage.reuse(data::compiled::CallTarget::Int(data::function::IntFunctionId(3)), point, values) { return Some(execution); }
+                        let active = calls_int_3_state(point, values)?;
+                        Some(Box::new(FunctionExecution::new(active)))
+                    }
+                    fn calls_int_5_state(point: usize, values: CallInputs<'_>) -> Option<FunctionState> {
+                        let active = match point {
+                            0 => {
+                                if !matches!(values.int_function_target(0)?, data::function::IntFunctionId(0) | data::function::IntFunctionId(2) | data::function::IntFunctionId(3) | data::function::IntFunctionId(5)) { return None; }
+                                FunctionState::Int5Point0 { int0: values.int(0)?, int_function0: values.int_function(0)? }
+                            },
+                            1 => FunctionState::Int5Point1 { int0: values.int(0)?, int_function0: values.int_function(0)?, int1: values.int(1)? },
+                            2 => FunctionState::Int5Point2 { int0: values.int(0)?, int_function0: values.int_function(0)?, int1: values.int(1)?, int2: values.int(2)? },
+                            _ => return None,
+                        };
+                        Some(active)
+                    }
+                    fn calls_int_5_start(point: usize, values: CallInputs<'_>, storage: &mut CallStorage) -> Option<Box<dyn CallExecution>> {
+                        if let Some(execution) = storage.reuse(data::compiled::CallTarget::Int(data::function::IntFunctionId(5)), point, values) { return Some(execution); }
+                        let active = calls_int_5_state(point, values)?;
+                        Some(Box::new(FunctionExecution::new(active)))
+                    }
+                    [calls_int_0_start, calls_int_2_start, calls_int_3_start, calls_int_5_start]
+                };
+                const CALL_GROUP_1: [data::compiled::calls::CallStart; 1] = {
+                    use data::compiled::calls::{CallCapture, CallExecution, CallInputs, CallOps, CallOutput, CallProgress, CallStorage, CallValues, IntCallable};
+                    enum FunctionState {
+                        IntFunction0Point0 { int0: i128, int_function0: IntCallable },
+                        IntFunction0Point1 { int_function0: IntCallable },
+                        IntFunction0Point2 { int0: i128, int_function0: IntCallable },
+                        IntFunction0Point3 { int0: i128, int_function0: IntCallable, int1: i128 },
+                        IntFunction0Point4 { int0: i128, int_function0: IntCallable, int1: i128, int_function1: IntCallable },
+                    }
+                    enum IntFunctionReturn {
+                    }
+                    impl IntFunctionReturn {
+                        fn site(&self) -> data::source::HostCallSite {
+                            match *self {
+                            }
+                        }
+                        fn small(self, result: IntCallable) -> FunctionState {
+                            let _ = result;
+                            match self {
+                            }
+                        }
+                        fn resume(self, result: IntCallable) -> FunctionState { self.small(result) }
+                    }
+                    #[allow(clippy::large_enum_variant, reason = "Typed locals stay inline to avoid allocating at each generated step.")]
+                    enum FunctionStep {
+                        Yield(FunctionState),
+                        Canonical { target: data::compiled::CallTarget, point: data::compiled::CompiledCheckpoint, values: Box<CallValues> },
+                        IntFunction { value: IntCallable },
+                    }
+                    struct FunctionExecution {
+                        active: Option<FunctionState>,
+                        integer_function_returns: Vec<IntFunctionReturn>,
+                    }
+                    impl FunctionExecution {
+                        fn new(active: FunctionState) -> Self {
+                            Self {
+                                active: Some(active),
+                                integer_function_returns: Vec::new(),
+                            }
+                        }
+                    }
+                    impl CallExecution for FunctionExecution {
+                        fn restart(&mut self, target: data::compiled::CallTarget, point: usize, values: CallInputs<'_>) -> bool {
+                            if self.active.is_some() { return false; }
+                            let active = match target {
+                                data::compiled::CallTarget::IntFunction(data::function::IntFunctionFunctionId(0)) => calls_intfunction_0_state(point, values),
+                                _ => None,
+                            };
+                            let Some(active) = active else { return false; };
+                            self.active = Some(active);
+                            true
+                        }
+                        fn retained_bytes(&self) -> usize {
+                            std::mem::size_of::<Self>() + self.integer_function_returns.capacity() * std::mem::size_of::<IntFunctionReturn>()
+                        }
+                        fn advance(mut self: Box<Self>, ops: &mut CallOps<'_>, budget: &mut usize) -> CallProgress {
+                            let Some(mut active) = self.active.take() else { return CallProgress::Yield(self); };
+                            loop {
+                                match function_step(active, ops, budget) {
+                                    FunctionStep::Yield(active) => {
+                                        self.active = Some(active);
+                                        return CallProgress::Yield(self);
+                                    },
+                                    FunctionStep::IntFunction { value } => {
+                                        if let Some(caller) = self.integer_function_returns.pop() {
+                                            active = caller.small(value);
+                                        } else {
+                                            self.integer_function_returns.clear();
+                                            return CallProgress::Complete { output: CallOutput::IntFunction(value), execution: self };
+                                        }
+                                    },
+                                    FunctionStep::Canonical { target, point, values } => {
+                                        match target {
+                                            data::compiled::CallTarget::IntFunction(function) => {
+                                                if let Some(caller) = self.integer_function_returns.pop() {
+                                                    let site = caller.site();
+                                                    return CallProgress::InterpretedIntFunction {
+                                                        function, site, point, values,
+                                                        resume: Box::new(move |value| {
+                                                            self.active = Some(caller.resume(value));
+                                                            self
+                                                        }),
+                                                    };
+                                                }
+                                                return CallProgress::Interpreted { target, point, values };
+                                            },
+                                            _ => return CallProgress::Interpreted { target, point, values },
+                                        }
+                                    },
+                                }
+                            }
+                        }
+                    }
+                    fn function_step(active: FunctionState, ops: &mut CallOps<'_>, budget: &mut usize) -> FunctionStep {
+                        match active {
+                            FunctionState::IntFunction0Point0 { int0, int_function0 } => calls_intfunction_0_run(IntFunction0State::Point0 { int0, int_function0 }, ops, budget),
+                            FunctionState::IntFunction0Point1 { int_function0 } => calls_intfunction_0_run(IntFunction0State::Point1 { int_function0 }, ops, budget),
+                            FunctionState::IntFunction0Point2 { int0, int_function0 } => calls_intfunction_0_run(IntFunction0State::Point2 { int0, int_function0 }, ops, budget),
+                            FunctionState::IntFunction0Point3 { int0, int_function0, int1 } => calls_intfunction_0_run(IntFunction0State::Point3 { int0, int_function0, int1 }, ops, budget),
+                            FunctionState::IntFunction0Point4 { int0, int_function0, int1, int_function1 } => calls_intfunction_0_run(IntFunction0State::Point4 { int0, int_function0, int1, int_function1 }, ops, budget),
+                        }
+                    }
+                    enum IntFunction0State {
+                        Point0 { int0: i128, int_function0: IntCallable },
+                        Point1 { int_function0: IntCallable },
+                        Point2 { int0: i128, int_function0: IntCallable },
+                        Point3 { int0: i128, int_function0: IntCallable, int1: i128 },
+                        Point4 { int0: i128, int_function0: IntCallable, int1: i128, int_function1: IntCallable },
+                    }
+                    fn calls_intfunction_0_run(mut active: IntFunction0State, ops: &mut CallOps<'_>, budget: &mut usize) -> FunctionStep {
                         loop {
-                            match function_step(active, ops, budget) {
-                                FunctionStep::Next(next) => active = next,
-                                FunctionStep::Yield(active) => {
-                                    self.active = Some(active);
-                                    return CallProgress::Yield(self);
+                            match active {
+                                IntFunction0State::Point0 { int0, int_function0 } => {
+                                    if *budget == 0 { return FunctionStep::Yield(FunctionState::IntFunction0Point0 { int0, int_function0 }); }
+                                    *budget -= 1;
+                                    active = {
+                                        match int0 {
+                                            0_i128 => IntFunction0State::Point1 { int_function0: int_function0.clone() },
+                                            _ => IntFunction0State::Point2 { int0, int_function0: int_function0.clone() },
+                                        }
+                                    };
+                                    continue;
                                 },
-                                FunctionStep::IntCall { callee, caller } => {
-                                    self.integer_returns.push(caller);
-                                    active = callee;
+                                IntFunction0State::Point1 { int_function0 } => {
+                                    if *budget == 0 { return FunctionStep::Yield(FunctionState::IntFunction0Point1 { int_function0 }); }
+                                    *budget -= 1;
+                                    return {
+                                        FunctionStep::IntFunction { value: int_function0 }
+                                    };
                                 },
-                                FunctionStep::Int { value, exit } => {
-                                    if let Some(caller) = self.integer_returns.pop() {
-                                        active = caller.small(value);
-                                    } else {
-                                        self.integer_returns.clear();
-                                        self.boolean_returns.clear();
-                                        self.integer_function_returns.clear();
-                                        self.boolean_function_returns.clear();
-                                        return CallProgress::Complete { exit, output: CallOutput::Int(value.into()), execution: self };
-                                    }
+                                IntFunction0State::Point2 { int0, int_function0 } => {
+                                    if *budget == 0 { return FunctionStep::Yield(FunctionState::IntFunction0Point2 { int0, int_function0 }); }
+                                    *budget -= 1;
+                                    let int1 = int0 - 1_i128;
+                                    if int1 < i128::from(i64::MIN) || int1 > i128::from(i64::MAX) { return FunctionStep::Canonical { target: data::compiled::CallTarget::IntFunction(data::function::IntFunctionFunctionId(0)), point: data::compiled::CompiledCheckpoint {
+                                        block: data::graph::BlockId(2),
+                                        instruction: 1,
+                                        ints: 2,
+                                        bools: 0,
+                                        bit_arrays: 0,
+                                        int_lists: 0,
+                                        strings: 0,
+                                        customs: 0,
+                                        custom_lists: 0,
+                                        int_functions: 1,
+                                        bool_functions: 0,
+                                    }, values: Box::new(CallValues { ints: vec![int0.into(), int1.into()], int_functions: vec![int_function0], ..CallValues::default() }) }; }
+                                    if *budget == 0 { return FunctionStep::Yield(FunctionState::IntFunction0Point3 { int0, int_function0, int1 }); }
+                                    *budget -= 1;
+                                    let int_function1 = ops.int_closure(data::function::IntFunctionId(5), data::type_::FunctionType {
+                                        arguments: data::Storage::Static(&[
+                                            data::type_::ValueType::Int,
+                                        ]),
+                                        return_: data::Storage::Static(&data::type_::ValueType::Int),
+                                    }, vec![CallCapture::int_function(data::graph::IntFunctionLocalId(0), int_function0.clone())]);
+                                    if *budget == 0 { return FunctionStep::Yield(FunctionState::IntFunction0Point4 { int0, int_function0, int1, int_function1 }); }
+                                    *budget -= 1;
+                                    active = {
+                                        IntFunction0State::Point0 { int0: int1, int_function0: int_function1.clone() }
+                                    };
+                                    continue;
                                 },
-                                FunctionStep::IntBridge { function, site, arguments, caller } => return CallProgress::Int {
-                                    function, site, arguments,
-                                    resume: Box::new(move |value| {
-                                        self.active = Some(caller.resume(value));
-                                        self
-                                    }),
+                                IntFunction0State::Point3 { int0, int_function0, int1 } => {
+                                    if *budget == 0 { return FunctionStep::Yield(FunctionState::IntFunction0Point3 { int0, int_function0, int1 }); }
+                                    *budget -= 1;
+                                    let int_function1 = ops.int_closure(data::function::IntFunctionId(5), data::type_::FunctionType {
+                                        arguments: data::Storage::Static(&[
+                                            data::type_::ValueType::Int,
+                                        ]),
+                                        return_: data::Storage::Static(&data::type_::ValueType::Int),
+                                    }, vec![CallCapture::int_function(data::graph::IntFunctionLocalId(0), int_function0.clone())]);
+                                    active = IntFunction0State::Point4 { int0, int_function0, int1, int_function1 };
+                                    continue;
                                 },
-                                FunctionStep::IntFunction { value, exit } => {
-                                    if let Some(caller) = self.integer_function_returns.pop() {
-                                        active = caller.small(value);
-                                    } else {
-                                        self.integer_returns.clear();
-                                        self.boolean_returns.clear();
-                                        self.integer_function_returns.clear();
-                                        self.boolean_function_returns.clear();
-                                        return CallProgress::Complete { exit, output: CallOutput::IntFunction(value), execution: self };
-                                    }
-                                },
-                                FunctionStep::Canonical { target, point, values } => {
-                                    match target {
-                                        data::compiled::CallTarget::Int(function) => {
-                                            if let Some(caller) = self.integer_returns.pop() {
-                                                let site = caller.site();
-                                                return CallProgress::InterpretedInt {
-                                                    function, site, point, values,
-                                                    resume: Box::new(move |value| {
-                                                        self.active = Some(caller.resume(value));
-                                                        self
-                                                    }),
-                                                };
-                                            }
-                                            return CallProgress::Interpreted { point, values };
-                                        },
-                                        data::compiled::CallTarget::Bool(function) => {
-                                            if let Some(caller) = self.boolean_returns.pop() {
-                                                let site = caller.site();
-                                                return CallProgress::InterpretedBool {
-                                                    function, site, point, values,
-                                                    resume: Box::new(move |value| {
-                                                        self.active = Some(caller.resume(value));
-                                                        self
-                                                    }),
-                                                };
-                                            }
-                                            return CallProgress::Interpreted { point, values };
-                                        },
-                                        data::compiled::CallTarget::IntFunction(function) => {
-                                            if let Some(caller) = self.integer_function_returns.pop() {
-                                                let site = caller.site();
-                                                return CallProgress::InterpretedIntFunction {
-                                                    function, site, point, values,
-                                                    resume: Box::new(move |value| {
-                                                        self.active = Some(caller.resume(value));
-                                                        self
-                                                    }),
-                                                };
-                                            }
-                                            return CallProgress::Interpreted { point, values };
-                                        },
-                                        data::compiled::CallTarget::BoolFunction(function) => {
-                                            if let Some(caller) = self.boolean_function_returns.pop() {
-                                                let site = caller.site();
-                                                return CallProgress::InterpretedBoolFunction {
-                                                    function, site, point, values,
-                                                    resume: Box::new(move |value| {
-                                                        self.active = Some(caller.resume(value));
-                                                        self
-                                                    }),
-                                                };
-                                            }
-                                            return CallProgress::Interpreted { point, values };
-                                        },
-                                    }
+                                IntFunction0State::Point4 { int0, int_function0, int1, int_function1 } => {
+                                    if *budget == 0 { return FunctionStep::Yield(FunctionState::IntFunction0Point4 { int0, int_function0, int1, int_function1 }); }
+                                    *budget -= 1;
+                                    active = {
+                                        IntFunction0State::Point0 { int0: int1, int_function0: int_function1.clone() }
+                                    };
+                                    continue;
                                 },
                             }
                         }
                     }
-                }
-                fn function_step(active: FunctionState, ops: &mut CallOps<'_>, budget: &mut usize) -> FunctionStep {
-                    match active {
-                        FunctionState::Canonical { target, point, values } => FunctionStep::Canonical { target, point, values },
-                        FunctionState::Int0Point0 { int0, int1 } => {
-                            if *budget == 0 { return FunctionStep::Yield(FunctionState::Int0Point0 { int0, int1 }); }
-                            *budget -= 1;
-                            let int2 = int0 + int1;
-                            if int2 < i128::from(i64::MIN) || int2 > i128::from(i64::MAX) { return FunctionStep::Canonical { target: data::compiled::CallTarget::Int(data::function::IntFunctionId(0)), point: data::compiled::CompiledCheckpoint {
-                                block: data::graph::BlockId(0),
-                                instruction: 1,
-                                ints: 3,
-                                bools: 0,
-                                bit_arrays: 0,
-                                int_lists: 0,
-                                strings: 0,
-                                customs: 0,
-                                custom_lists: 0,
-                                int_functions: 0,
-                                bool_functions: 0,
-                            }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into()], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] } }; }
-                            if *budget == 0 { return FunctionStep::Yield(FunctionState::Int0Point1 { int0, int1, int2 }); }
-                            *budget -= 1;
-                            FunctionStep::Int { value: int2, exit: data::graph::BlockGraphExitId(0) }
-                        },
-                        FunctionState::Int0Point1 { int0, int1, int2 } => {
-                            if *budget == 0 { return FunctionStep::Yield(FunctionState::Int0Point1 { int0, int1, int2 }); }
-                            *budget -= 1;
-                            FunctionStep::Int { value: int2, exit: data::graph::BlockGraphExitId(0) }
-                        },
-                        FunctionState::Int2Point0 { int0 } => {
-                            if *budget == 0 { return FunctionStep::Yield(FunctionState::Int2Point0 { int0 }); }
-                            *budget -= 1;
-                            FunctionStep::Int { value: int0, exit: data::graph::BlockGraphExitId(0) }
-                        },
-                        FunctionState::Int3Point0 { int0, int_function0 } => {
-                            if *budget == 0 { return FunctionStep::Yield(FunctionState::Int3Point0 { int0, int_function0 }); }
-                            *budget -= 1;
-                            let callable = &int_function0;
-                            let captures = callable.captures();
-                            let target = callable.target();
-                            if ops.belongs_to_execution(&captures) && let Some(callee) = calls_entry_0(target, &captures, (int0,)) {
-                                return FunctionStep::IntCall { callee, caller: IntReturn::Int3Call0 { int0, int_function0 } };
-                            }
-                            FunctionStep::IntBridge { function: target, site: data::source::HostCallSite::from_static("app", "<anonymous:6>", data::source::SourceSpan::new(1255, 1270)), arguments: CallArguments { values: CallValues { ints: vec![int0.into()], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] }, captures: Some(captures.retain()) }, caller: IntReturn::Int3Call0 { int0, int_function0 } }
-                        },
-                        FunctionState::Int3Point1 { int0, int_function0, int1 } => {
-                            if *budget == 0 { return FunctionStep::Yield(FunctionState::Int3Point1 { int0, int_function0, int1 }); }
-                            *budget -= 1;
-                            FunctionStep::Int { value: int1, exit: data::graph::BlockGraphExitId(0) }
-                        },
-                        FunctionState::Int5Point0 { int0, int_function0 } => {
-                            if *budget == 0 { return FunctionStep::Yield(FunctionState::Int5Point0 { int0, int_function0 }); }
-                            *budget -= 1;
-                            let callable = &int_function0;
-                            let captures = callable.captures();
-                            let target = callable.target();
-                            if ops.belongs_to_execution(&captures) && let Some(callee) = calls_entry_0(target, &captures, (int0,)) {
-                                return FunctionStep::IntCall { callee, caller: IntReturn::Int5Call0 { int0, int_function0 } };
-                            }
-                            FunctionStep::IntBridge { function: target, site: data::source::HostCallSite::from_static("app", "<anonymous:4>", data::source::SourceSpan::new(892, 907)), arguments: CallArguments { values: CallValues { ints: vec![int0.into()], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] }, captures: Some(captures.retain()) }, caller: IntReturn::Int5Call0 { int0, int_function0 } }
-                        },
-                        FunctionState::Int5Point1 { int0, int_function0, int1 } => {
-                            if *budget == 0 { return FunctionStep::Yield(FunctionState::Int5Point1 { int0, int_function0, int1 }); }
-                            *budget -= 1;
-                            let int2 = int1 + 1_i128;
-                            if int2 < i128::from(i64::MIN) || int2 > i128::from(i64::MAX) { return FunctionStep::Canonical { target: data::compiled::CallTarget::Int(data::function::IntFunctionId(5)), point: data::compiled::CompiledCheckpoint {
-                                block: data::graph::BlockId(0),
-                                instruction: 2,
-                                ints: 3,
-                                bools: 0,
-                                bit_arrays: 0,
-                                int_lists: 0,
-                                strings: 0,
-                                customs: 0,
-                                custom_lists: 0,
-                                int_functions: 1,
-                                bool_functions: 0,
-                            }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into()], bools: vec![], int_lists: vec![], int_functions: vec![int_function0], bool_functions: vec![] } }; }
-                            if *budget == 0 { return FunctionStep::Yield(FunctionState::Int5Point2 { int0, int_function0, int1, int2 }); }
-                            *budget -= 1;
-                            FunctionStep::Int { value: int2, exit: data::graph::BlockGraphExitId(0) }
-                        },
-                        FunctionState::Int5Point2 { int0, int_function0, int1, int2 } => {
-                            if *budget == 0 { return FunctionStep::Yield(FunctionState::Int5Point2 { int0, int_function0, int1, int2 }); }
-                            *budget -= 1;
-                            FunctionStep::Int { value: int2, exit: data::graph::BlockGraphExitId(0) }
-                        },
-                        FunctionState::IntFunction0Point0 { int0, int_function0 } => {
-                            if *budget == 0 { return FunctionStep::Yield(FunctionState::IntFunction0Point0 { int0, int_function0 }); }
-                            *budget -= 1;
-                            match int0 {
-                                0_i128 => FunctionStep::Next(FunctionState::IntFunction0Point1 { int_function0: int_function0.clone() }),
-                                _ => FunctionStep::Next(FunctionState::IntFunction0Point2 { int0, int_function0: int_function0.clone() }),
-                            }
-                        },
-                        FunctionState::IntFunction0Point1 { int_function0 } => {
-                            if *budget == 0 { return FunctionStep::Yield(FunctionState::IntFunction0Point1 { int_function0 }); }
-                            *budget -= 1;
-                            FunctionStep::IntFunction { value: int_function0, exit: data::graph::BlockGraphExitId(0) }
-                        },
-                        FunctionState::IntFunction0Point2 { int0, int_function0 } => {
-                            if *budget == 0 { return FunctionStep::Yield(FunctionState::IntFunction0Point2 { int0, int_function0 }); }
-                            *budget -= 1;
-                            let int1 = int0 - 1_i128;
-                            if int1 < i128::from(i64::MIN) || int1 > i128::from(i64::MAX) { return FunctionStep::Canonical { target: data::compiled::CallTarget::IntFunction(data::function::IntFunctionFunctionId(0)), point: data::compiled::CompiledCheckpoint {
-                                block: data::graph::BlockId(2),
-                                instruction: 1,
-                                ints: 2,
-                                bools: 0,
-                                bit_arrays: 0,
-                                int_lists: 0,
-                                strings: 0,
-                                customs: 0,
-                                custom_lists: 0,
-                                int_functions: 1,
-                                bool_functions: 0,
-                            }, values: CallValues { ints: vec![int0.into(), int1.into()], bools: vec![], int_lists: vec![], int_functions: vec![int_function0], bool_functions: vec![] } }; }
-                            FunctionStep::Next(FunctionState::IntFunction0Point3 { int0, int_function0, int1 })
-                        },
-                        FunctionState::IntFunction0Point3 { int0, int_function0, int1 } => {
-                            if *budget == 0 { return FunctionStep::Yield(FunctionState::IntFunction0Point3 { int0, int_function0, int1 }); }
-                            *budget -= 1;
-                            let int_function1 = ops.int_closure(data::function::IntFunctionId(5), data::type_::FunctionType {
-                                arguments: data::Storage::Static(&[
-                                    data::type_::ValueType::Int,
-                                ]),
-                                return_: data::Storage::Static(&data::type_::ValueType::Int),
-                            }, vec![CallCapture::int_function(data::graph::IntFunctionLocalId(0), int_function0.clone())]);
-                            FunctionStep::Next(FunctionState::IntFunction0Point4 { int0, int_function0, int1, int_function1 })
-                        },
-                        FunctionState::IntFunction0Point4 { int0, int_function0, int1, int_function1 } => {
-                            if *budget == 0 { return FunctionStep::Yield(FunctionState::IntFunction0Point4 { int0, int_function0, int1, int_function1 }); }
-                            *budget -= 1;
-                            FunctionStep::Next(FunctionState::IntFunction0Point0 { int0: int1, int_function0: int_function1.clone() })
-                        },
+                    fn calls_intfunction_0_state(point: usize, values: CallInputs<'_>) -> Option<FunctionState> {
+                        let active = match point {
+                            0 => FunctionState::IntFunction0Point0 { int0: values.int(0)?, int_function0: values.int_function(0)? },
+                            1 => FunctionState::IntFunction0Point1 { int_function0: values.int_function(0)? },
+                            2 => FunctionState::IntFunction0Point2 { int0: values.int(0)?, int_function0: values.int_function(0)? },
+                            3 => FunctionState::IntFunction0Point3 { int0: values.int(0)?, int_function0: values.int_function(0)?, int1: values.int(1)? },
+                            4 => FunctionState::IntFunction0Point4 { int0: values.int(0)?, int_function0: values.int_function(0)?, int1: values.int(1)?, int_function1: values.int_function(1)? },
+                            _ => return None,
+                        };
+                        Some(active)
                     }
-                }
-                fn calls_entry_0(target: data::function::IntFunctionId, captures: &CallCaptureInputs<'_>, inputs: (i128,)) -> Option<FunctionState> {
-                    let (argument0,) = inputs;
-                    match target.0 {
-                        0 => Some(FunctionState::Int0Point0 { int0: argument0, int1: captures.int(data::graph::IntLocalId(1))? }),
-                        2 => Some(FunctionState::Int2Point0 { int0: argument0 }),
-                        3 => Some(FunctionState::Int3Point0 { int0: argument0, int_function0: captures.int_function(data::graph::IntFunctionLocalId(0))? }),
-                        5 => Some(FunctionState::Int5Point0 { int0: argument0, int_function0: captures.int_function(data::graph::IntFunctionLocalId(0))? }),
-                        _ => None,
+                    fn calls_intfunction_0_start(point: usize, values: CallInputs<'_>, storage: &mut CallStorage) -> Option<Box<dyn CallExecution>> {
+                        if let Some(execution) = storage.reuse(data::compiled::CallTarget::IntFunction(data::function::IntFunctionFunctionId(0)), point, values) { return Some(execution); }
+                        let active = calls_intfunction_0_state(point, values)?;
+                        Some(Box::new(FunctionExecution::new(active)))
                     }
-                }
-                fn calls_int_0_state(point: usize, values: CallInputs<'_>) -> Option<FunctionState> {
-                    let active = match point {
-                        0 => FunctionState::Int0Point0 { int0: values.int(0)?, int1: values.int(1)? },
-                        1 => FunctionState::Int0Point1 { int0: values.int(0)?, int1: values.int(1)?, int2: values.int(2)? },
-                        _ => return None,
-                    };
-                    Some(active)
-                }
-                fn calls_int_0_start(point: usize, values: CallInputs<'_>, storage: &mut CallStorage) -> Option<Box<dyn CallExecution>> {
-                    if let Some(execution) = storage.reuse(data::compiled::CallTarget::Int(data::function::IntFunctionId(0)), point, values) { return Some(execution); }
-                    let active = calls_int_0_state(point, values)?;
-                    Some(Box::new(FunctionExecution::new(active)))
-                }
-                fn calls_int_2_state(point: usize, values: CallInputs<'_>) -> Option<FunctionState> {
-                    let active = match point {
-                        0 => FunctionState::Int2Point0 { int0: values.int(0)? },
-                        _ => return None,
-                    };
-                    Some(active)
-                }
-                fn calls_int_2_start(point: usize, values: CallInputs<'_>, storage: &mut CallStorage) -> Option<Box<dyn CallExecution>> {
-                    if let Some(execution) = storage.reuse(data::compiled::CallTarget::Int(data::function::IntFunctionId(2)), point, values) { return Some(execution); }
-                    let active = calls_int_2_state(point, values)?;
-                    Some(Box::new(FunctionExecution::new(active)))
-                }
-                fn calls_int_3_state(point: usize, values: CallInputs<'_>) -> Option<FunctionState> {
-                    let active = match point {
-                        0 => {
-                            if !matches!(values.int_function_target(0)?, data::function::IntFunctionId(0) | data::function::IntFunctionId(2) | data::function::IntFunctionId(3) | data::function::IntFunctionId(5)) { return None; }
-                            FunctionState::Int3Point0 { int0: values.int(0)?, int_function0: values.int_function(0)? }
-                        },
-                        1 => FunctionState::Int3Point1 { int0: values.int(0)?, int_function0: values.int_function(0)?, int1: values.int(1)? },
-                        _ => return None,
-                    };
-                    Some(active)
-                }
-                fn calls_int_3_start(point: usize, values: CallInputs<'_>, storage: &mut CallStorage) -> Option<Box<dyn CallExecution>> {
-                    if let Some(execution) = storage.reuse(data::compiled::CallTarget::Int(data::function::IntFunctionId(3)), point, values) { return Some(execution); }
-                    let active = calls_int_3_state(point, values)?;
-                    Some(Box::new(FunctionExecution::new(active)))
-                }
-                fn calls_int_5_state(point: usize, values: CallInputs<'_>) -> Option<FunctionState> {
-                    let active = match point {
-                        0 => {
-                            if !matches!(values.int_function_target(0)?, data::function::IntFunctionId(0) | data::function::IntFunctionId(2) | data::function::IntFunctionId(3) | data::function::IntFunctionId(5)) { return None; }
-                            FunctionState::Int5Point0 { int0: values.int(0)?, int_function0: values.int_function(0)? }
-                        },
-                        1 => FunctionState::Int5Point1 { int0: values.int(0)?, int_function0: values.int_function(0)?, int1: values.int(1)? },
-                        2 => FunctionState::Int5Point2 { int0: values.int(0)?, int_function0: values.int_function(0)?, int1: values.int(1)?, int2: values.int(2)? },
-                        _ => return None,
-                    };
-                    Some(active)
-                }
-                fn calls_int_5_start(point: usize, values: CallInputs<'_>, storage: &mut CallStorage) -> Option<Box<dyn CallExecution>> {
-                    if let Some(execution) = storage.reuse(data::compiled::CallTarget::Int(data::function::IntFunctionId(5)), point, values) { return Some(execution); }
-                    let active = calls_int_5_state(point, values)?;
-                    Some(Box::new(FunctionExecution::new(active)))
-                }
-                fn calls_intfunction_0_state(point: usize, values: CallInputs<'_>) -> Option<FunctionState> {
-                    let active = match point {
-                        0 => FunctionState::IntFunction0Point0 { int0: values.int(0)?, int_function0: values.int_function(0)? },
-                        1 => FunctionState::IntFunction0Point1 { int_function0: values.int_function(0)? },
-                        2 => FunctionState::IntFunction0Point2 { int0: values.int(0)?, int_function0: values.int_function(0)? },
-                        3 => FunctionState::IntFunction0Point3 { int0: values.int(0)?, int_function0: values.int_function(0)?, int1: values.int(1)? },
-                        4 => FunctionState::IntFunction0Point4 { int0: values.int(0)?, int_function0: values.int_function(0)?, int1: values.int(1)?, int_function1: values.int_function(1)? },
-                        _ => return None,
-                    };
-                    Some(active)
-                }
-                fn calls_intfunction_0_start(point: usize, values: CallInputs<'_>, storage: &mut CallStorage) -> Option<Box<dyn CallExecution>> {
-                    if let Some(execution) = storage.reuse(data::compiled::CallTarget::IntFunction(data::function::IntFunctionFunctionId(0)), point, values) { return Some(execution); }
-                    let active = calls_intfunction_0_state(point, values)?;
-                    Some(Box::new(FunctionExecution::new(active)))
-                }
+                    [calls_intfunction_0_start]
+                };
 
                 fn string_int_1(
                     point: usize,
@@ -3270,7 +3359,7 @@ pub fn invoke(value: Captured) -> work.Work(Int) {
                                     },
                                 ]),
                                 tails: data::Storage::Static(&[]),
-                                start: calls_int_0_start,
+                                start: CALL_GROUP_0[0],
                             })),
                         },
                         data::compiled::CompiledFunction {
@@ -3307,7 +3396,7 @@ pub fn invoke(value: Captured) -> work.Work(Int) {
                                     },
                                 ]),
                                 tails: data::Storage::Static(&[]),
-                                start: calls_int_2_start,
+                                start: CALL_GROUP_0[1],
                             })),
                         },
                         data::compiled::CompiledFunction {
@@ -3389,7 +3478,7 @@ pub fn invoke(value: Captured) -> work.Work(Int) {
                                     },
                                 ]),
                                 tails: data::Storage::Static(&[]),
-                                start: calls_int_3_start,
+                                start: CALL_GROUP_0[2],
                             })),
                         },
                         data::compiled::CompiledFunction {
@@ -3498,7 +3587,7 @@ pub fn invoke(value: Captured) -> work.Work(Int) {
                                     },
                                 ]),
                                 tails: data::Storage::Static(&[]),
-                                start: calls_int_5_start,
+                                start: CALL_GROUP_0[3],
                             })),
                         },
                         data::compiled::CompiledFunction {
@@ -3689,7 +3778,7 @@ pub fn invoke(value: Captured) -> work.Work(Int) {
                                     },
                                 ]),
                                 tails: data::Storage::Static(&[]),
-                                start: calls_intfunction_0_start,
+                                start: CALL_GROUP_1[0],
                             })),
                         },
                     ]),

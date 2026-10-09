@@ -1,10 +1,15 @@
 use super::CompiledCheckpoint;
 use crate::plan::HostCallSite;
 use crate::plan::execution::function::{
-    BoolFunctionFunctionId, BoolFunctionId, IntFunctionFunctionId, IntFunctionId,
+    BitArrayFunctionFunctionId, BitArrayFunctionId, BoolFunctionFunctionId, BoolFunctionId,
+    FloatFunctionFunctionId, FloatFunctionId, FunctionReturnFamily, IntFunctionFunctionId,
+    IntFunctionId, NilFunctionFunctionId, NilFunctionId, StringFunctionFunctionId,
+    StringFunctionId, UtfCodepointFunctionFunctionId, UtfCodepointFunctionId,
 };
 use crate::plan::execution::graph::{
-    BoolFunctionLocalId, FunctionCapture, FunctionTarget, IntFunctionLocalId, ParamLocal,
+    BitArrayFunctionLocalId, BoolFunctionLocalId, FloatFunctionLocalId, FunctionCapture,
+    FunctionTarget, IntFunctionLocalId, NilFunctionLocalId, ParamLocal, StringFunctionLocalId,
+    UtfCodepointFunctionLocalId,
 };
 use crate::plan::execution::prepared::rust::{Emit, Rust};
 use crate::plan::execution::storage::Table;
@@ -17,6 +22,16 @@ pub enum CallTarget {
     Bool(BoolFunctionId),
     IntFunction(IntFunctionFunctionId),
     BoolFunction(BoolFunctionFunctionId),
+    Float(FloatFunctionId),
+    String(StringFunctionId),
+    BitArray(BitArrayFunctionId),
+    UtfCodepoint(UtfCodepointFunctionId),
+    Nil(NilFunctionId),
+    FloatFunction(FloatFunctionFunctionId),
+    StringFunction(StringFunctionFunctionId),
+    BitArrayFunction(BitArrayFunctionFunctionId),
+    UtfCodepointFunction(UtfCodepointFunctionFunctionId),
+    NilFunction(NilFunctionFunctionId),
 }
 
 pub struct FunctionCallsImplementation {
@@ -45,6 +60,11 @@ pub enum CallContractTarget {
     Static(CallTarget),
     IntValue(IntFunctionLocalId),
     BoolValue(BoolFunctionLocalId),
+    FloatValue(FloatFunctionLocalId),
+    StringValue(StringFunctionLocalId),
+    BitArrayValue(BitArrayFunctionLocalId),
+    UtfCodepointValue(UtfCodepointFunctionLocalId),
+    NilValue(NilFunctionLocalId),
 }
 
 #[derive(Clone, PartialEq, Eq)]
@@ -72,12 +92,41 @@ pub struct TailContract {
 }
 
 impl CallTarget {
+    pub(crate) fn family(self) -> FunctionReturnFamily {
+        match self {
+            Self::Int(_) => FunctionReturnFamily::Int,
+            Self::Float(_) => FunctionReturnFamily::Float,
+            Self::String(_) => FunctionReturnFamily::String,
+            Self::BitArray(_) => FunctionReturnFamily::BitArray,
+            Self::UtfCodepoint(_) => FunctionReturnFamily::UtfCodepoint,
+            Self::Bool(_) => FunctionReturnFamily::Bool,
+            Self::Nil(_) => FunctionReturnFamily::Nil,
+            Self::IntFunction(_)
+            | Self::FloatFunction(_)
+            | Self::StringFunction(_)
+            | Self::BitArrayFunction(_)
+            | Self::UtfCodepointFunction(_)
+            | Self::BoolFunction(_)
+            | Self::NilFunction(_) => FunctionReturnFamily::Function,
+        }
+    }
+
     pub(crate) fn key(self) -> (usize, usize) {
         let family = match self {
             Self::Int(_) => 0,
             Self::Bool(_) => 1,
             Self::IntFunction(_) => 2,
             Self::BoolFunction(_) => 3,
+            Self::Float(_) => 4,
+            Self::String(_) => 5,
+            Self::BitArray(_) => 6,
+            Self::UtfCodepoint(_) => 7,
+            Self::Nil(_) => 8,
+            Self::FloatFunction(_) => 9,
+            Self::StringFunction(_) => 10,
+            Self::BitArrayFunction(_) => 11,
+            Self::UtfCodepointFunction(_) => 12,
+            Self::NilFunction(_) => 13,
         };
         (family, self.index())
     }
@@ -88,6 +137,16 @@ impl CallTarget {
             Self::Bool(id) => id.0,
             Self::IntFunction(id) => id.0,
             Self::BoolFunction(id) => id.0,
+            Self::Float(id) => id.0,
+            Self::String(id) => id.0,
+            Self::BitArray(id) => id.0,
+            Self::UtfCodepoint(id) => id.0,
+            Self::Nil(id) => id.0,
+            Self::FloatFunction(id) => id.0,
+            Self::StringFunction(id) => id.0,
+            Self::BitArrayFunction(id) => id.0,
+            Self::UtfCodepointFunction(id) => id.0,
+            Self::NilFunction(id) => id.0,
         }
     }
 }
@@ -99,6 +158,20 @@ impl Emit for CallTarget {
             Self::Bool(id) => output.call("compiled::CallTarget::Bool", &[id]),
             Self::IntFunction(id) => output.call("compiled::CallTarget::IntFunction", &[id]),
             Self::BoolFunction(id) => output.call("compiled::CallTarget::BoolFunction", &[id]),
+            Self::Float(id) => output.call("compiled::CallTarget::Float", &[id]),
+            Self::String(id) => output.call("compiled::CallTarget::String", &[id]),
+            Self::BitArray(id) => output.call("compiled::CallTarget::BitArray", &[id]),
+            Self::UtfCodepoint(id) => output.call("compiled::CallTarget::UtfCodepoint", &[id]),
+            Self::Nil(id) => output.call("compiled::CallTarget::Nil", &[id]),
+            Self::FloatFunction(id) => output.call("compiled::CallTarget::FloatFunction", &[id]),
+            Self::StringFunction(id) => output.call("compiled::CallTarget::StringFunction", &[id]),
+            Self::BitArrayFunction(id) => {
+                output.call("compiled::CallTarget::BitArrayFunction", &[id])
+            }
+            Self::UtfCodepointFunction(id) => {
+                output.call("compiled::CallTarget::UtfCodepointFunction", &[id])
+            }
+            Self::NilFunction(id) => output.call("compiled::CallTarget::NilFunction", &[id]),
         }
     }
 }
@@ -112,6 +185,21 @@ impl Emit for CallContractTarget {
             }
             Self::BoolValue(local) => {
                 output.call("compiled::CallContractTarget::BoolValue", &[local])
+            }
+            Self::FloatValue(local) => {
+                output.call("compiled::CallContractTarget::FloatValue", &[local])
+            }
+            Self::StringValue(local) => {
+                output.call("compiled::CallContractTarget::StringValue", &[local])
+            }
+            Self::BitArrayValue(local) => {
+                output.call("compiled::CallContractTarget::BitArrayValue", &[local])
+            }
+            Self::UtfCodepointValue(local) => {
+                output.call("compiled::CallContractTarget::UtfCodepointValue", &[local])
+            }
+            Self::NilValue(local) => {
+                output.call("compiled::CallContractTarget::NilValue", &[local])
             }
         }
     }
@@ -178,15 +266,78 @@ mod tests {
         TailContract,
     };
     use crate::plan::execution::function::{
-        BoolFunctionFunctionId, BoolFunctionId, IntFunctionFunctionId, IntFunctionId,
+        BitArrayFunctionFunctionId, BitArrayFunctionId, BoolFunctionFunctionId, BoolFunctionId,
+        FloatFunctionFunctionId, FloatFunctionId, IntFunctionFunctionId, IntFunctionId,
+        NilFunctionFunctionId, NilFunctionId, StringFunctionFunctionId, StringFunctionId,
+        UtfCodepointFunctionFunctionId, UtfCodepointFunctionId,
     };
     use crate::plan::execution::graph::{
-        BoolFunctionLocalId, BoolLocalId, FunctionCapture, FunctionTarget, IntFunctionLocalId,
-        IntLocalId, ParamLocal,
+        BitArrayFunctionLocalId, BoolFunctionLocalId, BoolLocalId, FloatFunctionLocalId,
+        FunctionCapture, FunctionTarget, IntFunctionLocalId, IntLocalId, NilFunctionLocalId,
+        ParamLocal, StringFunctionLocalId, UtfCodepointFunctionLocalId,
     };
     use crate::plan::execution::prepared::rust::Rust;
     use crate::plan::execution::type_::{FunctionType, ValueType};
     use crate::plan::{HostCallSite, SourceSpan};
+
+    #[test]
+    fn targets_preserve_each_exact_return_family() {
+        use crate::plan::execution::function::FunctionReturnFamily;
+        for (target, expected) in [
+            (CallTarget::Int(IntFunctionId(3)), FunctionReturnFamily::Int),
+            (
+                CallTarget::Bool(BoolFunctionId(3)),
+                FunctionReturnFamily::Bool,
+            ),
+            (
+                CallTarget::Float(FloatFunctionId(3)),
+                FunctionReturnFamily::Float,
+            ),
+            (
+                CallTarget::String(StringFunctionId(3)),
+                FunctionReturnFamily::String,
+            ),
+            (
+                CallTarget::BitArray(BitArrayFunctionId(3)),
+                FunctionReturnFamily::BitArray,
+            ),
+            (
+                CallTarget::UtfCodepoint(UtfCodepointFunctionId(3)),
+                FunctionReturnFamily::UtfCodepoint,
+            ),
+            (CallTarget::Nil(NilFunctionId(3)), FunctionReturnFamily::Nil),
+            (
+                CallTarget::IntFunction(IntFunctionFunctionId(3)),
+                FunctionReturnFamily::Function,
+            ),
+            (
+                CallTarget::BoolFunction(BoolFunctionFunctionId(3)),
+                FunctionReturnFamily::Function,
+            ),
+            (
+                CallTarget::FloatFunction(FloatFunctionFunctionId(3)),
+                FunctionReturnFamily::Function,
+            ),
+            (
+                CallTarget::StringFunction(StringFunctionFunctionId(3)),
+                FunctionReturnFamily::Function,
+            ),
+            (
+                CallTarget::BitArrayFunction(BitArrayFunctionFunctionId(3)),
+                FunctionReturnFamily::Function,
+            ),
+            (
+                CallTarget::UtfCodepointFunction(UtfCodepointFunctionFunctionId(3)),
+                FunctionReturnFamily::Function,
+            ),
+            (
+                CallTarget::NilFunction(NilFunctionFunctionId(3)),
+                FunctionReturnFamily::Function,
+            ),
+        ] {
+            assert_eq!(target.family(), expected);
+        }
+    }
 
     #[test]
     fn every_call_target_family_has_exact_rust_identity_and_sort_key() {
@@ -211,6 +362,56 @@ mod tests {
                 (3, 10),
                 "data::compiled::CallTarget::BoolFunction(data::function::BoolFunctionFunctionId(10))",
             ),
+            (
+                CallTarget::Float(FloatFunctionId(11)),
+                (4, 11),
+                "data::compiled::CallTarget::Float(data::function::FloatFunctionId(11))",
+            ),
+            (
+                CallTarget::String(StringFunctionId(12)),
+                (5, 12),
+                "data::compiled::CallTarget::String(data::function::StringFunctionId(12))",
+            ),
+            (
+                CallTarget::BitArray(BitArrayFunctionId(13)),
+                (6, 13),
+                "data::compiled::CallTarget::BitArray(data::function::BitArrayFunctionId(13))",
+            ),
+            (
+                CallTarget::UtfCodepoint(UtfCodepointFunctionId(14)),
+                (7, 14),
+                "data::compiled::CallTarget::UtfCodepoint(data::function::UtfCodepointFunctionId(14))",
+            ),
+            (
+                CallTarget::Nil(NilFunctionId(15)),
+                (8, 15),
+                "data::compiled::CallTarget::Nil(data::function::NilFunctionId(15))",
+            ),
+            (
+                CallTarget::FloatFunction(FloatFunctionFunctionId(16)),
+                (9, 16),
+                "data::compiled::CallTarget::FloatFunction(data::function::FloatFunctionFunctionId(16))",
+            ),
+            (
+                CallTarget::StringFunction(StringFunctionFunctionId(17)),
+                (10, 17),
+                "data::compiled::CallTarget::StringFunction(data::function::StringFunctionFunctionId(17))",
+            ),
+            (
+                CallTarget::BitArrayFunction(BitArrayFunctionFunctionId(18)),
+                (11, 18),
+                "data::compiled::CallTarget::BitArrayFunction(data::function::BitArrayFunctionFunctionId(18))",
+            ),
+            (
+                CallTarget::UtfCodepointFunction(UtfCodepointFunctionFunctionId(19)),
+                (12, 19),
+                "data::compiled::CallTarget::UtfCodepointFunction(data::function::UtfCodepointFunctionFunctionId(19))",
+            ),
+            (
+                CallTarget::NilFunction(NilFunctionFunctionId(20)),
+                (13, 20),
+                "data::compiled::CallTarget::NilFunction(data::function::NilFunctionFunctionId(20))",
+            ),
         ] {
             assert_eq!(target.key(), key);
             assert_eq!(target.index(), key.1);
@@ -228,6 +429,34 @@ mod tests {
             Rust::expression(&CallContractTarget::BoolValue(BoolFunctionLocalId(4))),
             "data::compiled::CallContractTarget::BoolValue(data::graph::BoolFunctionLocalId(4))"
         );
+    }
+
+    #[test]
+    fn every_additional_dynamic_target_keeps_its_exact_typed_local_identity() {
+        for (target, expected) in [
+            (
+                CallContractTarget::FloatValue(FloatFunctionLocalId(3)),
+                "data::compiled::CallContractTarget::FloatValue(data::graph::FloatFunctionLocalId(3))",
+            ),
+            (
+                CallContractTarget::StringValue(StringFunctionLocalId(3)),
+                "data::compiled::CallContractTarget::StringValue(data::graph::StringFunctionLocalId(3))",
+            ),
+            (
+                CallContractTarget::BitArrayValue(BitArrayFunctionLocalId(3)),
+                "data::compiled::CallContractTarget::BitArrayValue(data::graph::BitArrayFunctionLocalId(3))",
+            ),
+            (
+                CallContractTarget::UtfCodepointValue(UtfCodepointFunctionLocalId(3)),
+                "data::compiled::CallContractTarget::UtfCodepointValue(data::graph::UtfCodepointFunctionLocalId(3))",
+            ),
+            (
+                CallContractTarget::NilValue(NilFunctionLocalId(3)),
+                "data::compiled::CallContractTarget::NilValue(data::graph::NilFunctionLocalId(3))",
+            ),
+        ] {
+            assert_eq!(Rust::expression(&target), expected);
+        }
     }
 
     #[test]

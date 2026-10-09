@@ -83,6 +83,17 @@ type HostNativeViewCallback<Profile> = dyn Fn(&mut dyn HostCallRuntime<Profile>,
     + Sync;
 
 enum HostValueFunctionKind<Profile: HostProfile> {
+    Synchronous(SynchronousValueFunction<Profile>),
+    Continuing(Arc<HostContinuingCallback<Profile>>),
+}
+
+/// An implementation phase selected by its typed registration owner, never by
+/// running a callback or changing its canonical function identity.
+pub(crate) struct SynchronousValueFunction<Profile: HostProfile> {
+    kind: SynchronousValueFunctionKind<Profile>,
+}
+
+enum SynchronousValueFunctionKind<Profile: HostProfile> {
     Int(HostIntFunction<Profile>),
     Float(HostFloatFunction<Profile>),
     String(HostStringFunction<Profile>),
@@ -92,7 +103,6 @@ enum HostValueFunctionKind<Profile: HostProfile> {
     Nil(HostNilFunction<Profile>),
     Scoped(Arc<HostScopedCallback<Profile>>),
     Retained(Arc<RetainedCallbacks<Profile>>),
-    Continuing(Arc<HostContinuingCallback<Profile>>),
 }
 
 pub(crate) type HostRetainedCallback =
@@ -223,35 +233,47 @@ impl<Profile: HostProfile> Clone for HostValueFunction<Profile> {
     fn clone(&self) -> Self {
         Self {
             kind: match &self.kind {
-                HostValueFunctionKind::Int(function) => {
-                    HostValueFunctionKind::Int(function.clone())
-                }
-                HostValueFunctionKind::Float(function) => {
-                    HostValueFunctionKind::Float(function.clone())
-                }
-                HostValueFunctionKind::String(function) => {
-                    HostValueFunctionKind::String(function.clone())
-                }
-                HostValueFunctionKind::BitArray(function) => {
-                    HostValueFunctionKind::BitArray(function.clone())
-                }
-                HostValueFunctionKind::UtfCodepoint(function) => {
-                    HostValueFunctionKind::UtfCodepoint(function.clone())
-                }
-                HostValueFunctionKind::Bool(function) => {
-                    HostValueFunctionKind::Bool(function.clone())
-                }
-                HostValueFunctionKind::Nil(function) => {
-                    HostValueFunctionKind::Nil(function.clone())
-                }
-                HostValueFunctionKind::Scoped(function) => {
-                    HostValueFunctionKind::Scoped(Arc::clone(function))
-                }
-                HostValueFunctionKind::Retained(function) => {
-                    HostValueFunctionKind::Retained(Arc::clone(function))
+                HostValueFunctionKind::Synchronous(function) => {
+                    HostValueFunctionKind::Synchronous(function.clone())
                 }
                 HostValueFunctionKind::Continuing(function) => {
                     HostValueFunctionKind::Continuing(Arc::clone(function))
+                }
+            },
+        }
+    }
+}
+
+impl<Profile: HostProfile> Clone for SynchronousValueFunction<Profile> {
+    fn clone(&self) -> Self {
+        Self {
+            kind: match &self.kind {
+                SynchronousValueFunctionKind::Int(function) => {
+                    SynchronousValueFunctionKind::Int(function.clone())
+                }
+                SynchronousValueFunctionKind::Float(function) => {
+                    SynchronousValueFunctionKind::Float(function.clone())
+                }
+                SynchronousValueFunctionKind::String(function) => {
+                    SynchronousValueFunctionKind::String(function.clone())
+                }
+                SynchronousValueFunctionKind::BitArray(function) => {
+                    SynchronousValueFunctionKind::BitArray(function.clone())
+                }
+                SynchronousValueFunctionKind::UtfCodepoint(function) => {
+                    SynchronousValueFunctionKind::UtfCodepoint(function.clone())
+                }
+                SynchronousValueFunctionKind::Bool(function) => {
+                    SynchronousValueFunctionKind::Bool(function.clone())
+                }
+                SynchronousValueFunctionKind::Nil(function) => {
+                    SynchronousValueFunctionKind::Nil(function.clone())
+                }
+                SynchronousValueFunctionKind::Scoped(function) => {
+                    SynchronousValueFunctionKind::Scoped(Arc::clone(function))
+                }
+                SynchronousValueFunctionKind::Retained(function) => {
+                    SynchronousValueFunctionKind::Retained(Arc::clone(function))
                 }
             },
         }
@@ -290,7 +312,9 @@ impl<Profile: HostProfile> HostFunctionImplementation<Profile> {
 
     pub(super) fn scoped_callback(scoped: Arc<HostScopedCallback<Profile>>) -> Self {
         Self::Value(HostValueFunction {
-            kind: HostValueFunctionKind::Scoped(scoped),
+            kind: HostValueFunctionKind::Synchronous(SynchronousValueFunction {
+                kind: SynchronousValueFunctionKind::Scoped(scoped),
+            }),
         })
     }
 
@@ -310,7 +334,12 @@ impl<Profile: HostProfile> HostFunctionImplementation<Profile> {
         retained: Arc<HostRetainedCallback>,
     ) -> Self {
         Self::Value(HostValueFunction {
-            kind: HostValueFunctionKind::Retained(Arc::new(RetainedCallbacks { scoped, retained })),
+            kind: HostValueFunctionKind::Synchronous(SynchronousValueFunction {
+                kind: SynchronousValueFunctionKind::Retained(Arc::new(RetainedCallbacks {
+                    scoped,
+                    retained,
+                })),
+            }),
         })
     }
 }
@@ -332,7 +361,9 @@ impl<Profile: HostProfile> HostValueFunction<Profile> {
         + 'static,
     ) -> Self {
         Self {
-            kind: HostValueFunctionKind::Scoped(Arc::new(function)),
+            kind: HostValueFunctionKind::Synchronous(SynchronousValueFunction {
+                kind: SynchronousValueFunctionKind::Scoped(Arc::new(function)),
+            }),
         }
     }
 
@@ -348,51 +379,69 @@ impl<Profile: HostProfile> HostValueFunction<Profile> {
     }
 
     pub(crate) fn retained(&self) -> Option<Arc<HostRetainedCallback>> {
+        self.synchronous()?.retained()
+    }
+
+    pub(crate) fn synchronous(&self) -> Option<&SynchronousValueFunction<Profile>> {
         match &self.kind {
-            HostValueFunctionKind::Retained(callbacks) => Some(Arc::clone(&callbacks.retained)),
-            _ => None,
+            HostValueFunctionKind::Synchronous(function) => Some(function),
+            HostValueFunctionKind::Continuing(_) => None,
         }
     }
 
     fn int(function: HostIntFunction<Profile>) -> Self {
         Self {
-            kind: HostValueFunctionKind::Int(function),
+            kind: HostValueFunctionKind::Synchronous(SynchronousValueFunction {
+                kind: SynchronousValueFunctionKind::Int(function),
+            }),
         }
     }
 
     fn float(function: HostFloatFunction<Profile>) -> Self {
         Self {
-            kind: HostValueFunctionKind::Float(function),
+            kind: HostValueFunctionKind::Synchronous(SynchronousValueFunction {
+                kind: SynchronousValueFunctionKind::Float(function),
+            }),
         }
     }
 
     fn string(function: HostStringFunction<Profile>) -> Self {
         Self {
-            kind: HostValueFunctionKind::String(function),
+            kind: HostValueFunctionKind::Synchronous(SynchronousValueFunction {
+                kind: SynchronousValueFunctionKind::String(function),
+            }),
         }
     }
 
     fn bit_array(function: HostBitArrayFunction<Profile>) -> Self {
         Self {
-            kind: HostValueFunctionKind::BitArray(function),
+            kind: HostValueFunctionKind::Synchronous(SynchronousValueFunction {
+                kind: SynchronousValueFunctionKind::BitArray(function),
+            }),
         }
     }
 
     fn utf_codepoint(function: HostUtfCodepointFunction<Profile>) -> Self {
         Self {
-            kind: HostValueFunctionKind::UtfCodepoint(function),
+            kind: HostValueFunctionKind::Synchronous(SynchronousValueFunction {
+                kind: SynchronousValueFunctionKind::UtfCodepoint(function),
+            }),
         }
     }
 
     fn bool_(function: HostBoolFunction<Profile>) -> Self {
         Self {
-            kind: HostValueFunctionKind::Bool(function),
+            kind: HostValueFunctionKind::Synchronous(SynchronousValueFunction {
+                kind: SynchronousValueFunctionKind::Bool(function),
+            }),
         }
     }
 
     fn nil(function: HostNilFunction<Profile>) -> Self {
         Self {
-            kind: HostValueFunctionKind::Nil(function),
+            kind: HostValueFunctionKind::Synchronous(SynchronousValueFunction {
+                kind: SynchronousValueFunctionKind::Nil(function),
+            }),
         }
     }
 
@@ -400,40 +449,62 @@ impl<Profile: HostProfile> HostValueFunction<Profile> {
         &self,
         runtime: &mut dyn HostCallRuntime<Profile>,
     ) -> Result<HostCallReturn, HostCallError> {
+        match &self.kind {
+            HostValueFunctionKind::Synchronous(function) => {
+                function.start(runtime).map(HostCallReturn::Immediate)
+            }
+            HostValueFunctionKind::Continuing(function) => {
+                function(runtime).map(HostCallReturn::Continuing)
+            }
+        }
+    }
+}
+
+impl<Profile: HostProfile> SynchronousValueFunction<Profile> {
+    fn retained(&self) -> Option<Arc<HostRetainedCallback>> {
+        match &self.kind {
+            SynchronousValueFunctionKind::Retained(callbacks) => {
+                Some(Arc::clone(&callbacks.retained))
+            }
+            _ => None,
+        }
+    }
+
+    pub(crate) fn start(
+        &self,
+        runtime: &mut dyn HostCallRuntime<Profile>,
+    ) -> Result<HostValueToken, HostCallError> {
         let value = match &self.kind {
-            HostValueFunctionKind::Int(function) => {
+            SynchronousValueFunctionKind::Int(function) => {
                 HostScopedValue::Int(function.call_runtime(runtime)?)
             }
-            HostValueFunctionKind::Float(function) => {
+            SynchronousValueFunctionKind::Float(function) => {
                 HostScopedValue::Float(function.call_runtime(runtime)?)
             }
-            HostValueFunctionKind::String(function) => {
+            SynchronousValueFunctionKind::String(function) => {
                 HostScopedValue::String(function.call_runtime(runtime)?)
             }
-            HostValueFunctionKind::BitArray(function) => {
+            SynchronousValueFunctionKind::BitArray(function) => {
                 HostScopedValue::BitArray(function.call_runtime(runtime)?)
             }
-            HostValueFunctionKind::UtfCodepoint(function) => {
+            SynchronousValueFunctionKind::UtfCodepoint(function) => {
                 HostScopedValue::UtfCodepoint(function.call_runtime(runtime)?)
             }
-            HostValueFunctionKind::Bool(function) => {
+            SynchronousValueFunctionKind::Bool(function) => {
                 HostScopedValue::Bool(function.call_runtime(runtime)?)
             }
-            HostValueFunctionKind::Nil(function) => {
+            SynchronousValueFunctionKind::Nil(function) => {
                 function.call_runtime(runtime)?;
                 HostScopedValue::Nil
             }
-            HostValueFunctionKind::Scoped(function) => {
-                return function(runtime).map(HostCallReturn::Immediate);
+            SynchronousValueFunctionKind::Scoped(function) => {
+                return function(runtime);
             }
-            HostValueFunctionKind::Retained(function) => {
-                return (function.scoped)(runtime).map(HostCallReturn::Immediate);
-            }
-            HostValueFunctionKind::Continuing(function) => {
-                return function(runtime).map(HostCallReturn::Continuing);
+            SynchronousValueFunctionKind::Retained(function) => {
+                return (function.scoped)(runtime);
             }
         };
-        Ok(HostCallReturn::Immediate(runtime.complete(value)))
+        Ok(runtime.complete(value))
     }
 }
 
@@ -468,6 +539,22 @@ mod tests {
     use crate::host::{HostCallError, HostFailure, expect_value_implementation};
     use crate::runtime::execution::Continuation;
     use std::convert::Infallible;
+
+    #[test]
+    fn continuing_callbacks_have_no_synchronous_or_retained_entry() {
+        let function = super::HostValueFunction::<TestHostProfile>::continuing(|_| {
+            Ok(Continuation::new(std::future::ready(Err(
+                crate::runtime::work::Cancelled,
+            ))))
+        });
+        assert!(function.synchronous().is_none());
+        assert!(function.retained().is_none());
+        let mut state = TestRunState::default();
+        let mut runtime =
+            TestHostCallRuntime::new(&mut state, CallArguments::new(Vec::new(), Vec::new()));
+        function.start(&mut runtime).unwrap();
+        assert_eq!(runtime.completed(), None);
+    }
 
     #[test]
     fn retained_registration_clones_both_entries_and_preserves_their_result_and_failure() {

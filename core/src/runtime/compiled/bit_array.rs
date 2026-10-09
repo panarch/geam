@@ -43,6 +43,41 @@ impl BitArrayValues {
         ))
     }
 
+    pub(in crate::runtime) fn load_owned(
+        &mut self,
+        ints: &[i128],
+        bools: &[bool],
+        inputs: impl IntoIterator<Item = BitArrayValue>,
+    ) {
+        self.clear();
+        self.ints.extend_from_slice(ints);
+        self.bools.extend_from_slice(bools);
+        for input in inputs {
+            self.push_input(input);
+        }
+    }
+
+    pub fn take_bit_arrays(&mut self) -> Vec<BitArrayValue> {
+        let values = self
+            .bit_arrays
+            .iter()
+            .map(|range| self.materialize(*range))
+            .collect();
+        self.release_inputs();
+        values
+    }
+
+    pub fn finish(&mut self, range: BitArrayRange) -> BitArrayValue {
+        let value = self.materialize(range);
+        self.release_inputs();
+        value
+    }
+
+    pub fn release_inputs(&mut self) {
+        self.bit_arrays.clear();
+        self.backings.clear();
+    }
+
     pub(in crate::runtime) fn push_input(&mut self, input: BitArrayValue) {
         self.bit_arrays.push(BitArrayRange {
             backing: self.backings.len(),
@@ -177,5 +212,33 @@ mod tests {
             ),
             Some(9)
         );
+    }
+    #[test]
+    fn owned_call_checkpoints_and_completion_keep_nonbyte_ranges_and_release_backings() {
+        let input = BitArrayValue::try_from_parts(vec![0xE5, 0x58], 13).unwrap();
+        let mut values = BitArrayValues::default();
+        values.load_owned(
+            &[7],
+            &[true],
+            [input.clone(), BitArrayValue::from_bytes(vec![0])],
+        );
+        let sliced = values.bit_arrays[0].slice(2, 11).unwrap();
+        values.bit_arrays = vec![sliced, sliced];
+        let capacity = values.backings.capacity();
+        let checkpoint = values.take_bit_arrays();
+        assert_eq!(checkpoint, vec![input.bit_slice(2, 11).unwrap(); 2]);
+        assert!(values.backings.is_empty());
+        assert!(values.bit_arrays.is_empty());
+        assert_eq!(values.backings.capacity(), capacity);
+        assert_eq!(values.ints, [7]);
+        assert_eq!(values.bools, [true]);
+        values.load_owned(&[9], &[false], checkpoint);
+        let range = values.bit_arrays[1].slice(1, 10).unwrap();
+        let result = values.finish(range);
+        assert_eq!(result, input.bit_slice(3, 10).unwrap());
+        assert!(values.backings.is_empty());
+        assert!(values.bit_arrays.is_empty());
+        assert_eq!(values.ints, [9]);
+        assert_eq!(values.bools, [false]);
     }
 }

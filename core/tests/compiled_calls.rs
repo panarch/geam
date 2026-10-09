@@ -134,7 +134,13 @@ fn limited_boolean_bridge(
     inputs: CallInputs<'_>,
     storage: &mut CallStorage,
 ) -> Option<Box<dyn CallExecution>> {
-    let row = BOOLEAN_BRIDGE.program.compiled.function_calls.first()?;
+    let target = CallTarget::Bool(BOOLEAN_BRIDGE.entries.bools[0].function);
+    let row = BOOLEAN_BRIDGE
+        .program
+        .compiled
+        .function_calls
+        .iter()
+        .find(|row| row.function == target)?;
     let CompiledImplementation::FunctionCalls(implementation) = &row.implementation else {
         return None;
     };
@@ -143,11 +149,12 @@ fn limited_boolean_bridge(
 }
 
 #[test]
-fn terminal_bridges_preserve_zero_budget_yields_and_single_step_resumption() {
+fn connected_boolean_calls_preserve_zero_budget_yields_and_single_step_resumption() {
     const BASE: data::ModuleArtifact<Infallible> = include!("fixtures/prepared/boolean_bridge.rs");
     let mut artifact = BASE;
     let original_rows = artifact.program.compiled.function_calls.len();
-    assert_eq!(original_rows, 1);
+    assert_eq!(original_rows, 2);
+    let target = CallTarget::Bool(artifact.entries.bools[0].function);
     artifact.program.compiled.function_calls = artifact
         .program
         .compiled
@@ -169,7 +176,11 @@ fn terminal_bridges_preserve_zero_budget_yields_and_single_step_resumption() {
                         creations: implementation.creations.clone(),
                         returns: implementation.returns.clone(),
                         tails: implementation.tails.clone(),
-                        start: limited_boolean_bridge,
+                        start: if row.function == target {
+                            limited_boolean_bridge
+                        } else {
+                            implementation.start
+                        },
                     })
                     .into(),
                 ),
@@ -190,9 +201,18 @@ fn terminal_bridges_preserve_zero_budget_yields_and_single_step_resumption() {
     for _ in 0..2 {
         BRIDGE_TRACE.lock().unwrap().clear();
         assert!(module.call(&verify, (), &mut Vec::new()).unwrap());
+        // Call, two String literals, equality and Return consume five steps.
+        // Return resumes the assertion's canonical checkpoint in the same grant.
         assert_eq!(
             BRIDGE_TRACE.lock().unwrap().as_slice(),
-            [(0, 0, "yield"), (1, 1, "bridge"), (1, 0, "canonical")]
+            [
+                (0, 0, "yield"),
+                (1, 1, "yield"),
+                (1, 1, "yield"),
+                (1, 1, "yield"),
+                (1, 1, "yield"),
+                (1, 1, "canonical"),
+            ]
         );
     }
 }

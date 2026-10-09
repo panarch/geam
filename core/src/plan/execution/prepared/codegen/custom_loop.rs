@@ -137,7 +137,7 @@ impl<'graph> CustomLoopInstruction<'graph> {
     }
 }
 
-impl<Graph: ExecutionGraphProfile> FunctionCodegen<'_, Graph> {
+impl<Graph: ExecutionGraphProfile> FunctionCodegen<'_, '_, Graph> {
     pub(super) fn loop_edge_inputs(
         &self,
         source: &mut Code,
@@ -285,7 +285,7 @@ impl<Graph: ExecutionGraphProfile> FunctionCodegen<'_, Graph> {
     }
 }
 
-impl<Graph: ExecutionGraphProfile> FunctionCodegen<'_, Graph> {
+impl<Graph: ExecutionGraphProfile> FunctionCodegen<'_, '_, Graph> {
     pub(super) fn write_callback(&self, source: &mut Code, returns: &CallbackReturns) {
         let function = self;
         let name = &function.name;
@@ -399,8 +399,8 @@ pub fn main() { fold([Item(2)], 0, add) }
         )
         .unwrap();
         let function = FunctionCodegen {
-            name: "fold".into(),
-            shape,
+            name: "fold",
+            shape: &shape,
         };
         let point = function.shape.checkpoints[function.entry()];
         assert_eq!(

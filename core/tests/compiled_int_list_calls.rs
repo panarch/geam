@@ -105,7 +105,7 @@ mod budget_trace {
             let consumed = offered - remaining;
             *budget -= consumed;
             let boundary = match &progress {
-                CallProgress::Interpreted { point, values } => Some(Boundary {
+                CallProgress::Interpreted { point, values, .. } => Some(Boundary {
                     point: *point,
                     list_lengths: values.int_lists.iter().map(|list| list.len()).collect(),
                     ints: values.ints.iter().map(|value| value.small()).collect(),
@@ -125,20 +125,8 @@ mod budget_trace {
         }
     }
 
-    pub(super) fn fold_target() -> CallTarget {
-        let target = CallTarget::Int(LIST_CALLS.module.entries.ints[0].function);
-        let row = LIST_CALLS
-            .module
-            .program
-            .compiled
-            .function_calls
-            .iter()
-            .find(|row| row.function == target)
-            .unwrap();
-        let CompiledImplementation::FunctionCalls(body) = &row.implementation else {
-            panic!("the wrapper must have its generated entry");
-        };
-        body.tails[0].target
+    pub(super) fn wrapper_target() -> CallTarget {
+        CallTarget::Int(LIST_CALLS.module.entries.ints[0].function)
     }
 
     pub(super) fn start(
@@ -152,7 +140,7 @@ mod budget_trace {
             .compiled
             .function_calls
             .iter()
-            .find(|row| row.function == fold_target())
+            .find(|row| row.function == wrapper_target())
             .unwrap();
         let CompiledImplementation::FunctionCalls(body) = &row.implementation else {
             panic!("the fold must have its generated entry");
@@ -312,12 +300,12 @@ fn public_generation_keeps_the_exact_list_and_nested_call_contract() {
 #[cfg(feature = "tokio")]
 #[test]
 fn actual_list_calls_charge_every_boundary_and_fall_back_before_a_big_head() {
-    use budget_trace::{TRACE, Trace, fold_target};
+    use budget_trace::{TRACE, Trace, wrapper_target};
     use data::compiled::{CompiledFunction, CompiledImplementation, FunctionCallsImplementation};
     use geam_core::execution::TokioHost;
     const BASE: data::HostedModuleArtifact = include!("fixtures/prepared/int_list_calls.rs");
     let mut artifact = BASE;
-    let target = fold_target();
+    let target = wrapper_target();
     artifact.module.program.compiled.function_calls = artifact
         .module
         .program
@@ -373,6 +361,8 @@ fn actual_list_calls_charge_every_boundary_and_fall_back_before_a_big_head() {
                 // Each item charges EmptyTest, Index, Tail, the accumulation call,
                 // the transform call, its region and Return, Add, Return and backedge.
                 // The final empty test and fold Return add two independent steps.
+                // The now-connected wrapper adds two closures, Constant(0), Tail
+                // and the callee entry: five steps paid once per invocation.
                 for count in [0, 1, 3, 100] {
                     for allowance in (1..=12).chain([31, 1024]) {
                         *TRACE.lock().unwrap() = Trace {
@@ -388,7 +378,7 @@ fn actual_list_calls_charge_every_boundary_and_fall_back_before_a_big_head() {
                             BigInt::from(7 * count)
                         );
                         let trace = TRACE.lock().unwrap();
-                        let expected_steps = 2 + 10 * count;
+                        let expected_steps = 7 + 10 * count;
                         let mut completed = 0;
                         assert_eq!(trace.charges[0].offered, 0);
                         for charge in &trace.charges {
@@ -421,8 +411,8 @@ fn actual_list_calls_charge_every_boundary_and_fall_back_before_a_big_head() {
                 let trace = TRACE.lock().unwrap();
                 let first = &trace.charges[0];
                 assert_eq!(
-                    first.consumed, 1,
-                    "only the empty test precedes the failed Index preflight"
+                    first.consumed, 6,
+                    "the wrapper and empty test precede the failed Index preflight"
                 );
                 let boundary = first.boundary.as_ref().unwrap();
                 assert_eq!(boundary.point.block, data::graph::BlockId(2));

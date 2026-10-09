@@ -98,7 +98,7 @@ impl<'graph> StringOperation<'graph> {
     }
 }
 
-impl<Graph: ExecutionGraphProfile> FunctionCodegen<'_, Graph> {
+impl<Graph: ExecutionGraphProfile> FunctionCodegen<'_, '_, Graph> {
     pub(super) fn string_match(
         &self,
         source: &mut Code,
@@ -269,8 +269,8 @@ pub fn main() { check("λtail") }
             let shape = CompiledShape::inspect(plan.int_function(IntFunctionId(1)).body()).unwrap();
             let point = shape.checkpoints[shape.start(shape.graph.entry())];
             let function = FunctionCodegen {
-                name: "string_int_1".into(),
-                shape,
+                name: "string_int_1",
+                shape: &shape,
             };
             let view = string_match(&function.shape.block(point.block).terminator);
             let mut code = Code::default();
@@ -363,8 +363,8 @@ pub fn main() { check("λtail") }
         let shape = CompiledShape::inspect(plan.int_function(IntFunctionId(0)).body()).unwrap();
         let point = shape.checkpoints[shape.start(shape.graph.entry())];
         let function = FunctionCodegen {
-            name: "string_int_0".into(),
-            shape,
+            name: "string_int_0",
+            shape: &shape,
         };
         for (instruction, expected) in [
             (
@@ -407,8 +407,8 @@ pub fn main() { examine("λtail") }
         let shape = CompiledShape::inspect(plan.int_function(IntFunctionId(1)).body()).unwrap();
         let point = shape.checkpoints[shape.start(shape.graph.entry())];
         let function = FunctionCodegen {
-            name: "string_int_1".into(),
-            shape,
+            name: "string_int_1",
+            shape: &shape,
         };
         let view = string_match(&function.shape.block(point.block).terminator);
         let mut code = Code::default();
@@ -435,8 +435,8 @@ pub fn main() { examine("λtail") }
         let shape = CompiledShape::inspect(plan.int_function(IntFunctionId(0)).body()).unwrap();
         let point = shape.checkpoints[shape.start(shape.graph.entry()) + 1];
         let function = FunctionCodegen {
-            name: "string_int_0".into(),
-            shape,
+            name: "string_int_0",
+            shape: &shape,
         };
         let view = string_match(&function.shape.block(point.block).terminator);
         let mut code = Code::default();

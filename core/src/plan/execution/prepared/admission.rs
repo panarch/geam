@@ -148,10 +148,10 @@ pub(super) fn hosted_entry<Profile: crate::HostProfile>(
     entry::main(&artifact.program.main, &catalog, &types)
         .map_err(|error| PreparedError::from(Error::<hosts::NativeError>::Main(error)))?;
     Ok(crate::HostedExecution::from_program(
-        crate::plan::execution::HostedProgram {
-            program: artifact.program.execution(compiled_callback_bodies),
-            host_functions: hosts.into_tables(),
-        },
+        crate::plan::execution::HostedProgram::new(
+            artifact.program.execution(compiled_callback_bodies),
+            hosts.into_tables(),
+        ),
     ))
 }
 
@@ -246,9 +246,13 @@ where
     };
     hosts.tables(&context).map_err(Error::Hosts)?;
     functions::all(&program.functions, &context, hosts).map_err(Error::Functions)?;
-    let compiled_callback_bodies =
-        compiled::admit(&program.compiled, &program.functions, &program.custom_types)
-            .map_err(Error::Compiled)?;
+    let compiled_callback_bodies = compiled::admit(
+        &program.compiled,
+        &program.functions,
+        &program.custom_types,
+        &program.value_shapes,
+    )
+    .map_err(Error::Compiled)?;
     hosts.callables(&context).map_err(Error::Hosts)?;
     constant::all(&program.constants, &context).map_err(Error::Constants)?;
     Ok((types, catalog, compiled_callback_bodies))
@@ -349,12 +353,12 @@ impl<Profile: crate::HostProfile> AdmittedHostedModule<Profile> {
         crate::plan::execution::storage::Table<crate::plan::execution::LibraryNativeConstruction>,
     ) {
         let artifact = self.program.artifact;
-        let execution = crate::plan::execution::HostedProgram {
-            program: artifact
+        let execution = crate::plan::execution::HostedProgram::new(
+            artifact
                 .program
                 .execution(self.program.compiled_callback_bodies),
-            host_functions: self.hosts,
-        };
+            self.hosts,
+        );
         (
             crate::HostedExecution::from_program(execution),
             artifact.entries.borrowed(),
@@ -1939,23 +1943,27 @@ pub fn main() { let assert 3 = choose(Ok(False)) Nil }
         for (format, expected) in [
             (
                 1,
-                "prepared format 1 is incompatible with format 25; regenerate the prepared program",
+                "prepared format 1 is incompatible with format 29; regenerate the prepared program",
+            ),
+            (
+                8,
+                "prepared format 8 is incompatible with format 29; regenerate the prepared program",
             ),
             (
                 19,
-                "prepared format 19 is incompatible with format 25; regenerate the prepared program",
+                "prepared format 19 is incompatible with format 29; regenerate the prepared program",
             ),
             (
                 20,
-                "prepared format 20 is incompatible with format 25; regenerate the prepared program",
+                "prepared format 20 is incompatible with format 29; regenerate the prepared program",
             ),
             (
                 22,
-                "prepared format 22 is incompatible with format 25; regenerate the prepared program",
+                "prepared format 22 is incompatible with format 29; regenerate the prepared program",
             ),
             (
                 23,
-                "prepared format 23 is incompatible with format 25; regenerate the prepared program",
+                "prepared format 23 is incompatible with format 29; regenerate the prepared program",
             ),
         ] {
             artifact.format = format;
@@ -2073,7 +2081,7 @@ pub fn main() { let assert 3 = choose(Ok(False)) Nil }
             (
                 Change::Format,
                 Some(
-                    "prepared format 1 is incompatible with format 25; regenerate the prepared program",
+                    "prepared format 1 is incompatible with format 29; regenerate the prepared program",
                 ),
             ),
             (
@@ -2298,7 +2306,7 @@ pub fn main() { let assert 3 = choose(Ok(False)) Nil }
             (
                 Change::Format,
                 Some(
-                    "prepared format 1 is incompatible with format 25; regenerate the prepared program",
+                    "prepared format 1 is incompatible with format 29; regenerate the prepared program",
                 ),
             ),
             (
