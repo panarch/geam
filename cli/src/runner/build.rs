@@ -73,7 +73,7 @@ impl ExecutableBuilder for SystemCargo {
         progress: &mut Progress<'_>,
     ) -> Result<Utf8PathBuf, CliError> {
         let program = project_root.join(PROGRAM_SOURCE);
-        read_generated_source(&program)?;
+        let current = read_generated_source(&program)?;
         let temporary = temporary_program(&project_root.join("build/geam"))?;
         progress.report(format_args!("Preparing executable data for {module}"))?;
         run_checked_with_progress(
@@ -81,7 +81,7 @@ impl ExecutableBuilder for SystemCargo {
             progress,
             Stdio::inherit(),
         )?;
-        // The helper writes a complete source file; publish it only after success.
+        // The helper writes a complete source file; publish changes only after success.
         let prepared =
             std::fs::read_to_string(&temporary).map_err(|error| CliError::PreparedProgramRead {
                 path: temporary.to_path_buf(),
@@ -93,12 +93,14 @@ impl ExecutableBuilder for SystemCargo {
                 "preparer did not write generated program data",
             ));
         }
-        temporary
-            .persist(&program)
-            .map_err(|error| CliError::FileWrite {
-                path: program,
-                error: error.error,
-            })?;
+        if current.as_deref() != Some(prepared.as_str()) {
+            temporary
+                .persist(&program)
+                .map_err(|error| CliError::FileWrite {
+                    path: program,
+                    error: error.error,
+                })?;
+        }
         let metadata = SystemCargoMetadata.load(
             project_root,
             &project_root.join("Cargo.toml"),
@@ -247,9 +249,10 @@ mod tests {
     use cargo_metadata::PackageId;
     use serde_json::json;
     use std::ffi::OsStr;
-    use std::fs;
+    use std::fs::{self, File, FileTimes};
     use std::io::{self, Write};
     use std::process::Command;
+    use std::time::{Duration, SystemTime};
 
     #[test]
     fn helper_and_application_share_package_lock_target_and_profile() {
@@ -452,7 +455,7 @@ mod tests {
     }
 
     #[test]
-    fn builds_real_cargo_targets_and_does_not_report_stale_artifacts_on_failure() {
+    fn builds_real_cargo_targets_and_preserves_identical_prepared_sources() {
         let directory = tempfile::tempdir().unwrap();
         let root = Utf8PathBuf::from_path_buf(directory.path().canonicalize().unwrap()).unwrap();
         fs::create_dir_all(root.join("build/geam")).unwrap();
@@ -534,6 +537,7 @@ fn main() {
                 matches!(error, CliError::PreparationProgressIo(error) if error.kind() == io::ErrorKind::BrokenPipe)
             );
         }
+        let program = root.join("build/geam/program.rs");
         for (profile, name, text) in [
             (BuildProfile::Debug, "debug", "root:true\n"),
             (BuildProfile::Debug, "debug", "tools/report:true\n"),
@@ -559,8 +563,29 @@ fn main() {
             assert_eq!(run.stdout, text.as_bytes());
             assert!(run.stderr.is_empty());
             assert_eq!(fs::read(root.join("Cargo.lock")).unwrap(), original_lock);
+
+            let prepared = fs::read(&program).unwrap();
+            // An old timestamp makes unnecessary replacement visible without sleeping.
+            File::options()
+                .write(true)
+                .open(&program)
+                .unwrap()
+                .set_times(
+                    FileTimes::new()
+                        .set_modified(SystemTime::UNIX_EPOCH + Duration::from_secs(1_000_000_000)),
+                )
+                .unwrap();
+            let modified = fs::metadata(&program).unwrap().modified().unwrap();
+            let repeated = SystemCargo
+                .build(&root, module, "my_app", profile, &mut Progress::Hidden)
+                .unwrap();
+            assert_eq!(repeated, path);
+            assert_eq!(fs::read(&program).unwrap(), prepared);
+            assert_eq!(
+                fs::metadata(&program).unwrap().modified().unwrap(),
+                modified
+            );
         }
-        let program = root.join("build/geam/program.rs");
         let previous = fs::read(&program).unwrap();
         for (module, expected) in [
             ("fail", "process"),
