@@ -129,12 +129,22 @@ impl PlanContext<'_> {
 
     pub(in crate::planner) fn custom_pattern_constructor(
         &self,
-        type_: &Type,
+        source_shape: ValueShape,
         constructor: &PatternConstructor,
         field_types: Vec<ValueType>,
     ) -> Result<ResolvedCustomConstructor, PlanError> {
-        let source_shape =
-            self.custom_constructor_source_shape(type_, &constructor.module, &constructor.name)?;
+        let ValueShape::Custom(source_shape) = source_shape else {
+            return Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::CustomType {
+                    package: EcoString::new(),
+                    module: constructor.module.clone(),
+                    name: constructor.name.clone(),
+                    reason: Box::new(InvalidCustomTypeReason::ConstructorType {
+                        actual: source_shape.value_type(),
+                    }),
+                },
+            });
+        };
         let mut constructor = self.custom_constructor_from_parts(
             source_shape.type_().clone(),
             constructor.name.clone(),
@@ -2533,7 +2543,7 @@ mod tests {
         };
         assert_eq!(
             context.custom_pattern_constructor(
-                type_::generic_var(0).as_ref(),
+                context.value_shape_in_scope(type_::generic_var(0).as_ref()),
                 &pattern,
                 Vec::new()
             ),
@@ -2549,7 +2559,7 @@ mod tests {
             }),
         );
         assert_eq!(
-            context.custom_pattern_constructor(type_::int().as_ref(), &pattern, Vec::new()),
+            context.custom_pattern_constructor(ValueShape::Int, &pattern, Vec::new()),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::CustomType {
                     package: "".into(),

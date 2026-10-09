@@ -3,9 +3,10 @@ use crate::planner::context::PlanContext;
 use crate::planner::error::{
     InvalidPatternShapeReason, InvalidTypedAstReason, PatternKind, PlanError,
 };
+use crate::planner::type_parameter::TypeParameterScope;
 use ecow::EcoString;
 use gleam_compiler_core::analyse::Inferred;
-use gleam_compiler_core::ast::{Pattern, TailPattern, TypedPattern};
+use gleam_compiler_core::ast::{CallArg, Pattern, TailPattern, TypedPattern};
 use gleam_compiler_core::type_::{PRELUDE_MODULE_NAME, PatternConstructor, Type};
 
 pub(in crate::planner) fn validate_pattern(
@@ -13,18 +14,35 @@ pub(in crate::planner) fn validate_pattern(
     expected: &ValueShape,
     context: &PlanContext<'_>,
 ) -> Result<(), PlanError> {
+    let mut parameters = context.type_parameters().clone();
+    validate_pattern_in_scope(pattern, expected, context, &mut parameters)
+}
+
+fn validate_pattern_in_scope(
+    pattern: &TypedPattern,
+    expected: &ValueShape,
+    context: &PlanContext<'_>,
+    parameters: &mut TypeParameterScope,
+) -> Result<(), PlanError> {
     match pattern {
         Pattern::Int { .. } => validate_pattern_type(expected, ValueShape::Int),
         Pattern::Float { .. } => validate_pattern_type(expected, ValueShape::Float),
         Pattern::String { .. } | Pattern::StringPrefix { .. } => {
             validate_pattern_type(expected, ValueShape::String)
         }
-        Pattern::Variable { type_, .. } | Pattern::Discard { type_, .. } => {
-            validate_pattern_type(expected, context.value_shape_in_scope(type_.as_ref()))
+        Pattern::Variable { type_, .. } | Pattern::Discard { type_, .. } => validate_pattern_type(
+            expected,
+            context.value_shape_with_parameters(type_.as_ref(), parameters),
+        ),
+        Pattern::Assign { pattern, .. } => {
+            validate_pattern_in_scope(pattern, expected, context, parameters)
         }
-        Pattern::Assign { pattern, .. } => validate_pattern(pattern, expected, context),
-        Pattern::Tuple { .. } => validate_tuple_pattern(pattern, expected, context).map(drop),
-        Pattern::List { .. } => validate_list_pattern(pattern, expected, context).map(drop),
+        Pattern::Tuple { .. } => {
+            validate_tuple_pattern_in_scope(pattern, expected, context, parameters).map(drop)
+        }
+        Pattern::List { .. } => {
+            validate_list_pattern_in_scope(pattern, expected, context, parameters).map(drop)
+        }
         Pattern::Constructor {
             arguments,
             constructor,
@@ -32,7 +50,7 @@ pub(in crate::planner) fn validate_pattern(
             type_,
             ..
         } => {
-            let actual = context.value_shape_in_scope(type_.as_ref());
+            let actual = context.value_shape_with_parameters(type_.as_ref(), parameters);
             validate_pattern_type(expected, actual.clone())?;
             let constructor = resolved_constructor(constructor)?;
             match &actual {
@@ -40,21 +58,19 @@ pub(in crate::planner) fn validate_pattern(
                     let field_types = arguments
                         .iter()
                         .map(|argument| {
-                            pattern_value_shape(&argument.value, context)
+                            pattern_value_shape_in_scope(&argument.value, context, parameters)
                                 .map(|shape| shape.value_type())
                         })
                         .collect::<Result<Vec<_>, _>>()?;
-                    let resolved = context.custom_pattern_constructor(
-                        type_.as_ref(),
-                        constructor,
-                        field_types,
-                    )?;
+                    let resolved =
+                        context.custom_pattern_constructor(actual, constructor, field_types)?;
                     let constructor = resolved.into_constructor();
                     for (argument, field) in arguments.iter().zip(constructor.fields()) {
-                        validate_pattern(
+                        validate_pattern_in_scope(
                             &argument.value,
                             &ValueShape::from_value_type(field.type_().clone()),
                             context,
+                            parameters,
                         )?;
                     }
                 }
@@ -70,13 +86,14 @@ pub(in crate::planner) fn validate_pattern(
         Pattern::BitArray { segments, .. } => {
             validate_pattern_type(expected, ValueShape::BitArray)?;
             for segment in segments {
-                let expected = context.value_shape_in_scope(segment.type_.as_ref());
-                validate_pattern(segment.value.as_ref(), &expected, context)?;
+                let expected =
+                    context.value_shape_with_parameters(segment.type_.as_ref(), parameters);
+                validate_pattern_in_scope(segment.value.as_ref(), &expected, context, parameters)?;
             }
             Ok(())
         }
         Pattern::BitArraySize(_) | Pattern::Invalid { .. } => {
-            pattern_value_shape(pattern, context).map(drop)
+            pattern_value_shape_in_scope(pattern, context, parameters).map(drop)
         }
     }
 }
@@ -96,6 +113,15 @@ pub(in crate::planner) fn pattern_value_shape(
     pattern: &TypedPattern,
     context: &PlanContext<'_>,
 ) -> Result<ValueShape, PlanError> {
+    let mut parameters = context.type_parameters().clone();
+    pattern_value_shape_in_scope(pattern, context, &mut parameters)
+}
+
+fn pattern_value_shape_in_scope(
+    pattern: &TypedPattern,
+    context: &PlanContext<'_>,
+    parameters: &mut TypeParameterScope,
+) -> Result<ValueShape, PlanError> {
     let shape = match pattern {
         Pattern::Int { .. } => ValueShape::Int,
         Pattern::Float { .. } => ValueShape::Float,
@@ -103,10 +129,14 @@ pub(in crate::planner) fn pattern_value_shape(
         Pattern::Variable { type_, .. }
         | Pattern::Discard { type_, .. }
         | Pattern::List { type_, .. }
-        | Pattern::Constructor { type_, .. } => context.value_shape_in_scope(type_.as_ref()),
-        Pattern::Tuple { elements, .. } => tuple_pattern_shape(elements, context)?,
+        | Pattern::Constructor { type_, .. } => {
+            context.value_shape_with_parameters(type_.as_ref(), parameters)
+        }
+        Pattern::Tuple { elements, .. } => tuple_pattern_shape(elements, context, parameters)?,
         Pattern::BitArray { .. } => ValueShape::BitArray,
-        Pattern::Assign { pattern, .. } => pattern_value_shape(pattern, context)?,
+        Pattern::Assign { pattern, .. } => {
+            pattern_value_shape_in_scope(pattern, context, parameters)?
+        }
         Pattern::BitArraySize(_) => {
             return Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::PatternShape {
@@ -123,6 +153,22 @@ pub(in crate::planner) fn pattern_value_shape(
         }
     };
     Ok(shape)
+}
+
+pub(in crate::planner) fn constructor_pattern_field_types(
+    type_: &Type,
+    arguments: &[CallArg<TypedPattern>],
+    context: &PlanContext<'_>,
+) -> Result<Vec<ValueType>, PlanError> {
+    let mut parameters = context.type_parameters().clone();
+    context.value_shape_with_parameters(type_, &mut parameters);
+    arguments
+        .iter()
+        .map(|argument| {
+            pattern_value_shape_in_scope(&argument.value, context, &mut parameters)
+                .map(|shape| shape.value_type())
+        })
+        .collect()
 }
 
 pub(in crate::planner) fn pattern_kind(pattern: &TypedPattern) -> PatternKind {
@@ -146,11 +192,12 @@ pub(in crate::planner) fn pattern_kind(pattern: &TypedPattern) -> PatternKind {
 fn tuple_pattern_shape(
     elements: &[TypedPattern],
     context: &PlanContext<'_>,
+    parameters: &mut TypeParameterScope,
 ) -> Result<ValueShape, PlanError> {
     Ok(ValueShape::Tuple(
         elements
             .iter()
-            .map(|element| pattern_value_shape(element, context))
+            .map(|element| pattern_value_shape_in_scope(element, context, parameters))
             .collect::<Result<Vec<_>, _>>()?
             .into_boxed_slice(),
     ))
@@ -192,18 +239,28 @@ pub(in crate::planner) fn validate_tuple_pattern(
     expected: &ValueShape,
     context: &PlanContext<'_>,
 ) -> Result<ValidatedTuplePattern, PlanError> {
+    let mut parameters = context.type_parameters().clone();
+    validate_tuple_pattern_in_scope(pattern, expected, context, &mut parameters)
+}
+
+fn validate_tuple_pattern_in_scope(
+    pattern: &TypedPattern,
+    expected: &ValueShape,
+    context: &PlanContext<'_>,
+    parameters: &mut TypeParameterScope,
+) -> Result<ValidatedTuplePattern, PlanError> {
     let Pattern::Tuple { elements, .. } = pattern else {
         return Err(pattern_kind_mismatch(pattern, expected));
     };
     let ValueShape::Tuple(expected_elements) = expected else {
         return Err(pattern_type_mismatch(
             expected.value_type(),
-            tuple_pattern_shape(elements, context)?.value_type(),
+            tuple_pattern_shape(elements, context, parameters)?.value_type(),
         ));
     };
     validate_tuple_arity(expected_elements.len(), elements.len())?;
     for (element, expected) in elements.iter().zip(expected_elements) {
-        validate_pattern(element, expected, context)?;
+        validate_pattern_in_scope(element, expected, context, parameters)?;
     }
     Ok(ValidatedTuplePattern {
         element_shapes: expected_elements.clone(),
@@ -239,6 +296,16 @@ pub(in crate::planner) fn validate_list_pattern(
     expected: &ValueShape,
     context: &PlanContext<'_>,
 ) -> Result<ValidatedListPattern, PlanError> {
+    let mut parameters = context.type_parameters().clone();
+    validate_list_pattern_in_scope(pattern, expected, context, &mut parameters)
+}
+
+fn validate_list_pattern_in_scope(
+    pattern: &TypedPattern,
+    expected: &ValueShape,
+    context: &PlanContext<'_>,
+    parameters: &mut TypeParameterScope,
+) -> Result<ValidatedListPattern, PlanError> {
     let Pattern::List {
         elements,
         tail,
@@ -251,14 +318,16 @@ pub(in crate::planner) fn validate_list_pattern(
     let ValueShape::List(expected_item) = expected else {
         return Err(pattern_kind_mismatch(pattern, expected));
     };
-    let actual = context.value_shape_in_scope(type_.as_ref());
+    let actual = context.value_shape_with_parameters(type_.as_ref(), parameters);
     validate_pattern_type(expected, actual)?;
     for element in elements {
-        validate_pattern(element, expected_item, context)?;
+        validate_pattern_in_scope(element, expected_item, context, parameters)?;
     }
     let tail = tail
         .as_deref()
-        .map(|tail: &TailPattern<_>| validate_list_tail(&tail.pattern, expected, context))
+        .map(|tail: &TailPattern<_>| {
+            validate_list_tail_in_scope(&tail.pattern, expected, context, parameters)
+        })
         .transpose()?;
     Ok(ValidatedListPattern {
         item_shape: expected_item.as_ref().clone(),
@@ -271,13 +340,23 @@ pub(in crate::planner) fn validate_list_tail(
     expected: &ValueShape,
     context: &PlanContext<'_>,
 ) -> Result<ValidatedListTail, PlanError> {
+    let mut parameters = context.type_parameters().clone();
+    validate_list_tail_in_scope(pattern, expected, context, &mut parameters)
+}
+
+fn validate_list_tail_in_scope(
+    pattern: &TypedPattern,
+    expected: &ValueShape,
+    context: &PlanContext<'_>,
+    parameters: &mut TypeParameterScope,
+) -> Result<ValidatedListTail, PlanError> {
     match pattern {
         Pattern::Variable { name, .. } => {
-            validate_pattern(pattern, expected, context)?;
+            validate_pattern_in_scope(pattern, expected, context, parameters)?;
             Ok(ValidatedListTail::Named(name.clone()))
         }
         Pattern::Discard { .. } => {
-            validate_pattern(pattern, expected, context)?;
+            validate_pattern_in_scope(pattern, expected, context, parameters)?;
             Ok(ValidatedListTail::Discard)
         }
         _ => Err(PlanError::InvalidTypedAst {
@@ -466,7 +545,9 @@ mod tests {
         pattern_kind, validate_constructor_pattern, validate_list_pattern, validate_pattern,
         validate_pattern_value_type, validate_tuple_arity, validate_tuple_pattern,
     };
-    use crate::plan::{CustomType, CustomTypeName, ValueShape, ValueType};
+    use crate::plan::{
+        CustomType, CustomTypeName, TypeParameterId, TypeScheme, ValueShape, ValueType,
+    };
     use crate::planner::context::{AnonymousFunctions, FunctionInfo, PlanContext};
     use crate::planner::error::{
         InvalidCustomTypeReason, InvalidPatternShapeReason, InvalidTypedAstReason, PatternKind,
@@ -541,6 +622,137 @@ mod tests {
             spread: None,
             type_: type_::result(value_type, type_::string()),
         }
+    }
+
+    #[test]
+    fn generic_pattern_reads_share_parameters_without_mutating_context() {
+        with_context(|context| {
+            let pattern = Pattern::Tuple {
+                location: dummy_span(),
+                elements: vec![
+                    discard(type_::generic_var(41)),
+                    Pattern::Assign {
+                        location: dummy_span(),
+                        name: "nested".into(),
+                        pattern: Box::new(Pattern::Tuple {
+                            location: dummy_span(),
+                            elements: vec![
+                                discard(type_::generic_var(73)),
+                                discard(type_::generic_var(41)),
+                                Pattern::List {
+                                    location: dummy_span(),
+                                    elements: vec![discard(type_::generic_var(73))],
+                                    tail: Some(Box::new(TailPattern {
+                                        location: dummy_span(),
+                                        pattern: discard(type_::list(type_::generic_var(73))),
+                                    })),
+                                    type_: type_::list(type_::generic_var(73)),
+                                },
+                            ],
+                        }),
+                    },
+                ],
+            };
+            let first = ValueShape::Parameter(TypeParameterId(0));
+            let second = ValueShape::Parameter(TypeParameterId(1));
+            let expected = ValueShape::Tuple(
+                vec![
+                    first.clone(),
+                    ValueShape::Tuple(
+                        vec![
+                            second.clone(),
+                            first.clone(),
+                            ValueShape::List(Box::new(second)),
+                        ]
+                        .into_boxed_slice(),
+                    ),
+                ]
+                .into_boxed_slice(),
+            );
+            assert_eq!(
+                super::pattern_value_shape(&pattern, context),
+                Ok(expected.clone())
+            );
+            assert_eq!(validate_pattern(&pattern, &expected, context), Ok(()));
+            assert_eq!(context.type_parameters().scheme(), TypeScheme::new(0));
+
+            let repeated = Pattern::Tuple {
+                location: dummy_span(),
+                elements: vec![
+                    discard(type_::generic_var(41)),
+                    discard(type_::generic_var(41)),
+                ],
+            };
+            assert_eq!(
+                super::pattern_value_shape(&repeated, context),
+                Ok(ValueShape::Tuple(
+                    vec![first.clone(), first.clone()].into_boxed_slice()
+                )),
+            );
+            let collapsed = ValueShape::Tuple(vec![first.clone(), first].into_boxed_slice());
+            let distinct = Pattern::Tuple {
+                location: dummy_span(),
+                elements: vec![
+                    discard(type_::generic_var(41)),
+                    discard(type_::generic_var(73)),
+                ],
+            };
+            assert_eq!(
+                validate_pattern(&distinct, &collapsed, context),
+                Err(pattern_error(InvalidPatternShapeReason::TypeMismatch {
+                    expected: ValueType::Parameter(TypeParameterId(0)),
+                    actual: ValueType::Parameter(TypeParameterId(1)),
+                })),
+            );
+            assert_eq!(context.type_parameters().scheme(), TypeScheme::new(0));
+        });
+    }
+
+    #[test]
+    fn constructor_fields_use_declared_parameter_order() {
+        with_context(|context| {
+            let first = type_::generic_var(41);
+            let second = type_::generic_var(73);
+            let type_ = type_::result(
+                type_::tuple(vec![first.clone(), second.clone()]),
+                type_::tuple(vec![second.clone(), first.clone()]),
+            );
+            let arguments = vec![CallArg {
+                label: None,
+                location: dummy_span(),
+                value: Pattern::Tuple {
+                    location: dummy_span(),
+                    elements: vec![discard(second), discard(first)],
+                },
+                implicit: None,
+            }];
+            assert_eq!(
+                super::constructor_pattern_field_types(type_.as_ref(), &arguments, context),
+                Ok(vec![ValueType::Tuple(vec![
+                    ValueType::Parameter(TypeParameterId(1)),
+                    ValueType::Parameter(TypeParameterId(0))
+                ],)]),
+            );
+            let nested = result_pattern(
+                Pattern::Tuple {
+                    location: dummy_span(),
+                    elements: vec![
+                        discard(type_::generic_var(41)),
+                        discard(type_::generic_var(73)),
+                    ],
+                },
+                type_::tuple(vec![type_::generic_var(41), type_::generic_var(73)]),
+            );
+            let expected = context.value_shape_in_scope(
+                type_::result(
+                    type_::tuple(vec![type_::generic_var(41), type_::generic_var(73)]),
+                    type_::string(),
+                )
+                .as_ref(),
+            );
+            assert_eq!(validate_pattern(&nested, &expected, context), Ok(()));
+            assert_eq!(context.type_parameters().scheme(), TypeScheme::new(0));
+        });
     }
 
     #[test]
