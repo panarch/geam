@@ -561,9 +561,14 @@ that example requires a published `geam` dependency and is not a local gate.
 Each group has a distinct cache key for the root workspace's Rust dependencies.
 Within a job, the root test binary and independent providers use the checkout's
 `target/` directory so Cargo can reuse matching build artifacts without changing
-any workspace's lockfile. The generated runner still uses its temporary
-project's `build/geam/target/`;
-those isolated runner artifacts are not shared or cached between jobs.
+any workspace's lockfile. Standalone builds in `standalone_build` and
+`prepared_embedding` share matching Rust intermediate artifacts under
+`target/standalone-acceptance/` through `CARGO_BUILD_BUILD_DIR`. Cargo coordinates
+concurrent builds through its build-directory lock; each temporary project's
+final executables remain under its own `build/geam/target/`. Each fixture's
+generated preparer uses `<project>-geam-runner` on every platform to keep its
+intermediate executable name distinct. This reuse does not
+change fixture lockfiles, features, profiles, or source-free deployment checks.
 
 The normal suite executes the full generated runner with the fixture's locked
 Gleam and Rust dependencies. CI exports the standalone fixture's three local

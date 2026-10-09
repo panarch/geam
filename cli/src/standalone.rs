@@ -81,10 +81,15 @@ impl Preparation<'_> {
         module: String,
         checker: &dyn crate::runner::RunnerChecker,
     ) -> Result<(), CliError> {
-        self.reconcile(&module)?;
+        let managed = self.reconcile(&module)?;
         self.progress
             .report(format_args!("Checking standalone runner for {module}"))?;
-        checker.check(self.project_root, &module, &mut self.progress)?;
+        checker.check(
+            self.project_root,
+            &module,
+            managed.root_package(),
+            &mut self.progress,
+        )?;
         self.progress.report(format_args!("Prepared {module}"))
     }
 
@@ -104,6 +109,7 @@ impl Preparation<'_> {
         executor.execute(
             self.project_root,
             &module,
+            managed.root_package(),
             &configurations,
             arguments,
             &mut self.progress,
@@ -251,6 +257,7 @@ mod tests {
             &self,
             _project_root: &Utf8Path,
             module: &str,
+            _package: &str,
             _progress: &mut Progress<'_>,
         ) -> Result<(), CliError> {
             self.operations.borrow_mut().push(format!("check:{module}"));
@@ -263,6 +270,7 @@ mod tests {
             &self,
             project_root: &Utf8Path,
             module: &str,
+            _package: &str,
             configurations: &[(String, Utf8PathBuf)],
             arguments: &[OsString],
             _progress: &mut Progress<'_>,
@@ -427,6 +435,7 @@ mod tests {
             &self,
             _project_root: &Utf8Path,
             _module: &str,
+            _package: &str,
             _progress: &mut Progress<'_>,
         ) -> Result<(), CliError> {
             Err(CliError::ProcessFailure {
@@ -460,6 +469,7 @@ mod tests {
             &self,
             _project_root: &Utf8Path,
             _module: &str,
+            _package: &str,
             _configurations: &[(String, Utf8PathBuf)],
             _arguments: &[OsString],
             _progress: &mut Progress<'_>,
@@ -1429,11 +1439,32 @@ pub fn main() { 1 }
     }
 
     fn write_managed_manifest(root: &Utf8Path, provider: &str) {
+        // Keep the old runner name to exercise reconciliation of existing projects.
         fs::write(
             root.join("Cargo.toml"),
             format!(
-                "{MANAGED_HEADER}\n[package]\nname = \"application-geam-runner\"\nversion = \"0.0.0\"\nedition = \"2024\"\npublish = false\n\n[package.metadata.geam.runner]\nschema = 1\n\n[[bin]]\nname = \"geam-runner\"\npath = \"build/geam/runner.rs\"\n\n[dependencies]\ngeam = {{ version = \"={}\", default-features = false, features = [\"builtins\"] }}\ntoml = \"0.9\"\n{provider}\n[workspace]\nresolver = \"3\"\n",
-                env!("CARGO_PKG_VERSION"),
+                r#"{MANAGED_HEADER}
+[package]
+name = "application-geam-runner"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[package.metadata.geam.runner]
+schema = 1
+
+[[bin]]
+name = "geam-runner"
+path = "build/geam/runner.rs"
+
+[dependencies]
+geam = {{ version = "={version}", default-features = false, features = ["builtins"] }}
+toml = "0.9"
+{provider}
+[workspace]
+resolver = "3"
+"#,
+                version = env!("CARGO_PKG_VERSION"),
             ),
         )
         .expect("managed manifest should be written");
