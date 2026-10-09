@@ -565,7 +565,9 @@ any workspace's lockfile. Standalone builds in `standalone_build` and
 `prepared_embedding` share matching Rust intermediate artifacts under
 `target/standalone-acceptance/` through `CARGO_BUILD_BUILD_DIR`. Cargo coordinates
 concurrent builds through its build-directory lock; each temporary project's
-final executables remain under its own `build/geam/target/`. This reuse does not
+final executables remain under its own `build/geam/target/`. Each fixture's
+generated preparer uses `<project>-geam-runner` on every platform to keep its
+intermediate executable name distinct. This reuse does not
 change fixture lockfiles, features, profiles, or source-free deployment checks.
 
 The normal suite executes the full generated runner with the fixture's locked

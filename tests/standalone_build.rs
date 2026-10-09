@@ -782,7 +782,7 @@ pub fn main() {{
         );
     }
     let runner = project.join(format!(
-        "build/geam/target/debug/geam-runner{}",
+        "build/geam/target/debug/standalone_fixture-geam-runner{}",
         std::env::consts::EXE_SUFFIX
     ));
     for (control, diagnostic) in [
