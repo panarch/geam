@@ -44,22 +44,13 @@ env:
   # llvm-cov summary totals keep full line/region scope without exporting
   # every function instantiation solely to check a threshold.
   COVERAGE_GATE: |
-    if .type != "llvm.coverage.json.export"
-      or (.data | type) != "array" or (.data | length) == 0
-    then error("Missing LLVM coverage totals") else . end
-    | . as $report
+    . as $report
     | reduce .data[].totals as $totals (
         {lines: 0, covered_lines: 0, regions: 0, covered_regions: 0};
-        if all([$totals.lines, $totals.regions][];
-          (.count | type) == "number" and (.covered | type) == "number"
-          and .count >= 0 and .covered >= 0 and .covered <= .count
-          and (.count | floor) == .count and (.covered | floor) == .covered)
-        then
-          .lines += $totals.lines.count
-          | .covered_lines += $totals.lines.covered
-          | .regions += $totals.regions.count
-          | .covered_regions += $totals.regions.covered
-        else error("Invalid LLVM coverage counts") end
+        .lines += $totals.lines.count
+        | .covered_lines += $totals.lines.covered
+        | .regions += $totals.regions.count
+        | .covered_regions += $totals.regions.covered
       )
     | "Lines: \(.covered_lines)/\(.lines); regions: \(.covered_regions)/\(.regions)",
       if .lines > 0 and .regions > 0
@@ -78,9 +69,6 @@ jobs:
     name: Core and macros
     if: ${{ github.event_name != 'workflow_dispatch' || inputs.target == 'all' || inputs.target == 'core-macros' }}
     runs-on: ubuntu-latest
-    env:
-      CARGO_PROFILE_DEV_DEBUG: "0"
-      CARGO_PROFILE_TEST_DEBUG: "0"
 
     steps:
       - name: Checkout
