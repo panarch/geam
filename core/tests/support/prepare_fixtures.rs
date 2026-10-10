@@ -75,6 +75,23 @@ fn main() -> Result<(), Box<dyn Error>> {
         .function(FunctionDeclaration::<(bool,), StringValue>::new("choose"))?;
     call_boundaries.function(FunctionDeclaration::<(), BigInt>::new("wide"))?;
 
+    let float_segments = geam_core::compile_typed_host_program(
+        "example",
+        "example",
+        [PackageSource::new(
+            "example",
+            Vec::<String>::new(),
+            [ModuleSource::new(
+                "example",
+                "src/float_segments.gleam",
+                include_str!("../fixtures/prepared/float_segments.gleam"),
+            )],
+        )],
+        HostProviderSet::<StatelessHostProfile>::new([])?,
+    )?;
+    let (float_segments, _) = HostedModuleBuilder::new(float_segments)?
+        .function(FunctionDeclaration::<(), f64>::new("main"))?;
+
     let arithmetic = geam_core::compile_typed_module(
         "example",
         "src/example.gleam",
@@ -913,6 +930,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         ("boolean_calls.rs", boolean_calls.prepare().emit_rust()),
         ("boolean_bridge.rs", boolean_bridge.prepare().emit_rust()),
         ("call_boundaries.rs", call_boundaries.prepare()?.emit_rust()),
+        ("float_segments.rs", float_segments.prepare()?.emit_rust()),
         ("int_list_calls.rs", list_calls.prepare()?.emit_rust()),
         (
             "primitive_list_calls.rs",

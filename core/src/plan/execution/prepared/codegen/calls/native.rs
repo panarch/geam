@@ -1,5 +1,5 @@
 use super::local::values;
-use super::shape::CallLocal;
+use super::shape::{CallFunction, CallLocal};
 use super::{
     CallContractTarget, CallFamily, CallGroupCodegen, CallTarget, Code, ExecutionGraphProfile,
     Rust, target_family, target_id,
@@ -50,12 +50,20 @@ impl<Graph: ExecutionGraphProfile> CallGroupCodegen<'_, '_, Graph> {
     pub(super) fn write_native_request(
         &self,
         source: &mut Code,
+        function: &CallFunction<'_, Graph>,
         target: CallTarget,
         site: &HostCallSite,
         arguments: &[CallLocal],
         caller: &str,
     ) {
-        source.push_str(&format!("return FunctionStep::{}Native {{ function: {}, site: {}, arguments: {}, caller: {caller} }};\n", target_family(target), target_id(target), Rust::expression(site), values(arguments, true)));
+        let result = format!(
+            "FunctionStep::{}Native {{ function: {}, site: {}, arguments: {}, caller: {caller} }}",
+            target_family(target),
+            target_id(target),
+            Rust::expression(site),
+            values(arguments, true)
+        );
+        source.push_str(&format!("return {};\n", self.body_result(function, result)));
     }
 
     // Delivery restores only owned state. Source work and root publication

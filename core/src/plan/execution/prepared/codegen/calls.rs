@@ -47,6 +47,7 @@ struct CallGroupCodegen<'codegen, 'graph, Graph: ExecutionGraphProfile> {
     entry_targets: Vec<CallTarget>,
     entries: Vec<CallableEntry>,
     native_targets: BTreeSet<(usize, usize)>,
+    body_segments: BTreeMap<(usize, usize), BTreeMap<usize, usize>>,
 }
 
 struct CallableEntry {
@@ -281,6 +282,7 @@ impl<'codegen, 'graph, Graph: ExecutionGraphProfile> CallGroupCodegen<'codegen, 
             entry_targets,
             entries: Vec::new(),
             native_targets,
+            body_segments: BTreeMap::new(),
         };
         for function in &codegen.functions {
             for call in &function.shape.calls {
@@ -304,6 +306,15 @@ impl<'codegen, 'graph, Graph: ExecutionGraphProfile> CallGroupCodegen<'codegen, 
                 }
             }
         }
+        codegen.body_segments = codegen
+            .functions
+            .iter()
+            .filter_map(|function| {
+                codegen
+                    .body_layout(function)
+                    .map(|layout| (function.target.key(), layout))
+            })
+            .collect();
         codegen
     }
 
@@ -438,6 +449,9 @@ impl<'codegen, 'graph, Graph: ExecutionGraphProfile> CallGroupCodegen<'codegen, 
             "use data::compiled::calls::{{{}}};\n",
             imports.join(", ")
         ));
+        if !self.body_segments.is_empty() {
+            source.push_str("use std::ops::ControlFlow;\n");
+        }
         if field_types.contains("IntList") {
             source.push_str("use data::compiled::int_list::IntList;\n");
         }
@@ -1091,15 +1105,16 @@ impl<'codegen, 'graph, Graph: ExecutionGraphProfile> CallGroupCodegen<'codegen, 
 
     fn write_return(&self, source: &mut Code, function: &CallFunction<'_, Graph>, index: usize) {
         let returning = &function.shape.returns[index];
-        source.push_str(&format!(
-            "FunctionStep::{} {{ value: {} }}\n",
+        let result = format!(
+            "FunctionStep::{} {{ value: {} }}",
             target_family(function.target),
             if matches!(returning.value, CallLocal::Nullary(_)) {
                 format!("{}.into()", local_expression(&returning.value, false))
             } else {
                 local_expression(&returning.value, false)
             }
-        ));
+        );
+        source.push_str(&format!("{}\n", self.body_result(function, result)));
     }
 
     fn write_tail(&self, source: &mut Code, function: &CallFunction<'_, Graph>, index: usize) {
@@ -1113,7 +1128,14 @@ impl<'codegen, 'graph, Graph: ExecutionGraphProfile> CallGroupCodegen<'codegen, 
                 target_id(tail.target)
             ));
             source.push_str("*budget -= 1;\n");
-            self.write_native_request(source, tail.target, &tail.site, &tail.args, "None");
+            self.write_native_request(
+                source,
+                function,
+                tail.target,
+                &tail.site,
+                &tail.args,
+                "None",
+            );
             source.close("}\n");
         }
         if let Some(callee) = self.direct_callee(function.target, tail.target, &tail.args) {
@@ -1124,16 +1146,17 @@ impl<'codegen, 'graph, Graph: ExecutionGraphProfile> CallGroupCodegen<'codegen, 
                 .map(|(parameter, argument)| field_assignment(parameter, argument))
                 .collect::<Vec<_>>()
                 .join(", ");
-            source.push_str(&format!(
-                "FunctionStep::{}Tail {{ callee: FunctionState::{} {{ {fields} }} }}\n",
+            let result = format!(
+                "FunctionStep::{}Tail {{ callee: FunctionState::{} {{ {fields} }} }}",
                 target_family(function.target),
                 state_name(callee.target, callee.shape.entry())
-            ));
+            );
+            source.push_str(&format!("{}\n", self.body_result(function, result)));
             return;
         }
         source.push_str(&format!(
             "{}\n",
-            canonical(function.target, checkpoint, locals)
+            self.body_result(function, canonical(function.target, checkpoint, locals))
         ));
     }
 
@@ -1207,10 +1230,7 @@ impl<'codegen, 'graph, Graph: ExecutionGraphProfile> CallGroupCodegen<'codegen, 
             .map(|(parameter, argument)| field_assignment(parameter, &argument))
             .collect::<Vec<_>>()
             .join(", ");
-        format!(
-            "{}State::Point{point} {{ {fields} }}",
-            function_state(function.target)
-        )
+        self.body_state(function, point, &format!(" {{ {fields} }}"))
     }
 
     fn write_call(
@@ -1236,6 +1256,7 @@ impl<'codegen, 'graph, Graph: ExecutionGraphProfile> CallGroupCodegen<'codegen, 
                     ));
                     self.write_native_request(
                         source,
+                        function,
                         *target,
                         &call.site,
                         &call.args,
@@ -1251,37 +1272,41 @@ impl<'codegen, 'graph, Graph: ExecutionGraphProfile> CallGroupCodegen<'codegen, 
                         .map(|(parameter, argument)| field_assignment(parameter, argument))
                         .collect::<Vec<_>>()
                         .join(", ");
-                    source.push_str(&format!("FunctionStep::{family}Call {{ callee: FunctionState::{} {{ {assignments} }}, caller: {caller} }}\n", state_name(callee.target, callee.shape.entry())));
+                    let result = format!(
+                        "FunctionStep::{family}Call {{ callee: FunctionState::{} {{ {assignments} }}, caller: {caller} }}",
+                        state_name(callee.target, callee.shape.entry())
+                    );
+                    source.push_str(&format!("{}\n", self.body_result(function, result)));
                     return;
                 }
             }
             CallContractTarget::IntValue(local) => {
                 source.push_str(&format!("let callable = &int_function{};\nlet captures = callable.captures();\nlet target = callable.target();\n", local.0));
-                self.write_dynamic(source, call, CallFamily::Int, &caller);
+                self.write_dynamic(source, function, call, CallFamily::Int, &caller);
             }
             CallContractTarget::BoolValue(local) => {
                 source.push_str(&format!("let callable = &bool_function{};\nlet captures = callable.captures();\nlet target = callable.target();\n", local.0));
-                self.write_dynamic(source, call, CallFamily::Bool, &caller);
+                self.write_dynamic(source, function, call, CallFamily::Bool, &caller);
             }
             CallContractTarget::FloatValue(local) => {
                 source.push_str(&format!("let callable = &float_function{};\nlet captures = callable.captures();\nlet target = callable.target();\n", local.0));
-                self.write_dynamic(source, call, CallFamily::Float, &caller);
+                self.write_dynamic(source, function, call, CallFamily::Float, &caller);
             }
             CallContractTarget::StringValue(local) => {
                 source.push_str(&format!("let callable = &string_function{};\nlet captures = callable.captures();\nlet target = callable.target();\n", local.0));
-                self.write_dynamic(source, call, CallFamily::String, &caller);
+                self.write_dynamic(source, function, call, CallFamily::String, &caller);
             }
             CallContractTarget::BitArrayValue(local) => {
                 source.push_str(&format!("let callable = &bit_array_function{};\nlet captures = callable.captures();\nlet target = callable.target();\n", local.0));
-                self.write_dynamic(source, call, CallFamily::BitArray, &caller);
+                self.write_dynamic(source, function, call, CallFamily::BitArray, &caller);
             }
             CallContractTarget::UtfCodepointValue(local) => {
                 source.push_str(&format!("let callable = &utf_codepoint_function{};\nlet captures = callable.captures();\nlet target = callable.target();\n", local.0));
-                self.write_dynamic(source, call, CallFamily::UtfCodepoint, &caller);
+                self.write_dynamic(source, function, call, CallFamily::UtfCodepoint, &caller);
             }
             CallContractTarget::NilValue(local) => {
                 source.push_str(&format!("let callable = &nil_function{};\nlet captures = callable.captures();\nlet target = callable.target();\n", local.0));
-                self.write_dynamic(source, call, CallFamily::Nil, &caller);
+                self.write_dynamic(source, function, call, CallFamily::Nil, &caller);
             }
         };
         let id = match call.target {
@@ -1289,7 +1314,11 @@ impl<'codegen, 'graph, Graph: ExecutionGraphProfile> CallGroupCodegen<'codegen, 
             _ => "target".to_owned(),
         };
         if let Some(input) = Self::native_input(call) {
-            source.push_str(&format!("FunctionStep::{family}ScalarBridge {{ function: {id}, site: {}, input: {input}, caller: {caller} }}\n", Rust::expression(&call.site)));
+            let result = format!(
+                "FunctionStep::{family}ScalarBridge {{ function: {id}, site: {}, input: {input}, caller: {caller} }}",
+                Rust::expression(&call.site)
+            );
+            source.push_str(&format!("{}\n", self.body_result(function, result)));
             return;
         }
         let captures = if matches!(call.target, CallContractTarget::Static(_)) {
@@ -1297,12 +1326,18 @@ impl<'codegen, 'graph, Graph: ExecutionGraphProfile> CallGroupCodegen<'codegen, 
         } else {
             "Some(captures.retain())"
         };
-        source.push_str(&format!("FunctionStep::{family}Bridge {{ function: {id}, site: {}, arguments: CallArguments {{ values: {}, captures: {captures} }}, caller: {caller} }}\n", Rust::expression(&call.site), values(&call.args, true)));
+        let result = format!(
+            "FunctionStep::{family}Bridge {{ function: {id}, site: {}, arguments: CallArguments {{ values: {}, captures: {captures} }}, caller: {caller} }}",
+            Rust::expression(&call.site),
+            values(&call.args, true)
+        );
+        source.push_str(&format!("{}\n", self.body_result(function, result)));
     }
 
     fn write_dynamic(
         &self,
         source: &mut Code,
+        function: &CallFunction<'_, Graph>,
         call: &CallInvocation,
         family: CallFamily,
         caller: &str,
@@ -1322,7 +1357,11 @@ impl<'codegen, 'graph, Graph: ExecutionGraphProfile> CallGroupCodegen<'codegen, 
                 "if ops.belongs_to_execution(&captures) && let Some(callee) = calls_entry_{index}(target, &captures, {inputs}) {{\n"
             ));
             source.push_str(&format!(
-                "return FunctionStep::{family}Call {{ callee, caller: {caller} }};\n"
+                "return {};\n",
+                self.body_result(
+                    function,
+                    format!("FunctionStep::{family}Call {{ callee, caller: {caller} }}")
+                )
             ));
             source.close("}\n");
         }

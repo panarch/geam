@@ -1,7 +1,7 @@
 use super::local::{field_assignment, local_expression, local_name, local_type};
 use super::nullary::{CallTypes, CustomLocalShape};
 use super::shape::{CallFunction, CallLocal};
-use super::{CallGroupCodegen, Code, ExecutionGraphProfile, Rust, canonical, function_state};
+use super::{CallGroupCodegen, Code, ExecutionGraphProfile, Rust, canonical};
 use crate::plan::execution::graph::{
     BlockId, Edge, Match, MatchEdgeArgument, MatchPattern, ParamLocal, ParamSlot,
 };
@@ -276,10 +276,13 @@ impl<Graph: ExecutionGraphProfile> CallGroupCodegen<'_, '_, Graph> {
         source.close("})();\n");
         source.push_str(&format!(
             "let Some(matched) = matched else {{ return {}; }};\n*budget -= 1;\n",
-            canonical(
-                function.target,
-                function.shape.checkpoints[point],
-                &function.shape.locals[point]
+            self.body_result(
+                function,
+                canonical(
+                    function.target,
+                    function.shape.checkpoints[point],
+                    &function.shape.locals[point]
+                )
             )
         ));
         source.open("match matched {\n");
@@ -287,8 +290,8 @@ impl<Graph: ExecutionGraphProfile> CallGroupCodegen<'_, '_, Graph> {
         let destination = function.shape.starts[&edge.target().index()];
         let fields = success_fields(&function.shape.locals[destination], &matcher.arguments);
         source.push_str(&format!(
-            "Some({bindings}) => {}State::Point{destination} {{ {fields} }},\nNone => {},\n",
-            function_state(function.target),
+            "Some({bindings}) => {},\nNone => {},\n",
+            self.body_state(function, destination, &format!(" {{ {fields} }}")),
             self.edge(function, matcher.original.failure())
         ));
         source.close("}\n");
