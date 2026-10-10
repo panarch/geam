@@ -4,7 +4,7 @@ use super::super::shape::{
     KernelKind, NumericComparison, NumericInteger,
 };
 use super::super::string::{StringOperation, StringTest};
-use super::nullary::{CallTypes, NullaryLocal};
+use super::nullary::{CallTypes, CustomLocalShape};
 use crate::plan::HostCallSite;
 use crate::plan::execution::compiled::{
     CallContract, CallContractTarget, CallTarget, CompiledCheckpoint, CreationContract,
@@ -12,27 +12,28 @@ use crate::plan::execution::compiled::{
 };
 use crate::plan::execution::function::{
     BitArrayFunctionFunctionId, BitArrayFunctionId, BoolFunctionFunctionId, BoolFunctionId,
-    ExecutionFunctionEntry, ExecutionFunctionRef, ExecutionGraphProfile, ExecutionProfile,
-    FloatFunctionFunctionId, FloatFunctionId, FunctionBodyOwner, FunctionExit, FunctionTables,
-    IntFunctionFunctionId, IntFunctionId, NilFunctionFunctionId, NilFunctionId,
+    CustomFunctionId, ExecutionFunctionEntry, ExecutionFunctionRef, ExecutionGraphProfile,
+    ExecutionProfile, FloatFunctionFunctionId, FloatFunctionId, FunctionBodyOwner, FunctionExit,
+    FunctionTables, IntFunctionFunctionId, IntFunctionId, NilFunctionFunctionId, NilFunctionId,
     ProfiledFunctionBody, ProfiledFunctionFunctionId, StringFunctionFunctionId, StringFunctionId,
-    UtfCodepointFunctionFunctionId, UtfCodepointFunctionId,
+    TupleFunctionId, UtfCodepointFunctionFunctionId, UtfCodepointFunctionId,
 };
 use crate::plan::execution::graph::{
     ArithmeticRegion, BitArrayFunctionLocalId, BitArrayInstruction, BitArrayListLocalId,
     BitArrayLocalId, BlockId, BoolFunctionLocalId, BoolInstruction, BoolListLocalId, BoolLocalId,
-    BoolTest, Edge, FloatFunctionLocalId, FloatInstruction, FloatListLocalId, FloatLocalId,
-    FunctionCapture, FunctionInstructionKind, FunctionTarget, IntFunctionLocalId, IntInstruction,
-    IntListLocalId, IntLocalId, IntegerLiteral, IntegerOperand, ListInstruction, ListLocal,
-    NilFunctionLocalId, NilInstruction, NilListLocalId, NilLocalId, ParamLocal,
+    BoolTest, CustomInstruction, Edge, FloatFunctionLocalId, FloatInstruction, FloatListLocalId,
+    FloatLocalId, FunctionCapture, FunctionInstructionKind, FunctionTarget, IntFunctionLocalId,
+    IntInstruction, IntListLocalId, IntLocalId, IntegerLiteral, IntegerOperand, ListInstruction,
+    ListLocal, NilFunctionLocalId, NilInstruction, NilListLocalId, NilLocalId, ParamLocal,
     ProfiledInstruction, ProfiledInstructionKind, StringFunctionLocalId, StringInstruction,
-    StringListLocalId, StringLocalId, Terminator, TypedListInstruction,
-    UtfCodepointFunctionLocalId, UtfCodepointInstruction, UtfCodepointListLocalId,
-    UtfCodepointLocalId,
+    StringListLocalId, StringLocalId, Terminator, TupleInstruction, TupleLocalId,
+    TypedListInstruction, UtfCodepointFunctionLocalId, UtfCodepointInstruction,
+    UtfCodepointListLocalId, UtfCodepointLocalId,
 };
+use crate::plan::execution::storage::Table;
 use crate::plan::execution::type_::{
     BitArrayListTypeId, BoolListTypeId, FloatListTypeId, FunctionType, IntListTypeId,
-    NilListTypeId, StringListTypeId, UtfCodepointListTypeId,
+    NilListTypeId, StringListTypeId, UtfCodepointListTypeId, ValueType,
 };
 use std::collections::BTreeMap;
 
@@ -88,7 +89,7 @@ impl<'graph, Graph: ExecutionGraphProfile> CallProgram<'graph, Graph> {
                             function.body(),
                             function.entry().parameter_count,
                             false,
-                            |local| CallLocal::Int(*local),
+                            |value, local| matches!(local, CallLocal::Int(id) if id == value),
                             |target| CallTarget::Int(*target.function()),
                             |target| target.site().clone(),
                         )
@@ -132,7 +133,7 @@ impl<'graph, Graph: ExecutionGraphProfile> CallProgram<'graph, Graph> {
                             function.body(),
                             function.entry().parameter_count,
                             false,
-                            |local| CallLocal::Bool(*local),
+                            |value, local| matches!(local, CallLocal::Bool(id) if id == value),
                             |target| CallTarget::Bool(*target.function()),
                             |target| target.site().clone(),
                         )
@@ -168,10 +169,7 @@ impl<'graph, Graph: ExecutionGraphProfile> CallProgram<'graph, Graph> {
                     FunctionBodyOwner::function_body(function.body()),
                     function.entry().parameter_count,
                     true,
-                    |local| CallLocal::IntFunction {
-                        local: *local,
-                        type_: function.body()._shape.type_.clone(),
-                    },
+                    |value, local| matches!(local, CallLocal::IntFunction { local: id, .. } if id == value),
                     |target| CallTarget::IntFunction(*target.function()),
                     |target| target.site().clone(),
                 )
@@ -197,10 +195,7 @@ impl<'graph, Graph: ExecutionGraphProfile> CallProgram<'graph, Graph> {
                     FunctionBodyOwner::function_body(function.body()),
                     function.entry().parameter_count,
                     true,
-                    |local| CallLocal::BoolFunction {
-                        local: *local,
-                        type_: function.body()._shape.type_.clone(),
-                    },
+                    |value, local| matches!(local, CallLocal::BoolFunction { local: id, .. } if id == value),
                     |target| CallTarget::BoolFunction(*target.function()),
                     |target| target.site().clone(),
                 )
@@ -221,7 +216,7 @@ impl<'graph, Graph: ExecutionGraphProfile> CallProgram<'graph, Graph> {
                     function.body(),
                     function.entry().parameter_count,
                     false,
-                    |local| CallLocal::Float(*local),
+                    |value, local| matches!(local, CallLocal::Float(id) if id == value),
                     |target| CallTarget::Float(*target.function()),
                     |target| target.site().clone(),
                 )
@@ -248,10 +243,7 @@ impl<'graph, Graph: ExecutionGraphProfile> CallProgram<'graph, Graph> {
                     FunctionBodyOwner::function_body(function.body()),
                     function.entry().parameter_count,
                     true,
-                    |local| CallLocal::FloatFunction {
-                        local: *local,
-                        type_: function.body()._shape.type_.clone(),
-                    },
+                    |value, local| matches!(local, CallLocal::FloatFunction { local: id, .. } if id == value),
                     |target| CallTarget::FloatFunction(*target.function()),
                     |target| target.site().clone(),
                 )
@@ -285,7 +277,7 @@ impl<'graph, Graph: ExecutionGraphProfile> CallProgram<'graph, Graph> {
                             function.body(),
                             function.entry().parameter_count,
                             false,
-                            |local| CallLocal::String(*local),
+                            |value, local| matches!(local, CallLocal::String(id) if id == value),
                             |target| CallTarget::String(*target.function()),
                             |target| target.site().clone(),
                         )
@@ -321,10 +313,7 @@ impl<'graph, Graph: ExecutionGraphProfile> CallProgram<'graph, Graph> {
                     FunctionBodyOwner::function_body(function.body()),
                     function.entry().parameter_count,
                     true,
-                    |local| CallLocal::StringFunction {
-                        local: *local,
-                        type_: function.body()._shape.type_.clone(),
-                    },
+                    |value, local| matches!(local, CallLocal::StringFunction { local: id, .. } if id == value),
                     |target| CallTarget::StringFunction(*target.function()),
                     |target| target.site().clone(),
                 )
@@ -363,7 +352,7 @@ impl<'graph, Graph: ExecutionGraphProfile> CallProgram<'graph, Graph> {
                             function.body(),
                             function.entry().parameter_count,
                             false,
-                            |local| CallLocal::BitArray(*local),
+                            |value, local| matches!(local, CallLocal::BitArray(id) if id == value),
                             |target| CallTarget::BitArray(*target.function()),
                             |target| target.site().clone(),
                         )
@@ -399,10 +388,7 @@ impl<'graph, Graph: ExecutionGraphProfile> CallProgram<'graph, Graph> {
                     FunctionBodyOwner::function_body(function.body()),
                     function.entry().parameter_count,
                     true,
-                    |local| CallLocal::BitArrayFunction {
-                        local: *local,
-                        type_: function.body()._shape.type_.clone(),
-                    },
+                    |value, local| matches!(local, CallLocal::BitArrayFunction { local: id, .. } if id == value),
                     |target| CallTarget::BitArrayFunction(*target.function()),
                     |target| target.site().clone(),
                 )
@@ -428,7 +414,7 @@ impl<'graph, Graph: ExecutionGraphProfile> CallProgram<'graph, Graph> {
                     function.body(),
                     function.entry().parameter_count,
                     false,
-                    |local| CallLocal::UtfCodepoint(*local),
+                    |value, local| matches!(local, CallLocal::UtfCodepoint(id) if id == value),
                     |target| CallTarget::UtfCodepoint(*target.function()),
                     |target| target.site().clone(),
                 )
@@ -455,10 +441,7 @@ impl<'graph, Graph: ExecutionGraphProfile> CallProgram<'graph, Graph> {
                     FunctionBodyOwner::function_body(function.body()),
                     function.entry().parameter_count,
                     true,
-                    |local| CallLocal::UtfCodepointFunction {
-                        local: *local,
-                        type_: function.body()._shape.type_.clone(),
-                    },
+                    |value, local| matches!(local, CallLocal::UtfCodepointFunction { local: id, .. } if id == value),
                     |target| CallTarget::UtfCodepointFunction(*target.function()),
                     |target| target.site().clone(),
                 )
@@ -479,7 +462,7 @@ impl<'graph, Graph: ExecutionGraphProfile> CallProgram<'graph, Graph> {
                     function.body(),
                     function.entry().parameter_count,
                     false,
-                    |local| CallLocal::Nil(*local),
+                    |value, local| matches!(local, CallLocal::Nil(id) if id == value),
                     |target| CallTarget::Nil(*target.function()),
                     |target| target.site().clone(),
                 )
@@ -506,10 +489,7 @@ impl<'graph, Graph: ExecutionGraphProfile> CallProgram<'graph, Graph> {
                     FunctionBodyOwner::function_body(function.body()),
                     function.entry().parameter_count,
                     true,
-                    |local| CallLocal::NilFunction {
-                        local: *local,
-                        type_: function.body()._shape.type_.clone(),
-                    },
+                    |value, local| matches!(local, CallLocal::NilFunction { local: id, .. } if id == value),
                     |target| CallTarget::NilFunction(*target.function()),
                     |target| target.site().clone(),
                 )
@@ -523,22 +503,94 @@ impl<'graph, Graph: ExecutionGraphProfile> CallProgram<'graph, Graph> {
                 });
             }
         }
+        for (index, entry) in functions.value_returns.custom_functions.iter().enumerate() {
+            if let ExecutionFunctionRef::Graph(function) = entry.as_ref()
+                && let Some(shape) = CallShape::inspect(
+                    &types,
+                    &function.body().body,
+                    function.entry().parameter_count,
+                    false,
+                    |value, local| local.canonical() == ParamLocal::Custom(*value),
+                    |target| {
+                        CallTarget::Custom(CustomFunctionId::new(
+                            *target.function(),
+                            function.body()._signature_shape,
+                        ))
+                    },
+                    |target| target.site().clone(),
+                )
+            {
+                selected.push(CallFunction {
+                    target: CallTarget::Custom(CustomFunctionId::new(
+                        index,
+                        function.body()._signature_shape,
+                    )),
+                    native_loop: false,
+                    shape,
+                    kernel: None,
+                    kernel_returns: Vec::new(),
+                });
+            }
+        }
+        for (index, entry) in functions.value_returns.tuple_functions.iter().enumerate() {
+            if let ExecutionFunctionRef::Graph(function) = entry.as_ref() {
+                let body = function.body();
+                if let Some(shape) = CallShape::inspect(
+                    &types,
+                    body,
+                    function.entry().parameter_count,
+                    false,
+                    |value, local| matches!(local, CallLocal::Tuple { local: id, .. } if id == value),
+                    |target| CallTarget::Tuple(*target.function()),
+                    |target| target.site().clone(),
+                ) {
+                    selected.push(CallFunction {
+                        target: CallTarget::Tuple(TupleFunctionId(index)),
+                        native_loop: false,
+                        shape,
+                        kernel: None,
+                        kernel_returns: Vec::new(),
+                    });
+                }
+            }
+        }
         // A call-free prefix that immediately leaves this engine adds a
         // boundary instead of connecting computation. Keep the established
         // numeric leaf adapter; let other incomplete leaves use their original
         // executor, including the dedicated String and BitArray kernels.
         selected.retain(|function| {
-            function.shape.root
-                || function.kernel.is_some()
-                || function
-                    .shape
-                    .points
-                    .iter()
-                    .all(|point| !matches!(point, CallPoint::Interpreted))
+            let complete = function
+                .shape
+                .points
+                .iter()
+                .all(|point| !matches!(point, CallPoint::Interpreted));
+            // Compound source construction is outside this connection. Do not
+            // introduce a new partial compound-return entry solely because its
+            // prefix happens to contain a callable or scalar call.
+            (!matches!(
+                function.target,
+                CallTarget::Custom(_) | CallTarget::Tuple(_)
+            ) || complete)
+                && (function.shape.root || function.kernel.is_some() || complete)
         });
         selected.sort_by_key(|function| function.target.key());
+        let compound_native = |target: CallTarget| match target {
+            CallTarget::Custom(id) => matches!(
+                functions.value_returns.custom_functions[id.index].as_ref(),
+                ExecutionFunctionRef::Host(_)
+            ),
+            CallTarget::Tuple(id) => matches!(
+                functions.value_returns.tuple_functions[id.0].as_ref(),
+                ExecutionFunctionRef::Host(_)
+            ),
+            _ => false,
+        };
         for function in &mut selected {
             function.shape.root |= function.shape.tails.iter().any(|tail| {
+                if compound_native(tail.target) && tail.args.iter().all(CallLocal::native_argument)
+                {
+                    return true;
+                }
                 let CallTarget::String(target) = tail.target else {
                     return false;
                 };
@@ -578,7 +630,7 @@ impl<'graph, Graph: ExecutionGraphProfile> CallProgram<'graph, Graph> {
                         || function.kernel.is_some()
                         || !function.shape.creations.is_empty()
                         || function.shape.calls.iter().any(|call| {
-                            scalar_native(call) ||
+                            scalar_native(call) || matches!(call.target, CallContractTarget::Static(target) if compound_native(target) && call.args.iter().all(CallLocal::native_argument)) ||
                             selected.iter().any(|callee| {
                                 let target_matches = match call.target {
                                     CallContractTarget::Static(target) => callee.target == target,
@@ -591,7 +643,7 @@ impl<'graph, Graph: ExecutionGraphProfile> CallProgram<'graph, Graph> {
                         })
                         || function.shape.locals.iter().flatten().any(callable_local)
                         || function.shape.tails.iter().any(|tail| {
-                            selected.iter().any(|callee| {
+                            (compound_native(tail.target) && tail.args.iter().all(CallLocal::native_argument)) || selected.iter().any(|callee| {
                                 callee.target == tail.target
                                     && callee.matches_parameters(&tail.args)
                             }) || matches!(tail.target, CallTarget::String(target)
@@ -657,6 +709,11 @@ impl<Graph: ExecutionGraphProfile> CallFunction<'_, Graph> {
                     CallLocal::FloatFunction { .. },
                     CallTarget::FloatFunction(_)
                 )
+                | (
+                    CallLocal::Custom(_) | CallLocal::Nullary(_),
+                    CallTarget::Custom(_)
+                )
+                | (CallLocal::Tuple { .. }, CallTarget::Tuple(_))
                 | (CallLocal::String(_), CallTarget::String(_))
                 | (
                     CallLocal::StringFunction { .. },
@@ -692,7 +749,12 @@ impl<Graph: ExecutionGraphProfile> CallFunction<'_, Graph> {
 /// from these preparation-local views, never interpreted as a second graph.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(super) enum CallLocal {
-    Nullary(NullaryLocal),
+    Nullary(CustomLocalShape),
+    Custom(CustomLocalShape),
+    Tuple {
+        local: TupleLocalId,
+        type_: Table<ValueType>,
+    },
     Int(IntLocalId),
     IntList {
         local: IntListLocalId,
@@ -775,7 +837,10 @@ impl CallLocal {
 
     pub(super) fn same_type(&self, other: &Self) -> bool {
         match (self, other) {
-            (Self::Nullary(left), Self::Nullary(right)) => left.accepts(right),
+            (Self::Nullary(left), Self::Nullary(right))
+            | (Self::Custom(left), Self::Custom(right))
+            | (Self::Custom(left), Self::Nullary(right)) => left.accepts(right),
+            (Self::Tuple { type_: left, .. }, Self::Tuple { type_: right, .. }) => left == right,
             (Self::Int(_), Self::Int(_))
             | (Self::Bool(_), Self::Bool(_))
             | (Self::Float(_), Self::Float(_))
@@ -830,6 +895,10 @@ impl CallLocal {
 
     pub(super) fn inspect(local: &ParamLocal) -> Option<Self> {
         Some(match local {
+            ParamLocal::Tuple { local, type_ } => Self::Tuple {
+                local: *local,
+                type_: type_.clone(),
+            },
             ParamLocal::Int(local) => Self::Int(*local),
             ParamLocal::List(ListLocal::Int { local, type_id }) => Self::IntList {
                 local: *local,
@@ -901,7 +970,11 @@ impl CallLocal {
 
     pub(super) fn canonical(&self) -> ParamLocal {
         match self {
-            Self::Nullary(value) => ParamLocal::Custom(value.local),
+            Self::Nullary(value) | Self::Custom(value) => ParamLocal::Custom(value.local),
+            Self::Tuple { local, type_ } => ParamLocal::Tuple {
+                local: *local,
+                type_: type_.clone(),
+            },
             Self::Int(local) => ParamLocal::Int(*local),
             Self::IntList { local, type_id } => ParamLocal::List(ListLocal::Int {
                 local: *local,
@@ -1483,7 +1556,7 @@ impl<'graph> CallShape<'graph> {
         body: &'graph ProfiledFunctionBody<Return, Tail, Graph>,
         parameter_count: usize,
         returning_callable: bool,
-        return_local: impl Fn(&Return) -> CallLocal,
+        is_return: impl Fn(&Return, &CallLocal) -> bool,
         tail_target: impl Fn(&Tail) -> CallTarget,
         tail_site: impl Fn(&Tail) -> HostCallSite,
     ) -> Option<Self> {
@@ -1533,9 +1606,17 @@ impl<'graph> CallShape<'graph> {
                 let terminator = match block.terminator() {
                     Terminator::Exit(exit) => match body.exit(*exit) {
                         FunctionExit::Return(value) => {
-                            let value = return_local(value);
                             let index = shape.returns.len();
-                            shape.returns.push(CallReturn { point, value });
+                            // A complete block has classified the unique local
+                            // named by this admitted return. Retain that local's
+                            // metadata instead of performing another admission.
+                            shape.returns.extend(
+                                locals
+                                    .iter()
+                                    .filter(|local| is_return(value, local))
+                                    .cloned()
+                                    .map(|value| CallReturn { point, value }),
+                            );
                             CallPoint::Return(index)
                         }
                         FunctionExit::TailCall { function, args, .. } => {
@@ -1552,12 +1633,44 @@ impl<'graph> CallShape<'graph> {
                             CallPoint::Tail(index)
                         }
                     },
+                    Terminator::Match(matcher) => super::matching::CompoundMatch::inspect(
+                        matcher,
+                        types,
+                        &locals,
+                        graph.block(matcher.success().target()).params(),
+                    )
+                    .map(|matcher| CallPoint::Terminator(CallTerminator::Match(Box::new(matcher))))
+                    .unwrap_or(CallPoint::Interpreted),
                     terminator => CallTerminator::inspect(terminator)
                         .map(CallPoint::Terminator)
                         .unwrap_or(CallPoint::Interpreted),
                 };
                 shape.points.push(terminator);
             }
+        }
+        // A generated transfer needs every destination column. A block with
+        // unsupported parameters was deliberately left to the canonical
+        // graph; its incoming edge must stay there too.
+        let declined = shape
+            .points
+            .iter()
+            .enumerate()
+            .filter_map(|(point, operation)| {
+                let CallPoint::Terminator(terminator) = operation else {
+                    return None;
+                };
+                let supported = terminator.accepts_edges(|edge| {
+                    shape.starts.contains_key(&edge.target().index())
+                        && edge
+                            .args()
+                            .iter()
+                            .all(|argument| types.local(argument).is_some())
+                });
+                (!supported).then_some(point)
+            })
+            .collect::<Vec<_>>();
+        for point in declined {
+            shape.points[point] = CallPoint::Interpreted;
         }
         let entry = *shape.starts.get(&graph.entry().index())?;
         // Existing call-free List bodies keep their dedicated IntList kernel.
@@ -1644,7 +1757,7 @@ impl<'graph> CallShape<'graph> {
                 .count(),
             customs: locals
                 .iter()
-                .filter(|local| matches!(local, CallLocal::Nullary(_)))
+                .filter(|local| matches!(local, CallLocal::Nullary(_) | CallLocal::Custom(_)))
                 .count(),
             custom_lists: 0,
             int_functions: locals
@@ -1662,6 +1775,13 @@ impl<'graph> CallShape<'graph> {
 }
 
 pub(super) enum CallScalar<'graph> {
+    CompoundField {
+        output: CallLocal,
+        source: CallLocal,
+        index: usize,
+        custom: bool,
+        read: super::matching::FieldRead,
+    },
     Nullary {
         output: crate::plan::execution::graph::CustomLocalId,
         constructor: crate::plan::execution::type_::CustomConstructorId,
@@ -2104,6 +2224,7 @@ impl<'graph> CallScalar<'graph> {
 }
 
 pub(super) enum CallTerminator<'graph> {
+    Match(Box<super::matching::CompoundMatch<'graph>>),
     Jump(&'graph Edge),
     Boolean {
         subject: BoolLocalId,
@@ -2123,6 +2244,33 @@ pub(super) enum CallTerminator<'graph> {
 }
 
 impl<'graph> CallTerminator<'graph> {
+    pub(super) fn enters(&self, block: BlockId) -> bool {
+        let enters = |edge: &Edge| edge.target() == block;
+        match self {
+            Self::Match(matcher) => matcher.enters(block),
+            Self::Jump(edge) => enters(edge),
+            Self::Boolean { true_, false_, .. } | Self::Test { true_, false_, .. } => {
+                enters(true_) || enters(false_)
+            }
+            Self::Switch {
+                clauses, fallback, ..
+            } => clauses.iter().any(|(_, edge)| enters(edge)) || enters(fallback),
+        }
+    }
+
+    fn accepts_edges(&self, mut accepts: impl FnMut(&Edge) -> bool) -> bool {
+        match self {
+            Self::Match(matcher) => matcher.accepts_edges(accepts),
+            Self::Jump(edge) => accepts(edge),
+            Self::Boolean { true_, false_, .. } | Self::Test { true_, false_, .. } => {
+                accepts(true_) && accepts(false_)
+            }
+            Self::Switch {
+                clauses, fallback, ..
+            } => clauses.iter().all(|(_, edge)| accepts(edge)) && accepts(fallback),
+        }
+    }
+
     fn inspect(terminator: &'graph Terminator) -> Option<Self> {
         Some(match terminator {
             Terminator::Jump(jump) => Self::Jump(&jump.edge),
@@ -2184,9 +2332,7 @@ fn inspect_instruction<'graph, Graph: ExecutionGraphProfile>(
     let instruction = instruction.value()?;
     let output = types.local(instruction.output().local())?;
     if let (
-        ProfiledInstructionKind::Custom(
-            crate::plan::execution::graph::CustomInstruction::Construct { constructor, .. },
-        ),
+        ProfiledInstructionKind::Custom(CustomInstruction::Construct { constructor, .. }),
         CallLocal::Nullary(value),
     ) = (instruction.kind(), &output)
     {
@@ -2196,6 +2342,71 @@ fn inspect_instruction<'graph, Graph: ExecutionGraphProfile>(
             output: value.local.id,
             constructor: *constructor,
         }));
+    }
+    if let Some(read) = super::matching::FieldRead::inspect(&output) {
+        match instruction.kind() {
+            ProfiledInstructionKind::Int(IntInstruction::TupleIndex { tuple, index })
+            | ProfiledInstructionKind::Float(FloatInstruction::TupleIndex { tuple, index })
+            | ProfiledInstructionKind::Bool(BoolInstruction::TupleIndex { tuple, index })
+            | ProfiledInstructionKind::String(StringInstruction::TupleIndex { tuple, index })
+            | ProfiledInstructionKind::BitArray(BitArrayInstruction::TupleIndex { tuple, index })
+            | ProfiledInstructionKind::UtfCodepoint(UtfCodepointInstruction::TupleIndex {
+                tuple,
+                index,
+            })
+            | ProfiledInstructionKind::Nil(NilInstruction::TupleIndex { tuple, index })
+            | ProfiledInstructionKind::Custom(CustomInstruction::TupleIndex { tuple, index })
+            | ProfiledInstructionKind::Tuple(TupleInstruction::TupleIndex { tuple, index }) => {
+                // Freezing and prepared admission allocate Tuple IDs in
+                // family order. Every preceding Tuple is already in this
+                // classified prefix, so the source is an indexed projection.
+                let tuples = shape.locals[point]
+                    .iter()
+                    .filter(|local| matches!(local, CallLocal::Tuple { .. }))
+                    .collect::<Vec<_>>();
+                let source = tuples[tuple.0].clone();
+                return Some(CallPoint::Scalar(CallScalar::CompoundField {
+                    output,
+                    source,
+                    index: *index,
+                    custom: false,
+                    read,
+                }));
+            }
+            ProfiledInstructionKind::Int(IntInstruction::CustomField { source, index })
+            | ProfiledInstructionKind::Float(FloatInstruction::CustomField { source, index })
+            | ProfiledInstructionKind::Bool(BoolInstruction::CustomField { source, index })
+            | ProfiledInstructionKind::String(StringInstruction::CustomField { source, index })
+            | ProfiledInstructionKind::BitArray(BitArrayInstruction::CustomField {
+                source,
+                index,
+            })
+            | ProfiledInstructionKind::UtfCodepoint(UtfCodepointInstruction::CustomField {
+                source,
+                index,
+            })
+            | ProfiledInstructionKind::Nil(NilInstruction::CustomField { source, index })
+            | ProfiledInstructionKind::Custom(CustomInstruction::CustomField { source, index })
+            | ProfiledInstructionKind::Tuple(TupleInstruction::CustomField { source, index }) => {
+                // Every Custom in this complete prefix was classified at its
+                // parameter or defining instruction, including Nullary values.
+                let customs = shape.locals[point]
+                    .iter()
+                    .filter(|local| matches!(local, CallLocal::Custom(_) | CallLocal::Nullary(_)))
+                    .collect::<Vec<_>>();
+                let source = customs[source.id.0].clone();
+                // Admitted CustomField has a real field. CallTypes therefore
+                // cannot project its source as the fieldless Nullary carrier.
+                return Some(CallPoint::Scalar(CallScalar::CompoundField {
+                    output,
+                    source,
+                    index: *index,
+                    custom: true,
+                    read,
+                }));
+            }
+            _ => {}
+        }
     }
     match instruction.kind() {
         ProfiledInstructionKind::Bool(BoolInstruction::ListIndex { list, index }) => {
@@ -2300,6 +2511,24 @@ fn inspect_instruction<'graph, Graph: ExecutionGraphProfile>(
         _ => {}
     }
     let (target, args, site) = match instruction.kind() {
+        ProfiledInstructionKind::Custom(CustomInstruction::Call {
+            function,
+            args,
+            site,
+        }) => (
+            CallContractTarget::Static(CallTarget::Custom(*function)),
+            args,
+            site,
+        ),
+        ProfiledInstructionKind::Tuple(TupleInstruction::Call {
+            function,
+            args,
+            site,
+        }) => (
+            CallContractTarget::Static(CallTarget::Tuple(*function)),
+            args,
+            site,
+        ),
         ProfiledInstructionKind::Int(IntInstruction::Call {
             function,
             args,
@@ -2523,10 +2752,12 @@ fn inspect_instruction<'graph, Graph: ExecutionGraphProfile>(
         },
         _ => return None,
     };
+    // All inputs belong to the already classified parameters or preceding
+    // outputs of this block, just as for a tail call above.
     let args = args
         .iter()
-        .map(|argument| types.local(argument))
-        .collect::<Option<Vec<_>>>()?;
+        .filter_map(|argument| types.local(argument))
+        .collect();
     let index = shape.calls.len();
     shape.calls.push(CallInvocation {
         point,
@@ -2553,12 +2784,12 @@ mod tests {
     use crate::plan::execution::compiled::{CallContractTarget, CompiledCheckpoint};
     use crate::plan::execution::function::{
         BoolFunctionId, ExecutionFunctionEntry, ExecutionFunctionRef, ExecutionIntFunctionBody,
-        IntFunctionFunctionId, IntFunctionId,
+        FunctionReturnFamily, IntFunctionFunctionId, IntFunctionId, TupleFunctionId,
     };
     use crate::plan::execution::graph::{
-        BlockId, BoolFunctionLocalId, BoolInstruction, BoolLocalId, BoolTest, CustomListLocalId,
-        CustomLocalId, FunctionCapture, FunctionInstructionKind, IntFunctionLocalId,
-        IntInstruction, IntListLocalId, IntLocalId, ListInstruction, ListLocal, ParamLocal,
+        BlockId, BoolFunctionLocalId, BoolInstruction, BoolLocalId, BoolTest, CustomInstruction,
+        CustomListLocalId, CustomLocalId, FunctionCapture, FunctionInstructionKind,
+        IntFunctionLocalId, IntListLocalId, IntLocalId, ListInstruction, ListLocal, ParamLocal,
         ParamSlot, ProfiledInstruction, ProfiledInstructionKind, StringLocalId, TupleLocalId,
         TypedListInstruction,
     };
@@ -2573,6 +2804,413 @@ mod tests {
     };
     use num_bigint::BigInt;
     use std::convert::Infallible;
+
+    #[test]
+    fn ordinary_compound_calls_keep_their_existing_graph_callees() {
+        let source = r#"
+pub type Box { Box(value: Int) }
+fn custom_identity(value: Box) { value }
+fn tuple_identity(value: #(Int, Int)) { value }
+fn make_pair(value: Int) { #(value, value) }
+fn custom_number(value: Box) {
+  let returned = custom_identity(value)
+  returned.value
+}
+fn tuple_number(value: #(Int, Int)) {
+  let returned = tuple_identity(value)
+  returned.0 + returned.1
+}
+pub fn main() { custom_number(Box(40)) + tuple_number(make_pair(1)) }
+"#;
+        let typed = crate::compile_typed_host_program(
+            "example",
+            "example",
+            [crate::PackageSource::new(
+                "example",
+                Vec::<String>::new(),
+                [crate::ModuleSource::new(
+                    "example",
+                    "src/example.gleam",
+                    source,
+                )],
+            )],
+            crate::HostProviderSet::<StatelessHostProfile>::new([]).unwrap(),
+        )
+        .unwrap();
+        let mut hosted =
+            crate::HostedExecution::try_from_module_plan(crate::plan_host_program(typed).unwrap())
+                .unwrap();
+        let (plan, _, _) = hosted.parts_mut();
+        let calls = CallProgram::inspect(
+            &plan.program.functions,
+            &plan.program.common.custom_types,
+            &plan.program.common.value_shapes,
+        );
+        let compound_calls = calls
+            .functions
+            .iter()
+            .flat_map(|function| &function.shape.calls)
+            .map(|call| (call.site.function(), &call.target))
+            .collect::<Vec<_>>();
+        let custom_callee = calls
+            .functions
+            .iter()
+            .find(|function| function.target.family() == FunctionReturnFamily::Custom)
+            .unwrap()
+            .target;
+        assert_eq!(custom_callee.index(), 0);
+        assert_eq!(
+            calls
+                .functions
+                .iter()
+                .filter(|function| function.target.family() == FunctionReturnFamily::Tuple)
+                .map(|function| function.target)
+                .collect::<Vec<_>>(),
+            [CallTarget::Tuple(TupleFunctionId(1))]
+        );
+        assert!(
+            compound_calls
+                == [
+                    ("custom_number", &CallContractTarget::Static(custom_callee)),
+                    (
+                        "tuple_number",
+                        &CallContractTarget::Static(CallTarget::Tuple(TupleFunctionId(1)))
+                    ),
+                ]
+        );
+        let mut echo = Vec::new();
+        assert_eq!(
+            crate::execution_fixture::run(&mut hosted, &mut (), &mut echo).unwrap(),
+            crate::Value::Int(42.into())
+        );
+        assert!(echo.is_empty());
+    }
+
+    #[test]
+    fn native_tuple_connections_accept_primitive_inputs_and_keep_tuple_inputs_canonical() {
+        use crate::{
+            HostCall, HostCallCompletion, HostCallError, HostProvider, HostProviderModule,
+            HostProviderSet, HostTuple, HostTupleType, HostTypeList, HostTypeListEnd,
+        };
+        struct Provider;
+        impl HostProvider<StatelessHostProfile> for Provider {
+            type State = ();
+            fn project(state: &mut ()) -> &mut () {
+                state
+            }
+        }
+        type Elements = HostTypeList<BigInt, HostTypeList<BigInt, HostTypeListEnd>>;
+        type Pair = HostTupleType<Elements>;
+        fn primitive<'call>(
+            mut call: HostCall<'call, StatelessHostProfile, Provider, Pair>,
+            value: BigInt,
+        ) -> Result<HostCallCompletion<'call, Pair>, HostCallError> {
+            assert_eq!(call.state(), &());
+            Ok(call.return_tuple((value.clone(), (value, ()))))
+        }
+        fn compound<'call>(
+            mut call: HostCall<'call, StatelessHostProfile, Provider, Pair>,
+            value: HostTuple<'call, Elements>,
+        ) -> Result<HostCallCompletion<'call, Pair>, HostCallError> {
+            assert_eq!(call.state(), &());
+            Ok(call.return_value(value))
+        }
+        let source = r#"
+@external(erlang, "example", "primitive")
+fn primitive(value: Int) -> #(Int, Int)
+@external(erlang, "example", "compound")
+fn compound(value: #(Int, Int)) -> #(Int, Int)
+fn simple(value: Int) { let pair = primitive(value) pair.0 + pair.1 }
+fn boxed(value: #(Int, Int)) { let pair = compound(value) pair.0 + pair.1 }
+pub fn main() { simple(20) + boxed(#(1, 1)) }
+"#;
+        let provider = HostProviderModule::<StatelessHostProfile>::new("example", "example")
+            .unwrap()
+            .with_scoped_function::<Provider, (BigInt,), Pair, _>("primitive", primitive)
+            .unwrap()
+            .with_scoped_function::<Provider, (Pair,), Pair, _>("compound", compound)
+            .unwrap();
+        let typed = crate::compile_typed_host_program(
+            "example",
+            "example",
+            [crate::PackageSource::new(
+                "example",
+                Vec::<String>::new(),
+                [crate::ModuleSource::new(
+                    "example",
+                    "src/example.gleam",
+                    source,
+                )],
+            )],
+            HostProviderSet::from_providers([provider]).unwrap(),
+        )
+        .unwrap();
+        let mut hosted =
+            crate::HostedExecution::try_from_module_plan(crate::plan_host_program(typed).unwrap())
+                .unwrap();
+        let (plan, _, _) = hosted.parts_mut();
+        let calls = CallProgram::inspect(
+            &plan.program.functions,
+            &plan.program.common.custom_types,
+            &plan.program.common.value_shapes,
+        );
+        assert_eq!(
+            calls
+                .functions
+                .iter()
+                .map(|function| function.target)
+                .collect::<Vec<_>>(),
+            [
+                CallTarget::Int(IntFunctionId(0)),
+                CallTarget::Int(IntFunctionId(1)),
+            ]
+        );
+        assert!(
+            calls
+                .functions
+                .iter()
+                .flat_map(|function| &function.shape.calls)
+                .map(|call| (call.site.function(), &call.target))
+                .collect::<Vec<_>>()
+                == [
+                    (
+                        "main",
+                        &CallContractTarget::Static(CallTarget::Int(IntFunctionId(1))),
+                    ),
+                    (
+                        "simple",
+                        &CallContractTarget::Static(CallTarget::Tuple(TupleFunctionId(0))),
+                    ),
+                ]
+        );
+        let mut echo = Vec::new();
+        assert_eq!(
+            crate::execution_fixture::run(&mut hosted, &mut (), &mut echo).unwrap(),
+            crate::Value::Int(42.into())
+        );
+        assert!(echo.is_empty());
+    }
+
+    #[test]
+    fn source_compound_fields_preserve_the_selected_owner_and_field_position() {
+        let source = r#"
+pub type Inner { Inner(Int) }
+pub type Record {
+  Record(number: Int, float: Float, flag: Bool, text: String, bits: BitArray,
+    inner: Inner, nested: #(Int, Int), point: UtfCodepoint, nothing: Nil)
+}
+fn identity(value: Int) { value }
+fn keep_float(value: Float) { value }
+fn keep_bool(value: Bool) { value }
+fn keep_string(value: String) { value }
+fn keep_bits(value: BitArray) { value }
+fn keep_inner(value: Inner) { value }
+fn keep_pair(value: #(Int, Int)) { value }
+fn keep_point(value: UtfCodepoint) { value }
+fn keep_nil(value: Nil) { value }
+fn read(record: Record, pair: #(Int, Float, Bool, String, BitArray, Inner, #(Int, Int), UtfCodepoint, Nil)) {
+  let _ = keep_float(record.float)
+  let _ = keep_float(pair.1)
+  let _ = keep_bool(record.flag)
+  let _ = keep_bool(pair.2)
+  let _ = keep_string(record.text)
+  let _ = keep_string(pair.3)
+  let _ = keep_bits(record.bits)
+  let _ = keep_bits(pair.4)
+  let _ = keep_inner(record.inner)
+  let _ = keep_inner(pair.5)
+  let _ = keep_pair(record.nested)
+  let _ = keep_pair(pair.6)
+  let _ = keep_point(record.point)
+  let _ = keep_point(pair.7)
+  let _ = keep_nil(record.nothing)
+  let _ = keep_nil(pair.8)
+  identity(record.number + pair.0) + 1
+}
+pub fn main() {
+  let assert <<point:utf8_codepoint>> = <<"a">>
+  read(Record(40, 1.5, True, "kept", <<7:8>>, Inner(7), #(7, 8), point, Nil),
+    #(2, 2.5, False, "other", <<8:8>>, Inner(8), #(8, 9), point, Nil))
+}
+"#;
+        let typed = crate::compile_typed_host_program(
+            "example",
+            "example",
+            [crate::PackageSource::new(
+                "example",
+                Vec::<String>::new(),
+                [crate::ModuleSource::new(
+                    "example",
+                    "src/example.gleam",
+                    source,
+                )],
+            )],
+            crate::HostProviderSet::<StatelessHostProfile>::new([]).unwrap(),
+        )
+        .unwrap();
+        let mut hosted =
+            crate::HostedExecution::try_from_module_plan(crate::plan_host_program(typed).unwrap())
+                .unwrap();
+        let (plan, _, _) = hosted.parts_mut();
+        let types = super::CallTypes {
+            custom_types: &plan.program.common.custom_types,
+            value_shapes: &plan.program.common.value_shapes,
+        };
+        let calls = CallProgram::inspect(
+            &plan.program.functions,
+            types.custom_types,
+            types.value_shapes,
+        );
+        let read = calls
+            .functions
+            .iter()
+            .find(|function| function.shape.parameter_count == 2)
+            .unwrap();
+        let fields = read
+            .shape
+            .points
+            .iter()
+            .enumerate()
+            .filter_map(|(point, operation)| match operation {
+                CallPoint::Scalar(CallScalar::CompoundField {
+                    source,
+                    index,
+                    custom,
+                    ..
+                }) => Some((point, source.canonical(), *index, *custom)),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            fields
+                .iter()
+                .map(|(_, _, index, custom)| (*index, *custom))
+                .collect::<Vec<_>>(),
+            [
+                (1, true),
+                (1, false),
+                (2, true),
+                (2, false),
+                (3, true),
+                (3, false),
+                (4, true),
+                (4, false),
+                (5, true),
+                (5, false),
+                (6, true),
+                (6, false),
+                (7, true),
+                (7, false),
+                (8, true),
+                (8, false),
+                (0, true),
+                (0, false),
+            ]
+        );
+        let inputs = &read.shape.locals[read.shape.entry()];
+        assert_eq!(inputs.len(), 2);
+        for (_, source, _, custom) in fields {
+            assert_eq!(source, inputs[usize::from(!custom)].canonical());
+        }
+        let mut echo = Vec::new();
+        assert_eq!(
+            crate::execution_fixture::run(&mut hosted, &mut (), &mut echo).unwrap(),
+            crate::Value::Int(43.into())
+        );
+        assert!(echo.is_empty());
+    }
+
+    #[test]
+    fn a_refined_constructor_keeps_its_sparse_join_transfer_canonical() {
+        let source = r#"
+pub type Choice { First Second Unused }
+fn identity(value: Int) { value }
+fn choose(value: Result(Choice, Nil), flag: Bool) {
+  let before = identity(40)
+  case value {
+    Ok(First as narrow) -> {
+      let selected = case flag { True -> narrow False -> Second }
+      before + case selected { First -> 1 Second -> 2 _ -> 0 }
+    }
+    Error(Nil) -> 0
+    _ -> -1
+  }
+}
+pub fn main() { choose(Ok(First), True) + choose(Ok(First), False) }
+"#;
+        let typed = crate::compile_typed_module("example", "src/example.gleam", source).unwrap();
+        let plan = crate::ExecutionPlan::from_module_plan(crate::plan_module(typed).unwrap());
+        let calls = CallProgram::inspect(
+            &plan.program.functions,
+            &plan.program.common.custom_types,
+            &plan.program.common.value_shapes,
+        );
+        let choose = calls
+            .functions
+            .iter()
+            .find(|function| function.shape.parameter_count == 2)
+            .unwrap();
+        let body = match plan.program.functions.value_returns.int_functions[choose.target.index()]
+            .as_ref()
+        {
+            ExecutionFunctionRef::Graph(function) => function.body(),
+            ExecutionFunctionRef::Host(never) => match *never {},
+        };
+        let graph = body.block_graph().as_view();
+        // The True arm carries Exact(First), but its join needs Any(Choice).
+        // Unused is absent from the sparse catalog, so the join and its
+        // incoming ordinary transfer belong to the original graph.
+        assert_eq!(choose.shape.starts.get(&3), None);
+        let canonical_transfers = choose
+            .shape
+            .points
+            .iter()
+            .enumerate()
+            .filter(|(_, operation)| matches!(operation, CallPoint::Interpreted))
+            .filter_map(|(point, _)| {
+                let checkpoint = &choose.shape.checkpoints[point];
+                let block = graph.block(checkpoint.block);
+                (checkpoint.instruction == block.instructions().len())
+                    .then(|| super::CallTerminator::inspect(block.terminator()))
+                    .flatten()
+                    .map(|_| (checkpoint.block, checkpoint.instruction))
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(canonical_transfers, [(BlockId(2), 0)]);
+        let mut echo = Vec::new();
+        assert_eq!(
+            crate::run_main(&plan, &mut echo).unwrap(),
+            crate::Value::Int(83.into())
+        );
+        assert!(echo.is_empty());
+    }
+
+    #[test]
+    fn a_sparse_compound_destination_keeps_the_incoming_transfer_canonical() {
+        let source = r#"
+pub type Choice(a) { Empty Filled(a) }
+fn fallback(value: Choice(Int)) { echo value 0 }
+fn choose(value: Choice(Int)) { case value { Empty -> 42 rest -> fallback(rest) } }
+pub fn main() { choose(Empty) }
+"#;
+        let typed = crate::compile_typed_module("example", "src/example.gleam", source).unwrap();
+        let plan = crate::ExecutionPlan::from_module_plan(crate::plan_module(typed).unwrap());
+        // The source argument retains its exact Empty refinement; the fallback
+        // destination needs the incomplete Any constructor set. Its incoming
+        // match therefore stays canonical, including at the entry checkpoint.
+        let calls = CallProgram::inspect(
+            &plan.program.functions,
+            &plan.program.common.custom_types,
+            &plan.program.common.value_shapes,
+        );
+        assert!(calls.functions.is_empty());
+        let mut echo = Vec::new();
+        assert_eq!(
+            crate::run_main(&plan, &mut echo).unwrap(),
+            crate::Value::Int(42.into())
+        );
+        assert!(echo.is_empty());
+    }
 
     #[test]
     fn captured_nullary_values_keep_their_original_callable_owner() {
@@ -2759,7 +3397,7 @@ pub fn main() {{ let value = {value} build(value, [value]) }}
                 function.body(),
                 2,
                 false,
-                |local| CallLocal::Nil(*local),
+                |value, local| matches!(local, CallLocal::Nil(id) if id == value),
                 |target| CallTarget::Nil(*target.function()),
                 |target| target.site().clone(),
             )
@@ -2890,7 +3528,7 @@ pub fn main() {{ let value = {value} head([value], value, consume) + native() }}
                 head.body(),
                 3,
                 false,
-                |local| CallLocal::Int(*local),
+                |value, local| matches!(local, CallLocal::Int(id) if id == value),
                 |target| CallTarget::Int(*target.function()),
                 |target| target.site().clone(),
             )
@@ -3251,6 +3889,13 @@ pub fn main() { let value = "kept" let calculate = fn() { inspect(value) } calcu
 
     #[test]
     fn scalar_comparison_projection_rejects_compound_mismatched_and_callable_locals() {
+        let custom_list = ParamLocal::List(ListLocal::Custom {
+            local: CustomListLocalId(7),
+            type_id: CustomListTypeId {
+                list_type: ListTypeId(11),
+                item_type: CustomTypeId(4),
+            },
+        });
         let compound = ParamLocal::Tuple {
             local: TupleLocalId(0),
             type_: vec![ValueType::Int].into(),
@@ -3260,6 +3905,8 @@ pub fn main() { let value = "kept" let calculate = fn() { inspect(value) } calcu
             type_: FunctionType::new(Vec::new(), ValueType::Int),
         };
         for (left, right) in [
+            (custom_list.clone(), custom_list.clone()),
+            (ParamLocal::Int(IntLocalId(0)), custom_list),
             (compound.clone(), ParamLocal::Int(IntLocalId(0))),
             (ParamLocal::Int(IntLocalId(0)), compound),
             (
@@ -3898,12 +4545,17 @@ pub fn main() {
     }
 
     #[test]
-    fn scalar_calls_leave_a_compound_argument_to_its_canonical_owner() {
+    fn scalar_call_classification_preserves_a_typed_tuple_argument() {
         use crate::{HostProviderSet, StatelessHostProfile};
         let source = r#"
 fn identity(value: Int) { value }
 fn labelled(label: #(String)) { case label { #("x") -> 7 _ -> 0 } }
-pub fn main() { let calculate = identity let value = calculate(1) labelled(#("x")) + value }
+fn apply(label: #(String)) {
+  let calculate = identity
+  let value = calculate(1)
+  labelled(label) + value
+}
+pub fn main() { apply(#("x")) }
 "#;
         let typed = crate::compile_typed_host_program(
             "example",
@@ -3924,33 +4576,34 @@ pub fn main() { let calculate = identity let value = calculate(1) labelled(#("x"
             crate::HostedExecution::try_from_module_plan(crate::plan_host_program(typed).unwrap())
                 .unwrap();
         let (plan, _, _) = hosted.parts_mut();
-        let main = hosted_main_body(plan);
-        let graph = main.block_graph().as_view();
-        let call = graph.blocks().flat_map(|block| block.instructions()).find(|instruction| matches!(instruction.value().map(|value| value.kind()), Some(ProfiledInstructionKind::Int(IntInstruction::Call { args, .. })) if args.iter().any(|local| matches!(local, ParamLocal::Tuple { .. })))).unwrap();
-        let mut program = CallProgram::inspect(
+        let program = CallProgram::inspect(
             &plan.program.functions,
             &plan.program.common.custom_types,
             &plan.program.common.value_shapes,
         );
-        let main = program
+        let tuple_calls = program
             .functions
-            .iter_mut()
-            .find(|function| function.target == CallTarget::Int(IntFunctionId(0)))
-            .unwrap();
-        let call_count = main.shape.calls.len();
-        assert!(
-            inspect_instruction(
-                call,
-                0,
-                &mut main.shape,
-                &super::CallTypes {
-                    custom_types: &plan.program.common.custom_types,
-                    value_shapes: &plan.program.common.value_shapes
-                }
-            )
-            .is_none()
+            .iter()
+            .flat_map(|function| &function.shape.calls)
+            .filter(|call| {
+                call.args
+                    .iter()
+                    .any(|argument| matches!(argument, CallLocal::Tuple { .. }))
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(tuple_calls.len(), 1);
+        assert_eq!(tuple_calls[0].site.function(), "apply");
+        assert_eq!(
+            tuple_calls[0]
+                .args
+                .iter()
+                .map(CallLocal::canonical)
+                .collect::<Vec<_>>(),
+            vec![ParamLocal::Tuple {
+                local: TupleLocalId(0),
+                type_: vec![ValueType::String].into(),
+            }]
         );
-        assert_eq!(main.shape.calls.len(), call_count);
         let mut echo = Vec::new();
         assert_eq!(
             crate::execution_fixture::run(&mut hosted, &mut (), &mut echo).unwrap(),
@@ -4005,7 +4658,7 @@ pub fn main() { let calculate = identity let value = calculate(1) labelled(#("x"
     }
 
     #[test]
-    fn a_custom_field_projection_keeps_the_supported_call_prefix_unchanged() {
+    fn custom_construction_keeps_the_supported_call_prefix_and_canonical_field_result() {
         let source = r#"
 pub type Item { Item(value: Int) }
 fn identity(value: Int) { value }
@@ -4023,47 +4676,46 @@ pub fn main() {
             ExecutionFunctionRef::Host(never) => match *never {},
         };
         let graph = main.body().block_graph().as_view();
-        let instruction = graph
-            .blocks()
-            .flat_map(|block| block.instructions())
-            .find(|instruction| {
-                matches!(
-                    instruction.value().map(|value| value.kind()),
-                    Some(ProfiledInstructionKind::Int(IntInstruction::CustomField {
-                        index: 0,
-                        ..
-                    }))
-                )
-            })
-            .unwrap();
-        assert!(CallScalar::inspect(instruction).is_none());
-        let mut program = CallProgram::inspect(
+        let program = CallProgram::inspect(
             &plan.program.functions,
             &plan.program.common.custom_types,
             &plan.program.common.value_shapes,
         );
         let main = program
             .functions
-            .iter_mut()
+            .iter()
             .find(|function| function.target == CallTarget::Int(IntFunctionId(0)))
             .unwrap();
-        let call_count = main.shape.calls.len();
-        let creation_count = main.shape.creations.len();
-        assert_eq!((call_count, creation_count), (1, 1));
-        assert!(
-            inspect_instruction(
-                instruction,
-                0,
-                &mut main.shape,
-                &super::CallTypes {
-                    custom_types: &plan.program.common.custom_types,
-                    value_shapes: &plan.program.common.value_shapes
-                }
-            )
-            .is_none()
-        );
-        assert_eq!(main.shape.calls.len(), call_count);
-        assert_eq!(main.shape.creations.len(), creation_count);
+        assert_eq!((main.shape.calls.len(), main.shape.creations.len()), (1, 1));
+        let interpreted = main
+            .shape
+            .points
+            .iter()
+            .zip(&main.shape.checkpoints)
+            .filter_map(|(point, checkpoint)| match point {
+                CallPoint::Interpreted => Some((checkpoint.block, checkpoint.instruction)),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        let constructions = graph
+            .blocks()
+            .enumerate()
+            .flat_map(|(block_index, block)| {
+                block.instructions().iter().enumerate().filter_map(
+                    move |(instruction_index, instruction)| match instruction
+                        .value()
+                        .map(|value| value.kind())
+                    {
+                        Some(ProfiledInstructionKind::Custom(CustomInstruction::Construct {
+                            ..
+                        })) => Some((BlockId(block_index), instruction_index)),
+                        _ => None,
+                    },
+                )
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(constructions.len(), 1);
+        assert_eq!(interpreted, constructions);
         let mut echo = Vec::new();
         assert_eq!(
             crate::run_main(&plan, &mut echo).unwrap(),

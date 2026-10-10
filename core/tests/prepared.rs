@@ -4733,7 +4733,7 @@ fn incompatible_format_never_produces_a_prepared_binding_owner() {
     let error = incompatible.load().err().unwrap();
     assert_eq!(
         error.to_string(),
-        "prepared format 6 is incompatible with format 29; regenerate the prepared program"
+        "prepared format 6 is incompatible with format 30; regenerate the prepared program"
     );
 }
 

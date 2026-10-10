@@ -1,6 +1,6 @@
 data::HostedModuleArtifact {
     module: data::ModuleArtifact {
-        format: 29,
+        format: 30,
         program: data::ProgramTables {
             root: data::source::module_id(0),
             modules: data::Storage::Static(&[
@@ -1078,6 +1078,7 @@ pub fn source_string_caller(value: String) -> String {
                         String4Point6 { string0: StringValue, nullary0: CallNullary, int0: i128, string1: StringValue, string2: StringValue, nullary1: CallNullary, int1: i128 },
                         String7Point0 { string0: StringValue, nullary0: CallNullary },
                         String7Point1 { string0: StringValue, nullary0: CallNullary, int0: i128 },
+                        StringNativeComplete { value: StringValue },
                     }
                     enum StringReturn {
                         String0Call2 { string0: StringValue, nullary0: CallNullary, int0: i128 },
@@ -1150,6 +1151,7 @@ pub fn source_string_caller(value: String) -> String {
                     enum FunctionStep {
                         Yield(FunctionState),
                         StringNative { function: data::function::StringFunctionId, site: data::source::HostCallSite, arguments: Box<CallValues>, caller: Option<StringReturn> },
+                        StringNativeComplete { value: StringValue },
                         Canonical { target: data::compiled::CallTarget, point: data::compiled::CompiledCheckpoint, values: Box<CallValues> },
                         StringCall { callee: FunctionState, caller: StringReturn },
                         String { value: StringValue },
@@ -1158,7 +1160,6 @@ pub fn source_string_caller(value: String) -> String {
                     struct FunctionExecution {
                         active: Option<FunctionState>,
                         native_caller: Option<StringReturn>,
-                        native_result: Option<StringValue>,
                         string_returns: Vec<StringReturn>,
                     }
                     impl FunctionExecution {
@@ -1166,7 +1167,6 @@ pub fn source_string_caller(value: String) -> String {
                             Self {
                                 active: Some(active),
                                 native_caller: None,
-                                native_result: None,
                                 string_returns: Vec::new(),
                             }
                         }
@@ -1191,14 +1191,6 @@ pub fn source_string_caller(value: String) -> String {
                             std::mem::size_of::<Self>() + self.string_returns.capacity() * std::mem::size_of::<StringReturn>()
                         }
                         fn advance(mut self: Box<Self>, ops: &mut CallOps<'_>, budget: &mut usize) -> CallProgress {
-                            if let Some(result) = self.native_result.take() {
-                                if let Some(caller) = self.native_caller.take().or_else(|| self.string_returns.pop()) {
-                                    self.active = Some(caller.small(result));
-                                } else {
-                                    self.string_returns.clear();
-                                    return CallProgress::Complete { output: CallOutput::String(result), execution: self };
-                                }
-                            }
                             let Some(mut active) = self.active.take() else { return CallProgress::Yield(self); };
                             loop {
                                 match function_step(active, ops, budget) {
@@ -1206,6 +1198,10 @@ pub fn source_string_caller(value: String) -> String {
                                         let root_tail = caller.is_none() && self.string_returns.is_empty() && ops.root_tail_entry();
                                         self.native_caller = caller;
                                         return CallProgress::StringNative(StringNativeRequest { function, site, arguments, root_tail, execution: self });
+                                    },
+                                    FunctionStep::StringNativeComplete { value } => {
+                                        self.string_returns.clear();
+                                        return CallProgress::Complete { output: CallOutput::String(value), execution: self };
                                     },
                                     FunctionStep::Yield(active) => {
                                         self.active = Some(active);
@@ -1253,10 +1249,19 @@ pub fn source_string_caller(value: String) -> String {
                         }
                     }
                     impl StringNativeExecution for FunctionExecution {
-                        fn resume_native(mut self: Box<Self>, value: StringValue) -> Box<dyn CallExecution> { self.native_result = Some(value); self }
+                        fn resume_native(mut self: Box<Self>, value: StringValue) -> Box<dyn CallExecution> {
+                            let active = if let Some(caller) = self.native_caller.take().or_else(|| self.string_returns.pop()) {
+                                caller.small(value)
+                            } else {
+                                FunctionState::StringNativeComplete { value }
+                            };
+                            self.active = Some(active);
+                            self
+                        }
                     }
                     fn function_step(active: FunctionState, ops: &mut CallOps<'_>, budget: &mut usize) -> FunctionStep {
                         match active {
+                            FunctionState::StringNativeComplete { value } => FunctionStep::StringNativeComplete { value },
                             FunctionState::String0Point0 { string0 } => calls_string_0_run(String0State::Point0 { string0 }, ops, budget),
                             FunctionState::String0Point1 { string0, nullary0 } => calls_string_0_run(String0State::Point1 { string0, nullary0 }, ops, budget),
                             FunctionState::String0Point2 { string0, nullary0, int0 } => calls_string_0_run(String0State::Point2 { string0, nullary0, int0 }, ops, budget),
@@ -1326,14 +1331,14 @@ pub fn source_string_caller(value: String) -> String {
                                         custom_lists: 0,
                                         int_functions: 0,
                                         bool_functions: 0,
-                                    }, values: Box::new(CallValues { nullaries: vec![nullary0], ints: vec![int0.into()], strings: vec![string0], ..CallValues::default() }) }; }
+                                    }, values: Box::new(CallValues { customs: vec![nullary0.into()], ints: vec![int0.into()], strings: vec![string0], ..CallValues::default() }) }; }
                                     if *budget == 0 { return FunctionStep::Yield(FunctionState::String0Point2 { string0, nullary0, int0 }); }
                                     *budget -= 1;
                                     return {
                                         if ops.supports_string_native(data::function::StringFunctionId(6)) {
-                                            return FunctionStep::StringNative { function: data::function::StringFunctionId(6), site: data::source::HostCallSite::from_static("string_native", "ordinary", data::source::SourceSpan::new(344, 366)), arguments: Box::new(CallValues { nullaries: vec![nullary0], ints: vec![int0.into()], strings: vec![string0.clone()], ..CallValues::default() }), caller: Some(StringReturn::String0Call2 { string0, nullary0, int0 }) };
+                                            return FunctionStep::StringNative { function: data::function::StringFunctionId(6), site: data::source::HostCallSite::from_static("string_native", "ordinary", data::source::SourceSpan::new(344, 366)), arguments: Box::new(CallValues { customs: vec![nullary0.into()], ints: vec![int0.into()], strings: vec![string0.clone()], ..CallValues::default() }), caller: Some(StringReturn::String0Call2 { string0, nullary0, int0 }) };
                                         }
-                                        FunctionStep::StringBridge { function: data::function::StringFunctionId(6), site: data::source::HostCallSite::from_static("string_native", "ordinary", data::source::SourceSpan::new(344, 366)), arguments: CallArguments { values: Box::new(CallValues { nullaries: vec![nullary0], ints: vec![int0.into()], strings: vec![string0.clone()], ..CallValues::default() }), captures: None }, caller: StringReturn::String0Call2 { string0, nullary0, int0 } }
+                                        FunctionStep::StringBridge { function: data::function::StringFunctionId(6), site: data::source::HostCallSite::from_static("string_native", "ordinary", data::source::SourceSpan::new(344, 366)), arguments: CallArguments { values: Box::new(CallValues { customs: vec![nullary0.into()], ints: vec![int0.into()], strings: vec![string0.clone()], ..CallValues::default() }), captures: None }, caller: StringReturn::String0Call2 { string0, nullary0, int0 } }
                                     };
                                 },
                                 String0State::Point1 { string0, nullary0 } => {
@@ -1352,7 +1357,7 @@ pub fn source_string_caller(value: String) -> String {
                                         custom_lists: 0,
                                         int_functions: 0,
                                         bool_functions: 0,
-                                    }, values: Box::new(CallValues { nullaries: vec![nullary0], ints: vec![int0.into()], strings: vec![string0], ..CallValues::default() }) }; }
+                                    }, values: Box::new(CallValues { customs: vec![nullary0.into()], ints: vec![int0.into()], strings: vec![string0], ..CallValues::default() }) }; }
                                     active = String0State::Point2 { string0, nullary0, int0 };
                                     continue;
                                 },
@@ -1361,9 +1366,9 @@ pub fn source_string_caller(value: String) -> String {
                                     *budget -= 1;
                                     return {
                                         if ops.supports_string_native(data::function::StringFunctionId(6)) {
-                                            return FunctionStep::StringNative { function: data::function::StringFunctionId(6), site: data::source::HostCallSite::from_static("string_native", "ordinary", data::source::SourceSpan::new(344, 366)), arguments: Box::new(CallValues { nullaries: vec![nullary0], ints: vec![int0.into()], strings: vec![string0.clone()], ..CallValues::default() }), caller: Some(StringReturn::String0Call2 { string0, nullary0, int0 }) };
+                                            return FunctionStep::StringNative { function: data::function::StringFunctionId(6), site: data::source::HostCallSite::from_static("string_native", "ordinary", data::source::SourceSpan::new(344, 366)), arguments: Box::new(CallValues { customs: vec![nullary0.into()], ints: vec![int0.into()], strings: vec![string0.clone()], ..CallValues::default() }), caller: Some(StringReturn::String0Call2 { string0, nullary0, int0 }) };
                                         }
-                                        FunctionStep::StringBridge { function: data::function::StringFunctionId(6), site: data::source::HostCallSite::from_static("string_native", "ordinary", data::source::SourceSpan::new(344, 366)), arguments: CallArguments { values: Box::new(CallValues { nullaries: vec![nullary0], ints: vec![int0.into()], strings: vec![string0.clone()], ..CallValues::default() }), captures: None }, caller: StringReturn::String0Call2 { string0, nullary0, int0 } }
+                                        FunctionStep::StringBridge { function: data::function::StringFunctionId(6), site: data::source::HostCallSite::from_static("string_native", "ordinary", data::source::SourceSpan::new(344, 366)), arguments: CallArguments { values: Box::new(CallValues { customs: vec![nullary0.into()], ints: vec![int0.into()], strings: vec![string0.clone()], ..CallValues::default() }), captures: None }, caller: StringReturn::String0Call2 { string0, nullary0, int0 } }
                                     };
                                 },
                                 String0State::Point3 { string0, nullary0, int0, string1 } => {
@@ -1388,14 +1393,14 @@ pub fn source_string_caller(value: String) -> String {
                                         custom_lists: 0,
                                         int_functions: 0,
                                         bool_functions: 0,
-                                    }, values: Box::new(CallValues { nullaries: vec![nullary0, nullary1], ints: vec![int0.into(), int1.into()], strings: vec![string0, string1], ..CallValues::default() }) }; }
+                                    }, values: Box::new(CallValues { customs: vec![nullary0.into(), nullary1.into()], ints: vec![int0.into(), int1.into()], strings: vec![string0, string1], ..CallValues::default() }) }; }
                                     if *budget == 0 { return FunctionStep::Yield(FunctionState::String0Point5 { string0, nullary0, int0, string1, nullary1, int1 }); }
                                     *budget -= 1;
                                     return {
                                         if ops.supports_string_native(data::function::StringFunctionId(6)) {
-                                            return FunctionStep::StringNative { function: data::function::StringFunctionId(6), site: data::source::HostCallSite::from_static("string_native", "ordinary", data::source::SourceSpan::new(382, 403)), arguments: Box::new(CallValues { nullaries: vec![nullary1], ints: vec![int1.into()], strings: vec![string1.clone()], ..CallValues::default() }), caller: Some(StringReturn::String0Call5 { string0, nullary0, int0, string1, nullary1, int1 }) };
+                                            return FunctionStep::StringNative { function: data::function::StringFunctionId(6), site: data::source::HostCallSite::from_static("string_native", "ordinary", data::source::SourceSpan::new(382, 403)), arguments: Box::new(CallValues { customs: vec![nullary1.into()], ints: vec![int1.into()], strings: vec![string1.clone()], ..CallValues::default() }), caller: Some(StringReturn::String0Call5 { string0, nullary0, int0, string1, nullary1, int1 }) };
                                         }
-                                        FunctionStep::StringBridge { function: data::function::StringFunctionId(6), site: data::source::HostCallSite::from_static("string_native", "ordinary", data::source::SourceSpan::new(382, 403)), arguments: CallArguments { values: Box::new(CallValues { nullaries: vec![nullary1], ints: vec![int1.into()], strings: vec![string1.clone()], ..CallValues::default() }), captures: None }, caller: StringReturn::String0Call5 { string0, nullary0, int0, string1, nullary1, int1 } }
+                                        FunctionStep::StringBridge { function: data::function::StringFunctionId(6), site: data::source::HostCallSite::from_static("string_native", "ordinary", data::source::SourceSpan::new(382, 403)), arguments: CallArguments { values: Box::new(CallValues { customs: vec![nullary1.into()], ints: vec![int1.into()], strings: vec![string1.clone()], ..CallValues::default() }), captures: None }, caller: StringReturn::String0Call5 { string0, nullary0, int0, string1, nullary1, int1 } }
                                     };
                                 },
                                 String0State::Point4 { string0, nullary0, int0, string1, nullary1 } => {
@@ -1414,7 +1419,7 @@ pub fn source_string_caller(value: String) -> String {
                                         custom_lists: 0,
                                         int_functions: 0,
                                         bool_functions: 0,
-                                    }, values: Box::new(CallValues { nullaries: vec![nullary0, nullary1], ints: vec![int0.into(), int1.into()], strings: vec![string0, string1], ..CallValues::default() }) }; }
+                                    }, values: Box::new(CallValues { customs: vec![nullary0.into(), nullary1.into()], ints: vec![int0.into(), int1.into()], strings: vec![string0, string1], ..CallValues::default() }) }; }
                                     active = String0State::Point5 { string0, nullary0, int0, string1, nullary1, int1 };
                                     continue;
                                 },
@@ -1423,9 +1428,9 @@ pub fn source_string_caller(value: String) -> String {
                                     *budget -= 1;
                                     return {
                                         if ops.supports_string_native(data::function::StringFunctionId(6)) {
-                                            return FunctionStep::StringNative { function: data::function::StringFunctionId(6), site: data::source::HostCallSite::from_static("string_native", "ordinary", data::source::SourceSpan::new(382, 403)), arguments: Box::new(CallValues { nullaries: vec![nullary1], ints: vec![int1.into()], strings: vec![string1.clone()], ..CallValues::default() }), caller: Some(StringReturn::String0Call5 { string0, nullary0, int0, string1, nullary1, int1 }) };
+                                            return FunctionStep::StringNative { function: data::function::StringFunctionId(6), site: data::source::HostCallSite::from_static("string_native", "ordinary", data::source::SourceSpan::new(382, 403)), arguments: Box::new(CallValues { customs: vec![nullary1.into()], ints: vec![int1.into()], strings: vec![string1.clone()], ..CallValues::default() }), caller: Some(StringReturn::String0Call5 { string0, nullary0, int0, string1, nullary1, int1 }) };
                                         }
-                                        FunctionStep::StringBridge { function: data::function::StringFunctionId(6), site: data::source::HostCallSite::from_static("string_native", "ordinary", data::source::SourceSpan::new(382, 403)), arguments: CallArguments { values: Box::new(CallValues { nullaries: vec![nullary1], ints: vec![int1.into()], strings: vec![string1.clone()], ..CallValues::default() }), captures: None }, caller: StringReturn::String0Call5 { string0, nullary0, int0, string1, nullary1, int1 } }
+                                        FunctionStep::StringBridge { function: data::function::StringFunctionId(6), site: data::source::HostCallSite::from_static("string_native", "ordinary", data::source::SourceSpan::new(382, 403)), arguments: CallArguments { values: Box::new(CallValues { customs: vec![nullary1.into()], ints: vec![int1.into()], strings: vec![string1.clone()], ..CallValues::default() }), captures: None }, caller: StringReturn::String0Call5 { string0, nullary0, int0, string1, nullary1, int1 } }
                                     };
                                 },
                                 String0State::Point6 { string0, nullary0, int0, string1, nullary1, int1, string2 } => {
@@ -1468,12 +1473,12 @@ pub fn source_string_caller(value: String) -> String {
                                         custom_lists: 0,
                                         int_functions: 0,
                                         bool_functions: 0,
-                                    }, values: Box::new(CallValues { nullaries: vec![nullary0], ints: vec![int0.into()], strings: vec![string0], ..CallValues::default() }) }; }
+                                    }, values: Box::new(CallValues { customs: vec![nullary0.into()], ints: vec![int0.into()], strings: vec![string0], ..CallValues::default() }) }; }
                                     if *budget == 0 { return FunctionStep::Yield(FunctionState::String1Point2 { string0, nullary0, int0 }); }
                                     return {
                                         if ops.supports_string_native(data::function::StringFunctionId(6)) {
                                             *budget -= 1;
-                                            return FunctionStep::StringNative { function: data::function::StringFunctionId(6), site: data::source::HostCallSite::from_static("string_native", "tail", data::source::SourceSpan::new(457, 479)), arguments: Box::new(CallValues { nullaries: vec![nullary0], ints: vec![int0.into()], strings: vec![string0.clone()], ..CallValues::default() }), caller: None };
+                                            return FunctionStep::StringNative { function: data::function::StringFunctionId(6), site: data::source::HostCallSite::from_static("string_native", "tail", data::source::SourceSpan::new(457, 479)), arguments: Box::new(CallValues { customs: vec![nullary0.into()], ints: vec![int0.into()], strings: vec![string0.clone()], ..CallValues::default() }), caller: None };
                                         }
                                         FunctionStep::Canonical { target: data::compiled::CallTarget::String(data::function::StringFunctionId(1)), point: data::compiled::CompiledCheckpoint {
                                             block: data::graph::BlockId(0),
@@ -1487,7 +1492,7 @@ pub fn source_string_caller(value: String) -> String {
                                             custom_lists: 0,
                                             int_functions: 0,
                                             bool_functions: 0,
-                                        }, values: Box::new(CallValues { nullaries: vec![nullary0], ints: vec![int0.into()], strings: vec![string0], ..CallValues::default() }) }
+                                        }, values: Box::new(CallValues { customs: vec![nullary0.into()], ints: vec![int0.into()], strings: vec![string0], ..CallValues::default() }) }
                                     };
                                 },
                                 String1State::Point1 { string0, nullary0 } => {
@@ -1506,7 +1511,7 @@ pub fn source_string_caller(value: String) -> String {
                                         custom_lists: 0,
                                         int_functions: 0,
                                         bool_functions: 0,
-                                    }, values: Box::new(CallValues { nullaries: vec![nullary0], ints: vec![int0.into()], strings: vec![string0], ..CallValues::default() }) }; }
+                                    }, values: Box::new(CallValues { customs: vec![nullary0.into()], ints: vec![int0.into()], strings: vec![string0], ..CallValues::default() }) }; }
                                     active = String1State::Point2 { string0, nullary0, int0 };
                                     continue;
                                 },
@@ -1515,7 +1520,7 @@ pub fn source_string_caller(value: String) -> String {
                                     return {
                                         if ops.supports_string_native(data::function::StringFunctionId(6)) {
                                             *budget -= 1;
-                                            return FunctionStep::StringNative { function: data::function::StringFunctionId(6), site: data::source::HostCallSite::from_static("string_native", "tail", data::source::SourceSpan::new(457, 479)), arguments: Box::new(CallValues { nullaries: vec![nullary0], ints: vec![int0.into()], strings: vec![string0.clone()], ..CallValues::default() }), caller: None };
+                                            return FunctionStep::StringNative { function: data::function::StringFunctionId(6), site: data::source::HostCallSite::from_static("string_native", "tail", data::source::SourceSpan::new(457, 479)), arguments: Box::new(CallValues { customs: vec![nullary0.into()], ints: vec![int0.into()], strings: vec![string0.clone()], ..CallValues::default() }), caller: None };
                                         }
                                         FunctionStep::Canonical { target: data::compiled::CallTarget::String(data::function::StringFunctionId(1)), point: data::compiled::CompiledCheckpoint {
                                             block: data::graph::BlockId(0),
@@ -1529,7 +1534,7 @@ pub fn source_string_caller(value: String) -> String {
                                             custom_lists: 0,
                                             int_functions: 0,
                                             bool_functions: 0,
-                                        }, values: Box::new(CallValues { nullaries: vec![nullary0], ints: vec![int0.into()], strings: vec![string0], ..CallValues::default() }) }
+                                        }, values: Box::new(CallValues { customs: vec![nullary0.into()], ints: vec![int0.into()], strings: vec![string0], ..CallValues::default() }) }
                                     };
                                 },
                             }
@@ -1588,14 +1593,14 @@ pub fn source_string_caller(value: String) -> String {
                                         custom_lists: 0,
                                         int_functions: 0,
                                         bool_functions: 0,
-                                    }, values: Box::new(CallValues { nullaries: vec![nullary0, nullary1], ints: vec![int0.into()], strings: vec![string0, string1], ..CallValues::default() }) }; }
+                                    }, values: Box::new(CallValues { customs: vec![nullary0.into(), nullary1.into()], ints: vec![int0.into()], strings: vec![string0, string1], ..CallValues::default() }) }; }
                                     if *budget == 0 { return FunctionStep::Yield(FunctionState::String2Point4 { string0, nullary0, string1, nullary1, int0 }); }
                                     *budget -= 1;
                                     return {
                                         if ops.supports_string_native(data::function::StringFunctionId(6)) {
-                                            return FunctionStep::StringNative { function: data::function::StringFunctionId(6), site: data::source::HostCallSite::from_static("string_native", "nested_tail", data::source::SourceSpan::new(672, 693)), arguments: Box::new(CallValues { nullaries: vec![nullary1], ints: vec![int0.into()], strings: vec![string1.clone()], ..CallValues::default() }), caller: Some(StringReturn::String2Call4 { string0, nullary0, string1, nullary1, int0 }) };
+                                            return FunctionStep::StringNative { function: data::function::StringFunctionId(6), site: data::source::HostCallSite::from_static("string_native", "nested_tail", data::source::SourceSpan::new(672, 693)), arguments: Box::new(CallValues { customs: vec![nullary1.into()], ints: vec![int0.into()], strings: vec![string1.clone()], ..CallValues::default() }), caller: Some(StringReturn::String2Call4 { string0, nullary0, string1, nullary1, int0 }) };
                                         }
-                                        FunctionStep::StringBridge { function: data::function::StringFunctionId(6), site: data::source::HostCallSite::from_static("string_native", "nested_tail", data::source::SourceSpan::new(672, 693)), arguments: CallArguments { values: Box::new(CallValues { nullaries: vec![nullary1], ints: vec![int0.into()], strings: vec![string1.clone()], ..CallValues::default() }), captures: None }, caller: StringReturn::String2Call4 { string0, nullary0, string1, nullary1, int0 } }
+                                        FunctionStep::StringBridge { function: data::function::StringFunctionId(6), site: data::source::HostCallSite::from_static("string_native", "nested_tail", data::source::SourceSpan::new(672, 693)), arguments: CallArguments { values: Box::new(CallValues { customs: vec![nullary1.into()], ints: vec![int0.into()], strings: vec![string1.clone()], ..CallValues::default() }), captures: None }, caller: StringReturn::String2Call4 { string0, nullary0, string1, nullary1, int0 } }
                                     };
                                 },
                                 String2State::Point3 { string0, nullary0, string1, nullary1 } => {
@@ -1614,7 +1619,7 @@ pub fn source_string_caller(value: String) -> String {
                                         custom_lists: 0,
                                         int_functions: 0,
                                         bool_functions: 0,
-                                    }, values: Box::new(CallValues { nullaries: vec![nullary0, nullary1], ints: vec![int0.into()], strings: vec![string0, string1], ..CallValues::default() }) }; }
+                                    }, values: Box::new(CallValues { customs: vec![nullary0.into(), nullary1.into()], ints: vec![int0.into()], strings: vec![string0, string1], ..CallValues::default() }) }; }
                                     active = String2State::Point4 { string0, nullary0, string1, nullary1, int0 };
                                     continue;
                                 },
@@ -1623,9 +1628,9 @@ pub fn source_string_caller(value: String) -> String {
                                     *budget -= 1;
                                     return {
                                         if ops.supports_string_native(data::function::StringFunctionId(6)) {
-                                            return FunctionStep::StringNative { function: data::function::StringFunctionId(6), site: data::source::HostCallSite::from_static("string_native", "nested_tail", data::source::SourceSpan::new(672, 693)), arguments: Box::new(CallValues { nullaries: vec![nullary1], ints: vec![int0.into()], strings: vec![string1.clone()], ..CallValues::default() }), caller: Some(StringReturn::String2Call4 { string0, nullary0, string1, nullary1, int0 }) };
+                                            return FunctionStep::StringNative { function: data::function::StringFunctionId(6), site: data::source::HostCallSite::from_static("string_native", "nested_tail", data::source::SourceSpan::new(672, 693)), arguments: Box::new(CallValues { customs: vec![nullary1.into()], ints: vec![int0.into()], strings: vec![string1.clone()], ..CallValues::default() }), caller: Some(StringReturn::String2Call4 { string0, nullary0, string1, nullary1, int0 }) };
                                         }
-                                        FunctionStep::StringBridge { function: data::function::StringFunctionId(6), site: data::source::HostCallSite::from_static("string_native", "nested_tail", data::source::SourceSpan::new(672, 693)), arguments: CallArguments { values: Box::new(CallValues { nullaries: vec![nullary1], ints: vec![int0.into()], strings: vec![string1.clone()], ..CallValues::default() }), captures: None }, caller: StringReturn::String2Call4 { string0, nullary0, string1, nullary1, int0 } }
+                                        FunctionStep::StringBridge { function: data::function::StringFunctionId(6), site: data::source::HostCallSite::from_static("string_native", "nested_tail", data::source::SourceSpan::new(672, 693)), arguments: CallArguments { values: Box::new(CallValues { customs: vec![nullary1.into()], ints: vec![int0.into()], strings: vec![string1.clone()], ..CallValues::default() }), captures: None }, caller: StringReturn::String2Call4 { string0, nullary0, string1, nullary1, int0 } }
                                     };
                                 },
                                 String2State::Point5 { string0, nullary0, string1, nullary1, int0, string2 } => {
@@ -1673,14 +1678,14 @@ pub fn source_string_caller(value: String) -> String {
                                         custom_lists: 0,
                                         int_functions: 0,
                                         bool_functions: 0,
-                                    }, values: Box::new(CallValues { nullaries: vec![nullary0], ints: vec![int0.into()], strings: vec![string0], ..CallValues::default() }) }; }
+                                    }, values: Box::new(CallValues { customs: vec![nullary0.into()], ints: vec![int0.into()], strings: vec![string0], ..CallValues::default() }) }; }
                                     if *budget == 0 { return FunctionStep::Yield(FunctionState::String3Point2 { string0, nullary0, int0 }); }
                                     *budget -= 1;
                                     return {
                                         if ops.supports_string_native(data::function::StringFunctionId(6)) {
-                                            return FunctionStep::StringNative { function: data::function::StringFunctionId(6), site: data::source::HostCallSite::from_static("string_native", "after_continuing", data::source::SourceSpan::new(771, 793)), arguments: Box::new(CallValues { nullaries: vec![nullary0], ints: vec![int0.into()], strings: vec![string0.clone()], ..CallValues::default() }), caller: Some(StringReturn::String3Call2 { string0, nullary0, int0 }) };
+                                            return FunctionStep::StringNative { function: data::function::StringFunctionId(6), site: data::source::HostCallSite::from_static("string_native", "after_continuing", data::source::SourceSpan::new(771, 793)), arguments: Box::new(CallValues { customs: vec![nullary0.into()], ints: vec![int0.into()], strings: vec![string0.clone()], ..CallValues::default() }), caller: Some(StringReturn::String3Call2 { string0, nullary0, int0 }) };
                                         }
-                                        FunctionStep::StringBridge { function: data::function::StringFunctionId(6), site: data::source::HostCallSite::from_static("string_native", "after_continuing", data::source::SourceSpan::new(771, 793)), arguments: CallArguments { values: Box::new(CallValues { nullaries: vec![nullary0], ints: vec![int0.into()], strings: vec![string0.clone()], ..CallValues::default() }), captures: None }, caller: StringReturn::String3Call2 { string0, nullary0, int0 } }
+                                        FunctionStep::StringBridge { function: data::function::StringFunctionId(6), site: data::source::HostCallSite::from_static("string_native", "after_continuing", data::source::SourceSpan::new(771, 793)), arguments: CallArguments { values: Box::new(CallValues { customs: vec![nullary0.into()], ints: vec![int0.into()], strings: vec![string0.clone()], ..CallValues::default() }), captures: None }, caller: StringReturn::String3Call2 { string0, nullary0, int0 } }
                                     };
                                 },
                                 String3State::Point1 { string0, nullary0 } => {
@@ -1699,7 +1704,7 @@ pub fn source_string_caller(value: String) -> String {
                                         custom_lists: 0,
                                         int_functions: 0,
                                         bool_functions: 0,
-                                    }, values: Box::new(CallValues { nullaries: vec![nullary0], ints: vec![int0.into()], strings: vec![string0], ..CallValues::default() }) }; }
+                                    }, values: Box::new(CallValues { customs: vec![nullary0.into()], ints: vec![int0.into()], strings: vec![string0], ..CallValues::default() }) }; }
                                     active = String3State::Point2 { string0, nullary0, int0 };
                                     continue;
                                 },
@@ -1708,9 +1713,9 @@ pub fn source_string_caller(value: String) -> String {
                                     *budget -= 1;
                                     return {
                                         if ops.supports_string_native(data::function::StringFunctionId(6)) {
-                                            return FunctionStep::StringNative { function: data::function::StringFunctionId(6), site: data::source::HostCallSite::from_static("string_native", "after_continuing", data::source::SourceSpan::new(771, 793)), arguments: Box::new(CallValues { nullaries: vec![nullary0], ints: vec![int0.into()], strings: vec![string0.clone()], ..CallValues::default() }), caller: Some(StringReturn::String3Call2 { string0, nullary0, int0 }) };
+                                            return FunctionStep::StringNative { function: data::function::StringFunctionId(6), site: data::source::HostCallSite::from_static("string_native", "after_continuing", data::source::SourceSpan::new(771, 793)), arguments: Box::new(CallValues { customs: vec![nullary0.into()], ints: vec![int0.into()], strings: vec![string0.clone()], ..CallValues::default() }), caller: Some(StringReturn::String3Call2 { string0, nullary0, int0 }) };
                                         }
-                                        FunctionStep::StringBridge { function: data::function::StringFunctionId(6), site: data::source::HostCallSite::from_static("string_native", "after_continuing", data::source::SourceSpan::new(771, 793)), arguments: CallArguments { values: Box::new(CallValues { nullaries: vec![nullary0], ints: vec![int0.into()], strings: vec![string0.clone()], ..CallValues::default() }), captures: None }, caller: StringReturn::String3Call2 { string0, nullary0, int0 } }
+                                        FunctionStep::StringBridge { function: data::function::StringFunctionId(6), site: data::source::HostCallSite::from_static("string_native", "after_continuing", data::source::SourceSpan::new(771, 793)), arguments: CallArguments { values: Box::new(CallValues { customs: vec![nullary0.into()], ints: vec![int0.into()], strings: vec![string0.clone()], ..CallValues::default() }), captures: None }, caller: StringReturn::String3Call2 { string0, nullary0, int0 } }
                                     };
                                 },
                                 String3State::Point3 { string0, nullary0, int0, string1 } => {
@@ -1745,14 +1750,14 @@ pub fn source_string_caller(value: String) -> String {
                                         custom_lists: 0,
                                         int_functions: 0,
                                         bool_functions: 0,
-                                    }, values: Box::new(CallValues { nullaries: vec![nullary0, nullary1], ints: vec![int0.into(), int1.into()], strings: vec![string0, string1, string2], ..CallValues::default() }) }; }
+                                    }, values: Box::new(CallValues { customs: vec![nullary0.into(), nullary1.into()], ints: vec![int0.into(), int1.into()], strings: vec![string0, string1, string2], ..CallValues::default() }) }; }
                                     if *budget == 0 { return FunctionStep::Yield(FunctionState::String3Point6 { string0, nullary0, int0, string1, string2, nullary1, int1 }); }
                                     *budget -= 1;
                                     return {
                                         if ops.supports_string_native(data::function::StringFunctionId(6)) {
-                                            return FunctionStep::StringNative { function: data::function::StringFunctionId(6), site: data::source::HostCallSite::from_static("string_native", "after_continuing", data::source::SourceSpan::new(840, 865)), arguments: Box::new(CallValues { nullaries: vec![nullary1], ints: vec![int1.into()], strings: vec![string2.clone()], ..CallValues::default() }), caller: Some(StringReturn::String3Call6 { string0, nullary0, int0, string1, string2, nullary1, int1 }) };
+                                            return FunctionStep::StringNative { function: data::function::StringFunctionId(6), site: data::source::HostCallSite::from_static("string_native", "after_continuing", data::source::SourceSpan::new(840, 865)), arguments: Box::new(CallValues { customs: vec![nullary1.into()], ints: vec![int1.into()], strings: vec![string2.clone()], ..CallValues::default() }), caller: Some(StringReturn::String3Call6 { string0, nullary0, int0, string1, string2, nullary1, int1 }) };
                                         }
-                                        FunctionStep::StringBridge { function: data::function::StringFunctionId(6), site: data::source::HostCallSite::from_static("string_native", "after_continuing", data::source::SourceSpan::new(840, 865)), arguments: CallArguments { values: Box::new(CallValues { nullaries: vec![nullary1], ints: vec![int1.into()], strings: vec![string2.clone()], ..CallValues::default() }), captures: None }, caller: StringReturn::String3Call6 { string0, nullary0, int0, string1, string2, nullary1, int1 } }
+                                        FunctionStep::StringBridge { function: data::function::StringFunctionId(6), site: data::source::HostCallSite::from_static("string_native", "after_continuing", data::source::SourceSpan::new(840, 865)), arguments: CallArguments { values: Box::new(CallValues { customs: vec![nullary1.into()], ints: vec![int1.into()], strings: vec![string2.clone()], ..CallValues::default() }), captures: None }, caller: StringReturn::String3Call6 { string0, nullary0, int0, string1, string2, nullary1, int1 } }
                                     };
                                 },
                                 String3State::Point5 { string0, nullary0, int0, string1, string2, nullary1 } => {
@@ -1771,7 +1776,7 @@ pub fn source_string_caller(value: String) -> String {
                                         custom_lists: 0,
                                         int_functions: 0,
                                         bool_functions: 0,
-                                    }, values: Box::new(CallValues { nullaries: vec![nullary0, nullary1], ints: vec![int0.into(), int1.into()], strings: vec![string0, string1, string2], ..CallValues::default() }) }; }
+                                    }, values: Box::new(CallValues { customs: vec![nullary0.into(), nullary1.into()], ints: vec![int0.into(), int1.into()], strings: vec![string0, string1, string2], ..CallValues::default() }) }; }
                                     active = String3State::Point6 { string0, nullary0, int0, string1, string2, nullary1, int1 };
                                     continue;
                                 },
@@ -1780,9 +1785,9 @@ pub fn source_string_caller(value: String) -> String {
                                     *budget -= 1;
                                     return {
                                         if ops.supports_string_native(data::function::StringFunctionId(6)) {
-                                            return FunctionStep::StringNative { function: data::function::StringFunctionId(6), site: data::source::HostCallSite::from_static("string_native", "after_continuing", data::source::SourceSpan::new(840, 865)), arguments: Box::new(CallValues { nullaries: vec![nullary1], ints: vec![int1.into()], strings: vec![string2.clone()], ..CallValues::default() }), caller: Some(StringReturn::String3Call6 { string0, nullary0, int0, string1, string2, nullary1, int1 }) };
+                                            return FunctionStep::StringNative { function: data::function::StringFunctionId(6), site: data::source::HostCallSite::from_static("string_native", "after_continuing", data::source::SourceSpan::new(840, 865)), arguments: Box::new(CallValues { customs: vec![nullary1.into()], ints: vec![int1.into()], strings: vec![string2.clone()], ..CallValues::default() }), caller: Some(StringReturn::String3Call6 { string0, nullary0, int0, string1, string2, nullary1, int1 }) };
                                         }
-                                        FunctionStep::StringBridge { function: data::function::StringFunctionId(6), site: data::source::HostCallSite::from_static("string_native", "after_continuing", data::source::SourceSpan::new(840, 865)), arguments: CallArguments { values: Box::new(CallValues { nullaries: vec![nullary1], ints: vec![int1.into()], strings: vec![string2.clone()], ..CallValues::default() }), captures: None }, caller: StringReturn::String3Call6 { string0, nullary0, int0, string1, string2, nullary1, int1 } }
+                                        FunctionStep::StringBridge { function: data::function::StringFunctionId(6), site: data::source::HostCallSite::from_static("string_native", "after_continuing", data::source::SourceSpan::new(840, 865)), arguments: CallArguments { values: Box::new(CallValues { customs: vec![nullary1.into()], ints: vec![int1.into()], strings: vec![string2.clone()], ..CallValues::default() }), captures: None }, caller: StringReturn::String3Call6 { string0, nullary0, int0, string1, string2, nullary1, int1 } }
                                     };
                                 },
                                 String3State::Point7 { string0, nullary0, int0, string1, string2, nullary1, int1, string3 } => {
@@ -1829,14 +1834,14 @@ pub fn source_string_caller(value: String) -> String {
                                         custom_lists: 0,
                                         int_functions: 0,
                                         bool_functions: 0,
-                                    }, values: Box::new(CallValues { nullaries: vec![nullary0], ints: vec![int0.into()], strings: vec![string0], ..CallValues::default() }) }; }
+                                    }, values: Box::new(CallValues { customs: vec![nullary0.into()], ints: vec![int0.into()], strings: vec![string0], ..CallValues::default() }) }; }
                                     if *budget == 0 { return FunctionStep::Yield(FunctionState::String4Point2 { string0, nullary0, int0 }); }
                                     *budget -= 1;
                                     return {
                                         if ops.supports_string_native(data::function::StringFunctionId(6)) {
-                                            return FunctionStep::StringNative { function: data::function::StringFunctionId(6), site: data::source::HostCallSite::from_static("string_native", "after_never", data::source::SourceSpan::new(938, 960)), arguments: Box::new(CallValues { nullaries: vec![nullary0], ints: vec![int0.into()], strings: vec![string0.clone()], ..CallValues::default() }), caller: Some(StringReturn::String4Call2 { string0, nullary0, int0 }) };
+                                            return FunctionStep::StringNative { function: data::function::StringFunctionId(6), site: data::source::HostCallSite::from_static("string_native", "after_never", data::source::SourceSpan::new(938, 960)), arguments: Box::new(CallValues { customs: vec![nullary0.into()], ints: vec![int0.into()], strings: vec![string0.clone()], ..CallValues::default() }), caller: Some(StringReturn::String4Call2 { string0, nullary0, int0 }) };
                                         }
-                                        FunctionStep::StringBridge { function: data::function::StringFunctionId(6), site: data::source::HostCallSite::from_static("string_native", "after_never", data::source::SourceSpan::new(938, 960)), arguments: CallArguments { values: Box::new(CallValues { nullaries: vec![nullary0], ints: vec![int0.into()], strings: vec![string0.clone()], ..CallValues::default() }), captures: None }, caller: StringReturn::String4Call2 { string0, nullary0, int0 } }
+                                        FunctionStep::StringBridge { function: data::function::StringFunctionId(6), site: data::source::HostCallSite::from_static("string_native", "after_never", data::source::SourceSpan::new(938, 960)), arguments: CallArguments { values: Box::new(CallValues { customs: vec![nullary0.into()], ints: vec![int0.into()], strings: vec![string0.clone()], ..CallValues::default() }), captures: None }, caller: StringReturn::String4Call2 { string0, nullary0, int0 } }
                                     };
                                 },
                                 String4State::Point1 { string0, nullary0 } => {
@@ -1855,7 +1860,7 @@ pub fn source_string_caller(value: String) -> String {
                                         custom_lists: 0,
                                         int_functions: 0,
                                         bool_functions: 0,
-                                    }, values: Box::new(CallValues { nullaries: vec![nullary0], ints: vec![int0.into()], strings: vec![string0], ..CallValues::default() }) }; }
+                                    }, values: Box::new(CallValues { customs: vec![nullary0.into()], ints: vec![int0.into()], strings: vec![string0], ..CallValues::default() }) }; }
                                     active = String4State::Point2 { string0, nullary0, int0 };
                                     continue;
                                 },
@@ -1864,9 +1869,9 @@ pub fn source_string_caller(value: String) -> String {
                                     *budget -= 1;
                                     return {
                                         if ops.supports_string_native(data::function::StringFunctionId(6)) {
-                                            return FunctionStep::StringNative { function: data::function::StringFunctionId(6), site: data::source::HostCallSite::from_static("string_native", "after_never", data::source::SourceSpan::new(938, 960)), arguments: Box::new(CallValues { nullaries: vec![nullary0], ints: vec![int0.into()], strings: vec![string0.clone()], ..CallValues::default() }), caller: Some(StringReturn::String4Call2 { string0, nullary0, int0 }) };
+                                            return FunctionStep::StringNative { function: data::function::StringFunctionId(6), site: data::source::HostCallSite::from_static("string_native", "after_never", data::source::SourceSpan::new(938, 960)), arguments: Box::new(CallValues { customs: vec![nullary0.into()], ints: vec![int0.into()], strings: vec![string0.clone()], ..CallValues::default() }), caller: Some(StringReturn::String4Call2 { string0, nullary0, int0 }) };
                                         }
-                                        FunctionStep::StringBridge { function: data::function::StringFunctionId(6), site: data::source::HostCallSite::from_static("string_native", "after_never", data::source::SourceSpan::new(938, 960)), arguments: CallArguments { values: Box::new(CallValues { nullaries: vec![nullary0], ints: vec![int0.into()], strings: vec![string0.clone()], ..CallValues::default() }), captures: None }, caller: StringReturn::String4Call2 { string0, nullary0, int0 } }
+                                        FunctionStep::StringBridge { function: data::function::StringFunctionId(6), site: data::source::HostCallSite::from_static("string_native", "after_never", data::source::SourceSpan::new(938, 960)), arguments: CallArguments { values: Box::new(CallValues { customs: vec![nullary0.into()], ints: vec![int0.into()], strings: vec![string0.clone()], ..CallValues::default() }), captures: None }, caller: StringReturn::String4Call2 { string0, nullary0, int0 } }
                                     };
                                 },
                                 String4State::Point3 { string0, nullary0, int0, string1 } => {
@@ -1901,12 +1906,12 @@ pub fn source_string_caller(value: String) -> String {
                                         custom_lists: 0,
                                         int_functions: 0,
                                         bool_functions: 0,
-                                    }, values: Box::new(CallValues { nullaries: vec![nullary0, nullary1], ints: vec![int0.into(), int1.into()], strings: vec![string0, string1, string2], ..CallValues::default() }) }; }
+                                    }, values: Box::new(CallValues { customs: vec![nullary0.into(), nullary1.into()], ints: vec![int0.into(), int1.into()], strings: vec![string0, string1, string2], ..CallValues::default() }) }; }
                                     if *budget == 0 { return FunctionStep::Yield(FunctionState::String4Point6 { string0, nullary0, int0, string1, string2, nullary1, int1 }); }
                                     return {
                                         if ops.supports_string_native(data::function::StringFunctionId(6)) {
                                             *budget -= 1;
-                                            return FunctionStep::StringNative { function: data::function::StringFunctionId(6), site: data::source::HostCallSite::from_static("string_native", "after_never", data::source::SourceSpan::new(991, 1014)), arguments: Box::new(CallValues { nullaries: vec![nullary1], ints: vec![int1.into()], strings: vec![string2.clone()], ..CallValues::default() }), caller: None };
+                                            return FunctionStep::StringNative { function: data::function::StringFunctionId(6), site: data::source::HostCallSite::from_static("string_native", "after_never", data::source::SourceSpan::new(991, 1014)), arguments: Box::new(CallValues { customs: vec![nullary1.into()], ints: vec![int1.into()], strings: vec![string2.clone()], ..CallValues::default() }), caller: None };
                                         }
                                         FunctionStep::Canonical { target: data::compiled::CallTarget::String(data::function::StringFunctionId(4)), point: data::compiled::CompiledCheckpoint {
                                             block: data::graph::BlockId(0),
@@ -1920,7 +1925,7 @@ pub fn source_string_caller(value: String) -> String {
                                             custom_lists: 0,
                                             int_functions: 0,
                                             bool_functions: 0,
-                                        }, values: Box::new(CallValues { nullaries: vec![nullary0, nullary1], ints: vec![int0.into(), int1.into()], strings: vec![string0, string1, string2], ..CallValues::default() }) }
+                                        }, values: Box::new(CallValues { customs: vec![nullary0.into(), nullary1.into()], ints: vec![int0.into(), int1.into()], strings: vec![string0, string1, string2], ..CallValues::default() }) }
                                     };
                                 },
                                 String4State::Point5 { string0, nullary0, int0, string1, string2, nullary1 } => {
@@ -1939,7 +1944,7 @@ pub fn source_string_caller(value: String) -> String {
                                         custom_lists: 0,
                                         int_functions: 0,
                                         bool_functions: 0,
-                                    }, values: Box::new(CallValues { nullaries: vec![nullary0, nullary1], ints: vec![int0.into(), int1.into()], strings: vec![string0, string1, string2], ..CallValues::default() }) }; }
+                                    }, values: Box::new(CallValues { customs: vec![nullary0.into(), nullary1.into()], ints: vec![int0.into(), int1.into()], strings: vec![string0, string1, string2], ..CallValues::default() }) }; }
                                     active = String4State::Point6 { string0, nullary0, int0, string1, string2, nullary1, int1 };
                                     continue;
                                 },
@@ -1948,7 +1953,7 @@ pub fn source_string_caller(value: String) -> String {
                                     return {
                                         if ops.supports_string_native(data::function::StringFunctionId(6)) {
                                             *budget -= 1;
-                                            return FunctionStep::StringNative { function: data::function::StringFunctionId(6), site: data::source::HostCallSite::from_static("string_native", "after_never", data::source::SourceSpan::new(991, 1014)), arguments: Box::new(CallValues { nullaries: vec![nullary1], ints: vec![int1.into()], strings: vec![string2.clone()], ..CallValues::default() }), caller: None };
+                                            return FunctionStep::StringNative { function: data::function::StringFunctionId(6), site: data::source::HostCallSite::from_static("string_native", "after_never", data::source::SourceSpan::new(991, 1014)), arguments: Box::new(CallValues { customs: vec![nullary1.into()], ints: vec![int1.into()], strings: vec![string2.clone()], ..CallValues::default() }), caller: None };
                                         }
                                         FunctionStep::Canonical { target: data::compiled::CallTarget::String(data::function::StringFunctionId(4)), point: data::compiled::CompiledCheckpoint {
                                             block: data::graph::BlockId(0),
@@ -1962,7 +1967,7 @@ pub fn source_string_caller(value: String) -> String {
                                             custom_lists: 0,
                                             int_functions: 0,
                                             bool_functions: 0,
-                                        }, values: Box::new(CallValues { nullaries: vec![nullary0, nullary1], ints: vec![int0.into(), int1.into()], strings: vec![string0, string1, string2], ..CallValues::default() }) }
+                                        }, values: Box::new(CallValues { customs: vec![nullary0.into(), nullary1.into()], ints: vec![int0.into(), int1.into()], strings: vec![string0, string1, string2], ..CallValues::default() }) }
                                     };
                                 },
                             }
@@ -1990,12 +1995,12 @@ pub fn source_string_caller(value: String) -> String {
                                     custom_lists: 0,
                                     int_functions: 0,
                                     bool_functions: 0,
-                                }, values: Box::new(CallValues { nullaries: vec![nullary0], ints: vec![int0.into()], strings: vec![string0], ..CallValues::default() }) }; }
+                                }, values: Box::new(CallValues { customs: vec![nullary0.into()], ints: vec![int0.into()], strings: vec![string0], ..CallValues::default() }) }; }
                                 if *budget == 0 { return FunctionStep::Yield(FunctionState::String7Point1 { string0, nullary0, int0 }); }
                                 {
                                     if ops.supports_string_native(data::function::StringFunctionId(6)) {
                                         *budget -= 1;
-                                        return FunctionStep::StringNative { function: data::function::StringFunctionId(6), site: data::source::HostCallSite::from_static("string_native", "forward", data::source::SourceSpan::new(545, 570)), arguments: Box::new(CallValues { nullaries: vec![nullary0], ints: vec![int0.into()], strings: vec![string0.clone()], ..CallValues::default() }), caller: None };
+                                        return FunctionStep::StringNative { function: data::function::StringFunctionId(6), site: data::source::HostCallSite::from_static("string_native", "forward", data::source::SourceSpan::new(545, 570)), arguments: Box::new(CallValues { customs: vec![nullary0.into()], ints: vec![int0.into()], strings: vec![string0.clone()], ..CallValues::default() }), caller: None };
                                     }
                                     FunctionStep::Canonical { target: data::compiled::CallTarget::String(data::function::StringFunctionId(7)), point: data::compiled::CompiledCheckpoint {
                                         block: data::graph::BlockId(0),
@@ -2009,7 +2014,7 @@ pub fn source_string_caller(value: String) -> String {
                                         custom_lists: 0,
                                         int_functions: 0,
                                         bool_functions: 0,
-                                    }, values: Box::new(CallValues { nullaries: vec![nullary0], ints: vec![int0.into()], strings: vec![string0], ..CallValues::default() }) }
+                                    }, values: Box::new(CallValues { customs: vec![nullary0.into()], ints: vec![int0.into()], strings: vec![string0], ..CallValues::default() }) }
                                 }
                             },
                             String7State::Point1 { string0, nullary0, int0 } => {
@@ -2017,7 +2022,7 @@ pub fn source_string_caller(value: String) -> String {
                                 {
                                     if ops.supports_string_native(data::function::StringFunctionId(6)) {
                                         *budget -= 1;
-                                        return FunctionStep::StringNative { function: data::function::StringFunctionId(6), site: data::source::HostCallSite::from_static("string_native", "forward", data::source::SourceSpan::new(545, 570)), arguments: Box::new(CallValues { nullaries: vec![nullary0], ints: vec![int0.into()], strings: vec![string0.clone()], ..CallValues::default() }), caller: None };
+                                        return FunctionStep::StringNative { function: data::function::StringFunctionId(6), site: data::source::HostCallSite::from_static("string_native", "forward", data::source::SourceSpan::new(545, 570)), arguments: Box::new(CallValues { customs: vec![nullary0.into()], ints: vec![int0.into()], strings: vec![string0.clone()], ..CallValues::default() }), caller: None };
                                     }
                                     FunctionStep::Canonical { target: data::compiled::CallTarget::String(data::function::StringFunctionId(7)), point: data::compiled::CompiledCheckpoint {
                                         block: data::graph::BlockId(0),
@@ -2031,7 +2036,7 @@ pub fn source_string_caller(value: String) -> String {
                                         custom_lists: 0,
                                         int_functions: 0,
                                         bool_functions: 0,
-                                    }, values: Box::new(CallValues { nullaries: vec![nullary0], ints: vec![int0.into()], strings: vec![string0], ..CallValues::default() }) }
+                                    }, values: Box::new(CallValues { customs: vec![nullary0.into()], ints: vec![int0.into()], strings: vec![string0], ..CallValues::default() }) }
                                 }
                             },
                         }

@@ -1,6 +1,6 @@
 data::HostedModuleArtifact {
     module: data::ModuleArtifact {
-        format: 29,
+        format: 30,
         program: data::ProgramTables {
             root: data::source::module_id(0),
             modules: data::Storage::Static(&[
@@ -5210,7 +5210,7 @@ pub fn stopped() -> Bool {
                     [calls_int_0_start, calls_int_1_start, calls_int_5_start]
                 };
                 const CALL_GROUP_1: [data::compiled::calls::CallStart; 1] = {
-                    use data::compiled::calls::{BitArrayCallable, CallArguments, CallCapture, CallExecution, CallInputs, CallOps, CallOutput, CallProgress, CallStorage, CallValues, IntCallable, StringCallable, StringValue};
+                    use data::compiled::calls::{BitArrayCallable, CallArguments, CallCapture, CallCustom, CallExecution, CallInputs, CallOps, CallOutput, CallProgress, CallStorage, CallValues, IntCallable, StringCallable, StringValue};
                     enum FunctionState {
                         Bool0Point0 {  },
                         Bool0Point1 { int0: i128 },
@@ -5243,6 +5243,7 @@ pub fn stopped() -> Bool {
                         Bool0Point28 {  },
                         Bool0Point29 {  },
                         Bool0Point30 {  },
+                        Bool0Point31 { custom0: CallCustom },
                     }
                     enum BoolReturn {
                     }
@@ -5404,6 +5405,7 @@ pub fn stopped() -> Bool {
                             FunctionState::Bool0Point28 {  } => calls_bool_0_run(Bool0State::Point28 {  }, ops, budget),
                             FunctionState::Bool0Point29 {  } => calls_bool_0_run(Bool0State::Point29 {  }, ops, budget),
                             FunctionState::Bool0Point30 {  } => calls_bool_0_run(Bool0State::Point30 {  }, ops, budget),
+                            FunctionState::Bool0Point31 { custom0 } => calls_bool_0_run(Bool0State::Point31 { custom0 }, ops, budget),
                         }
                     }
                     enum Bool0State {
@@ -5438,6 +5440,7 @@ pub fn stopped() -> Bool {
                         Point28 {  },
                         Point29 {  },
                         Point30 {  },
+                        Point31 { custom0: CallCustom },
                     }
                     fn calls_bool_0_run(mut active: Bool0State, ops: &mut CallOps<'_>, budget: &mut usize) -> FunctionStep {
                         loop {
@@ -5839,6 +5842,21 @@ pub fn stopped() -> Bool {
                                     };
                                     continue;
                                 },
+                                Bool0State::Point31 { custom0 } => {
+                                    return FunctionStep::Canonical { target: data::compiled::CallTarget::Bool(data::function::BoolFunctionId(0)), point: data::compiled::CompiledCheckpoint {
+                                        block: data::graph::BlockId(29),
+                                        instruction: 0,
+                                        ints: 0,
+                                        bools: 0,
+                                        bit_arrays: 0,
+                                        int_lists: 0,
+                                        strings: 0,
+                                        customs: 1,
+                                        custom_lists: 0,
+                                        int_functions: 0,
+                                        bool_functions: 0,
+                                    }, values: Box::new(CallValues { customs: vec![custom0], ..CallValues::default() }) };
+                                },
                             }
                         }
                     }
@@ -5877,6 +5895,7 @@ pub fn stopped() -> Bool {
                             28 => FunctionState::Bool0Point28 {  },
                             29 => FunctionState::Bool0Point29 {  },
                             30 => FunctionState::Bool0Point30 {  },
+                            31 => FunctionState::Bool0Point31 { custom0: values.custom(0)? },
                             _ => return None,
                         };
                         Some(active)
@@ -6739,6 +6758,19 @@ pub fn stopped() -> Bool {
                                         int_functions: 0,
                                         bool_functions: 0,
                                     },
+                                    data::compiled::CompiledCheckpoint {
+                                        block: data::graph::BlockId(29),
+                                        instruction: 0,
+                                        ints: 0,
+                                        bools: 0,
+                                        bit_arrays: 0,
+                                        int_lists: 0,
+                                        strings: 0,
+                                        customs: 1,
+                                        custom_lists: 0,
+                                        int_functions: 0,
+                                        bool_functions: 0,
+                                    },
                                 ]),
                                 locals: data::Storage::Static(&[
                                     data::Storage::Static(&[]),
@@ -6956,6 +6988,15 @@ pub fn stopped() -> Bool {
                                     data::Storage::Static(&[]),
                                     data::Storage::Static(&[]),
                                     data::Storage::Static(&[]),
+                                    data::Storage::Static(&[
+                                        data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                            id: data::graph::CustomLocalId(0),
+                                            shape: data::type_::CustomValueShape {
+                                                type_id: data::type_::CustomTypeId(3),
+                                                shape_id: data::type_::CustomValueShapeId(2),
+                                            },
+                                        }),
+                                    ]),
                                 ]),
                                 calls: data::Storage::Static(&[
                                     data::compiled::CallContract {

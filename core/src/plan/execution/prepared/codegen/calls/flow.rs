@@ -118,15 +118,26 @@ impl<Graph: ExecutionGraphProfile> CallGroupCodegen<'_, '_, Graph> {
         function.kernel.is_some()
             || !matches!(function.shape.points[point], CallPoint::Interpreted)
             || self.entry_targets.contains(&function.target)
-            || segment_starts(function).contains(&point)
+            // A completed call publishes its restored caller before the
+            // canonical handoff. Typed edges enter that handoff locally.
+            || point.checked_sub(1).is_some_and(|previous| {
+                matches!(function.shape.points[previous], CallPoint::Call(_))
+            })
     }
 
     pub(super) fn local_point(&self, function: &CallFunction<'_, Graph>, point: usize) -> bool {
         self.global_point(function, point)
-            || point.checked_sub(1).is_some_and(|previous| {
-                function.shape.points[previous].is_inline()
-                    && !segment_starts(function).contains(&previous)
-            })
+            // Only a generated edge needs a local interpreted handoff. Blocks
+            // reached after a canonical handoff remain canonical-owned.
+            || (function.kernel.is_none()
+                && ((function.shape.starts.values().any(|&start| start == point)
+                    && function.shape.points.iter().any(|action| {
+                        matches!(action, CallPoint::Terminator(terminator)
+                            if terminator.enters(function.shape.checkpoints[point].block))
+                    })) || point.checked_sub(1).is_some_and(|previous| {
+                    function.shape.points[previous].is_inline()
+                        && !segment_starts(function).contains(&previous)
+                })))
     }
 
     fn uses_ops(&self, function: &CallFunction<'_, Graph>) -> bool {
@@ -245,7 +256,41 @@ impl<Graph: ExecutionGraphProfile> CallGroupCodegen<'_, '_, Graph> {
                 ));
                 source.close("};\n");
             }
-            if !matches!(action, CallPoint::Tail(_)) {
+            if let CallPoint::Scalar(CallScalar::CompoundField {
+                output,
+                source: value,
+                index,
+                custom,
+                read,
+            }) = action
+            {
+                source.open(&format!(
+                    "let {} = match (|| {{\nlet field = {}.field({index})?;\n",
+                    if matches!(output, CallLocal::Nil(_)) {
+                        "()".to_owned()
+                    } else {
+                        local_name(output)
+                    },
+                    local_name(value)
+                ));
+                if *custom {
+                    source.push_str(&format!(
+                        "if !field.matches_type(&{}) {{ return None; }}\n",
+                        Rust::expression(&read.value_type())
+                    ));
+                }
+                source.push_str(&format!("{}\n", read.expression("field")));
+                source.alternative("})() {\n");
+                source.push_str(&format!(
+                    "Some(value) => value,\nNone => return {},\n",
+                    canonical(function.target, checkpoint, locals)
+                ));
+                source.close("};\n");
+            }
+            if !matches!(
+                action,
+                CallPoint::Tail(_) | CallPoint::Terminator(CallTerminator::Match(_))
+            ) {
                 source.push_str("*budget -= 1;\n");
             }
         }
@@ -317,7 +362,7 @@ impl<Graph: ExecutionGraphProfile> CallGroupCodegen<'_, '_, Graph> {
             }
             CallPoint::Terminator(terminator) => {
                 source.open("active = {\n");
-                self.write_terminator(source, function, terminator);
+                self.write_terminator(source, function, point, terminator);
                 source.close("};\n");
                 source.push_str("continue;\n");
             }
@@ -417,5 +462,100 @@ pub fn main() { let result = classify("tag:x") result + 1 }
                 .collect::<Vec<_>>(),
             (0..callee.shape.points.len()).collect::<Vec<_>>(),
         );
+    }
+
+    #[test]
+    fn interpreted_block_entries_have_local_handoff_without_unused_global_states() {
+        let source = r#"
+fn inspect(value: Int) -> Int {
+  let callback = fn(value) { value }
+  case value > 0 {
+    True -> { echo value callback(value) }
+    False -> callback(value + 1)
+  }
+}
+pub fn main() { inspect(41) }
+"#;
+        let typed = crate::compile_typed_host_program(
+            "example",
+            "example",
+            [PackageSource::new(
+                "example",
+                Vec::<String>::new(),
+                [ModuleSource::new("example", "src/example.gleam", source)],
+            )],
+            HostProviderSet::<StatelessHostProfile>::new([]).unwrap(),
+        )
+        .unwrap();
+        let execution =
+            crate::HostedExecution::try_from_module_plan(crate::plan_host_program(typed).unwrap())
+                .unwrap();
+        let plan = &execution.execution;
+        let program = CallProgram::inspect(
+            &plan.program.functions,
+            &plan.program.common.custom_types,
+            &plan.program.common.value_shapes,
+        );
+        let mut interpreted_starts = Vec::new();
+        for function in &program.functions {
+            let group = CallGroupCodegen::new(vec![function], Vec::new(), BTreeSet::new());
+            let external =
+                CallGroupCodegen::new(vec![function], vec![function.target], BTreeSet::new());
+            for &point in function.shape.starts.values() {
+                if matches!(function.shape.points[point], CallPoint::Interpreted) {
+                    interpreted_starts.push(point);
+                    assert!(group.local_point(function, point));
+                    assert!(!group.global_point(function, point));
+                    assert!(external.global_point(function, point));
+                }
+            }
+        }
+        assert_eq!(interpreted_starts.len(), 1);
+    }
+
+    #[test]
+    fn a_call_return_publishes_its_caller_before_an_interpreted_handoff() {
+        let source = r#"
+fn inspect(value: String) -> String {
+  let callback = fn(value) { value }
+  let returned = callback(value)
+  echo returned
+  returned
+}
+pub fn main() { inspect("x") <> "!" }
+"#;
+        let typed = crate::compile_typed_host_program(
+            "example",
+            "example",
+            [PackageSource::new(
+                "example",
+                Vec::<String>::new(),
+                [ModuleSource::new("example", "src/example.gleam", source)],
+            )],
+            HostProviderSet::<StatelessHostProfile>::new([]).unwrap(),
+        )
+        .unwrap();
+        let execution =
+            crate::HostedExecution::try_from_module_plan(crate::plan_host_program(typed).unwrap())
+                .unwrap();
+        let plan = &execution.execution;
+        let program = CallProgram::inspect(
+            &plan.program.functions,
+            &plan.program.common.custom_types,
+            &plan.program.common.value_shapes,
+        );
+        let mut handoffs = 0;
+        for function in &program.functions {
+            let group = CallGroupCodegen::new(vec![function], Vec::new(), BTreeSet::new());
+            for call in &function.shape.calls {
+                let point = call.point + 1;
+                if matches!(function.shape.points[point], CallPoint::Interpreted) {
+                    assert!(group.global_point(function, point));
+                    assert!(group.local_point(function, point));
+                    handoffs += 1;
+                }
+            }
+        }
+        assert_eq!(handoffs, 1);
     }
 }

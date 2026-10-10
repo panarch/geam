@@ -1,5 +1,5 @@
 data::ModuleArtifact {
-    format: 29,
+    format: 30,
     program: data::ProgramTables {
         root: data::source::module_id(0),
         modules: data::Storage::Static(&[
@@ -18611,6 +18611,214 @@ fn integer_comparisons() {
                 }
                 [calls_nilfunction_0_start]
             };
+            const CALL_GROUP_15: [data::compiled::calls::CallStart; 1] = {
+                use data::compiled::calls::{CallCustom, CallExecution, CallInputs, CallOps, CallOutput, CallProgress, CallStorage};
+                enum FunctionState {
+                    Custom0Point0 { custom0: CallCustom },
+                }
+                enum CustomReturn {
+                }
+                impl CustomReturn {
+                    fn small(self, result: CallCustom) -> FunctionState {
+                        let _ = result;
+                        match self {
+                        }
+                    }
+                }
+                #[allow(clippy::large_enum_variant, reason = "Typed locals stay inline to avoid allocating at each generated step.")]
+                enum FunctionStep {
+                    Yield(FunctionState),
+                    Custom { value: CallCustom },
+                }
+                struct FunctionExecution {
+                    active: Option<FunctionState>,
+                    custom_returns: Vec<CustomReturn>,
+                }
+                impl FunctionExecution {
+                    fn new(active: FunctionState) -> Self {
+                        Self {
+                            active: Some(active),
+                            custom_returns: Vec::new(),
+                        }
+                    }
+                }
+                impl CallExecution for FunctionExecution {
+                    fn restart(&mut self, target: data::compiled::CallTarget, point: usize, values: CallInputs<'_>) -> bool {
+                        if self.active.is_some() { return false; }
+                        let active = match target {
+                            data::compiled::CallTarget::Custom(data::function::CustomFunctionId {
+                                index: 0,
+                                return_shape: data::type_::CustomValueShape {
+                                    type_id: data::type_::CustomTypeId(0),
+                                    shape_id: data::type_::CustomValueShapeId(1),
+                                },
+                            }) => calls_custom_0_state(point, values),
+                            _ => None,
+                        };
+                        let Some(active) = active else { return false; };
+                        self.active = Some(active);
+                        true
+                    }
+                    fn retained_bytes(&self) -> usize {
+                        std::mem::size_of::<Self>() + self.custom_returns.capacity() * std::mem::size_of::<CustomReturn>()
+                    }
+                    fn advance(mut self: Box<Self>, ops: &mut CallOps<'_>, budget: &mut usize) -> CallProgress {
+                        let Some(mut active) = self.active.take() else { return CallProgress::Yield(self); };
+                        loop {
+                            match function_step(active, ops, budget) {
+                                FunctionStep::Yield(active) => {
+                                    self.active = Some(active);
+                                    return CallProgress::Yield(self);
+                                },
+                                FunctionStep::Custom { value } => {
+                                    if let Some(caller) = self.custom_returns.pop() {
+                                        active = caller.small(value);
+                                    } else {
+                                        self.custom_returns.clear();
+                                        return CallProgress::Complete { output: CallOutput::Custom(value), execution: self };
+                                    }
+                                },
+                            }
+                        }
+                    }
+                }
+                fn function_step(active: FunctionState, ops: &mut CallOps<'_>, budget: &mut usize) -> FunctionStep {
+                    match active {
+                        FunctionState::Custom0Point0 { custom0 } => calls_custom_0_run(Custom0State::Point0 { custom0 }, ops, budget),
+                    }
+                }
+                enum Custom0State {
+                    Point0 { custom0: CallCustom },
+                }
+                fn calls_custom_0_run(active: Custom0State, _ops: &mut CallOps<'_>, budget: &mut usize) -> FunctionStep {
+                    match active {
+                        Custom0State::Point0 { custom0 } => {
+                            if *budget == 0 { return FunctionStep::Yield(FunctionState::Custom0Point0 { custom0 }); }
+                            *budget -= 1;
+                            {
+                                FunctionStep::Custom { value: custom0 }
+                            }
+                        },
+                    }
+                }
+                fn calls_custom_0_state(point: usize, values: CallInputs<'_>) -> Option<FunctionState> {
+                    let active = match point {
+                        0 => FunctionState::Custom0Point0 { custom0: values.custom(0)? },
+                        _ => return None,
+                    };
+                    Some(active)
+                }
+                fn calls_custom_0_start(point: usize, values: CallInputs<'_>, storage: &mut CallStorage) -> Option<Box<dyn CallExecution>> {
+                    if let Some(execution) = storage.reuse(data::compiled::CallTarget::Custom(data::function::CustomFunctionId {
+                        index: 0,
+                        return_shape: data::type_::CustomValueShape {
+                            type_id: data::type_::CustomTypeId(0),
+                            shape_id: data::type_::CustomValueShapeId(1),
+                        },
+                    }), point, values) { return Some(execution); }
+                    let active = calls_custom_0_state(point, values)?;
+                    Some(Box::new(FunctionExecution::new(active)))
+                }
+                [calls_custom_0_start]
+            };
+            const CALL_GROUP_16: [data::compiled::calls::CallStart; 1] = {
+                use data::compiled::calls::{CallExecution, CallInputs, CallOps, CallOutput, CallProgress, CallStorage, CallTuple};
+                enum FunctionState {
+                    Tuple0Point0 { tuple0: CallTuple },
+                }
+                enum TupleReturn {
+                }
+                impl TupleReturn {
+                    fn small(self, result: CallTuple) -> FunctionState {
+                        let _ = result;
+                        match self {
+                        }
+                    }
+                }
+                #[allow(clippy::large_enum_variant, reason = "Typed locals stay inline to avoid allocating at each generated step.")]
+                enum FunctionStep {
+                    Yield(FunctionState),
+                    Tuple { value: CallTuple },
+                }
+                struct FunctionExecution {
+                    active: Option<FunctionState>,
+                    tuple_returns: Vec<TupleReturn>,
+                }
+                impl FunctionExecution {
+                    fn new(active: FunctionState) -> Self {
+                        Self {
+                            active: Some(active),
+                            tuple_returns: Vec::new(),
+                        }
+                    }
+                }
+                impl CallExecution for FunctionExecution {
+                    fn restart(&mut self, target: data::compiled::CallTarget, point: usize, values: CallInputs<'_>) -> bool {
+                        if self.active.is_some() { return false; }
+                        let active = match target {
+                            data::compiled::CallTarget::Tuple(data::function::TupleFunctionId(0)) => calls_tuple_0_state(point, values),
+                            _ => None,
+                        };
+                        let Some(active) = active else { return false; };
+                        self.active = Some(active);
+                        true
+                    }
+                    fn retained_bytes(&self) -> usize {
+                        std::mem::size_of::<Self>() + self.tuple_returns.capacity() * std::mem::size_of::<TupleReturn>()
+                    }
+                    fn advance(mut self: Box<Self>, ops: &mut CallOps<'_>, budget: &mut usize) -> CallProgress {
+                        let Some(mut active) = self.active.take() else { return CallProgress::Yield(self); };
+                        loop {
+                            match function_step(active, ops, budget) {
+                                FunctionStep::Yield(active) => {
+                                    self.active = Some(active);
+                                    return CallProgress::Yield(self);
+                                },
+                                FunctionStep::Tuple { value } => {
+                                    if let Some(caller) = self.tuple_returns.pop() {
+                                        active = caller.small(value);
+                                    } else {
+                                        self.tuple_returns.clear();
+                                        return CallProgress::Complete { output: CallOutput::Tuple(value), execution: self };
+                                    }
+                                },
+                            }
+                        }
+                    }
+                }
+                fn function_step(active: FunctionState, ops: &mut CallOps<'_>, budget: &mut usize) -> FunctionStep {
+                    match active {
+                        FunctionState::Tuple0Point0 { tuple0 } => calls_tuple_0_run(Tuple0State::Point0 { tuple0 }, ops, budget),
+                    }
+                }
+                enum Tuple0State {
+                    Point0 { tuple0: CallTuple },
+                }
+                fn calls_tuple_0_run(active: Tuple0State, _ops: &mut CallOps<'_>, budget: &mut usize) -> FunctionStep {
+                    match active {
+                        Tuple0State::Point0 { tuple0 } => {
+                            if *budget == 0 { return FunctionStep::Yield(FunctionState::Tuple0Point0 { tuple0 }); }
+                            *budget -= 1;
+                            {
+                                FunctionStep::Tuple { value: tuple0 }
+                            }
+                        },
+                    }
+                }
+                fn calls_tuple_0_state(point: usize, values: CallInputs<'_>) -> Option<FunctionState> {
+                    let active = match point {
+                        0 => FunctionState::Tuple0Point0 { tuple0: values.tuple(0)? },
+                        _ => return None,
+                    };
+                    Some(active)
+                }
+                fn calls_tuple_0_start(point: usize, values: CallInputs<'_>, storage: &mut CallStorage) -> Option<Box<dyn CallExecution>> {
+                    if let Some(execution) = storage.reuse(data::compiled::CallTarget::Tuple(data::function::TupleFunctionId(0)), point, values) { return Some(execution); }
+                    let active = calls_tuple_0_state(point, values)?;
+                    Some(Box::new(FunctionExecution::new(active)))
+                }
+                [calls_tuple_0_start]
+            };
 
             fn numeric_int_6(
                 point: usize,
@@ -20243,6 +20451,110 @@ fn integer_comparisons() {
                             ]),
                             tails: data::Storage::Static(&[]),
                             start: CALL_GROUP_14[0],
+                        })),
+                    },
+                    data::compiled::CompiledFunction {
+                        function: data::compiled::CallTarget::Custom(data::function::CustomFunctionId {
+                            index: 0,
+                            return_shape: data::type_::CustomValueShape {
+                                type_id: data::type_::CustomTypeId(0),
+                                shape_id: data::type_::CustomValueShapeId(1),
+                            },
+                        }),
+                        implementation: data::compiled::CompiledImplementation::FunctionCalls(data::Storage::Static(&data::compiled::FunctionCallsImplementation {
+                            root: false,
+                            entry: 0,
+                            checkpoints: data::Storage::Static(&[
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(0),
+                                    instruction: 0,
+                                    ints: 0,
+                                    bools: 0,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 1,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
+                                },
+                            ]),
+                            locals: data::Storage::Static(&[
+                                data::Storage::Static(&[
+                                    data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                        id: data::graph::CustomLocalId(0),
+                                        shape: data::type_::CustomValueShape {
+                                            type_id: data::type_::CustomTypeId(0),
+                                            shape_id: data::type_::CustomValueShapeId(1),
+                                        },
+                                    }),
+                                ]),
+                            ]),
+                            calls: data::Storage::Static(&[]),
+                            creations: data::Storage::Static(&[]),
+                            returns: data::Storage::Static(&[
+                                data::compiled::ReturnContract {
+                                    point: 0,
+                                    value: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                        id: data::graph::CustomLocalId(0),
+                                        shape: data::type_::CustomValueShape {
+                                            type_id: data::type_::CustomTypeId(0),
+                                            shape_id: data::type_::CustomValueShapeId(1),
+                                        },
+                                    }),
+                                },
+                            ]),
+                            tails: data::Storage::Static(&[]),
+                            start: CALL_GROUP_15[0],
+                        })),
+                    },
+                    data::compiled::CompiledFunction {
+                        function: data::compiled::CallTarget::Tuple(data::function::TupleFunctionId(0)),
+                        implementation: data::compiled::CompiledImplementation::FunctionCalls(data::Storage::Static(&data::compiled::FunctionCallsImplementation {
+                            root: false,
+                            entry: 0,
+                            checkpoints: data::Storage::Static(&[
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(0),
+                                    instruction: 0,
+                                    ints: 0,
+                                    bools: 0,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
+                                },
+                            ]),
+                            locals: data::Storage::Static(&[
+                                data::Storage::Static(&[
+                                    data::graph::ParamLocal::Tuple {
+                                        local: data::graph::TupleLocalId(0),
+                                        type_: data::Storage::Static(&[
+                                            data::type_::ValueType::Int,
+                                            data::type_::ValueType::Bool,
+                                        ]),
+                                    },
+                                ]),
+                            ]),
+                            calls: data::Storage::Static(&[]),
+                            creations: data::Storage::Static(&[]),
+                            returns: data::Storage::Static(&[
+                                data::compiled::ReturnContract {
+                                    point: 0,
+                                    value: data::graph::ParamLocal::Tuple {
+                                        local: data::graph::TupleLocalId(0),
+                                        type_: data::Storage::Static(&[
+                                            data::type_::ValueType::Int,
+                                            data::type_::ValueType::Bool,
+                                        ]),
+                                    },
+                                },
+                            ]),
+                            tails: data::Storage::Static(&[]),
+                            start: CALL_GROUP_16[0],
                         })),
                     },
                 ]),

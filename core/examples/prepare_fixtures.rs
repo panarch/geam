@@ -41,6 +41,9 @@ mod primitive_list_declarations;
 #[path = "../tests/fixtures/prepared/string_native_provider.rs"]
 mod string_native_provider;
 
+#[path = "../tests/fixtures/prepared/compound_native_provider.rs"]
+mod compound_native_provider;
+
 fn main() -> Result<(), Box<dyn Error>> {
     let call_boundaries = geam_core::compile_typed_host_program(
         "example",
@@ -868,6 +871,10 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/prepared");
     for (name, data) in [
+        (
+            "compound_native_calls.rs",
+            compound_native_provider::prepare().emit_rust(),
+        ),
         ("arithmetic.rs", arithmetic.prepare().emit_rust()),
         ("numeric_switch.rs", numeric_switch.prepare().emit_rust()),
         ("string_ranges.rs", string_ranges.prepare().emit_rust()),

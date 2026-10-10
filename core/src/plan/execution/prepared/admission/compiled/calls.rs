@@ -17,6 +17,8 @@ pub(super) fn all<Profile: ExecutionProfile>(
     let mut previous = None;
     for entry in compiled.function_calls.iter() {
         let family = match entry.function {
+            CallTarget::Custom(_) => Family::Custom,
+            CallTarget::Tuple(_) => Family::Tuple,
             CallTarget::Int(_) => Family::Int,
             CallTarget::Bool(_) => Family::Bool,
             CallTarget::IntFunction(_) => Family::IntFunction,
@@ -97,6 +99,8 @@ pub(super) fn all<Profile: ExecutionProfile>(
     {
         return Err(CompiledError {
             family: match target {
+                CallTarget::Custom(_) => Family::Custom,
+                CallTarget::Tuple(_) => Family::Tuple,
                 CallTarget::Int(_) => Family::Int,
                 CallTarget::Bool(_) => Family::Bool,
                 CallTarget::IntFunction(_) => Family::IntFunction,
@@ -561,6 +565,9 @@ pub fn main() {
     #[test]
     fn exact_call_contract_admits_and_each_canonical_mapping_field_rejects_corruption() {
         let source = r#"
+pub type Box { Box(Int) }
+fn keep_box(value: Box) -> Box { value }
+fn keep_pair(value: #(Int, Bool)) -> #(Int, Bool) { value }
 fn make(offset: Int) { fn(value) { value + offset } }
 fn even(value: Int) { case value <= 0 { True -> True False -> odd(value - 1) } }
 fn odd(value: Int) { case value <= 0 { True -> False False -> even(value - 1) } }
@@ -576,7 +583,7 @@ fn make_codepoint(value: UtfCodepoint) { fn() { keep_codepoint(value) } }
 fn keep_nil(value: Nil) -> Nil { value }
 fn make_nil(value: Nil) { fn() { keep_nil(value) } }
 fn codepoint() { let assert <<value:utf8_codepoint>> = <<"λ":utf8>> value }
-pub fn main() { let _ = make_float(1.5)() let _ = make_string("label")() let _ = make_bits(<<1>>)() let _ = make_codepoint(codepoint())() let _ = make_nil(Nil)() let calculate = make(7) let predicate = make_predicate(4) case predicate(4) { True -> calculate(3) + 1 False -> 0 } }
+pub fn main() { let _ = keep_box(Box(7)) let _ = keep_pair(#(7, True)) let _ = make_float(1.5)() let _ = make_string("label")() let _ = make_bits(<<1>>)() let _ = make_codepoint(codepoint())() let _ = make_nil(Nil)() let calculate = make(7) let predicate = make_predicate(4) case predicate(4) { True -> calculate(3) + 1 False -> 0 } }
 "#;
         let typed = crate::compile_typed_host_program(
             "example",
@@ -729,6 +736,8 @@ pub fn main() { let _ = make_float(1.5)() let _ = make_string("label")() let _ =
                 let entries = CompiledEntries::new(compiled, functions);
                 for entry in compiled.function_calls.iter() {
                     let selected = match entry.function {
+                        CallTarget::Custom(id) => compiled.call_root(CallTarget::Custom(id)),
+                        CallTarget::Tuple(id) => compiled.call_root(CallTarget::Tuple(id)),
                         CallTarget::Int(id) => entries.int(id),
                         CallTarget::Bool(id) => entries.bool(id),
                         CallTarget::IntFunction(id) => entries.int_function(id),
@@ -799,6 +808,8 @@ pub fn main() { let _ = make_float(1.5)() let _ = make_string("label")() let _ =
             );
         }
         for family in [
+            Family::Custom,
+            Family::Tuple,
             Family::Int,
             Family::Bool,
             Family::IntFunction,
@@ -817,6 +828,8 @@ pub fn main() { let _ = make_float(1.5)() let _ = make_string("label")() let _ =
             let missing = views
                 .shapes()
                 .find(|(target, _)| match target {
+                    CallTarget::Custom(_) => family == Family::Custom,
+                    CallTarget::Tuple(_) => family == Family::Tuple,
                     CallTarget::Int(_) => family == Family::Int,
                     CallTarget::Bool(_) => family == Family::Bool,
                     CallTarget::IntFunction(_) => family == Family::IntFunction,

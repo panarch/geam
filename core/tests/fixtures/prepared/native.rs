@@ -1,6 +1,6 @@
 data::HostedModuleArtifact {
     module: data::ModuleArtifact {
-        format: 29,
+        format: 30,
         program: data::ProgramTables {
             root: data::source::module_id(0),
             modules: data::Storage::Static(&[
@@ -5920,17 +5920,28 @@ fn integer_comparisons() {
                     [calls_int_0_start, calls_int_1_start, calls_int_3_start]
                 };
                 const CALL_GROUP_1: [data::compiled::calls::CallStart; 1] = {
-                    use data::compiled::calls::{CallExecution, CallInputs, CallOps, CallOutput, CallProgress, CallStorage, CallValues, IntCallable};
+                    use data::compiled::calls::{CallArguments, CallCustom, CallExecution, CallInputs, CallOps, CallOutput, CallProgress, CallStorage, CallValues, CustomNativeExecution, CustomNativeRequest, IntCallable};
                     enum FunctionState {
                         Bool0Point0 {  },
                         Bool0Point1 { int0: i128 },
-                        Bool0Point2 {  },
-                        Bool0Point3 { int_function0: IntCallable },
+                        Bool0Point2 { int0: i128, custom0: CallCustom },
+                        Bool0Point3 { int0: i128, custom0: CallCustom, custom1: CallCustom },
                         Bool0Point4 {  },
-                        Bool0Point5 {  },
-                        Bool0Point6 { int_function0: IntCallable },
-                        Bool0Point7 {  },
-                        Bool0Point8 { bool0: bool },
+                        Bool0Point5 { int_function0: IntCallable },
+                        Bool0Point6 { int_function0: IntCallable, custom0: CallCustom },
+                        Bool0Point7 { int_function0: IntCallable, custom0: CallCustom, custom1: CallCustom },
+                        Bool0Point8 {  },
+                        Bool0Point9 {  },
+                        Bool0Point10 { int_function0: IntCallable },
+                        Bool0Point11 { int_function0: IntCallable, custom0: CallCustom },
+                        Bool0Point12 { int_function0: IntCallable, custom0: CallCustom, custom1: CallCustom },
+                        Bool0Point13 {  },
+                        Bool0Point14 { bool0: bool },
+                        Bool0Point15 { custom0: CallCustom },
+                        Bool0Point16 { custom0: CallCustom },
+                        Bool0Point17 { custom0: CallCustom },
+                        Bool0Point18 { custom0: CallCustom },
+                        CustomNativeComplete { value: CallCustom },
                     }
                     enum BoolReturn {
                     }
@@ -5946,21 +5957,77 @@ fn integer_comparisons() {
                         }
                         fn resume(self, result: bool) -> FunctionState { self.small(result) }
                     }
+                    enum CustomReturn {
+                        Bool0Call1 { int0: i128 },
+                        Bool0Call2 { int0: i128, custom0: CallCustom },
+                        Bool0Call5 { int_function0: IntCallable },
+                        Bool0Call6 { int_function0: IntCallable, custom0: CallCustom },
+                        Bool0Call10 { int_function0: IntCallable },
+                        Bool0Call11 { int_function0: IntCallable, custom0: CallCustom },
+                    }
+                    impl CustomReturn {
+                        fn site(&self) -> data::source::HostCallSite {
+                            match *self {
+                                Self::Bool0Call1 { .. } => data::source::HostCallSite::from_static("main", "generic_results", data::source::SourceSpan::new(699, 709)),
+                                Self::Bool0Call2 { .. } => data::source::HostCallSite::from_static("main", "generic_results", data::source::SourceSpan::new(691, 710)),
+                                Self::Bool0Call5 { .. } => data::source::HostCallSite::from_static("main", "generic_results", data::source::SourceSpan::new(750, 769)),
+                                Self::Bool0Call6 { .. } => data::source::HostCallSite::from_static("main", "generic_results", data::source::SourceSpan::new(742, 770)),
+                                Self::Bool0Call10 { .. } => data::source::HostCallSite::from_static("main", "generic_results", data::source::SourceSpan::new(874, 904)),
+                                Self::Bool0Call11 { .. } => data::source::HostCallSite::from_static("main", "generic_results", data::source::SourceSpan::new(866, 905)),
+                            }
+                        }
+                        fn small(self, result: CallCustom) -> FunctionState {
+                            match self {
+                                Self::Bool0Call1 { int0 } => {
+                                    let custom0 = result;
+                                    FunctionState::Bool0Point2 { int0, custom0 }
+                                },
+                                Self::Bool0Call2 { int0, custom0 } => {
+                                    let custom1 = result;
+                                    FunctionState::Bool0Point3 { int0, custom0, custom1 }
+                                },
+                                Self::Bool0Call5 { int_function0 } => {
+                                    let custom0 = result;
+                                    FunctionState::Bool0Point6 { int_function0, custom0 }
+                                },
+                                Self::Bool0Call6 { int_function0, custom0 } => {
+                                    let custom1 = result;
+                                    FunctionState::Bool0Point7 { int_function0, custom0, custom1 }
+                                },
+                                Self::Bool0Call10 { int_function0 } => {
+                                    let custom0 = result;
+                                    FunctionState::Bool0Point11 { int_function0, custom0 }
+                                },
+                                Self::Bool0Call11 { int_function0, custom0 } => {
+                                    let custom1 = result;
+                                    FunctionState::Bool0Point12 { int_function0, custom0, custom1 }
+                                },
+                            }
+                        }
+                        fn resume(self, result: CallCustom) -> FunctionState { self.small(result) }
+                    }
                     #[allow(clippy::large_enum_variant, reason = "Typed locals stay inline to avoid allocating at each generated step.")]
                     enum FunctionStep {
                         Yield(FunctionState),
+                        CustomNative { function: data::function::CustomFunctionId, site: data::source::HostCallSite, arguments: Box<CallValues>, caller: Option<CustomReturn> },
+                        CustomNativeComplete { value: CallCustom },
                         Canonical { target: data::compiled::CallTarget, point: data::compiled::CompiledCheckpoint, values: Box<CallValues> },
                         Bool { value: bool },
+                        CustomBridge { function: data::function::CustomFunctionId, site: data::source::HostCallSite, arguments: CallArguments, caller: CustomReturn },
                     }
                     struct FunctionExecution {
                         active: Option<FunctionState>,
+                        custom_native_caller: Option<CustomReturn>,
                         boolean_returns: Vec<BoolReturn>,
+                        custom_returns: Vec<CustomReturn>,
                     }
                     impl FunctionExecution {
                         fn new(active: FunctionState) -> Self {
                             Self {
                                 active: Some(active),
+                                custom_native_caller: None,
                                 boolean_returns: Vec::new(),
+                                custom_returns: Vec::new(),
                             }
                         }
                     }
@@ -5976,12 +6043,22 @@ fn integer_comparisons() {
                             true
                         }
                         fn retained_bytes(&self) -> usize {
-                            std::mem::size_of::<Self>() + self.boolean_returns.capacity() * std::mem::size_of::<BoolReturn>()
+                            std::mem::size_of::<Self>() + self.boolean_returns.capacity() * std::mem::size_of::<BoolReturn>() + self.custom_returns.capacity() * std::mem::size_of::<CustomReturn>()
                         }
                         fn advance(mut self: Box<Self>, ops: &mut CallOps<'_>, budget: &mut usize) -> CallProgress {
                             let Some(mut active) = self.active.take() else { return CallProgress::Yield(self); };
                             loop {
                                 match function_step(active, ops, budget) {
+                                    FunctionStep::CustomNative { function, site, arguments, caller } => {
+                                        let root_tail = caller.is_none() && self.custom_returns.is_empty() && ops.root_tail_entry();
+                                        self.custom_native_caller = caller;
+                                        return CallProgress::CustomNative(CustomNativeRequest { function, site, arguments, root_tail, execution: self });
+                                    },
+                                    FunctionStep::CustomNativeComplete { value } => {
+                                        self.boolean_returns.clear();
+                                        self.custom_returns.clear();
+                                        return CallProgress::Complete { output: CallOutput::Custom(value), execution: self };
+                                    },
                                     FunctionStep::Yield(active) => {
                                         self.active = Some(active);
                                         return CallProgress::Yield(self);
@@ -5991,8 +6068,16 @@ fn integer_comparisons() {
                                             active = caller.small(value);
                                         } else {
                                             self.boolean_returns.clear();
+                                            self.custom_returns.clear();
                                             return CallProgress::Complete { output: CallOutput::Bool(value), execution: self };
                                         }
+                                    },
+                                    FunctionStep::CustomBridge { function, site, arguments, caller } => return CallProgress::Custom {
+                                        function, site, arguments,
+                                        resume: Box::new(move |value| {
+                                            self.active = Some(caller.resume(value));
+                                            self
+                                        }),
                                     },
                                     FunctionStep::Canonical { target, point, values } => {
                                         match target {
@@ -6009,6 +6094,19 @@ fn integer_comparisons() {
                                                 }
                                                 return CallProgress::Interpreted { target, point, values };
                                             },
+                                            data::compiled::CallTarget::Custom(function) => {
+                                                if let Some(caller) = self.custom_returns.pop() {
+                                                    let site = caller.site();
+                                                    return CallProgress::InterpretedCustom {
+                                                        function, site, point, values,
+                                                        resume: Box::new(move |value| {
+                                                            self.active = Some(caller.resume(value));
+                                                            self
+                                                        }),
+                                                    };
+                                                }
+                                                return CallProgress::Interpreted { target, point, values };
+                                            },
                                             _ => return CallProgress::Interpreted { target, point, values },
                                         }
                                     },
@@ -6016,195 +6114,458 @@ fn integer_comparisons() {
                             }
                         }
                     }
+                    impl CustomNativeExecution for FunctionExecution {
+                        fn resume_native(mut self: Box<Self>, value: CallCustom) -> Box<dyn CallExecution> {
+                            let active = if let Some(caller) = self.custom_native_caller.take().or_else(|| self.custom_returns.pop()) {
+                                caller.small(value)
+                            } else {
+                                FunctionState::CustomNativeComplete { value }
+                            };
+                            self.active = Some(active);
+                            self
+                        }
+                    }
                     fn function_step(active: FunctionState, ops: &mut CallOps<'_>, budget: &mut usize) -> FunctionStep {
                         match active {
+                            FunctionState::CustomNativeComplete { value } => FunctionStep::CustomNativeComplete { value },
                             FunctionState::Bool0Point0 {  } => calls_bool_0_run(Bool0State::Point0 {  }, ops, budget),
                             FunctionState::Bool0Point1 { int0 } => calls_bool_0_run(Bool0State::Point1 { int0 }, ops, budget),
-                            FunctionState::Bool0Point2 {  } => calls_bool_0_run(Bool0State::Point2 {  }, ops, budget),
-                            FunctionState::Bool0Point3 { int_function0 } => calls_bool_0_run(Bool0State::Point3 { int_function0 }, ops, budget),
+                            FunctionState::Bool0Point2 { int0, custom0 } => calls_bool_0_run(Bool0State::Point2 { int0, custom0 }, ops, budget),
+                            FunctionState::Bool0Point3 { int0, custom0, custom1 } => calls_bool_0_run(Bool0State::Point3 { int0, custom0, custom1 }, ops, budget),
                             FunctionState::Bool0Point4 {  } => calls_bool_0_run(Bool0State::Point4 {  }, ops, budget),
-                            FunctionState::Bool0Point5 {  } => calls_bool_0_run(Bool0State::Point5 {  }, ops, budget),
-                            FunctionState::Bool0Point6 { int_function0 } => calls_bool_0_run(Bool0State::Point6 { int_function0 }, ops, budget),
-                            FunctionState::Bool0Point7 {  } => calls_bool_0_run(Bool0State::Point7 {  }, ops, budget),
-                            FunctionState::Bool0Point8 { bool0 } => calls_bool_0_run(Bool0State::Point8 { bool0 }, ops, budget),
+                            FunctionState::Bool0Point5 { int_function0 } => calls_bool_0_run(Bool0State::Point5 { int_function0 }, ops, budget),
+                            FunctionState::Bool0Point6 { int_function0, custom0 } => calls_bool_0_run(Bool0State::Point6 { int_function0, custom0 }, ops, budget),
+                            FunctionState::Bool0Point7 { int_function0, custom0, custom1 } => calls_bool_0_run(Bool0State::Point7 { int_function0, custom0, custom1 }, ops, budget),
+                            FunctionState::Bool0Point8 {  } => calls_bool_0_run(Bool0State::Point8 {  }, ops, budget),
+                            FunctionState::Bool0Point9 {  } => calls_bool_0_run(Bool0State::Point9 {  }, ops, budget),
+                            FunctionState::Bool0Point10 { int_function0 } => calls_bool_0_run(Bool0State::Point10 { int_function0 }, ops, budget),
+                            FunctionState::Bool0Point11 { int_function0, custom0 } => calls_bool_0_run(Bool0State::Point11 { int_function0, custom0 }, ops, budget),
+                            FunctionState::Bool0Point12 { int_function0, custom0, custom1 } => calls_bool_0_run(Bool0State::Point12 { int_function0, custom0, custom1 }, ops, budget),
+                            FunctionState::Bool0Point13 {  } => calls_bool_0_run(Bool0State::Point13 {  }, ops, budget),
+                            FunctionState::Bool0Point14 { bool0 } => calls_bool_0_run(Bool0State::Point14 { bool0 }, ops, budget),
+                            FunctionState::Bool0Point15 { custom0 } => calls_bool_0_run(Bool0State::Point15 { custom0 }, ops, budget),
+                            FunctionState::Bool0Point16 { custom0 } => calls_bool_0_run(Bool0State::Point16 { custom0 }, ops, budget),
+                            FunctionState::Bool0Point17 { custom0 } => calls_bool_0_run(Bool0State::Point17 { custom0 }, ops, budget),
+                            FunctionState::Bool0Point18 { custom0 } => calls_bool_0_run(Bool0State::Point18 { custom0 }, ops, budget),
                         }
                     }
                     enum Bool0State {
                         Point0 {  },
                         Point1 { int0: i128 },
-                        Point2 {  },
-                        Point3 { int_function0: IntCallable },
+                        Point2 { int0: i128, custom0: CallCustom },
+                        Point3 { int0: i128, custom0: CallCustom, custom1: CallCustom },
                         Point4 {  },
-                        Point5 {  },
-                        Point6 { int_function0: IntCallable },
-                        Point7 {  },
-                        Point8 { bool0: bool },
+                        Point5 { int_function0: IntCallable },
+                        Point6 { int_function0: IntCallable, custom0: CallCustom },
+                        Point7 { int_function0: IntCallable, custom0: CallCustom, custom1: CallCustom },
+                        Point8 {  },
+                        Point9 {  },
+                        Point10 { int_function0: IntCallable },
+                        Point11 { int_function0: IntCallable, custom0: CallCustom },
+                        Point12 { int_function0: IntCallable, custom0: CallCustom, custom1: CallCustom },
+                        Point13 {  },
+                        Point14 { bool0: bool },
+                        Point15 { custom0: CallCustom },
+                        Point16 { custom0: CallCustom },
+                        Point17 { custom0: CallCustom },
+                        Point18 { custom0: CallCustom },
                     }
-                    fn calls_bool_0_run(active: Bool0State, ops: &mut CallOps<'_>, budget: &mut usize) -> FunctionStep {
-                        match active {
-                            Bool0State::Point0 {  } => {
-                                if *budget == 0 { return FunctionStep::Yield(FunctionState::Bool0Point0 {  }); }
-                                *budget -= 1;
-                                let int0 = 5_i128;
-                                if int0 < i128::from(i64::MIN) || int0 > i128::from(i64::MAX) { return FunctionStep::Canonical { target: data::compiled::CallTarget::Bool(data::function::BoolFunctionId(0)), point: data::compiled::CompiledCheckpoint {
-                                    block: data::graph::BlockId(0),
-                                    instruction: 1,
-                                    ints: 1,
-                                    bools: 0,
-                                    bit_arrays: 0,
-                                    int_lists: 0,
-                                    strings: 0,
-                                    customs: 0,
-                                    custom_lists: 0,
-                                    int_functions: 0,
-                                    bool_functions: 0,
-                                }, values: Box::new(CallValues { ints: vec![int0.into()], ..CallValues::default() }) }; }
-                                FunctionStep::Canonical { target: data::compiled::CallTarget::Bool(data::function::BoolFunctionId(0)), point: data::compiled::CompiledCheckpoint {
-                                    block: data::graph::BlockId(0),
-                                    instruction: 1,
-                                    ints: 1,
-                                    bools: 0,
-                                    bit_arrays: 0,
-                                    int_lists: 0,
-                                    strings: 0,
-                                    customs: 0,
-                                    custom_lists: 0,
-                                    int_functions: 0,
-                                    bool_functions: 0,
-                                }, values: Box::new(CallValues { ints: vec![int0.into()], ..CallValues::default() }) }
-                            },
-                            Bool0State::Point1 { int0 } => {
-                                FunctionStep::Canonical { target: data::compiled::CallTarget::Bool(data::function::BoolFunctionId(0)), point: data::compiled::CompiledCheckpoint {
-                                    block: data::graph::BlockId(0),
-                                    instruction: 1,
-                                    ints: 1,
-                                    bools: 0,
-                                    bit_arrays: 0,
-                                    int_lists: 0,
-                                    strings: 0,
-                                    customs: 0,
-                                    custom_lists: 0,
-                                    int_functions: 0,
-                                    bool_functions: 0,
-                                }, values: Box::new(CallValues { ints: vec![int0.into()], ..CallValues::default() }) }
-                            },
-                            Bool0State::Point2 {  } => {
-                                if *budget == 0 { return FunctionStep::Yield(FunctionState::Bool0Point2 {  }); }
-                                *budget -= 1;
-                                let int_function0 = ops.int_closure(data::function::IntFunctionId(3), data::type_::FunctionType {
-                                    arguments: data::Storage::Static(&[]),
-                                    return_: data::Storage::Static(&data::type_::ValueType::Int),
-                                }, vec![]);
-                                FunctionStep::Canonical { target: data::compiled::CallTarget::Bool(data::function::BoolFunctionId(0)), point: data::compiled::CompiledCheckpoint {
-                                    block: data::graph::BlockId(1),
-                                    instruction: 1,
-                                    ints: 0,
-                                    bools: 0,
-                                    bit_arrays: 0,
-                                    int_lists: 0,
-                                    strings: 0,
-                                    customs: 0,
-                                    custom_lists: 0,
-                                    int_functions: 1,
-                                    bool_functions: 0,
-                                }, values: Box::new(CallValues { int_functions: vec![int_function0], ..CallValues::default() }) }
-                            },
-                            Bool0State::Point3 { int_function0 } => {
-                                FunctionStep::Canonical { target: data::compiled::CallTarget::Bool(data::function::BoolFunctionId(0)), point: data::compiled::CompiledCheckpoint {
-                                    block: data::graph::BlockId(1),
-                                    instruction: 1,
-                                    ints: 0,
-                                    bools: 0,
-                                    bit_arrays: 0,
-                                    int_lists: 0,
-                                    strings: 0,
-                                    customs: 0,
-                                    custom_lists: 0,
-                                    int_functions: 1,
-                                    bool_functions: 0,
-                                }, values: Box::new(CallValues { int_functions: vec![int_function0], ..CallValues::default() }) }
-                            },
-                            Bool0State::Point4 {  } => {
-                                FunctionStep::Canonical { target: data::compiled::CallTarget::Bool(data::function::BoolFunctionId(0)), point: data::compiled::CompiledCheckpoint {
-                                    block: data::graph::BlockId(2),
-                                    instruction: 0,
-                                    ints: 0,
-                                    bools: 0,
-                                    bit_arrays: 0,
-                                    int_lists: 0,
-                                    strings: 0,
-                                    customs: 0,
-                                    custom_lists: 0,
-                                    int_functions: 0,
-                                    bool_functions: 0,
-                                }, values: Box::new(CallValues::default()) }
-                            },
-                            Bool0State::Point5 {  } => {
-                                if *budget == 0 { return FunctionStep::Yield(FunctionState::Bool0Point5 {  }); }
-                                *budget -= 1;
-                                let int_function0 = ops.int_closure(data::function::IntFunctionId(4), data::type_::FunctionType {
-                                    arguments: data::Storage::Static(&[]),
-                                    return_: data::Storage::Static(&data::type_::ValueType::Int),
-                                }, vec![]);
-                                FunctionStep::Canonical { target: data::compiled::CallTarget::Bool(data::function::BoolFunctionId(0)), point: data::compiled::CompiledCheckpoint {
-                                    block: data::graph::BlockId(3),
-                                    instruction: 1,
-                                    ints: 0,
-                                    bools: 0,
-                                    bit_arrays: 0,
-                                    int_lists: 0,
-                                    strings: 0,
-                                    customs: 0,
-                                    custom_lists: 0,
-                                    int_functions: 1,
-                                    bool_functions: 0,
-                                }, values: Box::new(CallValues { int_functions: vec![int_function0], ..CallValues::default() }) }
-                            },
-                            Bool0State::Point6 { int_function0 } => {
-                                FunctionStep::Canonical { target: data::compiled::CallTarget::Bool(data::function::BoolFunctionId(0)), point: data::compiled::CompiledCheckpoint {
-                                    block: data::graph::BlockId(3),
-                                    instruction: 1,
-                                    ints: 0,
-                                    bools: 0,
-                                    bit_arrays: 0,
-                                    int_lists: 0,
-                                    strings: 0,
-                                    customs: 0,
-                                    custom_lists: 0,
-                                    int_functions: 1,
-                                    bool_functions: 0,
-                                }, values: Box::new(CallValues { int_functions: vec![int_function0], ..CallValues::default() }) }
-                            },
-                            Bool0State::Point7 {  } => {
-                                if *budget == 0 { return FunctionStep::Yield(FunctionState::Bool0Point7 {  }); }
-                                *budget -= 1;
-                                let bool0 = true;
-                                if *budget == 0 { return FunctionStep::Yield(FunctionState::Bool0Point8 { bool0 }); }
-                                *budget -= 1;
-                                {
-                                    FunctionStep::Bool { value: bool0 }
-                                }
-                            },
-                            Bool0State::Point8 { bool0 } => {
-                                if *budget == 0 { return FunctionStep::Yield(FunctionState::Bool0Point8 { bool0 }); }
-                                *budget -= 1;
-                                {
-                                    FunctionStep::Bool { value: bool0 }
-                                }
-                            },
+                    fn calls_bool_0_run(mut active: Bool0State, ops: &mut CallOps<'_>, budget: &mut usize) -> FunctionStep {
+                        loop {
+                            match active {
+                                Bool0State::Point0 {  } => {
+                                    if *budget == 0 { return FunctionStep::Yield(FunctionState::Bool0Point0 {  }); }
+                                    *budget -= 1;
+                                    let int0 = 5_i128;
+                                    if int0 < i128::from(i64::MIN) || int0 > i128::from(i64::MAX) { return FunctionStep::Canonical { target: data::compiled::CallTarget::Bool(data::function::BoolFunctionId(0)), point: data::compiled::CompiledCheckpoint {
+                                        block: data::graph::BlockId(0),
+                                        instruction: 1,
+                                        ints: 1,
+                                        bools: 0,
+                                        bit_arrays: 0,
+                                        int_lists: 0,
+                                        strings: 0,
+                                        customs: 0,
+                                        custom_lists: 0,
+                                        int_functions: 0,
+                                        bool_functions: 0,
+                                    }, values: Box::new(CallValues { ints: vec![int0.into()], ..CallValues::default() }) }; }
+                                    if *budget == 0 { return FunctionStep::Yield(FunctionState::Bool0Point1 { int0 }); }
+                                    *budget -= 1;
+                                    return {
+                                        if ops.supports_custom_native(data::function::CustomFunctionId {
+                                            index: 0,
+                                            return_shape: data::type_::CustomValueShape {
+                                                type_id: data::type_::CustomTypeId(2),
+                                                shape_id: data::type_::CustomValueShapeId(6),
+                                            },
+                                        }) {
+                                            return FunctionStep::CustomNative { function: data::function::CustomFunctionId {
+                                                index: 0,
+                                                return_shape: data::type_::CustomValueShape {
+                                                    type_id: data::type_::CustomTypeId(2),
+                                                    shape_id: data::type_::CustomValueShapeId(6),
+                                                },
+                                            }, site: data::source::HostCallSite::from_static("main", "generic_results", data::source::SourceSpan::new(699, 709)), arguments: Box::new(CallValues { ints: vec![int0.into()], ..CallValues::default() }), caller: Some(CustomReturn::Bool0Call1 { int0 }) };
+                                        }
+                                        FunctionStep::CustomBridge { function: data::function::CustomFunctionId {
+                                            index: 0,
+                                            return_shape: data::type_::CustomValueShape {
+                                                type_id: data::type_::CustomTypeId(2),
+                                                shape_id: data::type_::CustomValueShapeId(6),
+                                            },
+                                        }, site: data::source::HostCallSite::from_static("main", "generic_results", data::source::SourceSpan::new(699, 709)), arguments: CallArguments { values: Box::new(CallValues { ints: vec![int0.into()], ..CallValues::default() }), captures: None }, caller: CustomReturn::Bool0Call1 { int0 } }
+                                    };
+                                },
+                                Bool0State::Point1 { int0 } => {
+                                    if *budget == 0 { return FunctionStep::Yield(FunctionState::Bool0Point1 { int0 }); }
+                                    *budget -= 1;
+                                    return {
+                                        if ops.supports_custom_native(data::function::CustomFunctionId {
+                                            index: 0,
+                                            return_shape: data::type_::CustomValueShape {
+                                                type_id: data::type_::CustomTypeId(2),
+                                                shape_id: data::type_::CustomValueShapeId(6),
+                                            },
+                                        }) {
+                                            return FunctionStep::CustomNative { function: data::function::CustomFunctionId {
+                                                index: 0,
+                                                return_shape: data::type_::CustomValueShape {
+                                                    type_id: data::type_::CustomTypeId(2),
+                                                    shape_id: data::type_::CustomValueShapeId(6),
+                                                },
+                                            }, site: data::source::HostCallSite::from_static("main", "generic_results", data::source::SourceSpan::new(699, 709)), arguments: Box::new(CallValues { ints: vec![int0.into()], ..CallValues::default() }), caller: Some(CustomReturn::Bool0Call1 { int0 }) };
+                                        }
+                                        FunctionStep::CustomBridge { function: data::function::CustomFunctionId {
+                                            index: 0,
+                                            return_shape: data::type_::CustomValueShape {
+                                                type_id: data::type_::CustomTypeId(2),
+                                                shape_id: data::type_::CustomValueShapeId(6),
+                                            },
+                                        }, site: data::source::HostCallSite::from_static("main", "generic_results", data::source::SourceSpan::new(699, 709)), arguments: CallArguments { values: Box::new(CallValues { ints: vec![int0.into()], ..CallValues::default() }), captures: None }, caller: CustomReturn::Bool0Call1 { int0 } }
+                                    };
+                                },
+                                Bool0State::Point2 { int0, custom0 } => {
+                                    if *budget == 0 { return FunctionStep::Yield(FunctionState::Bool0Point2 { int0, custom0 }); }
+                                    *budget -= 1;
+                                    return {
+                                        FunctionStep::CustomBridge { function: data::function::CustomFunctionId {
+                                            index: 1,
+                                            return_shape: data::type_::CustomValueShape {
+                                                type_id: data::type_::CustomTypeId(2),
+                                                shape_id: data::type_::CustomValueShapeId(6),
+                                            },
+                                        }, site: data::source::HostCallSite::from_static("main", "generic_results", data::source::SourceSpan::new(691, 710)), arguments: CallArguments { values: Box::new(CallValues { customs: vec![custom0.clone()], ..CallValues::default() }), captures: None }, caller: CustomReturn::Bool0Call2 { int0, custom0 } }
+                                    };
+                                },
+                                Bool0State::Point3 { int0, custom0, custom1 } => {
+                                    if *budget == 0 { return FunctionStep::Yield(FunctionState::Bool0Point3 { int0, custom0, custom1 }); }
+                                    active = {
+                                        let matched = (|| -> Option<Option<()>> {
+                                            if !custom1.matches_constructor(data::type_::CustomConstructorId {
+                                                type_id: data::type_::CustomTypeId(2),
+                                                index: 0,
+                                            }) { return Some(None); }
+                                            let field0 = custom1.field(0)?;
+                                            if !field0.matches_type(&data::type_::ValueType::Int) { return None; }
+                                            if field0.integer()? != 5_i128 { return Some(None); }
+                                            Some(Some(()))
+                                        })();
+                                        let Some(matched) = matched else { return FunctionStep::Canonical { target: data::compiled::CallTarget::Bool(data::function::BoolFunctionId(0)), point: data::compiled::CompiledCheckpoint {
+                                            block: data::graph::BlockId(0),
+                                            instruction: 3,
+                                            ints: 1,
+                                            bools: 0,
+                                            bit_arrays: 0,
+                                            int_lists: 0,
+                                            strings: 0,
+                                            customs: 2,
+                                            custom_lists: 0,
+                                            int_functions: 0,
+                                            bool_functions: 0,
+                                        }, values: Box::new(CallValues { customs: vec![custom0, custom1], ints: vec![int0.into()], ..CallValues::default() }) }; };
+                                        *budget -= 1;
+                                        match matched {
+                                            Some(()) => Bool0State::Point4 {  },
+                                            None => Bool0State::Point18 { custom0: custom1.clone() },
+                                        }
+                                    };
+                                    continue;
+                                },
+                                Bool0State::Point4 {  } => {
+                                    if *budget == 0 { return FunctionStep::Yield(FunctionState::Bool0Point4 {  }); }
+                                    *budget -= 1;
+                                    let int_function0 = ops.int_closure(data::function::IntFunctionId(3), data::type_::FunctionType {
+                                        arguments: data::Storage::Static(&[]),
+                                        return_: data::Storage::Static(&data::type_::ValueType::Int),
+                                    }, vec![]);
+                                    if *budget == 0 { return FunctionStep::Yield(FunctionState::Bool0Point5 { int_function0 }); }
+                                    *budget -= 1;
+                                    return {
+                                        FunctionStep::CustomBridge { function: data::function::CustomFunctionId {
+                                            index: 2,
+                                            return_shape: data::type_::CustomValueShape {
+                                                type_id: data::type_::CustomTypeId(2),
+                                                shape_id: data::type_::CustomValueShapeId(6),
+                                            },
+                                        }, site: data::source::HostCallSite::from_static("main", "generic_results", data::source::SourceSpan::new(750, 769)), arguments: CallArguments { values: Box::new(CallValues { int_functions: vec![int_function0.clone()], ..CallValues::default() }), captures: None }, caller: CustomReturn::Bool0Call5 { int_function0 } }
+                                    };
+                                },
+                                Bool0State::Point5 { int_function0 } => {
+                                    if *budget == 0 { return FunctionStep::Yield(FunctionState::Bool0Point5 { int_function0 }); }
+                                    *budget -= 1;
+                                    return {
+                                        FunctionStep::CustomBridge { function: data::function::CustomFunctionId {
+                                            index: 2,
+                                            return_shape: data::type_::CustomValueShape {
+                                                type_id: data::type_::CustomTypeId(2),
+                                                shape_id: data::type_::CustomValueShapeId(6),
+                                            },
+                                        }, site: data::source::HostCallSite::from_static("main", "generic_results", data::source::SourceSpan::new(750, 769)), arguments: CallArguments { values: Box::new(CallValues { int_functions: vec![int_function0.clone()], ..CallValues::default() }), captures: None }, caller: CustomReturn::Bool0Call5 { int_function0 } }
+                                    };
+                                },
+                                Bool0State::Point6 { int_function0, custom0 } => {
+                                    if *budget == 0 { return FunctionStep::Yield(FunctionState::Bool0Point6 { int_function0, custom0 }); }
+                                    *budget -= 1;
+                                    return {
+                                        FunctionStep::CustomBridge { function: data::function::CustomFunctionId {
+                                            index: 1,
+                                            return_shape: data::type_::CustomValueShape {
+                                                type_id: data::type_::CustomTypeId(2),
+                                                shape_id: data::type_::CustomValueShapeId(6),
+                                            },
+                                        }, site: data::source::HostCallSite::from_static("main", "generic_results", data::source::SourceSpan::new(742, 770)), arguments: CallArguments { values: Box::new(CallValues { customs: vec![custom0.clone()], ..CallValues::default() }), captures: None }, caller: CustomReturn::Bool0Call6 { int_function0, custom0 } }
+                                    };
+                                },
+                                Bool0State::Point7 { int_function0, custom0, custom1 } => {
+                                    if *budget == 0 { return FunctionStep::Yield(FunctionState::Bool0Point7 { int_function0, custom0, custom1 }); }
+                                    active = {
+                                        let matched = (|| -> Option<Option<()>> {
+                                            if !custom1.matches_constructor(data::type_::CustomConstructorId {
+                                                type_id: data::type_::CustomTypeId(2),
+                                                index: 1,
+                                            }) { return Some(None); }
+                                            let field0 = custom1.field(0)?;
+                                            if !field0.matches_type(&data::type_::ValueType::String) { return None; }
+                                            if field0.string()?.as_bytes() != "caught".as_bytes() { return Some(None); }
+                                            Some(Some(()))
+                                        })();
+                                        let Some(matched) = matched else { return FunctionStep::Canonical { target: data::compiled::CallTarget::Bool(data::function::BoolFunctionId(0)), point: data::compiled::CompiledCheckpoint {
+                                            block: data::graph::BlockId(1),
+                                            instruction: 3,
+                                            ints: 0,
+                                            bools: 0,
+                                            bit_arrays: 0,
+                                            int_lists: 0,
+                                            strings: 0,
+                                            customs: 2,
+                                            custom_lists: 0,
+                                            int_functions: 1,
+                                            bool_functions: 0,
+                                        }, values: Box::new(CallValues { customs: vec![custom0, custom1], int_functions: vec![int_function0], ..CallValues::default() }) }; };
+                                        *budget -= 1;
+                                        match matched {
+                                            Some(()) => Bool0State::Point8 {  },
+                                            None => Bool0State::Point17 { custom0: custom1.clone() },
+                                        }
+                                    };
+                                    continue;
+                                },
+                                Bool0State::Point8 {  } => {
+                                    return FunctionStep::Canonical { target: data::compiled::CallTarget::Bool(data::function::BoolFunctionId(0)), point: data::compiled::CompiledCheckpoint {
+                                        block: data::graph::BlockId(2),
+                                        instruction: 0,
+                                        ints: 0,
+                                        bools: 0,
+                                        bit_arrays: 0,
+                                        int_lists: 0,
+                                        strings: 0,
+                                        customs: 0,
+                                        custom_lists: 0,
+                                        int_functions: 0,
+                                        bool_functions: 0,
+                                    }, values: Box::new(CallValues::default()) };
+                                },
+                                Bool0State::Point9 {  } => {
+                                    if *budget == 0 { return FunctionStep::Yield(FunctionState::Bool0Point9 {  }); }
+                                    *budget -= 1;
+                                    let int_function0 = ops.int_closure(data::function::IntFunctionId(4), data::type_::FunctionType {
+                                        arguments: data::Storage::Static(&[]),
+                                        return_: data::Storage::Static(&data::type_::ValueType::Int),
+                                    }, vec![]);
+                                    if *budget == 0 { return FunctionStep::Yield(FunctionState::Bool0Point10 { int_function0 }); }
+                                    *budget -= 1;
+                                    return {
+                                        FunctionStep::CustomBridge { function: data::function::CustomFunctionId {
+                                            index: 2,
+                                            return_shape: data::type_::CustomValueShape {
+                                                type_id: data::type_::CustomTypeId(2),
+                                                shape_id: data::type_::CustomValueShapeId(6),
+                                            },
+                                        }, site: data::source::HostCallSite::from_static("main", "generic_results", data::source::SourceSpan::new(874, 904)), arguments: CallArguments { values: Box::new(CallValues { int_functions: vec![int_function0.clone()], ..CallValues::default() }), captures: None }, caller: CustomReturn::Bool0Call10 { int_function0 } }
+                                    };
+                                },
+                                Bool0State::Point10 { int_function0 } => {
+                                    if *budget == 0 { return FunctionStep::Yield(FunctionState::Bool0Point10 { int_function0 }); }
+                                    *budget -= 1;
+                                    return {
+                                        FunctionStep::CustomBridge { function: data::function::CustomFunctionId {
+                                            index: 2,
+                                            return_shape: data::type_::CustomValueShape {
+                                                type_id: data::type_::CustomTypeId(2),
+                                                shape_id: data::type_::CustomValueShapeId(6),
+                                            },
+                                        }, site: data::source::HostCallSite::from_static("main", "generic_results", data::source::SourceSpan::new(874, 904)), arguments: CallArguments { values: Box::new(CallValues { int_functions: vec![int_function0.clone()], ..CallValues::default() }), captures: None }, caller: CustomReturn::Bool0Call10 { int_function0 } }
+                                    };
+                                },
+                                Bool0State::Point11 { int_function0, custom0 } => {
+                                    if *budget == 0 { return FunctionStep::Yield(FunctionState::Bool0Point11 { int_function0, custom0 }); }
+                                    *budget -= 1;
+                                    return {
+                                        FunctionStep::CustomBridge { function: data::function::CustomFunctionId {
+                                            index: 1,
+                                            return_shape: data::type_::CustomValueShape {
+                                                type_id: data::type_::CustomTypeId(2),
+                                                shape_id: data::type_::CustomValueShapeId(6),
+                                            },
+                                        }, site: data::source::HostCallSite::from_static("main", "generic_results", data::source::SourceSpan::new(866, 905)), arguments: CallArguments { values: Box::new(CallValues { customs: vec![custom0.clone()], ..CallValues::default() }), captures: None }, caller: CustomReturn::Bool0Call11 { int_function0, custom0 } }
+                                    };
+                                },
+                                Bool0State::Point12 { int_function0, custom0, custom1 } => {
+                                    if *budget == 0 { return FunctionStep::Yield(FunctionState::Bool0Point12 { int_function0, custom0, custom1 }); }
+                                    active = {
+                                        let matched = (|| -> Option<Option<()>> {
+                                            if !custom1.matches_constructor(data::type_::CustomConstructorId {
+                                                type_id: data::type_::CustomTypeId(2),
+                                                index: 1,
+                                            }) { return Some(None); }
+                                            let field0 = custom1.field(0)?;
+                                            if !field0.matches_type(&data::type_::ValueType::String) { return None; }
+                                            if field0.string()?.as_bytes() != "caught".as_bytes() { return Some(None); }
+                                            Some(Some(()))
+                                        })();
+                                        let Some(matched) = matched else { return FunctionStep::Canonical { target: data::compiled::CallTarget::Bool(data::function::BoolFunctionId(0)), point: data::compiled::CompiledCheckpoint {
+                                            block: data::graph::BlockId(3),
+                                            instruction: 3,
+                                            ints: 0,
+                                            bools: 0,
+                                            bit_arrays: 0,
+                                            int_lists: 0,
+                                            strings: 0,
+                                            customs: 2,
+                                            custom_lists: 0,
+                                            int_functions: 1,
+                                            bool_functions: 0,
+                                        }, values: Box::new(CallValues { customs: vec![custom0, custom1], int_functions: vec![int_function0], ..CallValues::default() }) }; };
+                                        *budget -= 1;
+                                        match matched {
+                                            Some(()) => Bool0State::Point13 {  },
+                                            None => Bool0State::Point15 { custom0: custom1.clone() },
+                                        }
+                                    };
+                                    continue;
+                                },
+                                Bool0State::Point13 {  } => {
+                                    if *budget == 0 { return FunctionStep::Yield(FunctionState::Bool0Point13 {  }); }
+                                    *budget -= 1;
+                                    let bool0 = true;
+                                    if *budget == 0 { return FunctionStep::Yield(FunctionState::Bool0Point14 { bool0 }); }
+                                    *budget -= 1;
+                                    return {
+                                        FunctionStep::Bool { value: bool0 }
+                                    };
+                                },
+                                Bool0State::Point14 { bool0 } => {
+                                    if *budget == 0 { return FunctionStep::Yield(FunctionState::Bool0Point14 { bool0 }); }
+                                    *budget -= 1;
+                                    return {
+                                        FunctionStep::Bool { value: bool0 }
+                                    };
+                                },
+                                Bool0State::Point15 { custom0 } => {
+                                    return FunctionStep::Canonical { target: data::compiled::CallTarget::Bool(data::function::BoolFunctionId(0)), point: data::compiled::CompiledCheckpoint {
+                                        block: data::graph::BlockId(5),
+                                        instruction: 0,
+                                        ints: 0,
+                                        bools: 0,
+                                        bit_arrays: 0,
+                                        int_lists: 0,
+                                        strings: 0,
+                                        customs: 1,
+                                        custom_lists: 0,
+                                        int_functions: 0,
+                                        bool_functions: 0,
+                                    }, values: Box::new(CallValues { customs: vec![custom0], ..CallValues::default() }) };
+                                },
+                                Bool0State::Point16 { custom0 } => {
+                                    return FunctionStep::Canonical { target: data::compiled::CallTarget::Bool(data::function::BoolFunctionId(0)), point: data::compiled::CompiledCheckpoint {
+                                        block: data::graph::BlockId(6),
+                                        instruction: 0,
+                                        ints: 0,
+                                        bools: 0,
+                                        bit_arrays: 0,
+                                        int_lists: 0,
+                                        strings: 0,
+                                        customs: 1,
+                                        custom_lists: 0,
+                                        int_functions: 0,
+                                        bool_functions: 0,
+                                    }, values: Box::new(CallValues { customs: vec![custom0], ..CallValues::default() }) };
+                                },
+                                Bool0State::Point17 { custom0 } => {
+                                    return FunctionStep::Canonical { target: data::compiled::CallTarget::Bool(data::function::BoolFunctionId(0)), point: data::compiled::CompiledCheckpoint {
+                                        block: data::graph::BlockId(7),
+                                        instruction: 0,
+                                        ints: 0,
+                                        bools: 0,
+                                        bit_arrays: 0,
+                                        int_lists: 0,
+                                        strings: 0,
+                                        customs: 1,
+                                        custom_lists: 0,
+                                        int_functions: 0,
+                                        bool_functions: 0,
+                                    }, values: Box::new(CallValues { customs: vec![custom0], ..CallValues::default() }) };
+                                },
+                                Bool0State::Point18 { custom0 } => {
+                                    return FunctionStep::Canonical { target: data::compiled::CallTarget::Bool(data::function::BoolFunctionId(0)), point: data::compiled::CompiledCheckpoint {
+                                        block: data::graph::BlockId(8),
+                                        instruction: 0,
+                                        ints: 0,
+                                        bools: 0,
+                                        bit_arrays: 0,
+                                        int_lists: 0,
+                                        strings: 0,
+                                        customs: 1,
+                                        custom_lists: 0,
+                                        int_functions: 0,
+                                        bool_functions: 0,
+                                    }, values: Box::new(CallValues { customs: vec![custom0], ..CallValues::default() }) };
+                                },
+                            }
                         }
                     }
                     fn calls_bool_0_state(point: usize, values: CallInputs<'_>) -> Option<FunctionState> {
                         let active = match point {
                             0 => FunctionState::Bool0Point0 {  },
                             1 => FunctionState::Bool0Point1 { int0: values.int(0)? },
-                            2 => FunctionState::Bool0Point2 {  },
-                            3 => FunctionState::Bool0Point3 { int_function0: values.int_function(0)? },
+                            2 => FunctionState::Bool0Point2 { int0: values.int(0)?, custom0: values.custom(0)? },
+                            3 => FunctionState::Bool0Point3 { int0: values.int(0)?, custom0: values.custom(0)?, custom1: values.custom(1)? },
                             4 => FunctionState::Bool0Point4 {  },
-                            5 => FunctionState::Bool0Point5 {  },
-                            6 => FunctionState::Bool0Point6 { int_function0: values.int_function(0)? },
-                            7 => FunctionState::Bool0Point7 {  },
-                            8 => FunctionState::Bool0Point8 { bool0: values.bool(0)? },
+                            5 => FunctionState::Bool0Point5 { int_function0: values.int_function(0)? },
+                            6 => FunctionState::Bool0Point6 { int_function0: values.int_function(0)?, custom0: values.custom(0)? },
+                            7 => FunctionState::Bool0Point7 { int_function0: values.int_function(0)?, custom0: values.custom(0)?, custom1: values.custom(1)? },
+                            8 => FunctionState::Bool0Point8 {  },
+                            9 => FunctionState::Bool0Point9 {  },
+                            10 => FunctionState::Bool0Point10 { int_function0: values.int_function(0)? },
+                            11 => FunctionState::Bool0Point11 { int_function0: values.int_function(0)?, custom0: values.custom(0)? },
+                            12 => FunctionState::Bool0Point12 { int_function0: values.int_function(0)?, custom0: values.custom(0)?, custom1: values.custom(1)? },
+                            13 => FunctionState::Bool0Point13 {  },
+                            14 => FunctionState::Bool0Point14 { bool0: values.bool(0)? },
+                            15 => FunctionState::Bool0Point15 { custom0: values.custom(0)? },
+                            16 => FunctionState::Bool0Point16 { custom0: values.custom(0)? },
+                            17 => FunctionState::Bool0Point17 { custom0: values.custom(0)? },
+                            18 => FunctionState::Bool0Point18 { custom0: values.custom(0)? },
                             _ => return None,
                         };
                         Some(active)
@@ -7466,6 +7827,32 @@ fn integer_comparisons() {
                                         bool_functions: 0,
                                     },
                                     data::compiled::CompiledCheckpoint {
+                                        block: data::graph::BlockId(0),
+                                        instruction: 2,
+                                        ints: 1,
+                                        bools: 0,
+                                        bit_arrays: 0,
+                                        int_lists: 0,
+                                        strings: 0,
+                                        customs: 1,
+                                        custom_lists: 0,
+                                        int_functions: 0,
+                                        bool_functions: 0,
+                                    },
+                                    data::compiled::CompiledCheckpoint {
+                                        block: data::graph::BlockId(0),
+                                        instruction: 3,
+                                        ints: 1,
+                                        bools: 0,
+                                        bit_arrays: 0,
+                                        int_lists: 0,
+                                        strings: 0,
+                                        customs: 2,
+                                        custom_lists: 0,
+                                        int_functions: 0,
+                                        bool_functions: 0,
+                                    },
+                                    data::compiled::CompiledCheckpoint {
                                         block: data::graph::BlockId(1),
                                         instruction: 0,
                                         ints: 0,
@@ -7487,6 +7874,32 @@ fn integer_comparisons() {
                                         int_lists: 0,
                                         strings: 0,
                                         customs: 0,
+                                        custom_lists: 0,
+                                        int_functions: 1,
+                                        bool_functions: 0,
+                                    },
+                                    data::compiled::CompiledCheckpoint {
+                                        block: data::graph::BlockId(1),
+                                        instruction: 2,
+                                        ints: 0,
+                                        bools: 0,
+                                        bit_arrays: 0,
+                                        int_lists: 0,
+                                        strings: 0,
+                                        customs: 1,
+                                        custom_lists: 0,
+                                        int_functions: 1,
+                                        bool_functions: 0,
+                                    },
+                                    data::compiled::CompiledCheckpoint {
+                                        block: data::graph::BlockId(1),
+                                        instruction: 3,
+                                        ints: 0,
+                                        bools: 0,
+                                        bit_arrays: 0,
+                                        int_lists: 0,
+                                        strings: 0,
+                                        customs: 2,
                                         custom_lists: 0,
                                         int_functions: 1,
                                         bool_functions: 0,
@@ -7531,6 +7944,32 @@ fn integer_comparisons() {
                                         bool_functions: 0,
                                     },
                                     data::compiled::CompiledCheckpoint {
+                                        block: data::graph::BlockId(3),
+                                        instruction: 2,
+                                        ints: 0,
+                                        bools: 0,
+                                        bit_arrays: 0,
+                                        int_lists: 0,
+                                        strings: 0,
+                                        customs: 1,
+                                        custom_lists: 0,
+                                        int_functions: 1,
+                                        bool_functions: 0,
+                                    },
+                                    data::compiled::CompiledCheckpoint {
+                                        block: data::graph::BlockId(3),
+                                        instruction: 3,
+                                        ints: 0,
+                                        bools: 0,
+                                        bit_arrays: 0,
+                                        int_lists: 0,
+                                        strings: 0,
+                                        customs: 2,
+                                        custom_lists: 0,
+                                        int_functions: 1,
+                                        bool_functions: 0,
+                                    },
+                                    data::compiled::CompiledCheckpoint {
                                         block: data::graph::BlockId(4),
                                         instruction: 0,
                                         ints: 0,
@@ -7556,12 +7995,91 @@ fn integer_comparisons() {
                                         int_functions: 0,
                                         bool_functions: 0,
                                     },
+                                    data::compiled::CompiledCheckpoint {
+                                        block: data::graph::BlockId(5),
+                                        instruction: 0,
+                                        ints: 0,
+                                        bools: 0,
+                                        bit_arrays: 0,
+                                        int_lists: 0,
+                                        strings: 0,
+                                        customs: 1,
+                                        custom_lists: 0,
+                                        int_functions: 0,
+                                        bool_functions: 0,
+                                    },
+                                    data::compiled::CompiledCheckpoint {
+                                        block: data::graph::BlockId(6),
+                                        instruction: 0,
+                                        ints: 0,
+                                        bools: 0,
+                                        bit_arrays: 0,
+                                        int_lists: 0,
+                                        strings: 0,
+                                        customs: 1,
+                                        custom_lists: 0,
+                                        int_functions: 0,
+                                        bool_functions: 0,
+                                    },
+                                    data::compiled::CompiledCheckpoint {
+                                        block: data::graph::BlockId(7),
+                                        instruction: 0,
+                                        ints: 0,
+                                        bools: 0,
+                                        bit_arrays: 0,
+                                        int_lists: 0,
+                                        strings: 0,
+                                        customs: 1,
+                                        custom_lists: 0,
+                                        int_functions: 0,
+                                        bool_functions: 0,
+                                    },
+                                    data::compiled::CompiledCheckpoint {
+                                        block: data::graph::BlockId(8),
+                                        instruction: 0,
+                                        ints: 0,
+                                        bools: 0,
+                                        bit_arrays: 0,
+                                        int_lists: 0,
+                                        strings: 0,
+                                        customs: 1,
+                                        custom_lists: 0,
+                                        int_functions: 0,
+                                        bool_functions: 0,
+                                    },
                                 ]),
                                 locals: data::Storage::Static(&[
                                     data::Storage::Static(&[]),
                                     data::Storage::Static(&[
                                         data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
                                     ]),
+                                    data::Storage::Static(&[
+                                        data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                        data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                            id: data::graph::CustomLocalId(0),
+                                            shape: data::type_::CustomValueShape {
+                                                type_id: data::type_::CustomTypeId(2),
+                                                shape_id: data::type_::CustomValueShapeId(6),
+                                            },
+                                        }),
+                                    ]),
+                                    data::Storage::Static(&[
+                                        data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                        data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                            id: data::graph::CustomLocalId(0),
+                                            shape: data::type_::CustomValueShape {
+                                                type_id: data::type_::CustomTypeId(2),
+                                                shape_id: data::type_::CustomValueShapeId(6),
+                                            },
+                                        }),
+                                        data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                            id: data::graph::CustomLocalId(1),
+                                            shape: data::type_::CustomValueShape {
+                                                type_id: data::type_::CustomTypeId(2),
+                                                shape_id: data::type_::CustomValueShapeId(6),
+                                            },
+                                        }),
+                                    ]),
                                     data::Storage::Static(&[]),
                                     data::Storage::Static(&[
                                         data::graph::ParamLocal::IntFunction {
@@ -7571,6 +8089,45 @@ fn integer_comparisons() {
                                                 return_: data::Storage::Static(&data::type_::ValueType::Int),
                                             },
                                         },
+                                    ]),
+                                    data::Storage::Static(&[
+                                        data::graph::ParamLocal::IntFunction {
+                                            local: data::graph::IntFunctionLocalId(0),
+                                            type_: data::type_::FunctionType {
+                                                arguments: data::Storage::Static(&[]),
+                                                return_: data::Storage::Static(&data::type_::ValueType::Int),
+                                            },
+                                        },
+                                        data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                            id: data::graph::CustomLocalId(0),
+                                            shape: data::type_::CustomValueShape {
+                                                type_id: data::type_::CustomTypeId(2),
+                                                shape_id: data::type_::CustomValueShapeId(6),
+                                            },
+                                        }),
+                                    ]),
+                                    data::Storage::Static(&[
+                                        data::graph::ParamLocal::IntFunction {
+                                            local: data::graph::IntFunctionLocalId(0),
+                                            type_: data::type_::FunctionType {
+                                                arguments: data::Storage::Static(&[]),
+                                                return_: data::Storage::Static(&data::type_::ValueType::Int),
+                                            },
+                                        },
+                                        data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                            id: data::graph::CustomLocalId(0),
+                                            shape: data::type_::CustomValueShape {
+                                                type_id: data::type_::CustomTypeId(2),
+                                                shape_id: data::type_::CustomValueShapeId(6),
+                                            },
+                                        }),
+                                        data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                            id: data::graph::CustomLocalId(1),
+                                            shape: data::type_::CustomValueShape {
+                                                type_id: data::type_::CustomTypeId(2),
+                                                shape_id: data::type_::CustomValueShapeId(6),
+                                            },
+                                        }),
                                     ]),
                                     data::Storage::Static(&[]),
                                     data::Storage::Static(&[]),
@@ -7582,16 +8139,248 @@ fn integer_comparisons() {
                                                 return_: data::Storage::Static(&data::type_::ValueType::Int),
                                             },
                                         },
+                                    ]),
+                                    data::Storage::Static(&[
+                                        data::graph::ParamLocal::IntFunction {
+                                            local: data::graph::IntFunctionLocalId(0),
+                                            type_: data::type_::FunctionType {
+                                                arguments: data::Storage::Static(&[]),
+                                                return_: data::Storage::Static(&data::type_::ValueType::Int),
+                                            },
+                                        },
+                                        data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                            id: data::graph::CustomLocalId(0),
+                                            shape: data::type_::CustomValueShape {
+                                                type_id: data::type_::CustomTypeId(2),
+                                                shape_id: data::type_::CustomValueShapeId(6),
+                                            },
+                                        }),
+                                    ]),
+                                    data::Storage::Static(&[
+                                        data::graph::ParamLocal::IntFunction {
+                                            local: data::graph::IntFunctionLocalId(0),
+                                            type_: data::type_::FunctionType {
+                                                arguments: data::Storage::Static(&[]),
+                                                return_: data::Storage::Static(&data::type_::ValueType::Int),
+                                            },
+                                        },
+                                        data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                            id: data::graph::CustomLocalId(0),
+                                            shape: data::type_::CustomValueShape {
+                                                type_id: data::type_::CustomTypeId(2),
+                                                shape_id: data::type_::CustomValueShapeId(6),
+                                            },
+                                        }),
+                                        data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                            id: data::graph::CustomLocalId(1),
+                                            shape: data::type_::CustomValueShape {
+                                                type_id: data::type_::CustomTypeId(2),
+                                                shape_id: data::type_::CustomValueShapeId(6),
+                                            },
+                                        }),
                                     ]),
                                     data::Storage::Static(&[]),
                                     data::Storage::Static(&[
                                         data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                     ]),
+                                    data::Storage::Static(&[
+                                        data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                            id: data::graph::CustomLocalId(0),
+                                            shape: data::type_::CustomValueShape {
+                                                type_id: data::type_::CustomTypeId(2),
+                                                shape_id: data::type_::CustomValueShapeId(6),
+                                            },
+                                        }),
+                                    ]),
+                                    data::Storage::Static(&[
+                                        data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                            id: data::graph::CustomLocalId(0),
+                                            shape: data::type_::CustomValueShape {
+                                                type_id: data::type_::CustomTypeId(3),
+                                                shape_id: data::type_::CustomValueShapeId(7),
+                                            },
+                                        }),
+                                    ]),
+                                    data::Storage::Static(&[
+                                        data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                            id: data::graph::CustomLocalId(0),
+                                            shape: data::type_::CustomValueShape {
+                                                type_id: data::type_::CustomTypeId(2),
+                                                shape_id: data::type_::CustomValueShapeId(6),
+                                            },
+                                        }),
+                                    ]),
+                                    data::Storage::Static(&[
+                                        data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                            id: data::graph::CustomLocalId(0),
+                                            shape: data::type_::CustomValueShape {
+                                                type_id: data::type_::CustomTypeId(2),
+                                                shape_id: data::type_::CustomValueShapeId(6),
+                                            },
+                                        }),
+                                    ]),
                                 ]),
-                                calls: data::Storage::Static(&[]),
+                                calls: data::Storage::Static(&[
+                                    data::compiled::CallContract {
+                                        point: 1,
+                                        output: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                            id: data::graph::CustomLocalId(0),
+                                            shape: data::type_::CustomValueShape {
+                                                type_id: data::type_::CustomTypeId(2),
+                                                shape_id: data::type_::CustomValueShapeId(6),
+                                            },
+                                        }),
+                                        target: data::compiled::CallContractTarget::Static(data::compiled::CallTarget::Custom(data::function::CustomFunctionId {
+                                            index: 0,
+                                            return_shape: data::type_::CustomValueShape {
+                                                type_id: data::type_::CustomTypeId(2),
+                                                shape_id: data::type_::CustomValueShapeId(6),
+                                            },
+                                        })),
+                                        args: data::Storage::Static(&[
+                                            data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                        ]),
+                                        site: data::source::HostCallSite::from_static("main", "generic_results", data::source::SourceSpan::new(699, 709)),
+                                    },
+                                    data::compiled::CallContract {
+                                        point: 2,
+                                        output: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                            id: data::graph::CustomLocalId(1),
+                                            shape: data::type_::CustomValueShape {
+                                                type_id: data::type_::CustomTypeId(2),
+                                                shape_id: data::type_::CustomValueShapeId(6),
+                                            },
+                                        }),
+                                        target: data::compiled::CallContractTarget::Static(data::compiled::CallTarget::Custom(data::function::CustomFunctionId {
+                                            index: 1,
+                                            return_shape: data::type_::CustomValueShape {
+                                                type_id: data::type_::CustomTypeId(2),
+                                                shape_id: data::type_::CustomValueShapeId(6),
+                                            },
+                                        })),
+                                        args: data::Storage::Static(&[
+                                            data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                                id: data::graph::CustomLocalId(0),
+                                                shape: data::type_::CustomValueShape {
+                                                    type_id: data::type_::CustomTypeId(2),
+                                                    shape_id: data::type_::CustomValueShapeId(6),
+                                                },
+                                            }),
+                                        ]),
+                                        site: data::source::HostCallSite::from_static("main", "generic_results", data::source::SourceSpan::new(691, 710)),
+                                    },
+                                    data::compiled::CallContract {
+                                        point: 5,
+                                        output: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                            id: data::graph::CustomLocalId(0),
+                                            shape: data::type_::CustomValueShape {
+                                                type_id: data::type_::CustomTypeId(2),
+                                                shape_id: data::type_::CustomValueShapeId(6),
+                                            },
+                                        }),
+                                        target: data::compiled::CallContractTarget::Static(data::compiled::CallTarget::Custom(data::function::CustomFunctionId {
+                                            index: 2,
+                                            return_shape: data::type_::CustomValueShape {
+                                                type_id: data::type_::CustomTypeId(2),
+                                                shape_id: data::type_::CustomValueShapeId(6),
+                                            },
+                                        })),
+                                        args: data::Storage::Static(&[
+                                            data::graph::ParamLocal::IntFunction {
+                                                local: data::graph::IntFunctionLocalId(0),
+                                                type_: data::type_::FunctionType {
+                                                    arguments: data::Storage::Static(&[]),
+                                                    return_: data::Storage::Static(&data::type_::ValueType::Int),
+                                                },
+                                            },
+                                        ]),
+                                        site: data::source::HostCallSite::from_static("main", "generic_results", data::source::SourceSpan::new(750, 769)),
+                                    },
+                                    data::compiled::CallContract {
+                                        point: 6,
+                                        output: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                            id: data::graph::CustomLocalId(1),
+                                            shape: data::type_::CustomValueShape {
+                                                type_id: data::type_::CustomTypeId(2),
+                                                shape_id: data::type_::CustomValueShapeId(6),
+                                            },
+                                        }),
+                                        target: data::compiled::CallContractTarget::Static(data::compiled::CallTarget::Custom(data::function::CustomFunctionId {
+                                            index: 1,
+                                            return_shape: data::type_::CustomValueShape {
+                                                type_id: data::type_::CustomTypeId(2),
+                                                shape_id: data::type_::CustomValueShapeId(6),
+                                            },
+                                        })),
+                                        args: data::Storage::Static(&[
+                                            data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                                id: data::graph::CustomLocalId(0),
+                                                shape: data::type_::CustomValueShape {
+                                                    type_id: data::type_::CustomTypeId(2),
+                                                    shape_id: data::type_::CustomValueShapeId(6),
+                                                },
+                                            }),
+                                        ]),
+                                        site: data::source::HostCallSite::from_static("main", "generic_results", data::source::SourceSpan::new(742, 770)),
+                                    },
+                                    data::compiled::CallContract {
+                                        point: 10,
+                                        output: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                            id: data::graph::CustomLocalId(0),
+                                            shape: data::type_::CustomValueShape {
+                                                type_id: data::type_::CustomTypeId(2),
+                                                shape_id: data::type_::CustomValueShapeId(6),
+                                            },
+                                        }),
+                                        target: data::compiled::CallContractTarget::Static(data::compiled::CallTarget::Custom(data::function::CustomFunctionId {
+                                            index: 2,
+                                            return_shape: data::type_::CustomValueShape {
+                                                type_id: data::type_::CustomTypeId(2),
+                                                shape_id: data::type_::CustomValueShapeId(6),
+                                            },
+                                        })),
+                                        args: data::Storage::Static(&[
+                                            data::graph::ParamLocal::IntFunction {
+                                                local: data::graph::IntFunctionLocalId(0),
+                                                type_: data::type_::FunctionType {
+                                                    arguments: data::Storage::Static(&[]),
+                                                    return_: data::Storage::Static(&data::type_::ValueType::Int),
+                                                },
+                                            },
+                                        ]),
+                                        site: data::source::HostCallSite::from_static("main", "generic_results", data::source::SourceSpan::new(874, 904)),
+                                    },
+                                    data::compiled::CallContract {
+                                        point: 11,
+                                        output: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                            id: data::graph::CustomLocalId(1),
+                                            shape: data::type_::CustomValueShape {
+                                                type_id: data::type_::CustomTypeId(2),
+                                                shape_id: data::type_::CustomValueShapeId(6),
+                                            },
+                                        }),
+                                        target: data::compiled::CallContractTarget::Static(data::compiled::CallTarget::Custom(data::function::CustomFunctionId {
+                                            index: 1,
+                                            return_shape: data::type_::CustomValueShape {
+                                                type_id: data::type_::CustomTypeId(2),
+                                                shape_id: data::type_::CustomValueShapeId(6),
+                                            },
+                                        })),
+                                        args: data::Storage::Static(&[
+                                            data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                                id: data::graph::CustomLocalId(0),
+                                                shape: data::type_::CustomValueShape {
+                                                    type_id: data::type_::CustomTypeId(2),
+                                                    shape_id: data::type_::CustomValueShapeId(6),
+                                                },
+                                            }),
+                                        ]),
+                                        site: data::source::HostCallSite::from_static("main", "generic_results", data::source::SourceSpan::new(866, 905)),
+                                    },
+                                ]),
                                 creations: data::Storage::Static(&[
                                     data::compiled::CreationContract {
-                                        point: 2,
+                                        point: 4,
                                         output: data::graph::ParamLocal::IntFunction {
                                             local: data::graph::IntFunctionLocalId(0),
                                             type_: data::type_::FunctionType {
@@ -7608,7 +8397,7 @@ fn integer_comparisons() {
                                         captures: data::Storage::Static(&[]),
                                     },
                                     data::compiled::CreationContract {
-                                        point: 5,
+                                        point: 9,
                                         output: data::graph::ParamLocal::IntFunction {
                                             local: data::graph::IntFunctionLocalId(0),
                                             type_: data::type_::FunctionType {
@@ -7627,7 +8416,7 @@ fn integer_comparisons() {
                                 ]),
                                 returns: data::Storage::Static(&[
                                     data::compiled::ReturnContract {
-                                        point: 8,
+                                        point: 14,
                                         value: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                     },
                                 ]),

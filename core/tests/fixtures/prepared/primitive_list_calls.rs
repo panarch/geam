@@ -1,6 +1,6 @@
 data::HostedModuleArtifact {
     module: data::ModuleArtifact {
-        format: 29,
+        format: 30,
         program: data::ProgramTables {
             root: data::source::module_id(0),
             modules: data::Storage::Static(&[
@@ -16802,8 +16802,8 @@ pub fn call_unconnected_bit_checksum(input: BitArray) -> Int {
                     Next(usize),
                     Exit(data::compiled::CompiledProgress),
                 }
-                const CALL_GROUP_0: [data::compiled::calls::CallStart; 28] = {
-                    use data::compiled::calls::{CallArguments, CallBitArray, CallCapture, CallCaptureInputs, CallExecution, CallInputs, CallInteger, CallOps, CallOutput, CallProgress, CallStorage, CallValues, IntCallable, StringValue};
+                const CALL_GROUP_0: [data::compiled::calls::CallStart; 29] = {
+                    use data::compiled::calls::{CallArguments, CallBitArray, CallCapture, CallCaptureInputs, CallExecution, CallInputs, CallInteger, CallOps, CallOutput, CallProgress, CallStorage, CallTuple, CallValues, IntCallable, StringValue};
                     use data::compiled::int_list::IntList;
                     use data::compiled::primitive_list::BoolList;
                     use data::compiled::primitive_list::FloatList;
@@ -16894,6 +16894,9 @@ pub fn call_unconnected_bit_checksum(input: BitArray) -> Int {
                         Int23Point3 { nil_list0: NilList, int0: i128, int_function0: IntCallable, nil0: () },
                         Int23Point4 { nil_list0: NilList, int0: i128, int_function0: IntCallable, nil0: (), nil_list1: NilList },
                         Int23Point5 { nil_list0: NilList, int0: i128, int_function0: IntCallable, nil0: (), nil_list1: NilList, int1: i128 },
+                        Int24Point0 { int0: i128, tuple0: CallTuple },
+                        Int24Point1 { int0: i128, tuple0: CallTuple, int1: i128 },
+                        Int24Point2 { int0: i128, tuple0: CallTuple, int1: i128, int2: i128 },
                         Int26Point0 { bool0: bool },
                         Int26Point1 {  },
                         Int26Point2 { int0: i128 },
@@ -17905,6 +17908,7 @@ pub fn call_unconnected_bit_checksum(input: BitArray) -> Int {
                                 data::compiled::CallTarget::Int(data::function::IntFunctionId(21)) => calls_int_21_state(point, values),
                                 data::compiled::CallTarget::Int(data::function::IntFunctionId(22)) => calls_int_22_state(point, values),
                                 data::compiled::CallTarget::Int(data::function::IntFunctionId(23)) => calls_int_23_state(point, values),
+                                data::compiled::CallTarget::Int(data::function::IntFunctionId(24)) => calls_int_24_state(point, values),
                                 data::compiled::CallTarget::Int(data::function::IntFunctionId(26)) => calls_int_26_state(point, values),
                                 data::compiled::CallTarget::Int(data::function::IntFunctionId(27)) => calls_int_27_state(point, values),
                                 data::compiled::CallTarget::Int(data::function::IntFunctionId(28)) => calls_int_28_state(point, values),
@@ -18071,6 +18075,9 @@ pub fn call_unconnected_bit_checksum(input: BitArray) -> Int {
                             FunctionState::Int23Point3 { nil_list0, int0, int_function0, nil0: () } => calls_int_23_run(Int23State::Point3 { nil_list0, int0, int_function0, nil0: () }, ops, budget),
                             FunctionState::Int23Point4 { nil_list0, int0, int_function0, nil0: (), nil_list1 } => calls_int_23_run(Int23State::Point4 { nil_list0, int0, int_function0, nil0: (), nil_list1 }, ops, budget),
                             FunctionState::Int23Point5 { nil_list0, int0, int_function0, nil0: (), nil_list1, int1 } => calls_int_23_run(Int23State::Point5 { nil_list0, int0, int_function0, nil0: (), nil_list1, int1 }, ops, budget),
+                            FunctionState::Int24Point0 { int0, tuple0 } => calls_int_24_run(Int24State::Point0 { int0, tuple0 }, ops, budget),
+                            FunctionState::Int24Point1 { int0, tuple0, int1 } => calls_int_24_run(Int24State::Point1 { int0, tuple0, int1 }, ops, budget),
+                            FunctionState::Int24Point2 { int0, tuple0, int1, int2 } => calls_int_24_run(Int24State::Point2 { int0, tuple0, int1, int2 }, ops, budget),
                             FunctionState::Int26Point0 { bool0 } => calls_int_26_run(Int26State::Point0 { bool0 }, ops, budget),
                             FunctionState::Int26Point1 {  } => calls_int_26_run(Int26State::Point1 {  }, ops, budget),
                             FunctionState::Int26Point2 { int0 } => calls_int_26_run(Int26State::Point2 { int0 }, ops, budget),
@@ -19525,6 +19532,88 @@ pub fn call_unconnected_bit_checksum(input: BitArray) -> Int {
                                         Int23State::Point0 { nil_list0: nil_list1.clone(), int0: int1, int_function0: int_function0.clone() }
                                     };
                                     continue;
+                                },
+                            }
+                        }
+                    }
+                    enum Int24State {
+                        Point0 { int0: i128, tuple0: CallTuple },
+                        Point1 { int0: i128, tuple0: CallTuple, int1: i128 },
+                        Point2 { int0: i128, tuple0: CallTuple, int1: i128, int2: i128 },
+                    }
+                    fn calls_int_24_run(mut active: Int24State, _ops: &mut CallOps<'_>, budget: &mut usize) -> FunctionStep {
+                        loop {
+                            match active {
+                                Int24State::Point0 { int0, tuple0 } => {
+                                    if *budget == 0 { return FunctionStep::Yield(FunctionState::Int24Point0 { int0, tuple0 }); }
+                                    let int1 = match (|| {
+                                    let field = tuple0.field(0)?;
+                                        field.integer()
+                                    })() {
+                                        Some(value) => value,
+                                        None => return FunctionStep::Canonical { target: data::compiled::CallTarget::Int(data::function::IntFunctionId(24)), point: data::compiled::CompiledCheckpoint {
+                                            block: data::graph::BlockId(0),
+                                            instruction: 0,
+                                            ints: 1,
+                                            bools: 0,
+                                            bit_arrays: 0,
+                                            int_lists: 0,
+                                            strings: 0,
+                                            customs: 0,
+                                            custom_lists: 0,
+                                            int_functions: 0,
+                                            bool_functions: 0,
+                                        }, values: Box::new(CallValues { tuples: vec![tuple0], ints: vec![int0.into()], ..CallValues::default() }) },
+                                    };
+                                    *budget -= 1;
+                                    if *budget == 0 { return FunctionStep::Yield(FunctionState::Int24Point1 { int0, tuple0, int1 }); }
+                                    *budget -= 1;
+                                    let int2 = int0 + int1;
+                                    if int2 < i128::from(i64::MIN) || int2 > i128::from(i64::MAX) { return FunctionStep::Canonical { target: data::compiled::CallTarget::Int(data::function::IntFunctionId(24)), point: data::compiled::CompiledCheckpoint {
+                                        block: data::graph::BlockId(0),
+                                        instruction: 2,
+                                        ints: 3,
+                                        bools: 0,
+                                        bit_arrays: 0,
+                                        int_lists: 0,
+                                        strings: 0,
+                                        customs: 0,
+                                        custom_lists: 0,
+                                        int_functions: 0,
+                                        bool_functions: 0,
+                                    }, values: Box::new(CallValues { tuples: vec![tuple0], ints: vec![int0.into(), int1.into(), int2.into()], ..CallValues::default() }) }; }
+                                    if *budget == 0 { return FunctionStep::Yield(FunctionState::Int24Point2 { int0, tuple0, int1, int2 }); }
+                                    *budget -= 1;
+                                    return {
+                                        FunctionStep::Int { value: int2 }
+                                    };
+                                },
+                                Int24State::Point1 { int0, tuple0, int1 } => {
+                                    if *budget == 0 { return FunctionStep::Yield(FunctionState::Int24Point1 { int0, tuple0, int1 }); }
+                                    *budget -= 1;
+                                    let int2 = int0 + int1;
+                                    if int2 < i128::from(i64::MIN) || int2 > i128::from(i64::MAX) { return FunctionStep::Canonical { target: data::compiled::CallTarget::Int(data::function::IntFunctionId(24)), point: data::compiled::CompiledCheckpoint {
+                                        block: data::graph::BlockId(0),
+                                        instruction: 2,
+                                        ints: 3,
+                                        bools: 0,
+                                        bit_arrays: 0,
+                                        int_lists: 0,
+                                        strings: 0,
+                                        customs: 0,
+                                        custom_lists: 0,
+                                        int_functions: 0,
+                                        bool_functions: 0,
+                                    }, values: Box::new(CallValues { tuples: vec![tuple0], ints: vec![int0.into(), int1.into(), int2.into()], ..CallValues::default() }) }; }
+                                    active = Int24State::Point2 { int0, tuple0, int1, int2 };
+                                    continue;
+                                },
+                                Int24State::Point2 { int0, tuple0, int1, int2 } => {
+                                    if *budget == 0 { return FunctionStep::Yield(FunctionState::Int24Point2 { int0, tuple0, int1, int2 }); }
+                                    *budget -= 1;
+                                    return {
+                                        FunctionStep::Int { value: int2 }
+                                    };
                                 },
                             }
                         }
@@ -22020,6 +22109,20 @@ pub fn call_unconnected_bit_checksum(input: BitArray) -> Int {
                         let active = calls_int_23_state(point, values)?;
                         Some(Box::new(FunctionExecution::new(active)))
                     }
+                    fn calls_int_24_state(point: usize, values: CallInputs<'_>) -> Option<FunctionState> {
+                        let active = match point {
+                            0 => FunctionState::Int24Point0 { int0: values.int(0)?, tuple0: values.tuple(0)? },
+                            1 => FunctionState::Int24Point1 { int0: values.int(0)?, tuple0: values.tuple(0)?, int1: values.int(1)? },
+                            2 => FunctionState::Int24Point2 { int0: values.int(0)?, tuple0: values.tuple(0)?, int1: values.int(1)?, int2: values.int(2)? },
+                            _ => return None,
+                        };
+                        Some(active)
+                    }
+                    fn calls_int_24_start(point: usize, values: CallInputs<'_>, storage: &mut CallStorage) -> Option<Box<dyn CallExecution>> {
+                        if let Some(execution) = storage.reuse(data::compiled::CallTarget::Int(data::function::IntFunctionId(24)), point, values) { return Some(execution); }
+                        let active = calls_int_24_state(point, values)?;
+                        Some(Box::new(FunctionExecution::new(active)))
+                    }
                     fn calls_int_26_numeric(progress: data::compiled::CompiledProgress, values: &data::compiled::numeric::NumericValues) -> FunctionStep {
                         const STATES: [fn(&data::compiled::numeric::NumericValues) -> FunctionState; 5] = [
                             |values| FunctionState::Int26Point0 { bool0: values.bools[0] },
@@ -22556,7 +22659,7 @@ pub fn call_unconnected_bit_checksum(input: BitArray) -> Int {
                         let active = calls_int_39_state(point, values)?;
                         Some(Box::new(FunctionExecution::new(active)))
                     }
-                    [calls_int_0_start, calls_int_1_start, calls_int_2_start, calls_int_4_start, calls_int_13_start, calls_int_14_start, calls_int_15_start, calls_int_16_start, calls_int_17_start, calls_int_18_start, calls_int_19_start, calls_int_20_start, calls_int_21_start, calls_int_22_start, calls_int_23_start, calls_int_26_start, calls_int_27_start, calls_int_28_start, calls_int_29_start, calls_int_30_start, calls_int_31_start, calls_int_32_start, calls_int_33_start, calls_int_34_start, calls_int_36_start, calls_int_37_start, calls_int_38_start, calls_int_39_start]
+                    [calls_int_0_start, calls_int_1_start, calls_int_2_start, calls_int_4_start, calls_int_13_start, calls_int_14_start, calls_int_15_start, calls_int_16_start, calls_int_17_start, calls_int_18_start, calls_int_19_start, calls_int_20_start, calls_int_21_start, calls_int_22_start, calls_int_23_start, calls_int_24_start, calls_int_26_start, calls_int_27_start, calls_int_28_start, calls_int_29_start, calls_int_30_start, calls_int_31_start, calls_int_32_start, calls_int_33_start, calls_int_34_start, calls_int_36_start, calls_int_37_start, calls_int_38_start, calls_int_39_start]
                 };
                 const CALL_GROUP_1: [data::compiled::calls::CallStart; 1] = {
                     use data::compiled::calls::{CallArguments, CallCapture, CallCaptureInputs, CallExecution, CallInputs, CallInteger, CallOps, CallOutput, CallProgress, CallStorage, CallValues, IntCallable};
@@ -39860,6 +39963,99 @@ pub fn call_unconnected_bit_checksum(input: BitArray) -> Int {
                             })),
                         },
                         data::compiled::CompiledFunction {
+                            function: data::compiled::CallTarget::Int(data::function::IntFunctionId(24)),
+                            implementation: data::compiled::CompiledImplementation::FunctionCalls(data::Storage::Static(&data::compiled::FunctionCallsImplementation {
+                                root: false,
+                                entry: 0,
+                                checkpoints: data::Storage::Static(&[
+                                    data::compiled::CompiledCheckpoint {
+                                        block: data::graph::BlockId(0),
+                                        instruction: 0,
+                                        ints: 1,
+                                        bools: 0,
+                                        bit_arrays: 0,
+                                        int_lists: 0,
+                                        strings: 0,
+                                        customs: 0,
+                                        custom_lists: 0,
+                                        int_functions: 0,
+                                        bool_functions: 0,
+                                    },
+                                    data::compiled::CompiledCheckpoint {
+                                        block: data::graph::BlockId(0),
+                                        instruction: 1,
+                                        ints: 2,
+                                        bools: 0,
+                                        bit_arrays: 0,
+                                        int_lists: 0,
+                                        strings: 0,
+                                        customs: 0,
+                                        custom_lists: 0,
+                                        int_functions: 0,
+                                        bool_functions: 0,
+                                    },
+                                    data::compiled::CompiledCheckpoint {
+                                        block: data::graph::BlockId(0),
+                                        instruction: 2,
+                                        ints: 3,
+                                        bools: 0,
+                                        bit_arrays: 0,
+                                        int_lists: 0,
+                                        strings: 0,
+                                        customs: 0,
+                                        custom_lists: 0,
+                                        int_functions: 0,
+                                        bool_functions: 0,
+                                    },
+                                ]),
+                                locals: data::Storage::Static(&[
+                                    data::Storage::Static(&[
+                                        data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                        data::graph::ParamLocal::Tuple {
+                                            local: data::graph::TupleLocalId(0),
+                                            type_: data::Storage::Static(&[
+                                                data::type_::ValueType::Int,
+                                                data::type_::ValueType::Float,
+                                            ]),
+                                        },
+                                    ]),
+                                    data::Storage::Static(&[
+                                        data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                        data::graph::ParamLocal::Tuple {
+                                            local: data::graph::TupleLocalId(0),
+                                            type_: data::Storage::Static(&[
+                                                data::type_::ValueType::Int,
+                                                data::type_::ValueType::Float,
+                                            ]),
+                                        },
+                                        data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                    ]),
+                                    data::Storage::Static(&[
+                                        data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                        data::graph::ParamLocal::Tuple {
+                                            local: data::graph::TupleLocalId(0),
+                                            type_: data::Storage::Static(&[
+                                                data::type_::ValueType::Int,
+                                                data::type_::ValueType::Float,
+                                            ]),
+                                        },
+                                        data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                        data::graph::ParamLocal::Int(data::graph::IntLocalId(2)),
+                                    ]),
+                                ]),
+                                calls: data::Storage::Static(&[]),
+                                creations: data::Storage::Static(&[]),
+                                returns: data::Storage::Static(&[
+                                    data::compiled::ReturnContract {
+                                        point: 2,
+                                        value: data::graph::ParamLocal::Int(data::graph::IntLocalId(2)),
+                                    },
+                                ]),
+                                tails: data::Storage::Static(&[]),
+                                start: CALL_GROUP_0[15],
+                            })),
+                        },
+                        data::compiled::CompiledFunction {
                             function: data::compiled::CallTarget::Int(data::function::IntFunctionId(26)),
                             implementation: data::compiled::CompiledImplementation::FunctionCalls(data::Storage::Static(&data::compiled::FunctionCallsImplementation {
                                 root: false,
@@ -39957,7 +40153,7 @@ pub fn call_unconnected_bit_checksum(input: BitArray) -> Int {
                                     },
                                 ]),
                                 tails: data::Storage::Static(&[]),
-                                start: CALL_GROUP_0[15],
+                                start: CALL_GROUP_0[16],
                             })),
                         },
                         data::compiled::CompiledFunction {
@@ -40526,7 +40722,7 @@ pub fn call_unconnected_bit_checksum(input: BitArray) -> Int {
                                     },
                                 ]),
                                 tails: data::Storage::Static(&[]),
-                                start: CALL_GROUP_0[16],
+                                start: CALL_GROUP_0[17],
                             })),
                         },
                         data::compiled::CompiledFunction {
@@ -41095,7 +41291,7 @@ pub fn call_unconnected_bit_checksum(input: BitArray) -> Int {
                                     },
                                 ]),
                                 tails: data::Storage::Static(&[]),
-                                start: CALL_GROUP_0[17],
+                                start: CALL_GROUP_0[18],
                             })),
                         },
                         data::compiled::CompiledFunction {
@@ -41664,7 +41860,7 @@ pub fn call_unconnected_bit_checksum(input: BitArray) -> Int {
                                     },
                                 ]),
                                 tails: data::Storage::Static(&[]),
-                                start: CALL_GROUP_0[18],
+                                start: CALL_GROUP_0[19],
                             })),
                         },
                         data::compiled::CompiledFunction {
@@ -42233,7 +42429,7 @@ pub fn call_unconnected_bit_checksum(input: BitArray) -> Int {
                                     },
                                 ]),
                                 tails: data::Storage::Static(&[]),
-                                start: CALL_GROUP_0[19],
+                                start: CALL_GROUP_0[20],
                             })),
                         },
                         data::compiled::CompiledFunction {
@@ -42802,7 +42998,7 @@ pub fn call_unconnected_bit_checksum(input: BitArray) -> Int {
                                     },
                                 ]),
                                 tails: data::Storage::Static(&[]),
-                                start: CALL_GROUP_0[20],
+                                start: CALL_GROUP_0[21],
                             })),
                         },
                         data::compiled::CompiledFunction {
@@ -43371,7 +43567,7 @@ pub fn call_unconnected_bit_checksum(input: BitArray) -> Int {
                                     },
                                 ]),
                                 tails: data::Storage::Static(&[]),
-                                start: CALL_GROUP_0[21],
+                                start: CALL_GROUP_0[22],
                             })),
                         },
                         data::compiled::CompiledFunction {
@@ -43940,7 +44136,7 @@ pub fn call_unconnected_bit_checksum(input: BitArray) -> Int {
                                     },
                                 ]),
                                 tails: data::Storage::Static(&[]),
-                                start: CALL_GROUP_0[22],
+                                start: CALL_GROUP_0[23],
                             })),
                         },
                         data::compiled::CompiledFunction {
@@ -44113,7 +44309,7 @@ pub fn call_unconnected_bit_checksum(input: BitArray) -> Int {
                                     },
                                 ]),
                                 tails: data::Storage::Static(&[]),
-                                start: CALL_GROUP_0[23],
+                                start: CALL_GROUP_0[24],
                             })),
                         },
                         data::compiled::CompiledFunction {
@@ -44164,7 +44360,7 @@ pub fn call_unconnected_bit_checksum(input: BitArray) -> Int {
                                     },
                                 ]),
                                 tails: data::Storage::Static(&[]),
-                                start: CALL_GROUP_0[24],
+                                start: CALL_GROUP_0[25],
                             })),
                         },
                         data::compiled::CompiledFunction {
@@ -44238,7 +44434,7 @@ pub fn call_unconnected_bit_checksum(input: BitArray) -> Int {
                                     },
                                 ]),
                                 tails: data::Storage::Static(&[]),
-                                start: CALL_GROUP_0[25],
+                                start: CALL_GROUP_0[26],
                             })),
                         },
                         data::compiled::CompiledFunction {
@@ -44322,7 +44518,7 @@ pub fn call_unconnected_bit_checksum(input: BitArray) -> Int {
                                     },
                                 ]),
                                 tails: data::Storage::Static(&[]),
-                                start: CALL_GROUP_0[26],
+                                start: CALL_GROUP_0[27],
                             })),
                         },
                         data::compiled::CompiledFunction {
@@ -44406,7 +44602,7 @@ pub fn call_unconnected_bit_checksum(input: BitArray) -> Int {
                                     },
                                 ]),
                                 tails: data::Storage::Static(&[]),
-                                start: CALL_GROUP_0[27],
+                                start: CALL_GROUP_0[28],
                             })),
                         },
                         data::compiled::CompiledFunction {

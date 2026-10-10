@@ -1,5 +1,5 @@
 data::HostedEntryArtifact {
-    format: 29,
+    format: 30,
     program: data::ProgramTables {
         root: data::source::module_id(0),
         modules: data::Storage::Static(&[
@@ -3730,8 +3730,8 @@ pub fn markers(seed: Int) -> Int {
                     }
                 }
             }
-            const CALL_GROUP_0: [data::compiled::calls::CallStart; 3] = {
-                use data::compiled::calls::{CallArguments, CallExecution, CallInputs, CallInteger, CallNativeFailure, CallNativeInput, CallNativeOps, CallNativeReturn, CallOps, CallOutput, CallProgress, CallStorage, CallValues, IntCallable};
+            const CALL_GROUP_0: [data::compiled::calls::CallStart; 7] = {
+                use data::compiled::calls::{CallArguments, CallCustom, CallExecution, CallInputs, CallInteger, CallNativeFailure, CallNativeInput, CallNativeOps, CallNativeReturn, CallOps, CallOutput, CallProgress, CallStorage, CallValues, IntCallable};
                 enum FunctionState {
                     Int0Point0 {  },
                     Int0Point1 { int0: i128 },
@@ -3758,6 +3758,35 @@ pub fn markers(seed: Int) -> Int {
                     Int2Point4 { int_function0: IntCallable, int0: i128, int1: i128 },
                     Int2Point5 { int0: i128 },
                     Int2Point6 { int0: i128, int_function0: IntCallable },
+                    Int6Point0 { int0: i128, custom0: CallCustom },
+                    Int6Point1 { int0: i128, int1: i128 },
+                    Int6Point2 { int0: i128, int1: i128, int2: i128 },
+                    Int6Point3 { int0: i128, custom0: CallCustom },
+                    Int6Point4 { int0: i128, int1: i128 },
+                    Int6Point5 { int0: i128, int1: i128, int2: i128 },
+                    Int6Point6 { int0: i128 },
+                    Int8Point0 { int0: i128, custom0: CallCustom },
+                    Int8Point1 { int0: i128, int1: i128 },
+                    Int8Point2 { int0: i128, int1: i128, int2: i128 },
+                    Int8Point3 { int0: i128, custom0: CallCustom },
+                    Int8Point4 { int0: i128, int1: i128 },
+                    Int8Point5 { int0: i128, int1: i128, int2: i128 },
+                    Int8Point6 { int0: i128 },
+                    Int9Point0 { int0: i128, custom0: CallCustom, bool0: bool, int1: i128 },
+                    Int9Point1 { int0: i128, custom0: CallCustom, int1: i128 },
+                    Int9Point2 { int0: i128, int1: i128, int2: i128 },
+                    Int9Point3 { int0: i128, int1: i128, int2: i128, int3: i128 },
+                    Int9Point4 { int0: i128, custom0: CallCustom, int1: i128 },
+                    Int9Point5 { int0: i128, int1: i128, int2: i128 },
+                    Int9Point6 { int0: i128, int1: i128, int2: i128, int3: i128 },
+                    Int9Point7 { int0: i128, int1: i128 },
+                    Int9Point8 { int0: i128, int1: i128, int2: i128 },
+                    Int9Point9 { int0: i128 },
+                    Int11Point0 { int0: i128, custom0: CallCustom },
+                    Int11Point1 { int0: i128, int1: i128 },
+                    Int11Point2 { int0: i128, int1: i128, int2: i128 },
+                    Int11Point3 { int0: i128, int1: i128, int2: i128, int3: i128 },
+                    Int11Point4 { int0: i128 },
                     Int12Point0 { int0: i128 },
                     Int12Point1 { int0: i128, int1: i128 },
                     Canonical { target: data::compiled::CallTarget, point: data::compiled::CompiledCheckpoint, values: Box<CallValues> },
@@ -3768,6 +3797,7 @@ pub fn markers(seed: Int) -> Int {
                     Int0Call10 { int0: i128, int1: i128, int2: i128, int3: i128, bool0: bool, int4: i128, int5: i128, int6: i128, int7: i128, bool1: bool },
                     Int0Call12 { int0: i128, int1: i128, int2: i128, int3: i128, bool0: bool, int4: i128, int5: i128, int6: i128, int7: i128, bool1: bool, int8: i128, int9: i128 },
                     Int0Call15 { int0: i128, int1: i128, int2: i128, int3: i128, bool0: bool, int4: i128, int5: i128, int6: i128, int7: i128, bool1: bool, int8: i128, int9: i128, int10: i128, int11: i128, int12: i128 },
+                    Int11Call1 { int0: i128, int1: i128 },
                 }
                 impl IntReturn {
                     fn site(&self) -> data::source::HostCallSite {
@@ -3777,6 +3807,7 @@ pub fn markers(seed: Int) -> Int {
                             Self::Int0Call10 { .. } => data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(3906, 3926)),
                             Self::Int0Call12 { .. } => data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(3929, 3936)),
                             Self::Int0Call15 { .. } => data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(3939, 3953)),
+                            Self::Int11Call1 { .. } => data::source::HostCallSite::from_static("example", "non_leaf", data::source::SourceSpan::new(2160, 2172)),
                         }
                     }
                     fn small(self, result: i128) -> FunctionState {
@@ -3800,6 +3831,10 @@ pub fn markers(seed: Int) -> Int {
                             Self::Int0Call15 { int0, int1, int2, int3, bool0, int4, int5, int6, int7, bool1, int8, int9, int10, int11, int12 } => {
                                 let int13 = result;
                                 FunctionState::Int0Point16 { int0, int1, int2, int3, bool0, int4, int5, int6, int7, bool1, int8, int9, int10, int11, int12, int13 }
+                            },
+                            Self::Int11Call1 { int0, int1 } => {
+                                let int2 = result;
+                                FunctionState::Int11Point2 { int0, int1, int2 }
                             },
                         }
                     }
@@ -3888,6 +3923,22 @@ pub fn markers(seed: Int) -> Int {
                                     bool_functions: 0,
                                 }, values: Box::new(CallValues { ints: vec![int0.into(), int1.into(), int2.into(), int3.into(), int4.into(), int5.into(), int6.into(), int7.into(), int8.into(), int9.into(), int10.into(), int11.into(), int12.into(), int13], bools: vec![bool0, bool1], ..CallValues::default() }) }
                             },
+                            Self::Int11Call1 { int0, int1 } => {
+                                let int2 = result;
+                                FunctionState::Canonical { target: data::compiled::CallTarget::Int(data::function::IntFunctionId(11)), point: data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(1),
+                                    instruction: 1,
+                                    ints: 3,
+                                    bools: 0,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
+                                }, values: Box::new(CallValues { ints: vec![int0.into(), int1.into(), int2], ..CallValues::default() }) }
+                            },
                         }
                     }
                 }
@@ -3924,6 +3975,10 @@ pub fn markers(seed: Int) -> Int {
                         let active = match target {
                             data::compiled::CallTarget::Int(data::function::IntFunctionId(0)) => calls_int_0_state(point, values),
                             data::compiled::CallTarget::Int(data::function::IntFunctionId(2)) => calls_int_2_state(point, values),
+                            data::compiled::CallTarget::Int(data::function::IntFunctionId(6)) => calls_int_6_state(point, values),
+                            data::compiled::CallTarget::Int(data::function::IntFunctionId(8)) => calls_int_8_state(point, values),
+                            data::compiled::CallTarget::Int(data::function::IntFunctionId(9)) => calls_int_9_state(point, values),
+                            data::compiled::CallTarget::Int(data::function::IntFunctionId(11)) => calls_int_11_state(point, values),
                             data::compiled::CallTarget::Int(data::function::IntFunctionId(12)) => calls_int_12_state(point, values),
                             _ => None,
                         };
@@ -4149,6 +4204,35 @@ pub fn markers(seed: Int) -> Int {
                         FunctionState::Int2Point4 { int_function0, int0, int1 } => calls_int_2_run(Int2State::Point4 { int_function0, int0, int1 }, ops, budget),
                         FunctionState::Int2Point5 { int0 } => calls_int_2_run(Int2State::Point5 { int0 }, ops, budget),
                         FunctionState::Int2Point6 { int0, int_function0 } => calls_int_2_run(Int2State::Point6 { int0, int_function0 }, ops, budget),
+                        FunctionState::Int6Point0 { int0, custom0 } => calls_int_6_run(Int6State::Point0 { int0, custom0 }, ops, budget),
+                        FunctionState::Int6Point1 { int0, int1 } => calls_int_6_run(Int6State::Point1 { int0, int1 }, ops, budget),
+                        FunctionState::Int6Point2 { int0, int1, int2 } => calls_int_6_run(Int6State::Point2 { int0, int1, int2 }, ops, budget),
+                        FunctionState::Int6Point3 { int0, custom0 } => calls_int_6_run(Int6State::Point3 { int0, custom0 }, ops, budget),
+                        FunctionState::Int6Point4 { int0, int1 } => calls_int_6_run(Int6State::Point4 { int0, int1 }, ops, budget),
+                        FunctionState::Int6Point5 { int0, int1, int2 } => calls_int_6_run(Int6State::Point5 { int0, int1, int2 }, ops, budget),
+                        FunctionState::Int6Point6 { int0 } => calls_int_6_run(Int6State::Point6 { int0 }, ops, budget),
+                        FunctionState::Int8Point0 { int0, custom0 } => calls_int_8_run(Int8State::Point0 { int0, custom0 }, ops, budget),
+                        FunctionState::Int8Point1 { int0, int1 } => calls_int_8_run(Int8State::Point1 { int0, int1 }, ops, budget),
+                        FunctionState::Int8Point2 { int0, int1, int2 } => calls_int_8_run(Int8State::Point2 { int0, int1, int2 }, ops, budget),
+                        FunctionState::Int8Point3 { int0, custom0 } => calls_int_8_run(Int8State::Point3 { int0, custom0 }, ops, budget),
+                        FunctionState::Int8Point4 { int0, int1 } => calls_int_8_run(Int8State::Point4 { int0, int1 }, ops, budget),
+                        FunctionState::Int8Point5 { int0, int1, int2 } => calls_int_8_run(Int8State::Point5 { int0, int1, int2 }, ops, budget),
+                        FunctionState::Int8Point6 { int0 } => calls_int_8_run(Int8State::Point6 { int0 }, ops, budget),
+                        FunctionState::Int9Point0 { int0, custom0, bool0, int1 } => calls_int_9_run(Int9State::Point0 { int0, custom0, bool0, int1 }, ops, budget),
+                        FunctionState::Int9Point1 { int0, custom0, int1 } => calls_int_9_run(Int9State::Point1 { int0, custom0, int1 }, ops, budget),
+                        FunctionState::Int9Point2 { int0, int1, int2 } => calls_int_9_run(Int9State::Point2 { int0, int1, int2 }, ops, budget),
+                        FunctionState::Int9Point3 { int0, int1, int2, int3 } => calls_int_9_run(Int9State::Point3 { int0, int1, int2, int3 }, ops, budget),
+                        FunctionState::Int9Point4 { int0, custom0, int1 } => calls_int_9_run(Int9State::Point4 { int0, custom0, int1 }, ops, budget),
+                        FunctionState::Int9Point5 { int0, int1, int2 } => calls_int_9_run(Int9State::Point5 { int0, int1, int2 }, ops, budget),
+                        FunctionState::Int9Point6 { int0, int1, int2, int3 } => calls_int_9_run(Int9State::Point6 { int0, int1, int2, int3 }, ops, budget),
+                        FunctionState::Int9Point7 { int0, int1 } => calls_int_9_run(Int9State::Point7 { int0, int1 }, ops, budget),
+                        FunctionState::Int9Point8 { int0, int1, int2 } => calls_int_9_run(Int9State::Point8 { int0, int1, int2 }, ops, budget),
+                        FunctionState::Int9Point9 { int0 } => calls_int_9_run(Int9State::Point9 { int0 }, ops, budget),
+                        FunctionState::Int11Point0 { int0, custom0 } => calls_int_11_run(Int11State::Point0 { int0, custom0 }, ops, budget),
+                        FunctionState::Int11Point1 { int0, int1 } => calls_int_11_run(Int11State::Point1 { int0, int1 }, ops, budget),
+                        FunctionState::Int11Point2 { int0, int1, int2 } => calls_int_11_run(Int11State::Point2 { int0, int1, int2 }, ops, budget),
+                        FunctionState::Int11Point3 { int0, int1, int2, int3 } => calls_int_11_run(Int11State::Point3 { int0, int1, int2, int3 }, ops, budget),
+                        FunctionState::Int11Point4 { int0 } => calls_int_11_run(Int11State::Point4 { int0 }, ops, budget),
                         FunctionState::Int12Point0 { int0 } => calls_int_12_run(Int12State::Point0 { int0 }, ops, budget),
                         FunctionState::Int12Point1 { int0, int1 } => calls_int_12_run(Int12State::Point1 { int0, int1 }, ops, budget),
                     }
@@ -4642,6 +4726,596 @@ pub fn markers(seed: Int) -> Int {
                         }
                     }
                 }
+                enum Int6State {
+                    Point0 { int0: i128, custom0: CallCustom },
+                    Point1 { int0: i128, int1: i128 },
+                    Point2 { int0: i128, int1: i128, int2: i128 },
+                    Point3 { int0: i128, custom0: CallCustom },
+                    Point4 { int0: i128, int1: i128 },
+                    Point5 { int0: i128, int1: i128, int2: i128 },
+                    Point6 { int0: i128 },
+                }
+                fn calls_int_6_run(mut active: Int6State, _ops: &mut CallOps<'_>, budget: &mut usize) -> FunctionStep {
+                    loop {
+                        match active {
+                            Int6State::Point0 { int0, custom0 } => {
+                                if *budget == 0 { return FunctionStep::Yield(FunctionState::Int6Point0 { int0, custom0 }); }
+                                active = {
+                                    let matched = (|| -> Option<Option<(i128,)>> {
+                                        if !custom0.matches_constructor(data::type_::CustomConstructorId {
+                                            type_id: data::type_::CustomTypeId(0),
+                                            index: 0,
+                                        }) { return Some(None); }
+                                        let field0 = custom0.field(0)?;
+                                        if !field0.matches_type(&data::type_::ValueType::Int) { return None; }
+                                        let binding0 = field0.integer()?;
+                                        Some(Some((binding0,)))
+                                    })();
+                                    let Some(matched) = matched else { return FunctionStep::Canonical { target: data::compiled::CallTarget::Int(data::function::IntFunctionId(6)), point: data::compiled::CompiledCheckpoint {
+                                        block: data::graph::BlockId(0),
+                                        instruction: 0,
+                                        ints: 1,
+                                        bools: 0,
+                                        bit_arrays: 0,
+                                        int_lists: 0,
+                                        strings: 0,
+                                        customs: 1,
+                                        custom_lists: 0,
+                                        int_functions: 0,
+                                        bool_functions: 0,
+                                    }, values: Box::new(CallValues { customs: vec![custom0], ints: vec![int0.into()], ..CallValues::default() }) }; };
+                                    *budget -= 1;
+                                    match matched {
+                                        Some((binding0,)) => Int6State::Point1 { int0, int1: binding0 },
+                                        None => Int6State::Point3 { int0, custom0: custom0.clone() },
+                                    }
+                                };
+                                continue;
+                            },
+                            Int6State::Point1 { int0, int1 } => {
+                                if *budget == 0 { return FunctionStep::Yield(FunctionState::Int6Point1 { int0, int1 }); }
+                                *budget -= 1;
+                                let int2 = int0 + int1;
+                                if int2 < i128::from(i64::MIN) || int2 > i128::from(i64::MAX) { return FunctionStep::Canonical { target: data::compiled::CallTarget::Int(data::function::IntFunctionId(6)), point: data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(1),
+                                    instruction: 1,
+                                    ints: 3,
+                                    bools: 0,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
+                                }, values: Box::new(CallValues { ints: vec![int0.into(), int1.into(), int2.into()], ..CallValues::default() }) }; }
+                                if *budget == 0 { return FunctionStep::Yield(FunctionState::Int6Point2 { int0, int1, int2 }); }
+                                *budget -= 1;
+                                return {
+                                    FunctionStep::Int { value: int2 }
+                                };
+                            },
+                            Int6State::Point2 { int0, int1, int2 } => {
+                                if *budget == 0 { return FunctionStep::Yield(FunctionState::Int6Point2 { int0, int1, int2 }); }
+                                *budget -= 1;
+                                return {
+                                    FunctionStep::Int { value: int2 }
+                                };
+                            },
+                            Int6State::Point3 { int0, custom0 } => {
+                                if *budget == 0 { return FunctionStep::Yield(FunctionState::Int6Point3 { int0, custom0 }); }
+                                active = {
+                                    let matched = (|| -> Option<Option<(i128,)>> {
+                                        if !custom0.matches_constructor(data::type_::CustomConstructorId {
+                                            type_id: data::type_::CustomTypeId(0),
+                                            index: 1,
+                                        }) { return Some(None); }
+                                        let field0 = custom0.field(0)?;
+                                        if !field0.matches_type(&data::type_::ValueType::Int) { return None; }
+                                        let binding0 = field0.integer()?;
+                                        Some(Some((binding0,)))
+                                    })();
+                                    let Some(matched) = matched else { return FunctionStep::Canonical { target: data::compiled::CallTarget::Int(data::function::IntFunctionId(6)), point: data::compiled::CompiledCheckpoint {
+                                        block: data::graph::BlockId(2),
+                                        instruction: 0,
+                                        ints: 1,
+                                        bools: 0,
+                                        bit_arrays: 0,
+                                        int_lists: 0,
+                                        strings: 0,
+                                        customs: 1,
+                                        custom_lists: 0,
+                                        int_functions: 0,
+                                        bool_functions: 0,
+                                    }, values: Box::new(CallValues { customs: vec![custom0], ints: vec![int0.into()], ..CallValues::default() }) }; };
+                                    *budget -= 1;
+                                    match matched {
+                                        Some((binding0,)) => Int6State::Point4 { int0, int1: binding0 },
+                                        None => Int6State::Point6 { int0 },
+                                    }
+                                };
+                                continue;
+                            },
+                            Int6State::Point4 { int0, int1 } => {
+                                if *budget == 0 { return FunctionStep::Yield(FunctionState::Int6Point4 { int0, int1 }); }
+                                *budget -= 1;
+                                let int2 = int0 - int1;
+                                if int2 < i128::from(i64::MIN) || int2 > i128::from(i64::MAX) { return FunctionStep::Canonical { target: data::compiled::CallTarget::Int(data::function::IntFunctionId(6)), point: data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(3),
+                                    instruction: 1,
+                                    ints: 3,
+                                    bools: 0,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
+                                }, values: Box::new(CallValues { ints: vec![int0.into(), int1.into(), int2.into()], ..CallValues::default() }) }; }
+                                if *budget == 0 { return FunctionStep::Yield(FunctionState::Int6Point5 { int0, int1, int2 }); }
+                                *budget -= 1;
+                                return {
+                                    FunctionStep::Int { value: int2 }
+                                };
+                            },
+                            Int6State::Point5 { int0, int1, int2 } => {
+                                if *budget == 0 { return FunctionStep::Yield(FunctionState::Int6Point5 { int0, int1, int2 }); }
+                                *budget -= 1;
+                                return {
+                                    FunctionStep::Int { value: int2 }
+                                };
+                            },
+                            Int6State::Point6 { int0 } => {
+                                if *budget == 0 { return FunctionStep::Yield(FunctionState::Int6Point6 { int0 }); }
+                                *budget -= 1;
+                                return {
+                                    FunctionStep::Int { value: int0 }
+                                };
+                            },
+                        }
+                    }
+                }
+                enum Int8State {
+                    Point0 { int0: i128, custom0: CallCustom },
+                    Point1 { int0: i128, int1: i128 },
+                    Point2 { int0: i128, int1: i128, int2: i128 },
+                    Point3 { int0: i128, custom0: CallCustom },
+                    Point4 { int0: i128, int1: i128 },
+                    Point5 { int0: i128, int1: i128, int2: i128 },
+                    Point6 { int0: i128 },
+                }
+                fn calls_int_8_run(mut active: Int8State, _ops: &mut CallOps<'_>, budget: &mut usize) -> FunctionStep {
+                    loop {
+                        match active {
+                            Int8State::Point0 { int0, custom0 } => {
+                                if *budget == 0 { return FunctionStep::Yield(FunctionState::Int8Point0 { int0, custom0 }); }
+                                active = {
+                                    let matched = (|| -> Option<Option<(i128,)>> {
+                                        if !custom0.matches_constructor(data::type_::CustomConstructorId {
+                                            type_id: data::type_::CustomTypeId(0),
+                                            index: 0,
+                                        }) { return Some(None); }
+                                        let field0 = custom0.field(0)?;
+                                        if !field0.matches_type(&data::type_::ValueType::Int) { return None; }
+                                        let binding0 = field0.integer()?;
+                                        Some(Some((binding0,)))
+                                    })();
+                                    let Some(matched) = matched else { return FunctionStep::Canonical { target: data::compiled::CallTarget::Int(data::function::IntFunctionId(8)), point: data::compiled::CompiledCheckpoint {
+                                        block: data::graph::BlockId(0),
+                                        instruction: 0,
+                                        ints: 1,
+                                        bools: 0,
+                                        bit_arrays: 0,
+                                        int_lists: 0,
+                                        strings: 0,
+                                        customs: 1,
+                                        custom_lists: 0,
+                                        int_functions: 0,
+                                        bool_functions: 0,
+                                    }, values: Box::new(CallValues { customs: vec![custom0], ints: vec![int0.into()], ..CallValues::default() }) }; };
+                                    *budget -= 1;
+                                    match matched {
+                                        Some((binding0,)) => Int8State::Point1 { int0, int1: binding0 },
+                                        None => Int8State::Point3 { int0, custom0: custom0.clone() },
+                                    }
+                                };
+                                continue;
+                            },
+                            Int8State::Point1 { int0, int1 } => {
+                                if *budget == 0 { return FunctionStep::Yield(FunctionState::Int8Point1 { int0, int1 }); }
+                                *budget -= 1;
+                                let region0 = int1 * 2_i128;
+                                let region1 = int0 + region0;
+                                let int2 = region1;
+                                if int2 < i128::from(i64::MIN) || int2 > i128::from(i64::MAX) { return FunctionStep::Canonical { target: data::compiled::CallTarget::Int(data::function::IntFunctionId(8)), point: data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(1),
+                                    instruction: 1,
+                                    ints: 3,
+                                    bools: 0,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
+                                }, values: Box::new(CallValues { ints: vec![int0.into(), int1.into(), int2.into()], ..CallValues::default() }) }; }
+                                if *budget == 0 { return FunctionStep::Yield(FunctionState::Int8Point2 { int0, int1, int2 }); }
+                                *budget -= 1;
+                                return {
+                                    FunctionStep::Int { value: int2 }
+                                };
+                            },
+                            Int8State::Point2 { int0, int1, int2 } => {
+                                if *budget == 0 { return FunctionStep::Yield(FunctionState::Int8Point2 { int0, int1, int2 }); }
+                                *budget -= 1;
+                                return {
+                                    FunctionStep::Int { value: int2 }
+                                };
+                            },
+                            Int8State::Point3 { int0, custom0 } => {
+                                if *budget == 0 { return FunctionStep::Yield(FunctionState::Int8Point3 { int0, custom0 }); }
+                                active = {
+                                    let matched = (|| -> Option<Option<(i128,)>> {
+                                        if !custom0.matches_constructor(data::type_::CustomConstructorId {
+                                            type_id: data::type_::CustomTypeId(0),
+                                            index: 1,
+                                        }) { return Some(None); }
+                                        let field0 = custom0.field(0)?;
+                                        if !field0.matches_type(&data::type_::ValueType::Int) { return None; }
+                                        let binding0 = field0.integer()?;
+                                        Some(Some((binding0,)))
+                                    })();
+                                    let Some(matched) = matched else { return FunctionStep::Canonical { target: data::compiled::CallTarget::Int(data::function::IntFunctionId(8)), point: data::compiled::CompiledCheckpoint {
+                                        block: data::graph::BlockId(2),
+                                        instruction: 0,
+                                        ints: 1,
+                                        bools: 0,
+                                        bit_arrays: 0,
+                                        int_lists: 0,
+                                        strings: 0,
+                                        customs: 1,
+                                        custom_lists: 0,
+                                        int_functions: 0,
+                                        bool_functions: 0,
+                                    }, values: Box::new(CallValues { customs: vec![custom0], ints: vec![int0.into()], ..CallValues::default() }) }; };
+                                    *budget -= 1;
+                                    match matched {
+                                        Some((binding0,)) => Int8State::Point4 { int0, int1: binding0 },
+                                        None => Int8State::Point6 { int0 },
+                                    }
+                                };
+                                continue;
+                            },
+                            Int8State::Point4 { int0, int1 } => {
+                                if *budget == 0 { return FunctionStep::Yield(FunctionState::Int8Point4 { int0, int1 }); }
+                                *budget -= 1;
+                                let region0 = int1 * 2_i128;
+                                let region1 = int0 - region0;
+                                let int2 = region1;
+                                if int2 < i128::from(i64::MIN) || int2 > i128::from(i64::MAX) { return FunctionStep::Canonical { target: data::compiled::CallTarget::Int(data::function::IntFunctionId(8)), point: data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(3),
+                                    instruction: 1,
+                                    ints: 3,
+                                    bools: 0,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
+                                }, values: Box::new(CallValues { ints: vec![int0.into(), int1.into(), int2.into()], ..CallValues::default() }) }; }
+                                if *budget == 0 { return FunctionStep::Yield(FunctionState::Int8Point5 { int0, int1, int2 }); }
+                                *budget -= 1;
+                                return {
+                                    FunctionStep::Int { value: int2 }
+                                };
+                            },
+                            Int8State::Point5 { int0, int1, int2 } => {
+                                if *budget == 0 { return FunctionStep::Yield(FunctionState::Int8Point5 { int0, int1, int2 }); }
+                                *budget -= 1;
+                                return {
+                                    FunctionStep::Int { value: int2 }
+                                };
+                            },
+                            Int8State::Point6 { int0 } => {
+                                if *budget == 0 { return FunctionStep::Yield(FunctionState::Int8Point6 { int0 }); }
+                                *budget -= 1;
+                                return {
+                                    FunctionStep::Int { value: int0 }
+                                };
+                            },
+                        }
+                    }
+                }
+                enum Int9State {
+                    Point0 { int0: i128, custom0: CallCustom, bool0: bool, int1: i128 },
+                    Point1 { int0: i128, custom0: CallCustom, int1: i128 },
+                    Point2 { int0: i128, int1: i128, int2: i128 },
+                    Point3 { int0: i128, int1: i128, int2: i128, int3: i128 },
+                    Point4 { int0: i128, custom0: CallCustom, int1: i128 },
+                    Point5 { int0: i128, int1: i128, int2: i128 },
+                    Point6 { int0: i128, int1: i128, int2: i128, int3: i128 },
+                    Point7 { int0: i128, int1: i128 },
+                    Point8 { int0: i128, int1: i128, int2: i128 },
+                    Point9 { int0: i128 },
+                }
+                fn calls_int_9_run(mut active: Int9State, _ops: &mut CallOps<'_>, budget: &mut usize) -> FunctionStep {
+                    loop {
+                        match active {
+                            Int9State::Point0 { int0, custom0, bool0, int1 } => {
+                                if *budget == 0 { return FunctionStep::Yield(FunctionState::Int9Point0 { int0, custom0, bool0, int1 }); }
+                                *budget -= 1;
+                                active = {
+                                    if bool0 { Int9State::Point1 { int0, custom0: custom0.clone(), int1 } } else { Int9State::Point9 { int0 } }
+                                };
+                                continue;
+                            },
+                            Int9State::Point1 { int0, custom0, int1 } => {
+                                if *budget == 0 { return FunctionStep::Yield(FunctionState::Int9Point1 { int0, custom0, int1 }); }
+                                active = {
+                                    let matched = (|| -> Option<Option<(i128,)>> {
+                                        if !custom0.matches_constructor(data::type_::CustomConstructorId {
+                                            type_id: data::type_::CustomTypeId(0),
+                                            index: 0,
+                                        }) { return Some(None); }
+                                        let field0 = custom0.field(0)?;
+                                        if !field0.matches_type(&data::type_::ValueType::Int) { return None; }
+                                        let binding0 = field0.integer()?;
+                                        Some(Some((binding0,)))
+                                    })();
+                                    let Some(matched) = matched else { return FunctionStep::Canonical { target: data::compiled::CallTarget::Int(data::function::IntFunctionId(9)), point: data::compiled::CompiledCheckpoint {
+                                        block: data::graph::BlockId(1),
+                                        instruction: 0,
+                                        ints: 2,
+                                        bools: 0,
+                                        bit_arrays: 0,
+                                        int_lists: 0,
+                                        strings: 0,
+                                        customs: 1,
+                                        custom_lists: 0,
+                                        int_functions: 0,
+                                        bool_functions: 0,
+                                    }, values: Box::new(CallValues { customs: vec![custom0], ints: vec![int0.into(), int1.into()], ..CallValues::default() }) }; };
+                                    *budget -= 1;
+                                    match matched {
+                                        Some((binding0,)) => Int9State::Point2 { int0, int1, int2: binding0 },
+                                        None => Int9State::Point4 { int0, custom0: custom0.clone(), int1 },
+                                    }
+                                };
+                                continue;
+                            },
+                            Int9State::Point2 { int0, int1, int2 } => {
+                                if *budget == 0 { return FunctionStep::Yield(FunctionState::Int9Point2 { int0, int1, int2 }); }
+                                *budget -= 1;
+                                let region0 = int0 + int2;
+                                let region1 = region0 + int1;
+                                let int3 = region1;
+                                if int3 < i128::from(i64::MIN) || int3 > i128::from(i64::MAX) { return FunctionStep::Canonical { target: data::compiled::CallTarget::Int(data::function::IntFunctionId(9)), point: data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(2),
+                                    instruction: 1,
+                                    ints: 4,
+                                    bools: 0,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
+                                }, values: Box::new(CallValues { ints: vec![int0.into(), int1.into(), int2.into(), int3.into()], ..CallValues::default() }) }; }
+                                if *budget == 0 { return FunctionStep::Yield(FunctionState::Int9Point3 { int0, int1, int2, int3 }); }
+                                *budget -= 1;
+                                return {
+                                    FunctionStep::Int { value: int3 }
+                                };
+                            },
+                            Int9State::Point3 { int0, int1, int2, int3 } => {
+                                if *budget == 0 { return FunctionStep::Yield(FunctionState::Int9Point3 { int0, int1, int2, int3 }); }
+                                *budget -= 1;
+                                return {
+                                    FunctionStep::Int { value: int3 }
+                                };
+                            },
+                            Int9State::Point4 { int0, custom0, int1 } => {
+                                if *budget == 0 { return FunctionStep::Yield(FunctionState::Int9Point4 { int0, custom0, int1 }); }
+                                active = {
+                                    let matched = (|| -> Option<Option<(i128,)>> {
+                                        if !custom0.matches_constructor(data::type_::CustomConstructorId {
+                                            type_id: data::type_::CustomTypeId(0),
+                                            index: 1,
+                                        }) { return Some(None); }
+                                        let field0 = custom0.field(0)?;
+                                        if !field0.matches_type(&data::type_::ValueType::Int) { return None; }
+                                        let binding0 = field0.integer()?;
+                                        Some(Some((binding0,)))
+                                    })();
+                                    let Some(matched) = matched else { return FunctionStep::Canonical { target: data::compiled::CallTarget::Int(data::function::IntFunctionId(9)), point: data::compiled::CompiledCheckpoint {
+                                        block: data::graph::BlockId(3),
+                                        instruction: 0,
+                                        ints: 2,
+                                        bools: 0,
+                                        bit_arrays: 0,
+                                        int_lists: 0,
+                                        strings: 0,
+                                        customs: 1,
+                                        custom_lists: 0,
+                                        int_functions: 0,
+                                        bool_functions: 0,
+                                    }, values: Box::new(CallValues { customs: vec![custom0], ints: vec![int0.into(), int1.into()], ..CallValues::default() }) }; };
+                                    *budget -= 1;
+                                    match matched {
+                                        Some((binding0,)) => Int9State::Point5 { int0, int1, int2: binding0 },
+                                        None => Int9State::Point7 { int0, int1 },
+                                    }
+                                };
+                                continue;
+                            },
+                            Int9State::Point5 { int0, int1, int2 } => {
+                                if *budget == 0 { return FunctionStep::Yield(FunctionState::Int9Point5 { int0, int1, int2 }); }
+                                *budget -= 1;
+                                let region0 = int0 - int2;
+                                let region1 = region0 - int1;
+                                let int3 = region1;
+                                if int3 < i128::from(i64::MIN) || int3 > i128::from(i64::MAX) { return FunctionStep::Canonical { target: data::compiled::CallTarget::Int(data::function::IntFunctionId(9)), point: data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(4),
+                                    instruction: 1,
+                                    ints: 4,
+                                    bools: 0,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
+                                }, values: Box::new(CallValues { ints: vec![int0.into(), int1.into(), int2.into(), int3.into()], ..CallValues::default() }) }; }
+                                if *budget == 0 { return FunctionStep::Yield(FunctionState::Int9Point6 { int0, int1, int2, int3 }); }
+                                *budget -= 1;
+                                return {
+                                    FunctionStep::Int { value: int3 }
+                                };
+                            },
+                            Int9State::Point6 { int0, int1, int2, int3 } => {
+                                if *budget == 0 { return FunctionStep::Yield(FunctionState::Int9Point6 { int0, int1, int2, int3 }); }
+                                *budget -= 1;
+                                return {
+                                    FunctionStep::Int { value: int3 }
+                                };
+                            },
+                            Int9State::Point7 { int0, int1 } => {
+                                if *budget == 0 { return FunctionStep::Yield(FunctionState::Int9Point7 { int0, int1 }); }
+                                *budget -= 1;
+                                let int2 = int0 + int1;
+                                if int2 < i128::from(i64::MIN) || int2 > i128::from(i64::MAX) { return FunctionStep::Canonical { target: data::compiled::CallTarget::Int(data::function::IntFunctionId(9)), point: data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(5),
+                                    instruction: 1,
+                                    ints: 3,
+                                    bools: 0,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
+                                }, values: Box::new(CallValues { ints: vec![int0.into(), int1.into(), int2.into()], ..CallValues::default() }) }; }
+                                if *budget == 0 { return FunctionStep::Yield(FunctionState::Int9Point8 { int0, int1, int2 }); }
+                                *budget -= 1;
+                                return {
+                                    FunctionStep::Int { value: int2 }
+                                };
+                            },
+                            Int9State::Point8 { int0, int1, int2 } => {
+                                if *budget == 0 { return FunctionStep::Yield(FunctionState::Int9Point8 { int0, int1, int2 }); }
+                                *budget -= 1;
+                                return {
+                                    FunctionStep::Int { value: int2 }
+                                };
+                            },
+                            Int9State::Point9 { int0 } => {
+                                if *budget == 0 { return FunctionStep::Yield(FunctionState::Int9Point9 { int0 }); }
+                                *budget -= 1;
+                                return {
+                                    FunctionStep::Int { value: int0 }
+                                };
+                            },
+                        }
+                    }
+                }
+                enum Int11State {
+                    Point0 { int0: i128, custom0: CallCustom },
+                    Point1 { int0: i128, int1: i128 },
+                    Point2 { int0: i128, int1: i128, int2: i128 },
+                    Point3 { int0: i128, int1: i128, int2: i128, int3: i128 },
+                    Point4 { int0: i128 },
+                }
+                fn calls_int_11_run(mut active: Int11State, _ops: &mut CallOps<'_>, budget: &mut usize) -> FunctionStep {
+                    loop {
+                        match active {
+                            Int11State::Point0 { int0, custom0 } => {
+                                if *budget == 0 { return FunctionStep::Yield(FunctionState::Int11Point0 { int0, custom0 }); }
+                                active = {
+                                    let matched = (|| -> Option<Option<(i128,)>> {
+                                        if !custom0.matches_constructor(data::type_::CustomConstructorId {
+                                            type_id: data::type_::CustomTypeId(0),
+                                            index: 0,
+                                        }) { return Some(None); }
+                                        let field0 = custom0.field(0)?;
+                                        if !field0.matches_type(&data::type_::ValueType::Int) { return None; }
+                                        let binding0 = field0.integer()?;
+                                        Some(Some((binding0,)))
+                                    })();
+                                    let Some(matched) = matched else { return FunctionStep::Canonical { target: data::compiled::CallTarget::Int(data::function::IntFunctionId(11)), point: data::compiled::CompiledCheckpoint {
+                                        block: data::graph::BlockId(0),
+                                        instruction: 0,
+                                        ints: 1,
+                                        bools: 0,
+                                        bit_arrays: 0,
+                                        int_lists: 0,
+                                        strings: 0,
+                                        customs: 1,
+                                        custom_lists: 0,
+                                        int_functions: 0,
+                                        bool_functions: 0,
+                                    }, values: Box::new(CallValues { customs: vec![custom0], ints: vec![int0.into()], ..CallValues::default() }) }; };
+                                    *budget -= 1;
+                                    match matched {
+                                        Some((binding0,)) => Int11State::Point1 { int0, int1: binding0 },
+                                        None => Int11State::Point4 { int0 },
+                                    }
+                                };
+                                continue;
+                            },
+                            Int11State::Point1 { int0, int1 } => {
+                                if *budget == 0 { return FunctionStep::Yield(FunctionState::Int11Point1 { int0, int1 }); }
+                                *budget -= 1;
+                                return {
+                                    FunctionStep::IntCall { callee: FunctionState::Int12Point0 { int0: int1 }, caller: IntReturn::Int11Call1 { int0, int1 } }
+                                };
+                            },
+                            Int11State::Point2 { int0, int1, int2 } => {
+                                if *budget == 0 { return FunctionStep::Yield(FunctionState::Int11Point2 { int0, int1, int2 }); }
+                                *budget -= 1;
+                                let int3 = int0 + int2;
+                                if int3 < i128::from(i64::MIN) || int3 > i128::from(i64::MAX) { return FunctionStep::Canonical { target: data::compiled::CallTarget::Int(data::function::IntFunctionId(11)), point: data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(1),
+                                    instruction: 2,
+                                    ints: 4,
+                                    bools: 0,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
+                                }, values: Box::new(CallValues { ints: vec![int0.into(), int1.into(), int2.into(), int3.into()], ..CallValues::default() }) }; }
+                                if *budget == 0 { return FunctionStep::Yield(FunctionState::Int11Point3 { int0, int1, int2, int3 }); }
+                                *budget -= 1;
+                                return {
+                                    FunctionStep::Int { value: int3 }
+                                };
+                            },
+                            Int11State::Point3 { int0, int1, int2, int3 } => {
+                                if *budget == 0 { return FunctionStep::Yield(FunctionState::Int11Point3 { int0, int1, int2, int3 }); }
+                                *budget -= 1;
+                                return {
+                                    FunctionStep::Int { value: int3 }
+                                };
+                            },
+                            Int11State::Point4 { int0 } => {
+                                if *budget == 0 { return FunctionStep::Yield(FunctionState::Int11Point4 { int0 }); }
+                                *budget -= 1;
+                                return {
+                                    FunctionStep::Int { value: int0 }
+                                };
+                            },
+                        }
+                    }
+                }
                 enum Int12State {
                     Point0 { int0: i128 },
                     Point1 { int0: i128, int1: i128 },
@@ -4727,6 +5401,79 @@ pub fn markers(seed: Int) -> Int {
                     let active = calls_int_2_state(point, values)?;
                     Some(Box::new(FunctionExecution::new(active)))
                 }
+                fn calls_int_6_state(point: usize, values: CallInputs<'_>) -> Option<FunctionState> {
+                    let active = match point {
+                        0 => FunctionState::Int6Point0 { int0: values.int(0)?, custom0: values.custom(0)? },
+                        1 => FunctionState::Int6Point1 { int0: values.int(0)?, int1: values.int(1)? },
+                        2 => FunctionState::Int6Point2 { int0: values.int(0)?, int1: values.int(1)?, int2: values.int(2)? },
+                        3 => FunctionState::Int6Point3 { int0: values.int(0)?, custom0: values.custom(0)? },
+                        4 => FunctionState::Int6Point4 { int0: values.int(0)?, int1: values.int(1)? },
+                        5 => FunctionState::Int6Point5 { int0: values.int(0)?, int1: values.int(1)?, int2: values.int(2)? },
+                        6 => FunctionState::Int6Point6 { int0: values.int(0)? },
+                        _ => return None,
+                    };
+                    Some(active)
+                }
+                fn calls_int_6_start(point: usize, values: CallInputs<'_>, storage: &mut CallStorage) -> Option<Box<dyn CallExecution>> {
+                    if let Some(execution) = storage.reuse(data::compiled::CallTarget::Int(data::function::IntFunctionId(6)), point, values) { return Some(execution); }
+                    let active = calls_int_6_state(point, values)?;
+                    Some(Box::new(FunctionExecution::new(active)))
+                }
+                fn calls_int_8_state(point: usize, values: CallInputs<'_>) -> Option<FunctionState> {
+                    let active = match point {
+                        0 => FunctionState::Int8Point0 { int0: values.int(0)?, custom0: values.custom(0)? },
+                        1 => FunctionState::Int8Point1 { int0: values.int(0)?, int1: values.int(1)? },
+                        2 => FunctionState::Int8Point2 { int0: values.int(0)?, int1: values.int(1)?, int2: values.int(2)? },
+                        3 => FunctionState::Int8Point3 { int0: values.int(0)?, custom0: values.custom(0)? },
+                        4 => FunctionState::Int8Point4 { int0: values.int(0)?, int1: values.int(1)? },
+                        5 => FunctionState::Int8Point5 { int0: values.int(0)?, int1: values.int(1)?, int2: values.int(2)? },
+                        6 => FunctionState::Int8Point6 { int0: values.int(0)? },
+                        _ => return None,
+                    };
+                    Some(active)
+                }
+                fn calls_int_8_start(point: usize, values: CallInputs<'_>, storage: &mut CallStorage) -> Option<Box<dyn CallExecution>> {
+                    if let Some(execution) = storage.reuse(data::compiled::CallTarget::Int(data::function::IntFunctionId(8)), point, values) { return Some(execution); }
+                    let active = calls_int_8_state(point, values)?;
+                    Some(Box::new(FunctionExecution::new(active)))
+                }
+                fn calls_int_9_state(point: usize, values: CallInputs<'_>) -> Option<FunctionState> {
+                    let active = match point {
+                        0 => FunctionState::Int9Point0 { int0: values.int(0)?, custom0: values.custom(0)?, bool0: values.bool(0)?, int1: values.int(1)? },
+                        1 => FunctionState::Int9Point1 { int0: values.int(0)?, custom0: values.custom(0)?, int1: values.int(1)? },
+                        2 => FunctionState::Int9Point2 { int0: values.int(0)?, int1: values.int(1)?, int2: values.int(2)? },
+                        3 => FunctionState::Int9Point3 { int0: values.int(0)?, int1: values.int(1)?, int2: values.int(2)?, int3: values.int(3)? },
+                        4 => FunctionState::Int9Point4 { int0: values.int(0)?, custom0: values.custom(0)?, int1: values.int(1)? },
+                        5 => FunctionState::Int9Point5 { int0: values.int(0)?, int1: values.int(1)?, int2: values.int(2)? },
+                        6 => FunctionState::Int9Point6 { int0: values.int(0)?, int1: values.int(1)?, int2: values.int(2)?, int3: values.int(3)? },
+                        7 => FunctionState::Int9Point7 { int0: values.int(0)?, int1: values.int(1)? },
+                        8 => FunctionState::Int9Point8 { int0: values.int(0)?, int1: values.int(1)?, int2: values.int(2)? },
+                        9 => FunctionState::Int9Point9 { int0: values.int(0)? },
+                        _ => return None,
+                    };
+                    Some(active)
+                }
+                fn calls_int_9_start(point: usize, values: CallInputs<'_>, storage: &mut CallStorage) -> Option<Box<dyn CallExecution>> {
+                    if let Some(execution) = storage.reuse(data::compiled::CallTarget::Int(data::function::IntFunctionId(9)), point, values) { return Some(execution); }
+                    let active = calls_int_9_state(point, values)?;
+                    Some(Box::new(FunctionExecution::new(active)))
+                }
+                fn calls_int_11_state(point: usize, values: CallInputs<'_>) -> Option<FunctionState> {
+                    let active = match point {
+                        0 => FunctionState::Int11Point0 { int0: values.int(0)?, custom0: values.custom(0)? },
+                        1 => FunctionState::Int11Point1 { int0: values.int(0)?, int1: values.int(1)? },
+                        2 => FunctionState::Int11Point2 { int0: values.int(0)?, int1: values.int(1)?, int2: values.int(2)? },
+                        3 => FunctionState::Int11Point3 { int0: values.int(0)?, int1: values.int(1)?, int2: values.int(2)?, int3: values.int(3)? },
+                        4 => FunctionState::Int11Point4 { int0: values.int(0)? },
+                        _ => return None,
+                    };
+                    Some(active)
+                }
+                fn calls_int_11_start(point: usize, values: CallInputs<'_>, storage: &mut CallStorage) -> Option<Box<dyn CallExecution>> {
+                    if let Some(execution) = storage.reuse(data::compiled::CallTarget::Int(data::function::IntFunctionId(11)), point, values) { return Some(execution); }
+                    let active = calls_int_11_state(point, values)?;
+                    Some(Box::new(FunctionExecution::new(active)))
+                }
                 fn calls_int_12_state(point: usize, values: CallInputs<'_>) -> Option<FunctionState> {
                     let active = match point {
                         0 => FunctionState::Int12Point0 { int0: values.int(0)? },
@@ -4740,7 +5487,7 @@ pub fn markers(seed: Int) -> Int {
                     let active = calls_int_12_state(point, values)?;
                     Some(Box::new(FunctionExecution::new(active)))
                 }
-                [calls_int_0_start, calls_int_2_start, calls_int_12_start]
+                [calls_int_0_start, calls_int_2_start, calls_int_6_start, calls_int_8_start, calls_int_9_start, calls_int_11_start, calls_int_12_start]
             };
 
             fn custom_loop_int_7(
@@ -6466,6 +7213,687 @@ pub fn markers(seed: Int) -> Int {
                         })),
                     },
                     data::compiled::CompiledFunction {
+                        function: data::compiled::CallTarget::Int(data::function::IntFunctionId(6)),
+                        implementation: data::compiled::CompiledImplementation::FunctionCalls(data::Storage::Static(&data::compiled::FunctionCallsImplementation {
+                            root: false,
+                            entry: 0,
+                            checkpoints: data::Storage::Static(&[
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(0),
+                                    instruction: 0,
+                                    ints: 1,
+                                    bools: 0,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 1,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
+                                },
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(1),
+                                    instruction: 0,
+                                    ints: 2,
+                                    bools: 0,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
+                                },
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(1),
+                                    instruction: 1,
+                                    ints: 3,
+                                    bools: 0,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
+                                },
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(2),
+                                    instruction: 0,
+                                    ints: 1,
+                                    bools: 0,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 1,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
+                                },
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(3),
+                                    instruction: 0,
+                                    ints: 2,
+                                    bools: 0,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
+                                },
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(3),
+                                    instruction: 1,
+                                    ints: 3,
+                                    bools: 0,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
+                                },
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(4),
+                                    instruction: 0,
+                                    ints: 1,
+                                    bools: 0,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
+                                },
+                            ]),
+                            locals: data::Storage::Static(&[
+                                data::Storage::Static(&[
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                    data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                        id: data::graph::CustomLocalId(0),
+                                        shape: data::type_::CustomValueShape {
+                                            type_id: data::type_::CustomTypeId(0),
+                                            shape_id: data::type_::CustomValueShapeId(3),
+                                        },
+                                    }),
+                                ]),
+                                data::Storage::Static(&[
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                ]),
+                                data::Storage::Static(&[
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(2)),
+                                ]),
+                                data::Storage::Static(&[
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                    data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                        id: data::graph::CustomLocalId(0),
+                                        shape: data::type_::CustomValueShape {
+                                            type_id: data::type_::CustomTypeId(0),
+                                            shape_id: data::type_::CustomValueShapeId(3),
+                                        },
+                                    }),
+                                ]),
+                                data::Storage::Static(&[
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                ]),
+                                data::Storage::Static(&[
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(2)),
+                                ]),
+                                data::Storage::Static(&[
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                ]),
+                            ]),
+                            calls: data::Storage::Static(&[]),
+                            creations: data::Storage::Static(&[]),
+                            returns: data::Storage::Static(&[
+                                data::compiled::ReturnContract {
+                                    point: 2,
+                                    value: data::graph::ParamLocal::Int(data::graph::IntLocalId(2)),
+                                },
+                                data::compiled::ReturnContract {
+                                    point: 5,
+                                    value: data::graph::ParamLocal::Int(data::graph::IntLocalId(2)),
+                                },
+                                data::compiled::ReturnContract {
+                                    point: 6,
+                                    value: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                },
+                            ]),
+                            tails: data::Storage::Static(&[]),
+                            start: CALL_GROUP_0[2],
+                        })),
+                    },
+                    data::compiled::CompiledFunction {
+                        function: data::compiled::CallTarget::Int(data::function::IntFunctionId(8)),
+                        implementation: data::compiled::CompiledImplementation::FunctionCalls(data::Storage::Static(&data::compiled::FunctionCallsImplementation {
+                            root: false,
+                            entry: 0,
+                            checkpoints: data::Storage::Static(&[
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(0),
+                                    instruction: 0,
+                                    ints: 1,
+                                    bools: 0,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 1,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
+                                },
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(1),
+                                    instruction: 0,
+                                    ints: 2,
+                                    bools: 0,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
+                                },
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(1),
+                                    instruction: 1,
+                                    ints: 3,
+                                    bools: 0,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
+                                },
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(2),
+                                    instruction: 0,
+                                    ints: 1,
+                                    bools: 0,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 1,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
+                                },
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(3),
+                                    instruction: 0,
+                                    ints: 2,
+                                    bools: 0,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
+                                },
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(3),
+                                    instruction: 1,
+                                    ints: 3,
+                                    bools: 0,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
+                                },
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(4),
+                                    instruction: 0,
+                                    ints: 1,
+                                    bools: 0,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
+                                },
+                            ]),
+                            locals: data::Storage::Static(&[
+                                data::Storage::Static(&[
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                    data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                        id: data::graph::CustomLocalId(0),
+                                        shape: data::type_::CustomValueShape {
+                                            type_id: data::type_::CustomTypeId(0),
+                                            shape_id: data::type_::CustomValueShapeId(3),
+                                        },
+                                    }),
+                                ]),
+                                data::Storage::Static(&[
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                ]),
+                                data::Storage::Static(&[
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(2)),
+                                ]),
+                                data::Storage::Static(&[
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                    data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                        id: data::graph::CustomLocalId(0),
+                                        shape: data::type_::CustomValueShape {
+                                            type_id: data::type_::CustomTypeId(0),
+                                            shape_id: data::type_::CustomValueShapeId(3),
+                                        },
+                                    }),
+                                ]),
+                                data::Storage::Static(&[
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                ]),
+                                data::Storage::Static(&[
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(2)),
+                                ]),
+                                data::Storage::Static(&[
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                ]),
+                            ]),
+                            calls: data::Storage::Static(&[]),
+                            creations: data::Storage::Static(&[]),
+                            returns: data::Storage::Static(&[
+                                data::compiled::ReturnContract {
+                                    point: 2,
+                                    value: data::graph::ParamLocal::Int(data::graph::IntLocalId(2)),
+                                },
+                                data::compiled::ReturnContract {
+                                    point: 5,
+                                    value: data::graph::ParamLocal::Int(data::graph::IntLocalId(2)),
+                                },
+                                data::compiled::ReturnContract {
+                                    point: 6,
+                                    value: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                },
+                            ]),
+                            tails: data::Storage::Static(&[]),
+                            start: CALL_GROUP_0[3],
+                        })),
+                    },
+                    data::compiled::CompiledFunction {
+                        function: data::compiled::CallTarget::Int(data::function::IntFunctionId(9)),
+                        implementation: data::compiled::CompiledImplementation::FunctionCalls(data::Storage::Static(&data::compiled::FunctionCallsImplementation {
+                            root: false,
+                            entry: 0,
+                            checkpoints: data::Storage::Static(&[
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(0),
+                                    instruction: 0,
+                                    ints: 2,
+                                    bools: 1,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 1,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
+                                },
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(1),
+                                    instruction: 0,
+                                    ints: 2,
+                                    bools: 0,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 1,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
+                                },
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(2),
+                                    instruction: 0,
+                                    ints: 3,
+                                    bools: 0,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
+                                },
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(2),
+                                    instruction: 1,
+                                    ints: 4,
+                                    bools: 0,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
+                                },
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(3),
+                                    instruction: 0,
+                                    ints: 2,
+                                    bools: 0,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 1,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
+                                },
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(4),
+                                    instruction: 0,
+                                    ints: 3,
+                                    bools: 0,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
+                                },
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(4),
+                                    instruction: 1,
+                                    ints: 4,
+                                    bools: 0,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
+                                },
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(5),
+                                    instruction: 0,
+                                    ints: 2,
+                                    bools: 0,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
+                                },
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(5),
+                                    instruction: 1,
+                                    ints: 3,
+                                    bools: 0,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
+                                },
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(6),
+                                    instruction: 0,
+                                    ints: 1,
+                                    bools: 0,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
+                                },
+                            ]),
+                            locals: data::Storage::Static(&[
+                                data::Storage::Static(&[
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                    data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                        id: data::graph::CustomLocalId(0),
+                                        shape: data::type_::CustomValueShape {
+                                            type_id: data::type_::CustomTypeId(0),
+                                            shape_id: data::type_::CustomValueShapeId(3),
+                                        },
+                                    }),
+                                    data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                ]),
+                                data::Storage::Static(&[
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                    data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                        id: data::graph::CustomLocalId(0),
+                                        shape: data::type_::CustomValueShape {
+                                            type_id: data::type_::CustomTypeId(0),
+                                            shape_id: data::type_::CustomValueShapeId(3),
+                                        },
+                                    }),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                ]),
+                                data::Storage::Static(&[
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(2)),
+                                ]),
+                                data::Storage::Static(&[
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(2)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(3)),
+                                ]),
+                                data::Storage::Static(&[
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                    data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                        id: data::graph::CustomLocalId(0),
+                                        shape: data::type_::CustomValueShape {
+                                            type_id: data::type_::CustomTypeId(0),
+                                            shape_id: data::type_::CustomValueShapeId(3),
+                                        },
+                                    }),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                ]),
+                                data::Storage::Static(&[
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(2)),
+                                ]),
+                                data::Storage::Static(&[
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(2)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(3)),
+                                ]),
+                                data::Storage::Static(&[
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                ]),
+                                data::Storage::Static(&[
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(2)),
+                                ]),
+                                data::Storage::Static(&[
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                ]),
+                            ]),
+                            calls: data::Storage::Static(&[]),
+                            creations: data::Storage::Static(&[]),
+                            returns: data::Storage::Static(&[
+                                data::compiled::ReturnContract {
+                                    point: 3,
+                                    value: data::graph::ParamLocal::Int(data::graph::IntLocalId(3)),
+                                },
+                                data::compiled::ReturnContract {
+                                    point: 6,
+                                    value: data::graph::ParamLocal::Int(data::graph::IntLocalId(3)),
+                                },
+                                data::compiled::ReturnContract {
+                                    point: 8,
+                                    value: data::graph::ParamLocal::Int(data::graph::IntLocalId(2)),
+                                },
+                                data::compiled::ReturnContract {
+                                    point: 9,
+                                    value: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                },
+                            ]),
+                            tails: data::Storage::Static(&[]),
+                            start: CALL_GROUP_0[4],
+                        })),
+                    },
+                    data::compiled::CompiledFunction {
+                        function: data::compiled::CallTarget::Int(data::function::IntFunctionId(11)),
+                        implementation: data::compiled::CompiledImplementation::FunctionCalls(data::Storage::Static(&data::compiled::FunctionCallsImplementation {
+                            root: true,
+                            entry: 0,
+                            checkpoints: data::Storage::Static(&[
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(0),
+                                    instruction: 0,
+                                    ints: 1,
+                                    bools: 0,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 1,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
+                                },
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(1),
+                                    instruction: 0,
+                                    ints: 2,
+                                    bools: 0,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
+                                },
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(1),
+                                    instruction: 1,
+                                    ints: 3,
+                                    bools: 0,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
+                                },
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(1),
+                                    instruction: 2,
+                                    ints: 4,
+                                    bools: 0,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
+                                },
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(2),
+                                    instruction: 0,
+                                    ints: 1,
+                                    bools: 0,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
+                                },
+                            ]),
+                            locals: data::Storage::Static(&[
+                                data::Storage::Static(&[
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                    data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                        id: data::graph::CustomLocalId(0),
+                                        shape: data::type_::CustomValueShape {
+                                            type_id: data::type_::CustomTypeId(0),
+                                            shape_id: data::type_::CustomValueShapeId(3),
+                                        },
+                                    }),
+                                ]),
+                                data::Storage::Static(&[
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                ]),
+                                data::Storage::Static(&[
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(2)),
+                                ]),
+                                data::Storage::Static(&[
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(2)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(3)),
+                                ]),
+                                data::Storage::Static(&[
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                ]),
+                            ]),
+                            calls: data::Storage::Static(&[
+                                data::compiled::CallContract {
+                                    point: 1,
+                                    output: data::graph::ParamLocal::Int(data::graph::IntLocalId(2)),
+                                    target: data::compiled::CallContractTarget::Static(data::compiled::CallTarget::Int(data::function::IntFunctionId(12))),
+                                    args: data::Storage::Static(&[
+                                        data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                    ]),
+                                    site: data::source::HostCallSite::from_static("example", "non_leaf", data::source::SourceSpan::new(2160, 2172)),
+                                },
+                            ]),
+                            creations: data::Storage::Static(&[]),
+                            returns: data::Storage::Static(&[
+                                data::compiled::ReturnContract {
+                                    point: 3,
+                                    value: data::graph::ParamLocal::Int(data::graph::IntLocalId(3)),
+                                },
+                                data::compiled::ReturnContract {
+                                    point: 4,
+                                    value: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                },
+                            ]),
+                            tails: data::Storage::Static(&[]),
+                            start: CALL_GROUP_0[5],
+                        })),
+                    },
+                    data::compiled::CompiledFunction {
                         function: data::compiled::CallTarget::Int(data::function::IntFunctionId(12)),
                         implementation: data::compiled::CompiledImplementation::FunctionCalls(data::Storage::Static(&data::compiled::FunctionCallsImplementation {
                             root: false,
@@ -6516,7 +7944,7 @@ pub fn markers(seed: Int) -> Int {
                                 },
                             ]),
                             tails: data::Storage::Static(&[]),
-                            start: CALL_GROUP_0[2],
+                            start: CALL_GROUP_0[6],
                         })),
                     },
                 ]),

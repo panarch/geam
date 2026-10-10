@@ -30,6 +30,8 @@ pub(super) fn pattern(locals: &[CallLocal]) -> String {
 pub(super) fn local_type(local: &CallLocal) -> &'static str {
     match local {
         CallLocal::Nullary(_) => "CallNullary",
+        CallLocal::Custom(_) => "CallCustom",
+        CallLocal::Tuple { .. } => "CallTuple",
         CallLocal::Int(..) => "i128",
         CallLocal::IntList { .. } => "IntList",
         CallLocal::IntFunction { .. } => "IntCallable",
@@ -56,7 +58,8 @@ pub(super) fn local_type(local: &CallLocal) -> &'static str {
 
 fn local_column(local: &CallLocal) -> &'static str {
     match local {
-        CallLocal::Nullary(_) => "nullaries",
+        CallLocal::Nullary(_) | CallLocal::Custom(_) => "customs",
+        CallLocal::Tuple { .. } => "tuples",
         CallLocal::Int(..) => "ints",
         CallLocal::IntList { .. } => "int_lists",
         CallLocal::IntFunction { .. } => "int_functions",
@@ -83,7 +86,7 @@ fn local_column(local: &CallLocal) -> &'static str {
 
 pub(super) fn capture_method(local: &CallLocal) -> Option<&'static str> {
     Some(match local {
-        CallLocal::Nullary(_) => return None,
+        CallLocal::Nullary(_) | CallLocal::Custom(_) | CallLocal::Tuple { .. } => return None,
         CallLocal::Int(..) => "int",
         CallLocal::IntList { .. } => "int_list",
         CallLocal::IntFunction { .. } => "int_function",
@@ -118,6 +121,8 @@ pub(super) fn capture_input_expression(local: &CallLocal) -> String {
 pub(super) fn local_name(local: &CallLocal) -> String {
     match local {
         CallLocal::Nullary(value) => format!("nullary{}", value.local.id.0),
+        CallLocal::Custom(value) => format!("custom{}", value.local.id.0),
+        CallLocal::Tuple { local, .. } => format!("tuple{}", local.0),
         CallLocal::Int(local) => format!("int{}", local.0),
         CallLocal::IntList { local, .. } => format!("int_list{}", local.0),
         CallLocal::IntFunction { local, .. } => format!("int_function{}", local.0),
@@ -146,7 +151,8 @@ pub(super) fn local_name(local: &CallLocal) -> String {
 
 pub(super) fn local_id(local: &CallLocal) -> String {
     match local {
-        CallLocal::Nullary(value) => Rust::expression(&value.local.id),
+        CallLocal::Nullary(value) | CallLocal::Custom(value) => Rust::expression(&value.local.id),
+        CallLocal::Tuple { local, .. } => Rust::expression(local),
         CallLocal::Int(local) => Rust::expression(local),
         CallLocal::IntList { local, .. } => Rust::expression(local),
         CallLocal::IntFunction { local, .. } => Rust::expression(local),
@@ -178,6 +184,8 @@ pub(super) fn load_value(local: &CallLocal) -> String {
             value.local.id.0,
             Rust::expression(value.constructors.as_slice())
         ),
+        CallLocal::Custom(value) => format!("values.custom({})?", value.local.id.0),
+        CallLocal::Tuple { local, .. } => format!("values.tuple({})?", local.0),
         CallLocal::Int(local) => format!("values.int({})?", local.0),
         CallLocal::IntList { local, .. } => format!("values.int_list({})?", local.0),
         CallLocal::IntFunction { local, .. } => format!("values.int_function({})?", local.0),
@@ -231,7 +239,14 @@ pub(super) fn local_expression(local: &CallLocal, clone: bool) -> String {
 }
 pub(super) fn field_assignment(parameter: &CallLocal, argument: &CallLocal) -> String {
     let name = local_name(parameter);
-    let expression = local_expression(argument, true);
+    let expression = if matches!(
+        (parameter, argument),
+        (CallLocal::Custom(_), CallLocal::Nullary(_))
+    ) {
+        format!("{}.into()", local_expression(argument, true))
+    } else {
+        local_expression(argument, true)
+    };
     if name == expression {
         name
     } else {
@@ -252,7 +267,8 @@ pub(super) fn values_with_result(
 
 fn owned_values(locals: &[CallLocal], clone: bool, result: Option<&CallLocal>) -> String {
     let columns = [
-        "nullaries",
+        "customs",
+        "tuples",
         "ints",
         "int_lists",
         "int_functions",
@@ -282,7 +298,9 @@ fn owned_values(locals: &[CallLocal], clone: bool, result: Option<&CallLocal>) -
                 .filter(|local| local_column(local) == column)
                 .map(|local| {
                     let value = local_expression(local, clone);
-                    if matches!(local, CallLocal::Int(_)) && result != Some(local) {
+                    if matches!(local, CallLocal::Nullary(_) | CallLocal::Int(_))
+                        && result != Some(local)
+                    {
                         format!("{value}.into()")
                     } else {
                         value
@@ -419,7 +437,7 @@ mod tests {
         BitArrayFunctionLocalId, BitArrayListLocalId, BitArrayLocalId, BoolFunctionLocalId,
         BoolListLocalId, BoolLocalId, FloatFunctionLocalId, FloatListLocalId, FloatLocalId,
         IntFunctionLocalId, IntListLocalId, IntLocalId, NilFunctionLocalId, NilListLocalId,
-        NilLocalId, StringFunctionLocalId, StringListLocalId, StringLocalId,
+        NilLocalId, StringFunctionLocalId, StringListLocalId, StringLocalId, TupleLocalId,
         UtfCodepointFunctionLocalId, UtfCodepointListLocalId, UtfCodepointLocalId,
     };
     use crate::plan::execution::type_::{
@@ -556,6 +574,11 @@ mod tests {
 
     #[test]
     fn every_primitive_local_has_exact_field_input_and_capture_syntax() {
+        let tuple = CallLocal::Tuple {
+            local: TupleLocalId(3),
+            type_: vec![ValueType::Int, ValueType::Nil].into(),
+        };
+        assert_eq!(local_id(&tuple), "data::graph::TupleLocalId(3)");
         for (local, expected_type, column, name, id, input, method) in [
             (
                 CallLocal::Int(IntLocalId(1)),
@@ -986,12 +1009,12 @@ mod tests {
     }
     #[test]
     fn fieldless_custom_locals_keep_their_id_and_do_not_claim_a_capture_adapter() {
-        use super::super::nullary::NullaryLocal;
+        use super::super::nullary::CustomLocalShape;
         use crate::plan::execution::graph::{CustomLocal, CustomLocalId};
         use crate::plan::execution::type_::{
             CustomConstructorId, CustomTypeId, CustomValueShape, CustomValueShapeId,
         };
-        let local = CallLocal::Nullary(NullaryLocal {
+        let shape = CustomLocalShape {
             local: CustomLocal {
                 id: CustomLocalId(2),
                 shape: CustomValueShape {
@@ -1004,9 +1027,22 @@ mod tests {
                 type_id: CustomTypeId(0),
                 index: 0,
             }],
-        });
+        };
+        assert_eq!(
+            local_id(&CallLocal::Custom(shape.clone())),
+            "data::graph::CustomLocalId(2)"
+        );
+        let local = CallLocal::Nullary(shape);
         assert_eq!(local_id(&local), "data::graph::CustomLocalId(2)");
         assert_eq!(capture_method(&local), None);
         assert_eq!(super::capture_input_expression(&local), "{ return None; }");
+        assert_eq!(
+            values(std::slice::from_ref(&local), false),
+            "Box::new(CallValues { customs: vec![nullary2.into()], ..CallValues::default() })"
+        );
+        assert_eq!(
+            super::values_with_result(std::slice::from_ref(&local), false, Some(&local)),
+            "Box::new(CallValues { customs: vec![nullary2], ..CallValues::default() })"
+        );
     }
 }

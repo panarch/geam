@@ -9,7 +9,7 @@ use crate::plan::execution::function::{
 use crate::plan::execution::host::{HostedFunctionTarget, HostedValueFunction};
 use crate::plan::execution::runtime::RuntimeExecutionPlan;
 use crate::runtime::compiled::calls::{
-    CallOps, CallProgress, GeneratedNativePhase, GeneratedNativeState,
+    CallCustom, CallOps, CallProgress, CallTuple, GeneratedNativePhase, GeneratedNativeState,
 };
 use crate::runtime::compiled::native_calls::{NativeCallsMachine, NativeCallsState};
 use crate::runtime::compiled::native_loop::{
@@ -41,6 +41,12 @@ pub(in crate::runtime) trait ExecutableRuntimePlan:
     type NativeLoopBinding: Send + 'static;
 
     fn synchronous_strings(&self) -> &[bool] {
+        &[]
+    }
+    fn synchronous_customs(&self) -> &[bool] {
+        &[]
+    }
+    fn synchronous_tuples(&self) -> &[bool] {
         &[]
     }
 
@@ -229,15 +235,31 @@ impl<Profile: crate::HostProfile> ExecutableRuntimePlan
     fn synchronous_strings(&self) -> &[bool] {
         self.synchronous_strings.enabled()
     }
+    fn synchronous_customs(&self) -> &[bool] {
+        self.synchronous_customs.enabled()
+    }
+    fn synchronous_tuples(&self) -> &[bool] {
+        self.synchronous_tuples.enabled()
+    }
 
     fn prepare_generated_native<'plan>(
         &'plan self,
         mut state: Box<GeneratedNativeState>,
         allowance: usize,
     ) -> Result<Invocation<'plan, Self, Box<GeneratedNativeState>>, Box<GeneratedNativeState>> {
-        if let GeneratedNativePhase::Progress(CallProgress::StringNative(request)) = &state.phase
-            && self.synchronous_strings.get(request.function).is_none()
-        {
+        let unsupported = match &state.phase {
+            GeneratedNativePhase::Progress(CallProgress::StringNative(request)) => {
+                self.synchronous_strings.get(request.function).is_none()
+            }
+            GeneratedNativePhase::Progress(CallProgress::CustomNative(request)) => {
+                self.synchronous_customs.get(request.function).is_none()
+            }
+            GeneratedNativePhase::Progress(CallProgress::TupleNative(request)) => {
+                self.synchronous_tuples.get(request.function).is_none()
+            }
+            _ => false,
+        };
+        if unsupported {
             return Err(state);
         }
         Ok(Invocation::bounded(
@@ -246,6 +268,62 @@ impl<Profile: crate::HostProfile> ExecutableRuntimePlan
                 loop {
                     if unit.is_some_and(|unit| !unit.is_active()) {
                         return Ok(NativeReturn::Exited);
+                    }
+                    macro_rules! invoke {
+                        ($request:ident, $before:ident, $bindings:ident, $invoke:ident, $progress:ident, $deliver:ident, $map:expr) => {{
+                            let Some(binding) = plan.$bindings.get($request.function) else {
+                                state.phase = GeneratedNativePhase::Progress(
+                                    CallProgress::$progress($request),
+                                );
+                                return Ok(NativeReturn::Immediate(state));
+                            };
+                            while $before > 0 && remaining > 0 {
+                                $before -= 1;
+                                remaining -= 1;
+                            }
+                            if $before > 0 || remaining == 0 {
+                                state.phase = GeneratedNativePhase::$invoke {
+                                    request: $request,
+                                    before: $before,
+                                };
+                                return Ok(NativeReturn::Immediate(state));
+                            }
+                            remaining -= 1;
+                            match host::invoke_synchronous(
+                                plan,
+                                runtime,
+                                binding,
+                                HostCallOrigin::source($request.site),
+                                $request.arguments.into_retained(),
+                            )? {
+                                host::SynchronousReturn::Value(value) => {
+                                    state.phase = GeneratedNativePhase::$deliver {
+                                        value: ($map)(value),
+                                        execution: $request.execution,
+                                        charge: !$request.root_tail,
+                                    }
+                                }
+                                host::SynchronousReturn::Exited => return Ok(NativeReturn::Exited),
+                            }
+                        }};
+                    }
+                    macro_rules! deliver {
+                        ($value:ident, $execution:ident, $charge:ident, $phase:ident) => {{
+                            if $charge && remaining == 0 {
+                                state.phase = GeneratedNativePhase::$phase {
+                                    value: $value,
+                                    execution: $execution,
+                                    charge: $charge,
+                                };
+                                return Ok(NativeReturn::Immediate(state));
+                            }
+                            if $charge {
+                                remaining -= 1;
+                            }
+                            state.phase = GeneratedNativePhase::Progress(CallProgress::Yield(
+                                $execution.resume_native($value),
+                            ));
+                        }};
                     }
                     match state.phase {
                         GeneratedNativePhase::Progress(CallProgress::StringNative(request)) => {
@@ -256,63 +334,64 @@ impl<Profile: crate::HostProfile> ExecutableRuntimePlan
                         GeneratedNativePhase::Invoke {
                             request,
                             mut before,
-                        } => {
-                            let Some(binding) = plan.synchronous_strings.get(request.function)
-                            else {
-                                state.phase = GeneratedNativePhase::Progress(
-                                    CallProgress::StringNative(request),
-                                );
-                                return Ok(NativeReturn::Immediate(state));
-                            };
-                            while before > 0 && remaining > 0 {
-                                before -= 1;
-                                remaining -= 1;
-                            }
-                            if before > 0 || remaining == 0 {
-                                state.phase = GeneratedNativePhase::Invoke { request, before };
-                                return Ok(NativeReturn::Immediate(state));
-                            }
-                            remaining -= 1;
-                            let value = host::invoke_synchronous_string(
-                                plan,
-                                runtime,
-                                binding,
-                                HostCallOrigin::source(request.site),
-                                request.arguments.into_retained(),
-                            )?;
-                            match value {
-                                host::SynchronousStringReturn::Value(value) => {
-                                    state.phase = GeneratedNativePhase::Deliver {
-                                        value,
-                                        execution: request.execution,
-                                        charge: !request.root_tail,
-                                    };
-                                }
-                                host::SynchronousStringReturn::Exited => {
-                                    return Ok(NativeReturn::Exited);
-                                }
-                            }
-                        }
+                        } => invoke!(
+                            request,
+                            before,
+                            synchronous_strings,
+                            Invoke,
+                            StringNative,
+                            Deliver,
+                            |value| value
+                        ),
                         GeneratedNativePhase::Deliver {
                             value,
                             execution,
                             charge,
-                        } => {
-                            if charge && remaining == 0 {
-                                state.phase = GeneratedNativePhase::Deliver {
-                                    value,
-                                    execution,
-                                    charge,
-                                };
-                                return Ok(NativeReturn::Immediate(state));
-                            }
-                            if charge {
-                                remaining -= 1;
-                            }
-                            state.phase = GeneratedNativePhase::Progress(CallProgress::Yield(
-                                execution.resume_native(value),
-                            ));
+                        } => deliver!(value, execution, charge, Deliver),
+                        GeneratedNativePhase::Progress(CallProgress::CustomNative(request)) => {
+                            let before = if request.root_tail { 2 } else { 1 };
+                            state.prepaid_completion = request.root_tail;
+                            state.phase = GeneratedNativePhase::CustomInvoke { request, before };
                         }
+                        GeneratedNativePhase::CustomInvoke {
+                            request,
+                            mut before,
+                        } => invoke!(
+                            request,
+                            before,
+                            synchronous_customs,
+                            CustomInvoke,
+                            CustomNative,
+                            CustomDeliver,
+                            CallCustom
+                        ),
+                        GeneratedNativePhase::CustomDeliver {
+                            value,
+                            execution,
+                            charge,
+                        } => deliver!(value, execution, charge, CustomDeliver),
+                        GeneratedNativePhase::Progress(CallProgress::TupleNative(request)) => {
+                            let before = if request.root_tail { 2 } else { 1 };
+                            state.prepaid_completion = request.root_tail;
+                            state.phase = GeneratedNativePhase::TupleInvoke { request, before };
+                        }
+                        GeneratedNativePhase::TupleInvoke {
+                            request,
+                            mut before,
+                        } => invoke!(
+                            request,
+                            before,
+                            synchronous_tuples,
+                            TupleInvoke,
+                            TupleNative,
+                            TupleDeliver,
+                            CallTuple
+                        ),
+                        GeneratedNativePhase::TupleDeliver {
+                            value,
+                            execution,
+                            charge,
+                        } => deliver!(value, execution, charge, TupleDeliver),
                         GeneratedNativePhase::Progress(CallProgress::Yield(execution)) => {
                             // A delivered root Native can complete without another
                             // source instruction even at the allowance boundary.
@@ -325,7 +404,11 @@ impl<Profile: crate::HostProfile> ExecutableRuntimePlan
                                     &mut state.bit_arrays,
                                 )
                                 .with_root_tail_entry(state.root_tail_entry)
-                                .with_synchronous_strings(plan.synchronous_strings.enabled()),
+                                .with_synchronous_strings(plan.synchronous_strings.enabled())
+                                .with_synchronous_compounds(
+                                    plan.synchronous_customs.enabled(),
+                                    plan.synchronous_tuples.enabled(),
+                                ),
                                 &mut remaining,
                             );
                             let yielded = matches!(progress, CallProgress::Yield(_));

@@ -2,9 +2,10 @@ use super::CompiledCheckpoint;
 use crate::plan::HostCallSite;
 use crate::plan::execution::function::{
     BitArrayFunctionFunctionId, BitArrayFunctionId, BoolFunctionFunctionId, BoolFunctionId,
-    FloatFunctionFunctionId, FloatFunctionId, FunctionReturnFamily, IntFunctionFunctionId,
-    IntFunctionId, NilFunctionFunctionId, NilFunctionId, StringFunctionFunctionId,
-    StringFunctionId, UtfCodepointFunctionFunctionId, UtfCodepointFunctionId,
+    CustomFunctionId, FloatFunctionFunctionId, FloatFunctionId, FunctionReturnFamily,
+    IntFunctionFunctionId, IntFunctionId, NilFunctionFunctionId, NilFunctionId,
+    StringFunctionFunctionId, StringFunctionId, TupleFunctionId, UtfCodepointFunctionFunctionId,
+    UtfCodepointFunctionId,
 };
 use crate::plan::execution::graph::{
     BitArrayFunctionLocalId, BoolFunctionLocalId, FloatFunctionLocalId, FunctionCapture,
@@ -32,6 +33,8 @@ pub enum CallTarget {
     BitArrayFunction(BitArrayFunctionFunctionId),
     UtfCodepointFunction(UtfCodepointFunctionFunctionId),
     NilFunction(NilFunctionFunctionId),
+    Custom(CustomFunctionId),
+    Tuple(TupleFunctionId),
 }
 
 pub struct FunctionCallsImplementation {
@@ -94,6 +97,8 @@ pub struct TailContract {
 impl CallTarget {
     pub(crate) fn family(self) -> FunctionReturnFamily {
         match self {
+            Self::Custom(_) => FunctionReturnFamily::Custom,
+            Self::Tuple(_) => FunctionReturnFamily::Tuple,
             Self::Int(_) => FunctionReturnFamily::Int,
             Self::Float(_) => FunctionReturnFamily::Float,
             Self::String(_) => FunctionReturnFamily::String,
@@ -127,12 +132,16 @@ impl CallTarget {
             Self::BitArrayFunction(_) => 11,
             Self::UtfCodepointFunction(_) => 12,
             Self::NilFunction(_) => 13,
+            Self::Custom(_) => 14,
+            Self::Tuple(_) => 15,
         };
         (family, self.index())
     }
 
     pub(crate) fn index(self) -> usize {
         match self {
+            Self::Custom(id) => id.index(),
+            Self::Tuple(id) => id.0,
             Self::Int(id) => id.0,
             Self::Bool(id) => id.0,
             Self::IntFunction(id) => id.0,
@@ -154,6 +163,8 @@ impl CallTarget {
 impl Emit for CallTarget {
     fn emit(&self, output: &mut Rust) {
         match self {
+            Self::Custom(id) => output.call("compiled::CallTarget::Custom", &[id]),
+            Self::Tuple(id) => output.call("compiled::CallTarget::Tuple", &[id]),
             Self::Int(id) => output.call("compiled::CallTarget::Int", &[id]),
             Self::Bool(id) => output.call("compiled::CallTarget::Bool", &[id]),
             Self::IntFunction(id) => output.call("compiled::CallTarget::IntFunction", &[id]),
@@ -267,9 +278,9 @@ mod tests {
     };
     use crate::plan::execution::function::{
         BitArrayFunctionFunctionId, BitArrayFunctionId, BoolFunctionFunctionId, BoolFunctionId,
-        FloatFunctionFunctionId, FloatFunctionId, IntFunctionFunctionId, IntFunctionId,
-        NilFunctionFunctionId, NilFunctionId, StringFunctionFunctionId, StringFunctionId,
-        UtfCodepointFunctionFunctionId, UtfCodepointFunctionId,
+        CustomFunctionId, FloatFunctionFunctionId, FloatFunctionId, IntFunctionFunctionId,
+        IntFunctionId, NilFunctionFunctionId, NilFunctionId, StringFunctionFunctionId,
+        StringFunctionId, TupleFunctionId, UtfCodepointFunctionFunctionId, UtfCodepointFunctionId,
     };
     use crate::plan::execution::graph::{
         BitArrayFunctionLocalId, BoolFunctionLocalId, BoolLocalId, FloatFunctionLocalId,
@@ -277,7 +288,9 @@ mod tests {
         ParamLocal, StringFunctionLocalId, UtfCodepointFunctionLocalId,
     };
     use crate::plan::execution::prepared::rust::Rust;
-    use crate::plan::execution::type_::{FunctionType, ValueType};
+    use crate::plan::execution::type_::{
+        CustomTypeId, CustomValueShape, CustomValueShapeId, FunctionType, ValueType,
+    };
     use crate::plan::{HostCallSite, SourceSpan};
 
     #[test]
@@ -306,6 +319,20 @@ mod tests {
                 FunctionReturnFamily::UtfCodepoint,
             ),
             (CallTarget::Nil(NilFunctionId(3)), FunctionReturnFamily::Nil),
+            (
+                CallTarget::Custom(CustomFunctionId::new(
+                    3,
+                    CustomValueShape {
+                        type_id: CustomTypeId(2),
+                        shape_id: CustomValueShapeId(4),
+                    },
+                )),
+                FunctionReturnFamily::Custom,
+            ),
+            (
+                CallTarget::Tuple(TupleFunctionId(3)),
+                FunctionReturnFamily::Tuple,
+            ),
             (
                 CallTarget::IntFunction(IntFunctionFunctionId(3)),
                 FunctionReturnFamily::Function,
@@ -411,6 +438,28 @@ mod tests {
                 CallTarget::NilFunction(NilFunctionFunctionId(20)),
                 (13, 20),
                 "data::compiled::CallTarget::NilFunction(data::function::NilFunctionFunctionId(20))",
+            ),
+            (
+                CallTarget::Custom(CustomFunctionId::new(
+                    21,
+                    CustomValueShape {
+                        type_id: CustomTypeId(2),
+                        shape_id: CustomValueShapeId(4),
+                    },
+                )),
+                (14, 21),
+                r#"data::compiled::CallTarget::Custom(data::function::CustomFunctionId {
+    index: 21,
+    return_shape: data::type_::CustomValueShape {
+        type_id: data::type_::CustomTypeId(2),
+        shape_id: data::type_::CustomValueShapeId(4),
+    },
+})"#,
+            ),
+            (
+                CallTarget::Tuple(TupleFunctionId(22)),
+                (15, 22),
+                "data::compiled::CallTarget::Tuple(data::function::TupleFunctionId(22))",
             ),
         ] {
             assert_eq!(target.key(), key);

@@ -118,7 +118,7 @@ impl<Graph: ExecutionGraphProfile> CallGroupCodegen<'_, '_, Graph> {
             .return_families()
             .iter()
             .any(|family| self.has_step(*family, StepKind::Tail));
-        // A String Native request hands off once; only internal state changes
+        // A typed Native request hands off once; only internal state changes
         // require another function_step in this invocation.
         let transitions = (native && self.has_native_calls())
             || self.return_families().into_iter().any(|family| {
@@ -130,9 +130,6 @@ impl<Graph: ExecutionGraphProfile> CallGroupCodegen<'_, '_, Graph> {
         let handoff_suffix = if transitions { ";" } else { "" };
         let mutable = if transitions { "mut " } else { "" };
         let initial_mutable = if self.has_native_calls() { "" } else { mutable };
-        if self.has_native() {
-            self.write_native_delivery(source, native);
-        }
         source.push_str(&format!(
             "let Some({initial_mutable}active) = self.active.take() else {{ return {}; }};\n",
             progress("CallProgress::Yield(self)")
@@ -168,10 +165,25 @@ impl<Graph: ExecutionGraphProfile> CallGroupCodegen<'_, '_, Graph> {
             source.close("}\n");
         }
         source.open("match function_step(active, ops, budget) {\n");
-        if self.has_native() {
-            source.open("FunctionStep::StringNative { function, site, arguments, caller } => {\n");
-            source.push_str("let root_tail = caller.is_none() && self.string_returns.is_empty() && ops.root_tail_entry();\nself.native_caller = caller;\n");
-            source.push_str(&format!("{handoff_prefix}{}{handoff_suffix}\n", progress("CallProgress::StringNative(StringNativeRequest { function, site, arguments, root_tail, execution: self })")));
+        for family in self.native_families() {
+            source.open(&format!(
+                "FunctionStep::{family}Native {{ function, site, arguments, caller }} => {{\n"
+            ));
+            source.push_str(&format!("let root_tail = caller.is_none() && self.{}.is_empty() && ops.root_tail_entry();\nself.{}_caller = caller;\n", family.return_stack(), family.native_prefix()));
+            source.push_str(&format!("{handoff_prefix}{}{handoff_suffix}\n", progress(&format!("CallProgress::{family}Native({family}NativeRequest {{ function, site, arguments, root_tail, execution: self }})"))));
+            source.close("},\n");
+            source.open(&format!(
+                "FunctionStep::{family}NativeComplete {{ value }} => {{\n"
+            ));
+            for cleared in self.return_families() {
+                source.push_str(&format!("self.{}.clear();\n", cleared.return_stack()));
+            }
+            source.push_str(&format!(
+                "{handoff_prefix}{}{handoff_suffix}\n",
+                progress(&format!(
+                    "CallProgress::Complete {{ output: CallOutput::{family}(value), execution: self }}"
+                ))
+            ));
             source.close("},\n");
         }
         source.open("FunctionStep::Yield(active) => {\n");
@@ -339,27 +351,23 @@ pub fn main() { #(forward("input"), 7) }
             forward.shape.tails[0].target,
             CallTarget::String(StringFunctionId(1))
         );
-        let native_strings = BTreeSet::from([1]);
-        let group = CallGroupCodegen::new(vec![forward], vec![forward.target], native_strings);
+        let native_targets = BTreeSet::from([CallTarget::String(StringFunctionId(1)).key()]);
+        let group = CallGroupCodegen::new(vec![forward], vec![forward.target], native_targets);
         let mut generated = Code::default();
         group.write_advance(&mut generated, false);
         assert_eq!(
             generated.as_str(),
             r#"fn advance(mut self: Box<Self>, ops: &mut CallOps<'_>, budget: &mut usize) -> CallProgress {
-    if let Some(result) = self.native_result.take() {
-        if let Some(caller) = self.native_caller.take().or_else(|| self.string_returns.pop()) {
-            self.active = Some(caller.small(result));
-        } else {
-            self.string_returns.clear();
-            return CallProgress::Complete { output: CallOutput::String(result), execution: self };
-        }
-    }
     let Some(active) = self.active.take() else { return CallProgress::Yield(self); };
     match function_step(active, ops, budget) {
         FunctionStep::StringNative { function, site, arguments, caller } => {
             let root_tail = caller.is_none() && self.string_returns.is_empty() && ops.root_tail_entry();
             self.native_caller = caller;
             CallProgress::StringNative(StringNativeRequest { function, site, arguments, root_tail, execution: self })
+        },
+        FunctionStep::StringNativeComplete { value } => {
+            self.string_returns.clear();
+            CallProgress::Complete { output: CallOutput::String(value), execution: self }
         },
         FunctionStep::Yield(active) => {
             self.active = Some(active);

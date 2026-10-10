@@ -1,6 +1,6 @@
 data::HostedModuleArtifact {
     module: data::ModuleArtifact {
-        format: 29,
+        format: 30,
         program: data::ProgramTables {
             root: data::source::module_id(0),
             modules: data::Storage::Static(&[
@@ -11082,6 +11082,7 @@ pub fn producer_failure(count: Int) -> Int {
                         String5Point3 { string0: StringValue },
                         String5Point4 { int0: i128, string_function0: StringCallable },
                         String5Point5 { int0: i128, string_function0: StringCallable, int1: i128 },
+                        StringNativeComplete { value: StringValue },
                     }
                     enum StringReturn {
                         String3Call0 { int0: i128, string_function0: StringCallable },
@@ -11124,6 +11125,7 @@ pub fn producer_failure(count: Int) -> Int {
                     enum FunctionStep {
                         Yield(FunctionState),
                         StringNative { function: data::function::StringFunctionId, site: data::source::HostCallSite, arguments: Box<CallValues>, caller: Option<StringReturn> },
+                        StringNativeComplete { value: StringValue },
                         Canonical { target: data::compiled::CallTarget, point: data::compiled::CompiledCheckpoint, values: Box<CallValues> },
                         StringCall { callee: FunctionState, caller: StringReturn },
                         String { value: StringValue },
@@ -11132,7 +11134,6 @@ pub fn producer_failure(count: Int) -> Int {
                     struct FunctionExecution {
                         active: Option<FunctionState>,
                         native_caller: Option<StringReturn>,
-                        native_result: Option<StringValue>,
                         string_returns: Vec<StringReturn>,
                     }
                     impl FunctionExecution {
@@ -11140,7 +11141,6 @@ pub fn producer_failure(count: Int) -> Int {
                             Self {
                                 active: Some(active),
                                 native_caller: None,
-                                native_result: None,
                                 string_returns: Vec::new(),
                             }
                         }
@@ -11165,14 +11165,6 @@ pub fn producer_failure(count: Int) -> Int {
                             std::mem::size_of::<Self>() + self.string_returns.capacity() * std::mem::size_of::<StringReturn>()
                         }
                         fn advance(mut self: Box<Self>, ops: &mut CallOps<'_>, budget: &mut usize) -> CallProgress {
-                            if let Some(result) = self.native_result.take() {
-                                if let Some(caller) = self.native_caller.take().or_else(|| self.string_returns.pop()) {
-                                    self.active = Some(caller.small(result));
-                                } else {
-                                    self.string_returns.clear();
-                                    return CallProgress::Complete { output: CallOutput::String(result), execution: self };
-                                }
-                            }
                             let Some(mut active) = self.active.take() else { return CallProgress::Yield(self); };
                             loop {
                                 match function_step(active, ops, budget) {
@@ -11180,6 +11172,10 @@ pub fn producer_failure(count: Int) -> Int {
                                         let root_tail = caller.is_none() && self.string_returns.is_empty() && ops.root_tail_entry();
                                         self.native_caller = caller;
                                         return CallProgress::StringNative(StringNativeRequest { function, site, arguments, root_tail, execution: self });
+                                    },
+                                    FunctionStep::StringNativeComplete { value } => {
+                                        self.string_returns.clear();
+                                        return CallProgress::Complete { output: CallOutput::String(value), execution: self };
                                     },
                                     FunctionStep::Yield(active) => {
                                         self.active = Some(active);
@@ -11227,10 +11223,19 @@ pub fn producer_failure(count: Int) -> Int {
                         }
                     }
                     impl StringNativeExecution for FunctionExecution {
-                        fn resume_native(mut self: Box<Self>, value: StringValue) -> Box<dyn CallExecution> { self.native_result = Some(value); self }
+                        fn resume_native(mut self: Box<Self>, value: StringValue) -> Box<dyn CallExecution> {
+                            let active = if let Some(caller) = self.native_caller.take().or_else(|| self.string_returns.pop()) {
+                                caller.small(value)
+                            } else {
+                                FunctionState::StringNativeComplete { value }
+                            };
+                            self.active = Some(active);
+                            self
+                        }
                     }
                     fn function_step(active: FunctionState, ops: &mut CallOps<'_>, budget: &mut usize) -> FunctionStep {
                         match active {
+                            FunctionState::StringNativeComplete { value } => FunctionStep::StringNativeComplete { value },
                             FunctionState::String0Point0 { int0, string0 } => calls_string_0_run(String0State::Point0 { int0, string0 }, ops, budget),
                             FunctionState::String0Point1 { int0, string0, string_function0 } => calls_string_0_run(String0State::Point1 { int0, string0, string_function0 }, ops, budget),
                             FunctionState::String1Point0 { int0, string0 } => calls_string_1_run(String1State::Point0 { int0, string0 }, ops, budget),
