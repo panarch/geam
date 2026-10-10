@@ -109,6 +109,12 @@ pub(crate) trait RuntimeExecutionPlan: Sized {
         self.program().compiled_entries.bool(id)
     }
 
+    fn compiled_tuple_function(&self, id: TupleFunctionId) -> Option<&CompiledImplementation> {
+        self.program()
+            .compiled
+            .call_root(super::compiled::CallTarget::Tuple(id))
+    }
+
     fn compiled_custom_function(&self, id: CustomFunctionId) -> Option<&CompiledImplementation> {
         self.program().compiled.custom(id)
     }

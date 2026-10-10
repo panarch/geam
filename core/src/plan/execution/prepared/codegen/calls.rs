@@ -2,6 +2,7 @@ mod flow;
 mod group;
 mod kernel;
 mod local;
+mod matching;
 mod native;
 mod nullary;
 mod scalar_native;
@@ -38,14 +39,15 @@ use std::fmt;
 pub(in crate::plan::execution::prepared) struct CallCodegen<'graph, Graph: ExecutionGraphProfile> {
     functions: Vec<CallFunction<'graph, Graph>>,
     groups: Vec<CallGroup>,
-    native_strings: BTreeSet<usize>,
+    native_targets: BTreeSet<(usize, usize)>,
 }
 
 struct CallGroupCodegen<'codegen, 'graph, Graph: ExecutionGraphProfile> {
     functions: Vec<&'codegen CallFunction<'graph, Graph>>,
     entry_targets: Vec<CallTarget>,
     entries: Vec<CallableEntry>,
-    native_strings: BTreeSet<usize>,
+    native_targets: BTreeSet<(usize, usize)>,
+    body_segments: BTreeMap<(usize, usize), BTreeMap<usize, usize>>,
 }
 
 struct CallableEntry {
@@ -69,11 +71,15 @@ enum CallFamily {
     BitArrayFunction,
     UtfCodepointFunction,
     NilFunction,
+    Custom,
+    Tuple,
 }
 
 impl CallFamily {
     fn name(self) -> &'static str {
         match self {
+            Self::Custom => "Custom",
+            Self::Tuple => "Tuple",
             Self::Int => "Int",
             Self::Bool => "Bool",
             Self::IntFunction => "IntFunction",
@@ -92,6 +98,8 @@ impl CallFamily {
     }
     fn return_stack(self) -> &'static str {
         match self {
+            Self::Custom => "custom_returns",
+            Self::Tuple => "tuple_returns",
             Self::Int => "integer_returns",
             Self::Bool => "boolean_returns",
             Self::IntFunction => "integer_function_returns",
@@ -110,6 +118,8 @@ impl CallFamily {
     }
     fn value_type(self) -> &'static str {
         match self {
+            Self::Custom => "CallCustom",
+            Self::Tuple => "CallTuple",
             Self::Int => "i128",
             Self::Bool => "bool",
             Self::IntFunction => "IntCallable",
@@ -148,21 +158,34 @@ impl<'graph, Graph: ExecutionGraphProfile> CallCodegen<'graph, Graph> {
         custom_types: &crate::plan::execution::type_::CustomTypeTable,
         value_shapes: &crate::plan::execution::type_::ValueShapeTable,
     ) -> Self {
-        let native_strings = functions
+        let mut native_targets: BTreeSet<_> = functions
             .value_returns
             .string_functions
             .iter()
             .enumerate()
             .filter_map(|(index, function)| {
-                matches!(function.as_ref(), ExecutionFunctionRef::Host(_)).then_some(index)
+                matches!(function.as_ref(), ExecutionFunctionRef::Host(_)).then_some(
+                    CallTarget::String(crate::plan::execution::function::StringFunctionId(index))
+                        .key(),
+                )
             })
             .collect();
+        for (index, function) in functions.value_returns.custom_functions.iter().enumerate() {
+            if let ExecutionFunctionRef::Host(_) = function.as_ref() {
+                native_targets.insert((14, index));
+            }
+        }
+        for (index, function) in functions.value_returns.tuple_functions.iter().enumerate() {
+            if let ExecutionFunctionRef::Host(_) = function.as_ref() {
+                native_targets.insert((15, index));
+            }
+        }
         let functions = CallProgram::inspect(functions, custom_types, value_shapes).functions;
         let groups = CallGroup::inspect(&functions);
         Self {
             functions,
             groups,
-            native_strings,
+            native_targets,
         }
     }
 
@@ -193,7 +216,7 @@ impl<'graph, Graph: ExecutionGraphProfile> CallCodegen<'graph, Graph> {
                     .iter()
                     .map(|&entry| self.functions[entry].target)
                     .collect(),
-                self.native_strings.clone(),
+                self.native_targets.clone(),
             );
             codegen.write_code(source);
             let starts = group
@@ -252,13 +275,14 @@ impl<'codegen, 'graph, Graph: ExecutionGraphProfile> CallGroupCodegen<'codegen, 
     fn new(
         functions: Vec<&'codegen CallFunction<'graph, Graph>>,
         entry_targets: Vec<CallTarget>,
-        native_strings: BTreeSet<usize>,
+        native_targets: BTreeSet<(usize, usize)>,
     ) -> Self {
         let mut codegen = Self {
             functions,
             entry_targets,
             entries: Vec::new(),
-            native_strings,
+            native_targets,
+            body_segments: BTreeMap::new(),
         };
         for function in &codegen.functions {
             for call in &function.shape.calls {
@@ -282,6 +306,15 @@ impl<'codegen, 'graph, Graph: ExecutionGraphProfile> CallGroupCodegen<'codegen, 
                 }
             }
         }
+        codegen.body_segments = codegen
+            .functions
+            .iter()
+            .filter_map(|function| {
+                codegen
+                    .body_layout(function)
+                    .map(|layout| (function.target.key(), layout))
+            })
+            .collect();
         codegen
     }
 
@@ -321,13 +354,28 @@ impl<'codegen, 'graph, Graph: ExecutionGraphProfile> CallGroupCodegen<'codegen, 
             }
         }
         if native {
-            imports.extend([
-                "StringNativeExecution",
-                "StringNativeRequest",
-                "StringValue",
-                "CallValues",
-                "CallOutput",
-            ]);
+            imports.extend(["CallValues", "CallOutput"]);
+            for (family, execution, request) in [
+                (
+                    CallFamily::String,
+                    "StringNativeExecution",
+                    "StringNativeRequest",
+                ),
+                (
+                    CallFamily::Custom,
+                    "CustomNativeExecution",
+                    "CustomNativeRequest",
+                ),
+                (
+                    CallFamily::Tuple,
+                    "TupleNativeExecution",
+                    "TupleNativeRequest",
+                ),
+            ] {
+                if self.native_families().contains(&family) {
+                    imports.extend([execution, request, family.value_type()]);
+                }
+            }
         }
         for name in [
             "IntCallable",
@@ -340,6 +388,8 @@ impl<'codegen, 'graph, Graph: ExecutionGraphProfile> CallGroupCodegen<'codegen, 
             "StringValue",
             "CallBitArray",
             "CallNullary",
+            "CallCustom",
+            "CallTuple",
         ] {
             if field_types.contains(name) {
                 imports.push(name);
@@ -399,6 +449,9 @@ impl<'codegen, 'graph, Graph: ExecutionGraphProfile> CallGroupCodegen<'codegen, 
             "use data::compiled::calls::{{{}}};\n",
             imports.join(", ")
         ));
+        if !self.body_segments.is_empty() {
+            source.push_str("use std::ops::ControlFlow;\n");
+        }
         if field_types.contains("IntList") {
             source.push_str("use data::compiled::int_list::IntList;\n");
         }
@@ -419,7 +472,7 @@ impl<'codegen, 'graph, Graph: ExecutionGraphProfile> CallGroupCodegen<'codegen, 
                 .shape
                 .calls
                 .iter()
-                .any(|call| matches!(call.output, CallLocal::Int(_)))
+                .any(|call| matches!(call.output, CallLocal::Int(_) | CallLocal::Nullary(_)))
         });
         source.open("enum FunctionState {\n");
         for function in &self.functions {
@@ -438,6 +491,12 @@ impl<'codegen, 'graph, Graph: ExecutionGraphProfile> CallGroupCodegen<'codegen, 
             }
             self.write_kernel_state(source, function);
         }
+        for family in self.native_families() {
+            source.push_str(&format!(
+                "{family}NativeComplete {{ value: {} }},\n",
+                family.value_type()
+            ));
+        }
         if canonical_return {
             source.push_str("Canonical { target: data::compiled::CallTarget, point: data::compiled::CompiledCheckpoint, values: Box<CallValues> },\n");
         }
@@ -451,6 +510,9 @@ impl<'codegen, 'graph, Graph: ExecutionGraphProfile> CallGroupCodegen<'codegen, 
         source.open("match active {\n");
         if canonical_return {
             source.push_str("FunctionState::Canonical { target, point, values } => FunctionStep::Canonical { target, point, values },\n");
+        }
+        for family in self.native_families() {
+            source.push_str(&format!("FunctionState::{family}NativeComplete {{ value }} => FunctionStep::{family}NativeComplete {{ value }},\n"));
         }
         for function in &self.functions {
             self.write_function(source, function);
@@ -480,10 +542,9 @@ impl<'codegen, 'graph, Graph: ExecutionGraphProfile> CallGroupCodegen<'codegen, 
         } else {
             "active: Option<FunctionState>,\n"
         });
-        if self.has_native() {
-            source.push_str(
-                "native_caller: Option<StringReturn>,\nnative_result: Option<StringValue>,\n",
-            );
+        for family in self.native_families() {
+            let prefix = family.native_prefix();
+            source.push_str(&format!("{prefix}_caller: Option<{family}Return>,\n"));
         }
         let tails = self
             .return_families()
@@ -504,8 +565,9 @@ impl<'codegen, 'graph, Graph: ExecutionGraphProfile> CallGroupCodegen<'codegen, 
         source.open("fn new(active: FunctionState) -> Self {\n");
         source.open("Self {\n");
         source.push_str(&format!("active: Some({}),\n", self.active("active")));
-        if self.has_native() {
-            source.push_str("native_caller: None,\nnative_result: None,\n");
+        for family in self.native_families() {
+            let prefix = family.native_prefix();
+            source.push_str(&format!("{prefix}_caller: None,\n"));
         }
         if tails {
             source.push_str("pending_entry: false,\n");
@@ -557,10 +619,8 @@ impl<'codegen, 'graph, Graph: ExecutionGraphProfile> CallGroupCodegen<'codegen, 
             self.write_advance(source, true);
         }
         source.close("}\n");
-        if self.has_native() {
-            source.open("impl StringNativeExecution for FunctionExecution {\n");
-            source.push_str("fn resume_native(mut self: Box<Self>, value: StringValue) -> Box<dyn CallExecution> { self.native_result = Some(value); self }\n");
-            source.close("}\n");
+        for family in self.native_families() {
+            self.write_native_resume(source, family);
         }
     }
 
@@ -568,8 +628,12 @@ impl<'codegen, 'graph, Graph: ExecutionGraphProfile> CallGroupCodegen<'codegen, 
         source.push_str("#[allow(clippy::large_enum_variant, reason = \"Typed locals stay inline to avoid allocating at each generated step.\")]\n");
         source.open("enum FunctionStep {\n");
         source.push_str("Yield(FunctionState),\n");
-        if self.has_native() {
-            source.push_str("StringNative { function: data::function::StringFunctionId, site: data::source::HostCallSite, arguments: Box<CallValues>, caller: Option<StringReturn> },\n");
+        for family in self.native_families() {
+            source.push_str(&format!("{family}Native {{ function: data::function::{family}FunctionId, site: data::source::HostCallSite, arguments: Box<CallValues>, caller: Option<{family}Return> }},\n"));
+            source.push_str(&format!(
+                "{family}NativeComplete {{ value: {} }},\n",
+                family.value_type()
+            ));
         }
         if self.has_canonical_step() {
             source.push_str("Canonical { target: data::compiled::CallTarget, point: data::compiled::CompiledCheckpoint, values: Box<CallValues> },\n");
@@ -603,9 +667,11 @@ impl<'codegen, 'graph, Graph: ExecutionGraphProfile> CallGroupCodegen<'codegen, 
                     .shape
                     .calls
                     .iter()
-                    .any(|call| matches!(call.output, CallLocal::Int(_)))
+                    .any(|call| matches!(call.output, CallLocal::Int(_) | CallLocal::Nullary(_)))
                 || function.shape.points.iter().any(|action| match action {
-                    CallPoint::Scalar(CallScalar::Integer(..))
+                    CallPoint::Terminator(CallTerminator::Match(_))
+                    | CallPoint::Scalar(CallScalar::CompoundField { .. })
+                    | CallPoint::Scalar(CallScalar::Integer(..))
                     | CallPoint::Scalar(CallScalar::IntList(IntListInstruction::Index {
                         ..
                     }))
@@ -965,6 +1031,14 @@ impl<'codegen, 'graph, Graph: ExecutionGraphProfile> CallGroupCodegen<'codegen, 
                     | CallLocal::NilFunction { type_, .. } => {
                         format!("result.with_type({})", Rust::expression(type_))
                     }
+                    CallLocal::Nullary(value) => {
+                        source.push_str(&format!(
+                            "let Some(result) = result.nullary(&{}) else {{\n",
+                            Rust::expression(value.constructors.as_slice())
+                        ));
+                        source.push_str(&format!("let {} = result;\nreturn FunctionState::Canonical {{ target: {}, point: {}, values: {} }};\n}};\n", local_name(&call.output), Rust::expression(&function.target), Rust::expression(&function.shape.checkpoints[call.point + 1]), values_with_result(&function.shape.locals[call.point + 1], false, Some(&call.output))));
+                        "result".to_owned()
+                    }
                     _ => "result".to_owned(),
                 };
                 source.push_str(&format!(
@@ -1031,11 +1105,16 @@ impl<'codegen, 'graph, Graph: ExecutionGraphProfile> CallGroupCodegen<'codegen, 
 
     fn write_return(&self, source: &mut Code, function: &CallFunction<'_, Graph>, index: usize) {
         let returning = &function.shape.returns[index];
-        source.push_str(&format!(
-            "FunctionStep::{} {{ value: {} }}\n",
+        let result = format!(
+            "FunctionStep::{} {{ value: {} }}",
             target_family(function.target),
-            local_expression(&returning.value, false)
-        ));
+            if matches!(returning.value, CallLocal::Nullary(_)) {
+                format!("{}.into()", local_expression(&returning.value, false))
+            } else {
+                local_expression(&returning.value, false)
+            }
+        );
+        source.push_str(&format!("{}\n", self.body_result(function, result)));
     }
 
     fn write_tail(&self, source: &mut Code, function: &CallFunction<'_, Graph>, index: usize) {
@@ -1044,11 +1123,19 @@ impl<'codegen, 'graph, Graph: ExecutionGraphProfile> CallGroupCodegen<'codegen, 
         let locals = &function.shape.locals[tail.point];
         if self.is_native(tail.target, &tail.args) {
             source.open(&format!(
-                "if ops.supports_string_native({}) {{\n",
+                "if ops.supports_{}_native({}) {{\n",
+                target_family(tail.target).name().to_lowercase(),
                 target_id(tail.target)
             ));
             source.push_str("*budget -= 1;\n");
-            self.write_native_request(source, tail.target, &tail.site, &tail.args, "None");
+            self.write_native_request(
+                source,
+                function,
+                tail.target,
+                &tail.site,
+                &tail.args,
+                "None",
+            );
             source.close("}\n");
         }
         if let Some(callee) = self.direct_callee(function.target, tail.target, &tail.args) {
@@ -1059,16 +1146,17 @@ impl<'codegen, 'graph, Graph: ExecutionGraphProfile> CallGroupCodegen<'codegen, 
                 .map(|(parameter, argument)| field_assignment(parameter, argument))
                 .collect::<Vec<_>>()
                 .join(", ");
-            source.push_str(&format!(
-                "FunctionStep::{}Tail {{ callee: FunctionState::{} {{ {fields} }} }}\n",
+            let result = format!(
+                "FunctionStep::{}Tail {{ callee: FunctionState::{} {{ {fields} }} }}",
                 target_family(function.target),
                 state_name(callee.target, callee.shape.entry())
-            ));
+            );
+            source.push_str(&format!("{}\n", self.body_result(function, result)));
             return;
         }
         source.push_str(&format!(
             "{}\n",
-            canonical(function.target, checkpoint, locals)
+            self.body_result(function, canonical(function.target, checkpoint, locals))
         ));
     }
 
@@ -1076,9 +1164,13 @@ impl<'codegen, 'graph, Graph: ExecutionGraphProfile> CallGroupCodegen<'codegen, 
         &self,
         source: &mut Code,
         function: &CallFunction<'_, Graph>,
+        point: usize,
         terminator: &CallTerminator<'_>,
     ) {
         match terminator {
+            CallTerminator::Match(matcher) => {
+                self.write_compound_match(source, function, point, matcher)
+            }
             CallTerminator::Jump(edge) => {
                 source.push_str(&format!("{}\n", self.edge(function, edge)))
             }
@@ -1124,14 +1216,21 @@ impl<'codegen, 'graph, Graph: ExecutionGraphProfile> CallGroupCodegen<'codegen, 
         let point = function.shape.starts[&edge.target().index()];
         let fields = function.shape.locals[point]
             .iter()
-            .zip(edge.args().iter().filter_map(CallLocal::inspect))
+            .zip(edge.args().iter().filter_map(|local| {
+                CallLocal::inspect(local).or_else(|| {
+                    function
+                        .shape
+                        .locals
+                        .iter()
+                        .flatten()
+                        .find(|value| value.canonical() == *local)
+                        .cloned()
+                })
+            }))
             .map(|(parameter, argument)| field_assignment(parameter, &argument))
             .collect::<Vec<_>>()
             .join(", ");
-        format!(
-            "{}State::Point{point} {{ {fields} }}",
-            function_state(function.target)
-        )
+        self.body_state(function, point, &format!(" {{ {fields} }}"))
     }
 
     fn write_call(
@@ -1151,11 +1250,13 @@ impl<'codegen, 'graph, Graph: ExecutionGraphProfile> CallGroupCodegen<'codegen, 
             CallContractTarget::Static(target) => {
                 if self.is_native(*target, &call.args) {
                     source.open(&format!(
-                        "if ops.supports_string_native({}) {{\n",
+                        "if ops.supports_{}_native({}) {{\n",
+                        target_family(*target).name().to_lowercase(),
                         target_id(*target)
                     ));
                     self.write_native_request(
                         source,
+                        function,
                         *target,
                         &call.site,
                         &call.args,
@@ -1171,37 +1272,41 @@ impl<'codegen, 'graph, Graph: ExecutionGraphProfile> CallGroupCodegen<'codegen, 
                         .map(|(parameter, argument)| field_assignment(parameter, argument))
                         .collect::<Vec<_>>()
                         .join(", ");
-                    source.push_str(&format!("FunctionStep::{family}Call {{ callee: FunctionState::{} {{ {assignments} }}, caller: {caller} }}\n", state_name(callee.target, callee.shape.entry())));
+                    let result = format!(
+                        "FunctionStep::{family}Call {{ callee: FunctionState::{} {{ {assignments} }}, caller: {caller} }}",
+                        state_name(callee.target, callee.shape.entry())
+                    );
+                    source.push_str(&format!("{}\n", self.body_result(function, result)));
                     return;
                 }
             }
             CallContractTarget::IntValue(local) => {
                 source.push_str(&format!("let callable = &int_function{};\nlet captures = callable.captures();\nlet target = callable.target();\n", local.0));
-                self.write_dynamic(source, call, CallFamily::Int, &caller);
+                self.write_dynamic(source, function, call, CallFamily::Int, &caller);
             }
             CallContractTarget::BoolValue(local) => {
                 source.push_str(&format!("let callable = &bool_function{};\nlet captures = callable.captures();\nlet target = callable.target();\n", local.0));
-                self.write_dynamic(source, call, CallFamily::Bool, &caller);
+                self.write_dynamic(source, function, call, CallFamily::Bool, &caller);
             }
             CallContractTarget::FloatValue(local) => {
                 source.push_str(&format!("let callable = &float_function{};\nlet captures = callable.captures();\nlet target = callable.target();\n", local.0));
-                self.write_dynamic(source, call, CallFamily::Float, &caller);
+                self.write_dynamic(source, function, call, CallFamily::Float, &caller);
             }
             CallContractTarget::StringValue(local) => {
                 source.push_str(&format!("let callable = &string_function{};\nlet captures = callable.captures();\nlet target = callable.target();\n", local.0));
-                self.write_dynamic(source, call, CallFamily::String, &caller);
+                self.write_dynamic(source, function, call, CallFamily::String, &caller);
             }
             CallContractTarget::BitArrayValue(local) => {
                 source.push_str(&format!("let callable = &bit_array_function{};\nlet captures = callable.captures();\nlet target = callable.target();\n", local.0));
-                self.write_dynamic(source, call, CallFamily::BitArray, &caller);
+                self.write_dynamic(source, function, call, CallFamily::BitArray, &caller);
             }
             CallContractTarget::UtfCodepointValue(local) => {
                 source.push_str(&format!("let callable = &utf_codepoint_function{};\nlet captures = callable.captures();\nlet target = callable.target();\n", local.0));
-                self.write_dynamic(source, call, CallFamily::UtfCodepoint, &caller);
+                self.write_dynamic(source, function, call, CallFamily::UtfCodepoint, &caller);
             }
             CallContractTarget::NilValue(local) => {
                 source.push_str(&format!("let callable = &nil_function{};\nlet captures = callable.captures();\nlet target = callable.target();\n", local.0));
-                self.write_dynamic(source, call, CallFamily::Nil, &caller);
+                self.write_dynamic(source, function, call, CallFamily::Nil, &caller);
             }
         };
         let id = match call.target {
@@ -1209,7 +1314,11 @@ impl<'codegen, 'graph, Graph: ExecutionGraphProfile> CallGroupCodegen<'codegen, 
             _ => "target".to_owned(),
         };
         if let Some(input) = Self::native_input(call) {
-            source.push_str(&format!("FunctionStep::{family}ScalarBridge {{ function: {id}, site: {}, input: {input}, caller: {caller} }}\n", Rust::expression(&call.site)));
+            let result = format!(
+                "FunctionStep::{family}ScalarBridge {{ function: {id}, site: {}, input: {input}, caller: {caller} }}",
+                Rust::expression(&call.site)
+            );
+            source.push_str(&format!("{}\n", self.body_result(function, result)));
             return;
         }
         let captures = if matches!(call.target, CallContractTarget::Static(_)) {
@@ -1217,12 +1326,18 @@ impl<'codegen, 'graph, Graph: ExecutionGraphProfile> CallGroupCodegen<'codegen, 
         } else {
             "Some(captures.retain())"
         };
-        source.push_str(&format!("FunctionStep::{family}Bridge {{ function: {id}, site: {}, arguments: CallArguments {{ values: {}, captures: {captures} }}, caller: {caller} }}\n", Rust::expression(&call.site), values(&call.args, true)));
+        let result = format!(
+            "FunctionStep::{family}Bridge {{ function: {id}, site: {}, arguments: CallArguments {{ values: {}, captures: {captures} }}, caller: {caller} }}",
+            Rust::expression(&call.site),
+            values(&call.args, true)
+        );
+        source.push_str(&format!("{}\n", self.body_result(function, result)));
     }
 
     fn write_dynamic(
         &self,
         source: &mut Code,
+        function: &CallFunction<'_, Graph>,
         call: &CallInvocation,
         family: CallFamily,
         caller: &str,
@@ -1242,7 +1357,11 @@ impl<'codegen, 'graph, Graph: ExecutionGraphProfile> CallGroupCodegen<'codegen, 
                 "if ops.belongs_to_execution(&captures) && let Some(callee) = calls_entry_{index}(target, &captures, {inputs}) {{\n"
             ));
             source.push_str(&format!(
-                "return FunctionStep::{family}Call {{ callee, caller: {caller} }};\n"
+                "return {};\n",
+                self.body_result(
+                    function,
+                    format!("FunctionStep::{family}Call {{ callee, caller: {caller} }}")
+                )
             ));
             source.close("}\n");
         }
@@ -1340,7 +1459,7 @@ impl CallableEntry {
     }
 }
 
-fn return_families() -> [CallFamily; 14] {
+fn return_families() -> [CallFamily; 16] {
     [
         CallFamily::Int,
         CallFamily::Bool,
@@ -1356,11 +1475,15 @@ fn return_families() -> [CallFamily; 14] {
         CallFamily::BitArrayFunction,
         CallFamily::UtfCodepointFunction,
         CallFamily::NilFunction,
+        CallFamily::Custom,
+        CallFamily::Tuple,
     ]
 }
 
 fn target_family(target: CallTarget) -> CallFamily {
     match target {
+        CallTarget::Custom(_) => CallFamily::Custom,
+        CallTarget::Tuple(_) => CallFamily::Tuple,
         CallTarget::Int(_) => CallFamily::Int,
         CallTarget::Bool(_) => CallFamily::Bool,
         CallTarget::IntFunction(_) => CallFamily::IntFunction,
@@ -1379,6 +1502,8 @@ fn target_family(target: CallTarget) -> CallFamily {
 }
 fn target_id(target: CallTarget) -> String {
     match target {
+        CallTarget::Custom(id) => Rust::expression(&id),
+        CallTarget::Tuple(id) => Rust::expression(&id),
         CallTarget::Int(id) => Rust::expression(&id),
         CallTarget::Bool(id) => Rust::expression(&id),
         CallTarget::IntFunction(id) => Rust::expression(&id),
@@ -1573,6 +1698,7 @@ fn test_expression(test: &CallTest) -> String {
 }
 fn write_scalar(source: &mut Code, instruction: &CallScalar<'_>) {
     match instruction {
+        CallScalar::CompoundField { .. } => {}
         CallScalar::Nullary {
             output,
             constructor,
@@ -1773,9 +1899,9 @@ mod tests {
     };
     use crate::plan::execution::graph::{
         ArithmeticNode, ArithmeticOperand, ArithmeticOutput, ArithmeticRegion, BitArrayListLocalId,
-        BitArrayLocalId, BoolLocalId, FloatListLocalId, FloatLocalId, IntListLocalId, IntLocalId,
-        NilListLocalId, NilLocalId, ParamLocal, ParamSlot, StringListLocalId, StringLocalId,
-        UtfCodepointLocalId, native_proof,
+        BitArrayLocalId, BlockId, BoolLocalId, FloatListLocalId, FloatLocalId, IntListLocalId,
+        IntLocalId, NilListLocalId, NilLocalId, ParamLocal, ParamSlot, StringListLocalId,
+        StringLocalId, UtfCodepointLocalId, native_proof,
     };
     use crate::plan::execution::type_::{
         BitArrayListTypeId, FloatListTypeId, IntListTypeId, ListTypeId, NilListTypeId,
@@ -2093,7 +2219,7 @@ pub fn main() { let calculate = prefix calculate("prefix", True) }
     }
 
     #[test]
-    fn mixed_string_and_scalar_native_groups_emit_native_delivery_in_both_drivers() {
+    fn mixed_string_and_scalar_native_groups_restore_the_caller_at_typed_delivery() {
         use crate::{
             HostProviderModule, HostProviderSet, HostedExecution, ModuleSource, PackageSource,
             StatelessHostProfile, StringValue,
@@ -2141,35 +2267,31 @@ pub fn main() { let _ = number(7) text("input") }
         let group = CallGroupCodegen::new(
             codegen.functions.iter().collect(),
             Vec::new(),
-            codegen.native_strings.clone(),
+            codegen.native_targets.clone(),
         );
         assert!(group.has_native());
         assert!(group.has_native_calls());
-        let mut ordinary = Code::default();
-        group.write_native_delivery(&mut ordinary, false);
-        let mut native = Code::default();
-        group.write_native_delivery(&mut native, true);
-        let common = r#"if let Some(result) = self.native_result.take() {
-    if let Some(caller) = self.native_caller.take().or_else(|| self.string_returns.pop()) {
-        self.active = Some(FunctionActive::Running(caller.small(result)));
-    } else {
-        self.integer_returns.clear();
-        self.string_returns.clear();
-        return RESULT;
+        let mut delivery = Code::default();
+        group.write_native_resume(&mut delivery, CallFamily::String);
+        assert_eq!(
+            delivery.as_str(),
+            r#"impl StringNativeExecution for FunctionExecution {
+    fn resume_native(mut self: Box<Self>, value: StringValue) -> Box<dyn CallExecution> {
+        let active = if let Some(caller) = self.native_caller.take().or_else(|| self.string_returns.pop()) {
+            caller.small(value)
+        } else {
+            FunctionState::StringNativeComplete { value }
+        };
+        self.active = Some(FunctionActive::Running(active));
+        self
     }
 }
-"#;
-        assert_eq!(
-            ordinary.as_str(),
-            common.replace(
-                "RESULT",
-                "CallProgress::Complete { output: CallOutput::String(result), execution: self }"
-            )
+"#
         );
-        assert_eq!(native.as_str(), common.replace("RESULT", "Ok(Some(CallProgress::Complete { output: CallOutput::String(result), execution: self }))"));
         let mut generated = Code::default();
         group.write_code(&mut generated);
-        assert!(generated.as_str().contains("Ok(Some(CallProgress::Complete { output: CallOutput::String(result), execution: self }))"));
+        assert!(generated.as_str().contains("Ok(Some(CallProgress::Complete { output: CallOutput::String(value), execution: self }))"));
+        assert!(!generated.as_str().contains("native_result"));
         let host = crate::execution_fixture::TestHost::default();
         let mut echo = Vec::new();
         assert_eq!(
@@ -2395,7 +2517,23 @@ pub fn main() { let _ = integer(7) let _ = boolean(True) Nil }
 
     #[test]
     fn call_target_ids_keep_the_exact_scalar_and_function_return_families() {
+        use crate::plan::execution::function::{CustomFunctionId, TupleFunctionId};
+        use crate::plan::execution::type_::{CustomTypeId, CustomValueShape, CustomValueShapeId};
         for (target, expected) in [
+            (
+                CallTarget::Custom(CustomFunctionId::new(
+                    2,
+                    CustomValueShape {
+                        type_id: CustomTypeId(3),
+                        shape_id: CustomValueShapeId(4),
+                    },
+                )),
+                "data::function::CustomFunctionId {\n    index: 2,\n    return_shape: data::type_::CustomValueShape {\n        type_id: data::type_::CustomTypeId(3),\n        shape_id: data::type_::CustomValueShapeId(4),\n    },\n}",
+            ),
+            (
+                CallTarget::Tuple(TupleFunctionId(2)),
+                "data::function::TupleFunctionId(2)",
+            ),
             (
                 CallTarget::Int(IntFunctionId(2)),
                 "data::function::IntFunctionId(2)",
@@ -2690,6 +2828,35 @@ pub fn main() { forward(7, True) }
             .find(|function| function.target == CallTarget::Int(IntFunctionId(2)))
             .unwrap();
         assert!(adjust.kernel.is_some());
+        let destinations = adjust
+            .shape
+            .points
+            .iter()
+            .filter_map(|point| match point {
+                CallPoint::Terminator(terminator) => Some(terminator),
+                _ => None,
+            })
+            .map(|terminator| {
+                adjust
+                    .shape
+                    .starts
+                    .iter()
+                    .filter_map(|(block, point)| {
+                        terminator.enters(BlockId(*block)).then_some(*point)
+                    })
+                    .collect::<BTreeSet<_>>()
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            destinations,
+            [
+                BTreeSet::from([1, 12]),
+                BTreeSet::from([3]),
+                BTreeSet::from([4, 6, 8]),
+                BTreeSet::from([9, 11]),
+                BTreeSet::from([3]),
+            ]
+        );
         let terminators = adjust
             .shape
             .points
@@ -2700,7 +2867,7 @@ pub fn main() { forward(7, True) }
             })
             .map(|terminator| {
                 let mut source = Code::default();
-                codegen.write_terminator(&mut source, adjust, terminator);
+                codegen.write_terminator(&mut source, adjust, 0, terminator);
                 source.as_str().to_owned()
             })
             .collect::<Vec<_>>();
@@ -2976,6 +3143,9 @@ pub fn main() { let calculate = forward(True) calculate() }
     #[test]
     fn all_scalar_and_callable_results_share_one_exhaustive_return_dispatch() {
         let source = r#"
+pub type Marker { Found }
+fn custom(value: Marker) { value }
+fn tuple(value: #(Int, Bool)) { value }
 fn integer(value: Int) { value }
 fn boolean(value: Bool) { value }
 fn floating(value: Float) { value }
@@ -3005,6 +3175,8 @@ pub fn main() {
   let _ = text("kept")
   let _ = bits(<<7:8>>)
   let _ = point(codepoint)
+  let _ = custom(Found)
+  let _ = tuple(#(42, True))
   nil(Nil)
 }
 "#;
@@ -3042,7 +3214,7 @@ pub fn main() {
                 .collect(),
             BTreeSet::new(),
         );
-        assert_eq!(group.return_families().len(), 14);
+        assert_eq!(group.return_families().len(), 16);
         let mut code = Code::default();
         group.write_code(&mut code);
         for family in [
@@ -3065,6 +3237,13 @@ pub fn main() {
                 "{family}"
             );
         }
+        assert!(code.as_str().contains("CallProgress::InterpretedCustom {"));
+        assert!(code.as_str().contains("CallProgress::InterpretedTuple {"));
+        assert!(
+            !code
+                .as_str()
+                .contains("_ => return CallProgress::Interpreted { target, point, values }")
+        );
         let mut echo = Vec::new();
         assert_eq!(
             crate::execution_fixture::run(&mut hosted, &mut (), &mut echo).unwrap(),
@@ -3379,6 +3558,67 @@ let region5 = -region4;
 let int2 = region0;
 let int3 = region5;
 "#
+        );
+    }
+
+    #[test]
+    fn scalar_emission_preserves_nullary_identity_float_arithmetic_and_prefix_byte_offsets() {
+        use super::super::string::StringOperation;
+        use super::shape::FloatOperation;
+        use crate::plan::execution::graph::CustomLocalId;
+        use crate::plan::execution::type_::{CustomConstructorId, CustomTypeId};
+
+        let mut code = Code::default();
+        write_scalar(
+            &mut code,
+            &CallScalar::Nullary {
+                output: CustomLocalId(2),
+                constructor: CustomConstructorId {
+                    type_id: CustomTypeId(3),
+                    index: 1,
+                },
+            },
+        );
+        assert_eq!(
+            code.as_str(),
+            "let nullary2 = CallNullary::new(data::type_::CustomConstructorId {\n    type_id: data::type_::CustomTypeId(3),\n    index: 1,\n});\n"
+        );
+        for (operation, expected) in [
+            (
+                FloatOperation::Add(FloatLocalId(1), FloatLocalId(2)),
+                "let float3 = float1 + float2;\n",
+            ),
+            (
+                FloatOperation::Subtract(FloatLocalId(1), FloatLocalId(2)),
+                "let float3 = float1 - float2;\n",
+            ),
+            (
+                FloatOperation::Multiply(FloatLocalId(1), FloatLocalId(2)),
+                "let float3 = float1 * float2;\n",
+            ),
+            (
+                FloatOperation::Divide(FloatLocalId(1), FloatLocalId(2)),
+                "let float3 = if float2 == 0.0 { 0.0 } else { float1 / float2 };\n",
+            ),
+        ] {
+            let mut code = Code::default();
+            write_scalar(&mut code, &CallScalar::Float(FloatLocalId(3), operation));
+            assert_eq!(code.as_str(), expected);
+        }
+        let mut code = Code::default();
+        write_scalar(
+            &mut code,
+            &CallScalar::String(
+                StringLocalId(1),
+                StringOperation::DropPrefix {
+                    value: StringLocalId(0),
+                    bytes: "λ".len(),
+                },
+            ),
+        );
+        assert_eq!(
+            code.as_str(),
+            "let string1 = string0.slice(2..string0.len());\n"
         );
     }
 

@@ -114,29 +114,48 @@ tests cover both pending work and shared completion with caller-borrowed state.
 These tests establish the [work execution contract](review-policy.md#execution-and-explicit-work-rules)
 independently of executor-specific examples.
 
-The `geam-core` prepared integration target compiles emitted Rust tables and
-loads them through the same evaluator as dynamic programs. Its maintained
-artifacts under `core/tests/fixtures/prepared` cover arithmetic, the complete
-value/function families, native conversions/callbacks, retained work, and
+The `geam-core` prepared integration targets compile emitted Rust tables and
+load them through the same evaluator as dynamic programs. Their source and
+provider fixtures under `core/tests/fixtures/prepared` cover arithmetic, the
+complete value/function families, native conversions/callbacks, retained work, and
 producer-authorized opaque custom sharing (including generic callable payloads
 and missing grants).
-Tests compare fresh preparation with these exact artifacts as well as checking
-explicit runtime values, diagnostics and owner isolation.
+The `prepare_fixtures` test support target writes complete Rust programs into
+the ignored `core/tests/fixtures/prepared/generated` directory. The compiled
+consumers check explicit runtime values, diagnostics, selected implementations
+and owner isolation.
 Emission owner tests keep exact, indented Rust expressions beside their inputs,
 including nested fields, arrays and escaped literals.
 
-After changing the artifact format, emission, or these fixtures, regenerate
-their Rust data through the public preparation API, then inspect the diff and
-rerun the compiled consumer tests:
+Run preparation before compiling core or macro tests, or running workspace
+Clippy, including on a fresh checkout. Run it again after changing the artifact
+format, emission, fixture source or provider declarations. Existing identical
+outputs are left untouched so repeated preparation does not change their mtime:
 
 ```sh
-cargo run --package geam-core --example prepare_fixtures --locked
-cargo test --package geam-core --features tokio --test prepared --locked
+cargo test --package geam-core --test prepare_fixtures --locked
+cargo test --package geam-core --package geam-macros --features geam-core/tokio --locked
 ```
 
-The generator does not include the old artifacts, so it can rebuild fixtures
+This target runs its preparation entry point without a test harness and is
+selected explicitly before the ordinary tests. Preparation provides compilation
+inputs; the consumer tests supply the runtime assertions.
+
+The generator does not include previous outputs, so it can rebuild fixtures
 whose previous representation no longer compiles. It does not update expected
-runtime results; those remain explicit assertions in the integration target.
+runtime results; those remain explicit assertions in the integration targets.
+Small formatter expectations remain exact Rust expressions beside their owner.
+Complete generated programs are compilation inputs, not checked-in output snapshots.
+
+Core/macros coverage collects preparation and compiled execution in one owner
+closure. After cleaning profiles, run the generator under instrumentation and
+retain its profiles when collecting the tests:
+
+```sh
+cargo llvm-cov clean --workspace
+cargo llvm-cov --no-report --package geam-core --test prepare_fixtures --features geam-core/tokio --locked
+cargo llvm-cov --no-report --package geam-core --package geam-macros --features geam-core/tokio --locked
+```
 
 Multi-module execution cases live under
 `tests/fixtures/execution/modules/<case>/`. The runner derives canonical module
@@ -309,8 +328,9 @@ compiler-visible execution data. Managed embedding consumers keep typed bindings
 Git and ignore their generated `src/geam_bindings/program.rs`. Run sync before
 check, formatting or compilation on a fresh checkout. The release-preparation
 workflow regenerates and checks the prepared example after changing dependency
-versions and locks, committing only the bindings. The exact reference artifacts
-under `core/tests/fixtures/prepared` remain tracked test expectations.
+versions and locks, committing only the bindings. The core prepared fixtures
+under `core/tests/fixtures/prepared` keep their source and provider declarations
+in Git and regenerate their compiled Rust before testing.
 
 The Prepared distribution fixtures run Cargo offline. Fetch both the workspace
 dependencies and the callable consumer's independently locked dependencies first:
@@ -940,6 +960,7 @@ cargo fetch --locked
 cargo fetch --manifest-path examples/embedding/callables/Cargo.toml --locked
 cargo fetch --manifest-path examples/provider/process_service/embedding/Cargo.toml --locked
 cargo fetch --manifest-path tests/fixtures/otp_service/embedding/Cargo.toml --locked
+cargo test --package geam-core --test prepare_fixtures --locked
 cargo test --workspace --locked
 ```
 
@@ -1030,10 +1051,11 @@ allowing JSON coverage to compensate for an uncovered stdlib line or region.
 Each closure explicitly runs `cargo llvm-cov clean --workspace` before
 collection so cached instrumentation from another package cannot contribute to
 its reports. This command clears artifacts; it does not execute additional
-packages. Only a later collection command in the same closure uses `--no-clean`
-to retain that closure's profiles.
+packages. Collection with `--no-report` retains the closure's profiles; a later
+test command that also produces a report uses `--no-clean` to retain them.
 
-The core and macro closure uses only those packages' owner tests. Both reports
+The core and macro closure prepares the compiled fixtures with instrumentation
+and then runs those packages' owner tests in the same collection. Both reports
 must independently reach 100% without relying on built-in or CLI consumers.
 It includes the optional Tokio adapter. The separate Acceptance `Host execution`
 matrix also exercises that adapter and the public resumable embedding boundary
@@ -1043,6 +1065,7 @@ Run the core and macro closure:
 
 ```sh
 cargo llvm-cov clean --workspace
+cargo llvm-cov --no-report --package geam-core --test prepare_fixtures --features geam-core/tokio --locked
 cargo llvm-cov --no-report --package geam-core --package geam-macros --features geam-core/tokio --locked
 cargo llvm-cov report --package geam-core --summary-only --fail-under-lines 100 --fail-under-regions 100
 cargo llvm-cov report --package geam-macros --summary-only --fail-under-lines 100 --fail-under-regions 100

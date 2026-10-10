@@ -52,7 +52,18 @@ use geam::embedding::HostedModuleBuilder;
 use geam::execution::TokioHost;
 use geam::gleam_stdlib::GleamStdlibRunState;
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+fn main() {
+    // Keep the generated consumer usable with the default Windows stack size.
+    std::thread::Builder::new()
+        .name("guard-constructor-consumer".to_owned())
+        .stack_size(1024 * 1024)
+        .spawn(|| run().unwrap())
+        .unwrap()
+        .join()
+        .unwrap();
+}
+
+fn run() -> Result<(), Box<dyn std::error::Error>> {
     let executor = tokio::runtime::Builder::new_current_thread().build()?;
     let host = TokioHost::new(executor.handle().clone());
     let mut executions = Vec::new();

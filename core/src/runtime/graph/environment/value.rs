@@ -13,8 +13,8 @@ use crate::plan::execution::graph::{
     UtfCodepointFunctionLocalId, UtfCodepointListLocalId, UtfCodepointLocalId,
 };
 use crate::runtime::compiled::calls::{
-    BitArrayCallable, BoolCallable, CallBitArray, CallInteger, CallOutput, FloatCallable,
-    IntCallable, NilCallable, StringCallable, UtfCodepointCallable,
+    BitArrayCallable, BoolCallable, CallBitArray, CallInteger, CallOutput, CallTuple,
+    FloatCallable, IntCallable, NilCallable, StringCallable, UtfCodepointCallable,
 };
 use crate::runtime::error::{ExecutionResult, InvariantError};
 use crate::runtime::evaluated::{
@@ -151,7 +151,14 @@ call_return!(
     |value| value
 );
 call_return!(BoolLocalId, bool, bools, Bool, Bool, |value| value);
-local_value!(TupleLocalId, Vec<EvaluatedValue>, tuples, Tuple);
+call_return!(
+    TupleLocalId,
+    Vec<EvaluatedValue>,
+    tuples,
+    Tuple,
+    Tuple,
+    |value: CallTuple| value.0
+);
 local_value!(
     ParameterListLocalId,
     ParameterListValueId,
@@ -260,6 +267,16 @@ local_value!(
 );
 
 impl GraphValue for CustomLocal {
+    fn from_call_output(output: CallOutput) -> ExecutionResult<Self::Evaluated> {
+        match output {
+            CallOutput::Custom(value) => Ok(value.0),
+            output => Err(InvariantError::FunctionReturnFamilyMismatch {
+                expected: Self::RETURN_FAMILY,
+                actual: output.family(),
+            }
+            .into()),
+        }
+    }
     type Evaluated = EvaluatedCustomValue;
     const RETURN_FAMILY: FunctionReturnFamily = FunctionReturnFamily::Custom;
 
@@ -427,9 +444,9 @@ mod tests {
         NilFunctionId, StringFunctionId, UtfCodepointFunctionId,
     };
     use crate::plan::execution::graph::{
-        BitArrayFunctionLocalId, BitArrayLocalId, BoolFunctionLocalId, BoolLocalId,
+        BitArrayFunctionLocalId, BitArrayLocalId, BoolFunctionLocalId, BoolLocalId, CustomLocal,
         FloatFunctionLocalId, FloatLocalId, IntFunctionLocalId, IntLocalId, NilFunctionLocalId,
-        NilLocalId, StringFunctionLocalId, StringLocalId, TupleLocalId,
+        NilLocalId, ParameterListLocalId, StringFunctionLocalId, StringLocalId, TupleLocalId,
         UtfCodepointFunctionLocalId, UtfCodepointLocalId,
     };
     use crate::plan::execution::type_::{FunctionType, ValueType};
@@ -440,7 +457,7 @@ mod tests {
     use crate::runtime::error::{ExecutionError, InvariantError};
     use crate::runtime::integer::IntegerValue;
     use crate::runtime::state::list::RuntimeListStorage;
-    use crate::runtime::{CaptureStorage, EvaluatedValue};
+    use crate::runtime::{CaptureStorage, EvaluatedCustomValue, EvaluatedValue};
     use crate::{BitArrayValue, StringValue, Value};
 
     #[test]
@@ -827,6 +844,8 @@ pub fn main() {
         wrong_family!(UtfCodepointFunctionLocalId, Function);
         wrong_family!(NilFunctionLocalId, Function);
         wrong_family!(TupleLocalId, Tuple);
+        wrong_family!(CustomLocal, Custom);
+        wrong_family!(ParameterListLocalId, List);
         assert_eq!(
             IntLocalId::from_call_output(CallOutput::Bool(true)).unwrap_err(),
             ExecutionError::from(InvariantError::FunctionReturnFamilyMismatch {
@@ -834,5 +853,28 @@ pub fn main() {
                 actual: FunctionReturnFamily::Bool,
             })
         );
+    }
+
+    #[test]
+    fn generated_custom_completion_retains_the_exact_constructor_and_owned_fields() {
+        use crate::plan::execution::type_::{CustomConstructorId, CustomTypeId};
+        use crate::runtime::compiled::calls::CallCustom;
+
+        let original = EvaluatedCustomValue::from_fields(
+            CustomConstructorId {
+                type_id: CustomTypeId(7),
+                index: 2,
+            },
+            vec![
+                EvaluatedValue::String("kept".into()),
+                EvaluatedValue::Int(42.into()),
+            ]
+            .into_boxed_slice(),
+        );
+        let alias = original.clone();
+        let actual =
+            CustomLocal::from_call_output(CallOutput::Custom(CallCustom(original))).unwrap();
+        assert_eq!(actual, alias);
+        assert_eq!(actual.fields().as_ptr(), alias.fields().as_ptr());
     }
 }

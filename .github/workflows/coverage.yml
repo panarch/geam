@@ -94,6 +94,9 @@ jobs:
       - name: Clean workspace coverage artifacts
         run: cargo llvm-cov clean --workspace
 
+      - name: Prepare compiled test fixtures with core owner coverage
+        run: cargo llvm-cov --no-report --package geam-core --test prepare_fixtures --features geam-core/tokio --locked
+
       - name: Run core and macro owner tests
         id: collect
         run: cargo llvm-cov --no-report --package geam-core --package geam-macros --features geam-core/tokio --locked

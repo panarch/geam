@@ -23,6 +23,7 @@ Run the default workspace suite with the pinned Rust, Gleam, and Erlang/OTP
 toolchains before submitting a repository-wide change:
 
 ```sh
+cargo test --package geam-core --test prepare_fixtures --locked
 cargo test --locked
 ```
 
