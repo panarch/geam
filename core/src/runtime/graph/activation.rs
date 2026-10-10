@@ -1649,7 +1649,7 @@ mod tests {
     }
 
     #[test]
-    fn generated_returns_preserve_the_fallible_mapper_on_entry_and_resume() {
+    fn generated_returns_preserve_fallible_mapping_and_canonical_handoff() {
         use crate::plan::execution::compiled::{CallTarget, FunctionCallsImplementation};
         use crate::plan::execution::function::FunctionReturnFamily;
         use crate::runtime::compiled::calls::{
@@ -1659,8 +1659,11 @@ mod tests {
 
         // This owner kernel performs just the graph's final Return. Full
         // generated execution and exact charges belong to compiled_calls.
-        struct ReturnOnly(i128);
-        impl CallExecution for ReturnOnly {
+        enum ReturnBoundary {
+            Complete(i128),
+            Canonical(i128),
+        }
+        impl CallExecution for ReturnBoundary {
             fn restart(&mut self, _: CallTarget, _: usize, _: CallInputs<'_>) -> bool {
                 false
             }
@@ -1670,10 +1673,22 @@ mod tests {
             }
 
             fn advance(self: Box<Self>, _: &mut CallOps<'_>, budget: &mut usize) -> CallProgress {
-                *budget -= 1;
-                CallProgress::Complete {
-                    output: CallOutput::Int(CallInteger(self.0.into())),
-                    execution: self,
+                match &*self {
+                    ReturnBoundary::Canonical(value) => CallProgress::Interpreted {
+                        target: CallTarget::Int(IntFunctionId(1)),
+                        point: CHOOSE_POINTS[2],
+                        values: Box::new(crate::runtime::compiled::calls::CallValues {
+                            ints: vec![7_i128.into(), (*value).into()],
+                            ..Default::default()
+                        }),
+                    },
+                    ReturnBoundary::Complete(value) => {
+                        *budget -= 1;
+                        CallProgress::Complete {
+                            output: CallOutput::Int(CallInteger((*value).into())),
+                            execution: self,
+                        }
+                    }
                 }
             }
         }
@@ -1688,7 +1703,7 @@ mod tests {
                     .reuse(CallTarget::Int(IntFunctionId(1)), 2, values)
                     .is_none()
             );
-            Some(Box::new(ReturnOnly(values.int(1)?)))
+            Some(Box::new(ReturnBoundary::Complete(values.int(1)?)))
         }
 
         with_source_plans!(NUMERIC_CHOOSE_SOURCE, plan, {
@@ -1749,7 +1764,7 @@ mod tests {
                             position,
                             exit: Box::new(continuation),
                         },
-                        execution: Box::new(ReturnOnly(8)),
+                        execution: Box::new(ReturnBoundary::Complete(8)),
                     }
                 } else {
                     Activation::Compiled {
@@ -1775,6 +1790,82 @@ mod tests {
                 assert_eq!(mapped.load(Ordering::SeqCst), 1);
                 assert!(echo.is_empty());
             }
+            // Generated completion spends the Return; canonical handoff keeps
+            // the same checkpoint and live values for the unpaid Return.
+            for (kernel, expected_remaining, expected_handoff) in [
+                (ReturnBoundary::Complete(8), 0, None),
+                (
+                    ReturnBoundary::Canonical(8),
+                    1,
+                    Some((CallTarget::Int(IntFunctionId(1)), CHOOSE_POINTS[2])),
+                ),
+            ] {
+                let mut inputs = RetainedValues::empty();
+                inputs.push_int(7_i64.into());
+                inputs.push_int(8_i64.into());
+                let mut position = GraphPosition::new(BlockId(1), inputs);
+                position.instruction = 1;
+                let root = Execution {
+                    active: Activation::FunctionCalls {
+                        frame: CallFrame {
+                            graph: body.block_graph().as_view(),
+                            position,
+                            exit: Box::new(RootExit),
+                        },
+                        execution: Box::new(kernel),
+                    },
+                };
+                let mut echo = Vec::new();
+                let mut state = RuntimeState::new(&mut echo);
+                let mut remaining = 0;
+                let mut progress = root
+                    .advance(plan, &mut state, &mut storage, &mut remaining)
+                    .unwrap();
+                assert_eq!(remaining, expected_remaining);
+                if let Progress::Continue(next) = progress {
+                    progress = next
+                        .advance(plan, &mut state, &mut storage, &mut 0)
+                        .unwrap();
+                }
+                let mut result = None;
+                if let Progress::CallComplete(CallOutput::Int(value)) = &progress {
+                    result = Some(value.0.clone().into_bigint());
+                }
+                let mut observed = None;
+                if let Progress::CallInterpreted {
+                    target,
+                    point,
+                    values,
+                } = progress
+                {
+                    observed = Some((target, point));
+                    assert_eq!(
+                        values
+                            .ints
+                            .iter()
+                            .map(|value| value.small())
+                            .collect::<Vec<_>>(),
+                        [Some(7), Some(8)]
+                    );
+                    let mut canonical =
+                        Execution::interpreted(body.block_graph().as_view(), point, values);
+                    let finished = loop {
+                        match canonical_progress(
+                            canonical
+                                .advance(plan, &mut state, &mut storage, &mut 0)
+                                .unwrap(),
+                        ) {
+                            CanonicalProgress::Continue(next) => canonical = next,
+                            CanonicalProgress::Complete(completed) => break completed,
+                        }
+                    };
+                    result = Some(returned_int(plan, IntFunctionId(1), finished));
+                }
+                assert_eq!(observed, expected_handoff);
+                assert_eq!(result, Some(BigInt::from(8)));
+                assert!(echo.is_empty());
+            }
+
             let environment = BlockEnvironment::from_retained(RetainedValues::empty());
             let input = CallInputs::new(&environment);
             assert!(

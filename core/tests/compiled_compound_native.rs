@@ -1,13 +1,18 @@
+#![cfg(feature = "tokio")]
+
 use geam_core::__prepared_support as data;
 
+#[expect(
+    dead_code,
+    reason = "preparation is used by the public fixture generator"
+)]
 #[path = "fixtures/prepared/compound_native_provider.rs"]
 mod provider;
 
 const GENERATED: data::HostedModuleArtifact =
-    include!("fixtures/prepared/compound_native_calls.rs");
+    include!("fixtures/prepared/generated/compound_native_calls.rs");
 static ARTIFACT: data::HostedModuleArtifact = GENERATED;
 
-#[cfg(feature = "tokio")]
 mod bounded_native {
     use super::{ARTIFACT, GENERATED, data};
     use data::compiled::calls::{
@@ -317,12 +322,11 @@ mod bounded_native {
     #[should_panic(expected = "the observed fixture row must own generated calls")]
     fn observation_rejects_a_numeric_kernel() {
         const NUMERIC: data::ModuleArtifact<data::profile::Plain> =
-            include!("fixtures/prepared/numeric.rs");
+            include!("fixtures/prepared/generated/numeric.rs");
         observed_body(&NUMERIC.program.compiled.ints[0].implementation);
     }
 }
 
-#[cfg(feature = "tokio")]
 #[test]
 fn generated_compound_loops_resume_at_zero_and_one_without_a_canonical_match() {
     use geam_core::embedding::{BigInt, FunctionDeclaration, StringValue};
@@ -548,19 +552,6 @@ fn generated_compound_loops_resume_at_zero_and_one_without_a_canonical_match() {
 }
 
 #[test]
-fn compound_calls_match_the_maintained_public_preparation() {
-    assert_eq!(
-        provider::prepare().emit_rust().trim(),
-        include_str!("fixtures/prepared/compound_native_calls.rs").trim()
-    );
-    let source = include_str!("fixtures/prepared/compound_native_calls.rs");
-    assert!(source.contains("impl CustomNativeExecution for FunctionExecution"));
-    assert!(source.contains("impl TupleNativeExecution for FunctionExecution"));
-    assert!(source.contains(".matches_type(&data::type_::ValueType::Tuple"));
-}
-
-#[cfg(feature = "tokio")]
-#[test]
 fn fieldless_native_refinements_and_nil_projections_keep_their_public_results() {
     use geam_core::embedding::{BigInt, FunctionDeclaration, StringValue};
     use geam_core::execution::TokioHost;
@@ -639,7 +630,6 @@ fn fieldless_native_refinements_and_nil_projections_keep_their_public_results() 
     }
 }
 
-#[cfg(feature = "tokio")]
 #[test]
 fn nested_compound_calls_keep_last_error_order_and_continuing_fallback() {
     use geam_core::embedding::{BigInt, FunctionDeclaration, StringValue};
@@ -694,7 +684,6 @@ fn nested_compound_calls_keep_last_error_order_and_continuing_fallback() {
     }
 }
 
-#[cfg(feature = "tokio")]
 #[test]
 fn literal_guard_fallthrough_alias_and_big_result_keep_the_source_behavior() {
     use geam_core::embedding::{BigInt, FunctionDeclaration};
@@ -756,7 +745,6 @@ fn literal_guard_fallthrough_alias_and_big_result_keep_the_source_behavior() {
     }
 }
 
-#[cfg(feature = "tokio")]
 #[test]
 fn tuple_returns_and_custom_field_projections_preserve_all_seven_leaf_values() {
     use geam_core::embedding::{BitArrayValue, FunctionDeclaration};
@@ -818,7 +806,6 @@ fn tuple_returns_and_custom_field_projections_preserve_all_seven_leaf_values() {
     }
 }
 
-#[cfg(feature = "tokio")]
 #[test]
 fn native_tuple_float_assertions_accept_signed_zero_and_preserve_refutable_failure() {
     use geam_core::embedding::{BitArrayValue, CallError, FunctionDeclaration};
@@ -880,7 +867,6 @@ fn native_tuple_float_assertions_accept_signed_zero_and_preserve_refutable_failu
     assert_eq!(prepared_results, source_results);
 }
 
-#[cfg(feature = "tokio")]
 #[test]
 fn native_errors_and_cancellation_preserve_the_completed_effect_prefix() {
     use geam_core::embedding::{BigInt, CallError, FunctionDeclaration, StringValue};
@@ -960,7 +946,6 @@ fn native_errors_and_cancellation_preserve_the_completed_effect_prefix() {
     );
 }
 
-#[cfg(feature = "tokio")]
 #[test]
 fn tuple_alias_escape_and_echo_handoff_do_not_replay_the_native_return() {
     use geam_core::embedding::{BigInt, FunctionDeclaration, StringValue};
@@ -1038,7 +1023,6 @@ fn tuple_alias_escape_and_echo_handoff_do_not_replay_the_native_return() {
     }
 }
 
-#[cfg(feature = "tokio")]
 #[test]
 fn foreign_nominal_constructors_and_a_source_panic_keep_the_native_boundary() {
     use geam_core::embedding::{BigInt, CallError, FunctionDeclaration, StringValue};
@@ -1117,7 +1101,6 @@ fn foreign_nominal_constructors_and_a_source_panic_keep_the_native_boundary() {
     assert_eq!(errors[0], errors[1]);
 }
 
-#[cfg(feature = "tokio")]
 #[test]
 fn rust_native_unwind_keeps_the_same_effect_prefix_and_closes_its_scope() {
     use geam_core::embedding::{BigInt, FunctionDeclaration, StringValue};

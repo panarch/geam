@@ -1,21 +1,24 @@
 use geam_core::__prepared_support as data;
+#[cfg(feature = "tokio")]
 use geam_core::compile_typed_host_program;
+#[cfg(feature = "tokio")]
 use geam_core::embedding::{
     BigInt, BitArrayValue, FunctionDeclaration, HostedModuleBuilder, List, StringValue,
 };
 
+#[expect(
+    dead_code,
+    reason = "preparation is used by the public fixture generator"
+)]
 #[path = "fixtures/prepared/native_loop_provider.rs"]
 mod native_loop_provider;
 
-const NATIVE_LOOP_DATA: data::HostedModuleArtifact = include!("fixtures/prepared/native_loop.rs");
+const NATIVE_LOOP_DATA: data::HostedModuleArtifact =
+    include!("fixtures/prepared/generated/native_loop.rs");
 static NATIVE_LOOP: data::HostedModuleArtifact = NATIVE_LOOP_DATA;
 
 #[test]
-fn public_generation_keeps_the_native_loop_and_existing_call_fallback() {
-    assert_eq!(
-        native_loop_provider::prepare().emit_rust(),
-        include_str!("fixtures/prepared/native_loop.rs").trim()
-    );
+fn compiled_native_loops_select_every_return_family_and_call_fallback() {
     let loops = &NATIVE_LOOP.module.program.compiled.native_loops;
     let expected_families = [3, 2, 2, 2, 1, 2, 1];
     let mut families = [0; 7];
@@ -121,9 +124,10 @@ fn graph_callees_and_artifacts_without_native_loops_keep_ordinary_execution() {
     use geam_core::StatelessHostProfile;
     use geam_core::execution::TokioHost;
 
-    static NUMERIC: data::HostedModuleArtifact = include!("fixtures/prepared/numeric_hosted.rs");
+    static NUMERIC: data::HostedModuleArtifact =
+        include!("fixtures/prepared/generated/numeric_hosted.rs");
     static STOP: data::HostedModuleArtifact =
-        include!("fixtures/prepared/string_checkpoint_hosted_stop.rs");
+        include!("fixtures/prepared/generated/string_checkpoint_hosted_stop.rs");
     assert!(NUMERIC.module.program.compiled.native_loops.is_empty());
     assert!(STOP.module.program.compiled.native_loops.is_empty());
     let runtime = tokio::runtime::Builder::new_current_thread()

@@ -8,40 +8,52 @@ use geam_core::{
 use std::error::Error;
 use std::path::Path;
 
-#[path = "../tests/fixtures/prepared/list_provider.rs"]
+#[path = "../fixtures/prepared/list_provider.rs"]
 mod list_provider;
 
-#[path = "../tests/fixtures/prepared/function_view_provider.rs"]
+#[path = "../fixtures/prepared/function_view_provider.rs"]
 mod function_view_provider;
-#[path = "../tests/fixtures/prepared/native_provider.rs"]
+#[path = "../fixtures/prepared/native_provider.rs"]
 mod native_provider;
-#[path = "../tests/support/work_fixture.rs"]
+#[path = "work_fixture.rs"]
 mod work_fixture;
-#[path = "../tests/fixtures/prepared/work_provider.rs"]
+#[path = "../fixtures/prepared/work_provider.rs"]
 mod work_provider;
 
-#[path = "../tests/fixtures/prepared/callable_declarations.rs"]
+#[path = "../fixtures/prepared/callable_declarations.rs"]
 mod callable_declarations;
 
-#[path = "../tests/fixtures/prepared/shared_provider.rs"]
+#[path = "../fixtures/prepared/shared_provider.rs"]
 mod shared_provider;
 
-#[path = "../tests/fixtures/prepared/opaque_provider.rs"]
+#[path = "../fixtures/prepared/opaque_provider.rs"]
 mod opaque_provider;
 
-#[path = "../tests/fixtures/prepared/function_value_provider.rs"]
+#[path = "../fixtures/prepared/function_value_provider.rs"]
 mod function_value_provider;
 
-#[path = "../tests/fixtures/prepared/native_loop_provider.rs"]
+#[expect(
+    dead_code,
+    reason = "the consumer alone uses the test serialization lock"
+)]
+#[path = "../fixtures/prepared/native_loop_provider.rs"]
 mod native_loop_provider;
 
-#[path = "../tests/fixtures/prepared/primitive_list_declarations.rs"]
+#[path = "../fixtures/prepared/primitive_list_declarations.rs"]
 mod primitive_list_declarations;
 
-#[path = "../tests/fixtures/prepared/string_native_provider.rs"]
+#[expect(
+    dead_code,
+    reason = "the consumer alone uses the dynamic source builder"
+)]
+#[path = "../fixtures/prepared/string_native_provider.rs"]
 mod string_native_provider;
 
-#[path = "../tests/fixtures/prepared/compound_native_provider.rs"]
+#[expect(
+    dead_code,
+    reason = "the consumer alone uses the dynamic source builder"
+)]
+#[path = "../fixtures/prepared/compound_native_provider.rs"]
 mod compound_native_provider;
 
 fn main() -> Result<(), Box<dyn Error>> {
@@ -54,7 +66,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             [ModuleSource::new(
                 "example",
                 "src/call_boundaries.gleam",
-                include_str!("../tests/fixtures/prepared/call_boundaries.gleam"),
+                include_str!("../fixtures/prepared/call_boundaries.gleam"),
             )],
         )],
         HostProviderSet::<StatelessHostProfile>::new([])?,
@@ -66,7 +78,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let arithmetic = geam_core::compile_typed_module(
         "example",
         "src/example.gleam",
-        include_str!("../tests/fixtures/prepared/arithmetic.gleam"),
+        include_str!("../fixtures/prepared/arithmetic.gleam"),
     )?;
     let (arithmetic, _) =
         ModuleBuilder::new(arithmetic)?.function(FunctionDeclaration::<(), BigInt>::new("main"))?;
@@ -74,7 +86,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let numeric_switch = geam_core::compile_typed_module(
         "example",
         "src/example.gleam",
-        include_str!("../tests/fixtures/prepared/numeric_switch.gleam"),
+        include_str!("../fixtures/prepared/numeric_switch.gleam"),
     )?;
     let (numeric_switch, _) = ModuleBuilder::new(numeric_switch)?
         .function(FunctionDeclaration::<(BigInt,), BigInt>::new("choose"))?;
@@ -82,7 +94,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let numeric = geam_core::compile_typed_module(
         "example",
         "src/example.gleam",
-        include_str!("../tests/fixtures/prepared/numeric.gleam"),
+        include_str!("../fixtures/prepared/numeric.gleam"),
     )?;
     let (mut numeric, _) = ModuleBuilder::new(numeric)?
         .function(FunctionDeclaration::<(BigInt, BigInt), BigInt>::new(
@@ -125,7 +137,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             [ModuleSource::new(
                 "example",
                 "src/example.gleam",
-                include_str!("../tests/fixtures/prepared/numeric.gleam"),
+                include_str!("../fixtures/prepared/numeric.gleam"),
             )],
         )],
         HostProviderSet::<work_provider::Profile>::new([])?,
@@ -152,7 +164,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             [ModuleSource::new(
                 "example",
                 "src/numeric_entry.gleam",
-                include_str!("../tests/fixtures/prepared/numeric_entry.gleam"),
+                include_str!("../fixtures/prepared/numeric_entry.gleam"),
             )],
         )],
         HostProviderSet::<work_provider::Profile>::new([])?,
@@ -163,7 +175,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let int_list = geam_core::compile_typed_module(
         "example",
         "src/example.gleam",
-        include_str!("../tests/fixtures/prepared/int_list.gleam"),
+        include_str!("../fixtures/prepared/int_list.gleam"),
     )?;
     let (mut int_list, _) = ModuleBuilder::new(int_list)?
         .function(FunctionDeclaration::<(List<BigInt>, BigInt), BigInt>::new(
@@ -207,7 +219,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             [ModuleSource::new(
                 "example",
                 "src/example.gleam",
-                include_str!("../tests/fixtures/prepared/int_list.gleam"),
+                include_str!("../fixtures/prepared/int_list.gleam"),
             )],
         )],
         HostProviderSet::<work_provider::Profile>::new([])?,
@@ -228,7 +240,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             [ModuleSource::new(
                 "example",
                 "src/example.gleam",
-                include_str!("../tests/fixtures/prepared/int_list.gleam"),
+                include_str!("../fixtures/prepared/int_list.gleam"),
             )],
         )],
         HostProviderSet::<work_provider::Profile>::new([])?,
@@ -245,7 +257,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             [ModuleSource::new(
                 "example",
                 "src/bit_array_entry.gleam",
-                include_str!("../tests/fixtures/prepared/bit_array_entry.gleam"),
+                include_str!("../fixtures/prepared/bit_array_entry.gleam"),
             )],
         )],
         HostProviderSet::<work_provider::Profile>::new([])?,
@@ -253,7 +265,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let bit_entry =
         PreparedHostedEntry::try_from_module_plan(geam_core::plan_host_program(bit_entry)?)?;
 
-    let construction_source = include_str!("../tests/fixtures/prepared/list_construction.gleam");
+    let construction_source = include_str!("../fixtures/prepared/list_construction.gleam");
     let construction =
         geam_core::compile_typed_module("example", "src/example.gleam", construction_source)?;
     let (mut construction, _) = ModuleBuilder::new(construction)?
@@ -332,7 +344,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             [ModuleSource::new(
                 "example",
                 "src/example.gleam",
-                include_str!("../tests/fixtures/prepared/list_native.gleam"),
+                include_str!("../fixtures/prepared/list_native.gleam"),
             )],
         )],
         list_provider::hosts(),
@@ -352,7 +364,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         [ModuleSource::new(
             "example",
             "src/example.gleam",
-            include_str!("../tests/fixtures/prepared/values.gleam"),
+            include_str!("../fixtures/prepared/values.gleam"),
         )],
     )?;
     let (mut values, _) = ModuleBuilder::from_program(values)?
@@ -363,12 +375,12 @@ fn main() -> Result<(), Box<dyn Error>> {
     let patterns = geam_core::compile_typed_module(
         "example",
         "src/example.gleam",
-        include_str!("../tests/fixtures/prepared/nested_patterns.gleam"),
+        include_str!("../fixtures/prepared/nested_patterns.gleam"),
     )?;
     let (patterns, _) = ModuleBuilder::new(patterns)?
         .function(FunctionDeclaration::<(), StringValue>::new("main"))?;
 
-    let interleaved_source = include_str!("../tests/fixtures/prepared/interleaved_patterns.gleam");
+    let interleaved_source = include_str!("../fixtures/prepared/interleaved_patterns.gleam");
     let interleaved_patterns =
         geam_core::compile_typed_module("example", "src/example.gleam", interleaved_source)?;
     let (mut interleaved_patterns, _) = ModuleBuilder::new(interleaved_patterns)?
@@ -399,7 +411,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let symbolic_patterns = geam_core::compile_typed_module(
         "example",
         "src/example.gleam",
-        include_str!("../tests/fixtures/prepared/symbolic_patterns.gleam"),
+        include_str!("../fixtures/prepared/symbolic_patterns.gleam"),
     )?;
     let (symbolic_patterns, _) = ModuleBuilder::new(symbolic_patterns)?
         .function(FunctionDeclaration::<(), ()>::new("main"))?;
@@ -407,7 +419,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let multi_subject = geam_core::compile_typed_module(
         "example",
         "src/example.gleam",
-        include_str!("../tests/fixtures/prepared/multi_subject_patterns.gleam"),
+        include_str!("../fixtures/prepared/multi_subject_patterns.gleam"),
     )?;
     let (multi_subject, _) = ModuleBuilder::new(multi_subject)?
         .function(FunctionDeclaration::<(), StringValue>::new("main"))?;
@@ -415,7 +427,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let sparse = geam_core::compile_typed_module(
         "example",
         "src/example.gleam",
-        include_str!("../tests/fixtures/prepared/sparse_patterns.gleam"),
+        include_str!("../fixtures/prepared/sparse_patterns.gleam"),
     )?;
     let (sparse, _) = ModuleBuilder::new(sparse)?
         .function(FunctionDeclaration::<(), StringValue>::new("main"))?;
@@ -423,7 +435,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let bit_arrays = geam_core::compile_typed_module(
         "example",
         "src/example.gleam",
-        include_str!("../tests/fixtures/prepared/bit_array_patterns.gleam"),
+        include_str!("../fixtures/prepared/bit_array_patterns.gleam"),
     )?;
     let (mut bit_arrays, _) = ModuleBuilder::new(bit_arrays)?.function(FunctionDeclaration::<
         (BitArrayValue, BigInt),
@@ -445,7 +457,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let bit_loops = geam_core::compile_typed_module(
         "example",
         "src/example.gleam",
-        include_str!("../tests/fixtures/prepared/bit_array_loops.gleam"),
+        include_str!("../fixtures/prepared/bit_array_loops.gleam"),
     )?;
     let (mut bit_loops, _) = ModuleBuilder::new(bit_loops)?
         .function(FunctionDeclaration::<(BitArrayValue, BigInt), BigInt>::new(
@@ -480,7 +492,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             [ModuleSource::new(
                 "main",
                 "src/main.gleam",
-                include_str!("../tests/fixtures/prepared/native.gleam"),
+                include_str!("../fixtures/prepared/native.gleam"),
             )],
         )],
         native_provider::hosts(),
@@ -501,7 +513,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         "list_callback",
     ))?;
 
-    let string_source = include_str!("../tests/fixtures/prepared/string_ranges.gleam");
+    let string_source = include_str!("../fixtures/prepared/string_ranges.gleam");
     let string_typed =
         geam_core::compile_typed_module("example", "src/example.gleam", string_source)?;
     let (mut string_ranges, _) =
@@ -600,7 +612,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         )?,
     )?)?;
 
-    let checkpoint_source = include_str!("../tests/fixtures/prepared/string_checkpoints.gleam");
+    let checkpoint_source = include_str!("../fixtures/prepared/string_checkpoints.gleam");
     let checkpoint_typed =
         geam_core::compile_typed_module("example", "src/example.gleam", checkpoint_source)?;
     let (checkpoint_assertion, _) =
@@ -637,7 +649,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let calls = geam_core::compile_typed_module(
         "example",
         "src/example.gleam",
-        include_str!("../tests/fixtures/prepared/function_calls.gleam"),
+        include_str!("../fixtures/prepared/function_calls.gleam"),
     )?;
     let (mut calls, _) = ModuleBuilder::new(calls)?
         .function(FunctionDeclaration::<(BigInt, BigInt), BigInt>::new(
@@ -676,7 +688,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         "bool_captures",
     ))?;
 
-    let list_calls_source = include_str!("../tests/fixtures/prepared/int_list_calls.gleam");
+    let list_calls_source = include_str!("../fixtures/prepared/int_list_calls.gleam");
     let list_calls = geam_core::compile_typed_host_program(
         "example",
         "example",
@@ -719,7 +731,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let static_list_calls = geam_core::compile_typed_module(
         "example",
         "src/int_list_static_calls.gleam",
-        include_str!("../tests/fixtures/prepared/int_list_static_calls.gleam"),
+        include_str!("../fixtures/prepared/int_list_static_calls.gleam"),
     )?;
     let (static_list_calls, _) =
         ModuleBuilder::new(static_list_calls)?
@@ -730,7 +742,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let boolean_calls = geam_core::compile_typed_module(
         "example",
         "src/example.gleam",
-        include_str!("../tests/fixtures/prepared/boolean_calls.gleam"),
+        include_str!("../fixtures/prepared/boolean_calls.gleam"),
     )?;
     let (boolean_calls, _) = ModuleBuilder::new(boolean_calls)?
         .function(FunctionDeclaration::<(bool,), bool>::new("flip"))?;
@@ -738,12 +750,12 @@ fn main() -> Result<(), Box<dyn Error>> {
     let boolean_bridge = geam_core::compile_typed_module(
         "example",
         "src/example.gleam",
-        include_str!("../tests/fixtures/prepared/boolean_bridge.gleam"),
+        include_str!("../fixtures/prepared/boolean_bridge.gleam"),
     )?;
     let (boolean_bridge, _) = ModuleBuilder::new(boolean_bridge)?
         .function(FunctionDeclaration::<(), bool>::new("verify"))?;
 
-    let custom_source = include_str!("../tests/fixtures/prepared/custom_scalars.gleam");
+    let custom_source = include_str!("../fixtures/prepared/custom_scalars.gleam");
     let custom =
         geam_core::compile_typed_module("example", "src/custom_scalars.gleam", custom_source)?;
     let (mut custom, _) = ModuleBuilder::new(custom)?
@@ -797,7 +809,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let custom_entry =
         PreparedHostedEntry::try_from_module_plan(geam_core::plan_host_program(custom_entry)?)?;
 
-    let custom_loop_source = include_str!("../tests/fixtures/prepared/custom_loop.gleam");
+    let custom_loop_source = include_str!("../fixtures/prepared/custom_loop.gleam");
     let custom_loop =
         geam_core::compile_typed_module("example", "src/custom_loop.gleam", custom_loop_source)?;
     let (mut custom_loop, _) = ModuleBuilder::new(custom_loop)?
@@ -845,7 +857,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let loop_boundaries = geam_core::compile_typed_module(
         "example",
         "src/custom_loop_boundaries.gleam",
-        include_str!("../tests/fixtures/prepared/custom_loop_boundaries.gleam"),
+        include_str!("../fixtures/prepared/custom_loop_boundaries.gleam"),
     )?;
     let (mut loop_boundaries, _) = ModuleBuilder::new(loop_boundaries)?
         .function(FunctionDeclaration::<(BigInt, bool, bool, BigInt), BigInt>::new("integer"))?;
@@ -860,7 +872,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             [ModuleSource::new(
                 "example",
                 "src/custom_loop_boundaries.gleam",
-                include_str!("../tests/fixtures/prepared/custom_loop_boundaries.gleam"),
+                include_str!("../fixtures/prepared/custom_loop_boundaries.gleam"),
             )],
         )],
         HostProviderSet::<work_provider::Profile>::new([])?,
@@ -869,7 +881,8 @@ fn main() -> Result<(), Box<dyn Error>> {
         .function(FunctionDeclaration::<(BigInt, bool, bool, BigInt), BigInt>::new("integer"))?;
     hosted_boundaries.function(FunctionDeclaration::<(BigInt,), bool>::new("boolean"))?;
 
-    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/prepared");
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/prepared/generated");
+    std::fs::create_dir_all(&root)?;
     for (name, data) in [
         (
             "compound_native_calls.rs",
@@ -1001,7 +1014,15 @@ fn main() -> Result<(), Box<dyn Error>> {
         ),
     ] {
         let destination = root.join(name);
-        std::fs::write(&destination, format!("{data}\n"))?;
+        let data = format!("{data}\n");
+        let changed = match std::fs::read(&destination) {
+            Ok(existing) => existing != data.as_bytes(),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => true,
+            Err(error) => return Err(error.into()),
+        };
+        if changed {
+            std::fs::write(&destination, data)?;
+        }
         println!("{}", destination.display());
     }
     Ok(())

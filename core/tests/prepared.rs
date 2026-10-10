@@ -5,6 +5,8 @@ use data::compiled::{
     StringImplementation,
 };
 use geam_core::__prepared_support as data;
+#[cfg(feature = "tokio")]
+use geam_core::PackageSource;
 use geam_core::embedding::{
     BigInt, BitArrayValue, CallError, FunctionDeclaration, HostedModuleBuilder, List,
     ModuleBuilder, StringValue,
@@ -12,76 +14,62 @@ use geam_core::embedding::{
 #[cfg(feature = "tokio")]
 use geam_core::execution::TokioHost;
 use geam_core::{
-    EchoOutput, ExecutionError, HostProviderSet, ModuleSource, PackageSource, PanicKind,
-    PanicMessage, StatelessHostProfile, compile_typed_host_program, compile_typed_module,
-    compile_typed_program,
+    EchoOutput, ExecutionError, HostProviderSet, ModuleSource, PanicKind, PanicMessage,
+    StatelessHostProfile, compile_typed_host_program, compile_typed_module, compile_typed_program,
 };
 use std::convert::Infallible;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-static ARITHMETIC: data::ModuleArtifact<Infallible> = include!("fixtures/prepared/arithmetic.rs");
+static ARITHMETIC: data::ModuleArtifact<Infallible> =
+    include!("fixtures/prepared/generated/arithmetic.rs");
 
-static NUMERIC: data::ModuleArtifact<Infallible> = include!("fixtures/prepared/numeric.rs");
-static NUMERIC_HOSTED: data::HostedModuleArtifact = include!("fixtures/prepared/numeric_hosted.rs");
-static NUMERIC_ENTRY: data::HostedEntryArtifact = include!("fixtures/prepared/numeric_entry.rs");
+static NUMERIC: data::ModuleArtifact<Infallible> =
+    include!("fixtures/prepared/generated/numeric.rs");
+static NUMERIC_HOSTED: data::HostedModuleArtifact =
+    include!("fixtures/prepared/generated/numeric_hosted.rs");
+static NUMERIC_ENTRY: data::HostedEntryArtifact =
+    include!("fixtures/prepared/generated/numeric_entry.rs");
 static NUMERIC_SWITCH: data::ModuleArtifact<Infallible> =
-    include!("fixtures/prepared/numeric_switch.rs");
+    include!("fixtures/prepared/generated/numeric_switch.rs");
 static STRING_RANGES: data::ModuleArtifact<Infallible> =
-    include!("fixtures/prepared/string_ranges.rs");
+    include!("fixtures/prepared/generated/string_ranges.rs");
+#[cfg(feature = "tokio")]
 static STRING_RANGES_HOSTED: data::HostedModuleArtifact =
-    include!("fixtures/prepared/string_ranges_hosted.rs");
+    include!("fixtures/prepared/generated/string_ranges_hosted.rs");
+#[cfg(feature = "tokio")]
 static STRING_RANGES_ENTRY: data::HostedEntryArtifact =
-    include!("fixtures/prepared/string_ranges_entry.rs");
+    include!("fixtures/prepared/generated/string_ranges_entry.rs");
 static STRING_CHECKPOINT_ASSERTION: data::ModuleArtifact<Infallible> =
-    include!("fixtures/prepared/string_checkpoint_assertion.rs");
+    include!("fixtures/prepared/generated/string_checkpoint_assertion.rs");
 static STRING_CHECKPOINT_STOPS: data::ModuleArtifact<Infallible> =
-    include!("fixtures/prepared/string_checkpoint_stops.rs");
+    include!("fixtures/prepared/generated/string_checkpoint_stops.rs");
 static STRING_CHECKPOINT_HOSTED_STOP: data::HostedModuleArtifact =
-    include!("fixtures/prepared/string_checkpoint_hosted_stop.rs");
-static INT_LIST: data::ModuleArtifact<Infallible> = include!("fixtures/prepared/int_list.rs");
+    include!("fixtures/prepared/generated/string_checkpoint_hosted_stop.rs");
+static INT_LIST: data::ModuleArtifact<Infallible> =
+    include!("fixtures/prepared/generated/int_list.rs");
+#[cfg(feature = "tokio")]
 static INT_LIST_HOSTED: data::HostedModuleArtifact =
-    include!("fixtures/prepared/int_list_hosted.rs");
-static INT_LIST_ENTRY: data::HostedEntryArtifact = include!("fixtures/prepared/int_list_entry.rs");
+    include!("fixtures/prepared/generated/int_list_hosted.rs");
+#[cfg(feature = "tokio")]
+static INT_LIST_ENTRY: data::HostedEntryArtifact =
+    include!("fixtures/prepared/generated/int_list_entry.rs");
 static LIST_CONSTRUCTION: data::ModuleArtifact<Infallible> =
-    include!("fixtures/prepared/list_construction.rs");
+    include!("fixtures/prepared/generated/list_construction.rs");
+#[cfg(feature = "tokio")]
 static LIST_CONSTRUCTION_ENTRY: data::HostedEntryArtifact =
-    include!("fixtures/prepared/list_construction_entry.rs");
+    include!("fixtures/prepared/generated/list_construction_entry.rs");
+#[cfg(feature = "tokio")]
 static LIST_CONSTRUCTION_HOSTED: data::HostedModuleArtifact =
-    include!("fixtures/prepared/list_construction_hosted.rs");
-static LIST_NATIVE: data::HostedModuleArtifact = include!("fixtures/prepared/list_native.rs");
+    include!("fixtures/prepared/generated/list_construction_hosted.rs");
+#[cfg(feature = "tokio")]
+static LIST_NATIVE: data::HostedModuleArtifact =
+    include!("fixtures/prepared/generated/list_native.rs");
 static CALL_BOUNDARIES: data::HostedModuleArtifact =
-    include!("fixtures/prepared/call_boundaries.rs");
+    include!("fixtures/prepared/generated/call_boundaries.rs");
 
 #[test]
-fn call_boundaries_prepare_the_exact_maintained_artifact() {
-    let source = include_str!("fixtures/prepared/call_boundaries.gleam");
-    let typed = compile_typed_host_program(
-        "example",
-        "example",
-        [PackageSource::new(
-            "example",
-            Vec::<String>::new(),
-            [ModuleSource::new(
-                "example",
-                "src/call_boundaries.gleam",
-                source,
-            )],
-        )],
-        HostProviderSet::<StatelessHostProfile>::new([]).unwrap(),
-    )
-    .unwrap();
-    let (mut bindings, _) = HostedModuleBuilder::new(typed)
-        .unwrap()
-        .function(FunctionDeclaration::<(bool,), StringValue>::new("choose"))
-        .unwrap();
-    bindings
-        .function(FunctionDeclaration::<(), BigInt>::new("wide"))
-        .unwrap();
-    assert_eq!(
-        bindings.prepare().unwrap().emit_rust(),
-        include_str!("fixtures/prepared/call_boundaries.rs").trim()
-    );
+fn prepared_call_boundaries_admit_the_selected_signatures() {
     let mut bindings = CALL_BOUNDARIES
         .load(HostProviderSet::<StatelessHostProfile>::new([]).unwrap())
         .unwrap();
@@ -138,7 +126,7 @@ fn prepared_calls_preserve_tail_only_and_wide_integer_boundaries() {
 }
 
 #[test]
-fn computed_boolean_calls_prepare_all_native_arithmetic_nodes() {
+fn computed_boolean_calls_preserve_arithmetic_results() {
     let source = r#"
 fn identity(value: Bool) { value }
 pub fn calculate(input: Int, divisor: Int) {
@@ -152,20 +140,6 @@ pub fn calculate(input: Int, divisor: Int) {
   !checked
 }
 "#;
-    let typed = compile_typed_module("example", "src/example.gleam", source).unwrap();
-    let (bindings, _) = ModuleBuilder::new(typed)
-        .unwrap()
-        .function(FunctionDeclaration::<(BigInt, BigInt), bool>::new(
-            "calculate",
-        ))
-        .unwrap();
-    let generated = bindings.prepare().emit_rust();
-    for operation in [" + ", " - ", " * ", " / ", " % ", "= -region"] {
-        assert!(
-            generated.contains(operation),
-            "missing emitted operation: {operation}"
-        );
-    }
     let typed = compile_typed_module("example", "src/example.gleam", source).unwrap();
     let (bindings, calculate) = ModuleBuilder::new(typed)
         .unwrap()
@@ -194,56 +168,7 @@ pub fn calculate(input: Int, divisor: Int) {
 }
 
 #[test]
-fn string_checkpoint_generation_matches_assertion_plain_stop_and_hosted_list_artifacts() {
-    let source = include_str!("fixtures/prepared/string_checkpoints.gleam");
-    let typed = compile_typed_module("example", "src/example.gleam", source).unwrap();
-    let (bindings, _) = ModuleBuilder::new(typed)
-        .unwrap()
-        .function(FunctionDeclaration::<(StringValue, BigInt), BigInt>::new(
-            "after_step",
-        ))
-        .unwrap();
-    assert_eq!(
-        bindings.prepare().emit_rust(),
-        include_str!("fixtures/prepared/string_checkpoint_assertion.rs").trim()
-    );
-
-    let typed = compile_typed_module("example", "src/example.gleam", source).unwrap();
-    let (mut bindings, _) = ModuleBuilder::new(typed)
-        .unwrap()
-        .function(FunctionDeclaration::<(StringValue,), BigInt>::new("stop"))
-        .unwrap();
-    bindings
-        .function(FunctionDeclaration::<(StringValue,), List<BigInt>>::new(
-            "list_stop",
-        ))
-        .unwrap();
-    assert_eq!(
-        bindings.prepare().emit_rust(),
-        include_str!("fixtures/prepared/string_checkpoint_stops.rs").trim()
-    );
-
-    let typed = compile_typed_host_program(
-        "example",
-        "example",
-        [PackageSource::new(
-            "example",
-            Vec::<String>::new(),
-            [ModuleSource::new("example", "src/example.gleam", source)],
-        )],
-        HostProviderSet::<StatelessHostProfile>::new([]).unwrap(),
-    )
-    .unwrap();
-    let (bindings, _) = HostedModuleBuilder::new(typed)
-        .unwrap()
-        .function(FunctionDeclaration::<(StringValue,), List<BigInt>>::new(
-            "list_stop",
-        ))
-        .unwrap();
-    assert_eq!(
-        bindings.prepare().unwrap().emit_rust(),
-        include_str!("fixtures/prepared/string_checkpoint_hosted_stop.rs").trim()
-    );
+fn prepared_string_checkpoints_admit_assertion_plain_and_hosted_stops() {
     assert!(
         STRING_CHECKPOINT_HOSTED_STOP
             .module
@@ -527,7 +452,8 @@ macro_rules! string_functions {
 
 #[test]
 fn generated_string_kernel_and_graph_accept_the_same_raw_suffixes() {
-    const BASE: data::ModuleArtifact<Infallible> = include!("fixtures/prepared/string_ranges.rs");
+    const BASE: data::ModuleArtifact<Infallible> =
+        include!("fixtures/prepared/generated/string_ranges.rs");
     let mut artifact = BASE;
     let target = &artifact.program.compiled.ints[2];
     assert_eq!(target.function.0, 2);
@@ -633,41 +559,6 @@ fn observe_raw_string_aliases(
 #[test]
 fn generated_string_ranges_match_dynamic_sources_aliases_guards_literals_and_big_fallbacks() {
     let source = include_str!("fixtures/prepared/string_ranges.gleam");
-    let typed = compile_typed_module("example", "src/example.gleam", source).unwrap();
-    let (mut bindings, count) = ModuleBuilder::new(typed)
-        .unwrap()
-        .function(FunctionDeclaration::<(StringValue, BigInt), BigInt>::new(
-            "count",
-        ))
-        .unwrap();
-    let _ = string_functions!(bindings, count);
-    bindings
-        .function(FunctionDeclaration::<(StringValue,), BigInt>::new("spin"))
-        .unwrap();
-    bindings
-        .function(FunctionDeclaration::<(), BigInt>::new("main"))
-        .unwrap();
-    for name in ["assert_literal", "assert_prefix"] {
-        bindings
-            .function(FunctionDeclaration::<(StringValue,), BigInt>::new(name))
-            .unwrap();
-    }
-    bindings
-        .function(FunctionDeclaration::<(StringValue, BigInt), BigInt>::new(
-            "assert_suffix",
-        ))
-        .unwrap();
-    bindings
-        .function(
-            FunctionDeclaration::<(BitArrayValue, bool, bool), BigInt>::new(
-                "bits_with_boolean_guard",
-            ),
-        )
-        .unwrap();
-    assert_eq!(
-        bindings.prepare().emit_rust(),
-        include_str!("fixtures/prepared/string_ranges.rs").trim()
-    );
     assert_eq!(
         STRING_RANGES
             .program
@@ -985,7 +876,7 @@ fn string_compiled_links_reject_a_universal_foreign_match_before_execution() {
     // String leaf contract only supports literal and prefix assertions.
     // Keep the no-binding assertion's real headers, slots and exits intact.
     const ARTIFACT: data::ModuleArtifact<Infallible> =
-        include!("fixtures/prepared/string_ranges.rs");
+        include!("fixtures/prepared/generated/string_ranges.rs");
     let mut artifact = ARTIFACT;
     let functions = STRING_RANGES
         .program
@@ -1038,60 +929,9 @@ fn string_compiled_links_reject_a_universal_foreign_match_before_execution() {
     );
 }
 
+#[cfg(feature = "tokio")]
 #[test]
 fn string_ranges_hosted_and_standalone_use_the_same_generated_links() {
-    let source = include_str!("fixtures/prepared/string_ranges.gleam");
-    let typed = compile_typed_host_program(
-        "example",
-        "example",
-        [PackageSource::new(
-            "example",
-            Vec::<String>::new(),
-            [ModuleSource::new("example", "src/example.gleam", source)],
-        )],
-        HostProviderSet::<work_provider::Profile>::new([]).unwrap(),
-    )
-    .unwrap();
-    let (mut bindings, _) = HostedModuleBuilder::new(typed)
-        .unwrap()
-        .function(FunctionDeclaration::<(StringValue, BigInt), BigInt>::new(
-            "count",
-        ))
-        .unwrap();
-    bindings
-        .function(FunctionDeclaration::<
-            (StringValue, StringValue, bool, BigInt),
-            BigInt,
-        >::new("aliases"))
-        .unwrap();
-    bindings
-        .function(FunctionDeclaration::<(StringValue, StringValue, bool), bool>::new("same"))
-        .unwrap();
-    bindings
-        .function(FunctionDeclaration::<(StringValue,), bool>::new(
-            "empty_prefix",
-        ))
-        .unwrap();
-    bindings
-        .function(FunctionDeclaration::<(StringValue, BigInt), BigInt>::new(
-            "asserted",
-        ))
-        .unwrap();
-    bindings
-        .function(FunctionDeclaration::<
-            (StringValue, BigInt),
-            (StringValue, BigInt, List<BigInt>, bool),
-        >::new("caller"))
-        .unwrap();
-    bindings
-        .function(FunctionDeclaration::<(StringValue,), BigInt>::new(
-            "running",
-        ))
-        .unwrap();
-    assert_eq!(
-        bindings.prepare().unwrap().emit_rust(),
-        include_str!("fixtures/prepared/string_ranges_hosted.rs").trim()
-    );
     let mut bindings = STRING_RANGES_HOSTED
         .load(HostProviderSet::<work_provider::Profile>::new([]).unwrap())
         .unwrap();
@@ -1102,35 +942,32 @@ fn string_ranges_hosted_and_standalone_use_the_same_generated_links() {
         .unwrap();
     let mut module = bindings.seal();
     assert_eq!(STRING_RANGES_ENTRY.program.compiled.ints.len(), 2);
-    #[cfg(feature = "tokio")]
-    {
-        let runtime = tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .unwrap();
-        let host = TokioHost::new(runtime.handle().clone());
-        let mut entry = STRING_RANGES_ENTRY
-            .load(HostProviderSet::<work_provider::Profile>::new([]).unwrap())
-            .unwrap();
-        let mut echo = Vec::new();
-        assert_eq!(
-            runtime
-                .block_on(
-                    module.with_execution(&host, &mut (), &mut echo, async |scope| {
-                        scope.call(&count, ("λλλ".into(), 4.into())).await
-                    })
-                )
-                .unwrap()
-                .try_into_value()
-                .unwrap()
-                .unwrap(),
-            BigInt::from(7)
-        );
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    let host = TokioHost::new(runtime.handle().clone());
+    let mut entry = STRING_RANGES_ENTRY
+        .load(HostProviderSet::<work_provider::Profile>::new([]).unwrap())
+        .unwrap();
+    let mut echo = Vec::new();
+    assert_eq!(
         runtime
-            .block_on(entry.run(&host, &mut (), &mut echo))
-            .unwrap();
-        assert!(echo.is_empty());
-    }
+            .block_on(
+                module.with_execution(&host, &mut (), &mut echo, async |scope| {
+                    scope.call(&count, ("λλλ".into(), 4.into())).await
+                })
+            )
+            .unwrap()
+            .try_into_value()
+            .unwrap()
+            .unwrap(),
+        BigInt::from(7)
+    );
+    runtime
+        .block_on(entry.run(&host, &mut (), &mut echo))
+        .unwrap();
+    assert!(echo.is_empty());
 }
 
 #[cfg(feature = "tokio")]
@@ -1290,7 +1127,8 @@ fn traced_string_count(
 
 #[test]
 fn generated_string_checkpoints_restore_each_completed_prefix_and_never_replay_overflow() {
-    const BASE: data::ModuleArtifact<Infallible> = include!("fixtures/prepared/string_ranges.rs");
+    const BASE: data::ModuleArtifact<Infallible> =
+        include!("fixtures/prepared/generated/string_ranges.rs");
     let mut artifact = BASE;
     let target = artifact.entries.ints[0].function;
     let function = artifact
@@ -1452,6 +1290,7 @@ fn generated_string_checkpoints_restore_each_completed_prefix_and_never_replay_o
         .unwrap();
 }
 
+#[cfg(feature = "tokio")]
 #[path = "fixtures/prepared/list_provider.rs"]
 mod list_provider;
 
@@ -1508,16 +1347,6 @@ macro_rules! construction_functions {
 #[test]
 fn list_construction_and_tail_return_match_dynamic_execution_including_late_big_values() {
     let source = include_str!("fixtures/prepared/list_construction.gleam");
-    let typed = compile_typed_module("example", "src/example.gleam", source).unwrap();
-    let (mut bindings, empty) = ModuleBuilder::new(typed)
-        .unwrap()
-        .function(FunctionDeclaration::<(), List<BigInt>>::new("empty"))
-        .unwrap();
-    let _ = construction_functions!(bindings, empty);
-    assert_eq!(
-        bindings.prepare().emit_rust(),
-        include_str!("fixtures/prepared/list_construction.rs").trim()
-    );
     let kinds = LIST_CONSTRUCTION
         .program
         .compiled
@@ -1973,77 +1802,6 @@ fn generated_list_tail_calls_preserve_native_wait_result_identity_and_failure_or
     }
 }
 
-#[test]
-fn list_construction_hosted_artifacts_match_the_public_preparation_pipeline() {
-    let typed = compile_typed_host_program(
-        "example",
-        "example",
-        [PackageSource::new(
-            "example",
-            Vec::<String>::new(),
-            [ModuleSource::new(
-                "example",
-                "src/example.gleam",
-                include_str!("fixtures/prepared/list_construction.gleam"),
-            )],
-        )],
-        HostProviderSet::<work_provider::Profile>::new([]).unwrap(),
-    )
-    .unwrap();
-    let (mut bindings, _) = HostedModuleBuilder::new(typed)
-        .unwrap()
-        .function(FunctionDeclaration::<
-            (List<BigInt>, BigInt, StringValue),
-            (StringValue, BigInt, List<BigInt>, List<BigInt>),
-        >::new("caller"))
-        .unwrap();
-    bindings
-        .function(FunctionDeclaration::<(), List<BigInt>>::new("running"))
-        .unwrap();
-    bindings
-        .function(FunctionDeclaration::<(bool,), List<BigInt>>::new(
-            "numeric_tail",
-        ))
-        .unwrap();
-    assert_eq!(
-        bindings.prepare().unwrap().emit_rust(),
-        include_str!("fixtures/prepared/list_construction_hosted.rs").trim()
-    );
-
-    let typed = compile_typed_host_program(
-        "example",
-        "example",
-        [PackageSource::new(
-            "example",
-            Vec::<String>::new(),
-            [ModuleSource::new(
-                "example",
-                "src/example.gleam",
-                include_str!("fixtures/prepared/list_native.gleam"),
-            )],
-        )],
-        list_provider::hosts(),
-    )
-    .unwrap();
-    let (mut bindings, _) = HostedModuleBuilder::new(typed)
-        .unwrap()
-        .function(FunctionDeclaration::<
-            (BigInt, List<BigInt>, bool),
-            List<BigInt>,
-        >::new("native_tail"))
-        .unwrap();
-    bindings
-        .function(FunctionDeclaration::<
-            (BigInt, List<BigInt>, StringValue, bool),
-            (StringValue, BigInt, List<BigInt>, List<BigInt>),
-        >::new("caller"))
-        .unwrap();
-    assert_eq!(
-        bindings.prepare().unwrap().emit_rust(),
-        include_str!("fixtures/prepared/list_native.rs").trim()
-    );
-}
-
 macro_rules! int_list_functions {
     ($bindings:ident, $count:expr) => {
         (
@@ -2104,20 +1862,6 @@ macro_rules! int_list_functions {
 fn int_list_generated_execution_preserves_patterns_big_values_edges_and_captures() {
     use geam_core::{PanicDetails, PanicKind, Value};
     let source = include_str!("fixtures/prepared/int_list.gleam");
-    let typed = compile_typed_module("example", "src/example.gleam", source).unwrap();
-    let (mut bindings, count) = ModuleBuilder::new(typed)
-        .unwrap()
-        .function(FunctionDeclaration::<(List<BigInt>, BigInt), BigInt>::new(
-            "count",
-        ))
-        .unwrap();
-    let _ = int_list_functions!(bindings, count);
-    assert_eq!(
-        bindings.prepare().emit_rust(),
-        include_str!("fixtures/prepared/int_list.rs").trim()
-    );
-    // Every directly exposed pure reader and the capturing closure has a
-    // real generated implementation. Caller functions containing calls do not.
     assert_eq!(
         INT_LIST
             .program
@@ -2526,43 +2270,10 @@ fn generated_int_list_calls_keep_other_caller_values_and_release_abandoned_execu
     }
 }
 
-#[test]
-fn generated_int_list_hosted_artifact_matches_public_preparation() {
-    let typed = compile_typed_host_program(
-        "example",
-        "example",
-        [PackageSource::new(
-            "example",
-            Vec::<String>::new(),
-            [ModuleSource::new(
-                "example",
-                "src/example.gleam",
-                include_str!("fixtures/prepared/int_list.gleam"),
-            )],
-        )],
-        HostProviderSet::<work_provider::Profile>::new([]).unwrap(),
-    )
-    .unwrap();
-    let (mut bindings, _) = HostedModuleBuilder::new(typed)
-        .unwrap()
-        .function(FunctionDeclaration::<
-            (List<BigInt>, BigInt, StringValue),
-            (StringValue, BigInt, List<BigInt>, BigInt),
-        >::new("caller"))
-        .unwrap();
-    bindings
-        .function(FunctionDeclaration::<(), BigInt>::new("running"))
-        .unwrap();
-    assert_eq!(
-        bindings.prepare().unwrap().emit_rust(),
-        include_str!("fixtures/prepared/int_list_hosted.rs").trim()
-    );
-}
-
 static BIT_ARRAY_LOOPS: data::ModuleArtifact<Infallible> =
-    include!("fixtures/prepared/bit_array_loops.rs");
+    include!("fixtures/prepared/generated/bit_array_loops.rs");
 static BIT_ARRAY_ENTRY: data::HostedEntryArtifact =
-    include!("fixtures/prepared/bit_array_entry.rs");
+    include!("fixtures/prepared/generated/bit_array_entry.rs");
 
 macro_rules! bit_loop_functions {
     ($bindings:ident, $checksum:expr) => {
@@ -2661,7 +2372,8 @@ fn traced_checksum(
 
 #[test]
 fn generated_bit_checkpoints_charge_whole_matches_and_resume_without_replaying_completed_work() {
-    const BASE: data::ModuleArtifact<Infallible> = include!("fixtures/prepared/bit_array_loops.rs");
+    const BASE: data::ModuleArtifact<Infallible> =
+        include!("fixtures/prepared/generated/bit_array_loops.rs");
     let mut artifact = BASE;
     let target = artifact.entries.ints[0].function;
     artifact.program.compiled.ints = artifact
@@ -2773,48 +2485,7 @@ fn generated_bit_checkpoints_charge_whole_matches_and_resume_without_replaying_c
 }
 
 #[test]
-fn bit_array_artifacts_are_emitted_from_the_current_generator() {
-    let typed = compile_typed_module(
-        "example",
-        "src/example.gleam",
-        include_str!("fixtures/prepared/bit_array_loops.gleam"),
-    )
-    .unwrap();
-    let (mut bindings, checksum) = ModuleBuilder::new(typed)
-        .unwrap()
-        .function(FunctionDeclaration::<(BitArrayValue, BigInt), BigInt>::new(
-            "checksum",
-        ))
-        .unwrap();
-    let _ = bit_loop_functions!(bindings, checksum);
-    assert_eq!(
-        bindings.prepare().emit_rust(),
-        include_str!("fixtures/prepared/bit_array_loops.rs").trim()
-    );
-
-    let typed = compile_typed_host_program(
-        "example",
-        "example",
-        [PackageSource::new(
-            "example",
-            Vec::<String>::new(),
-            [ModuleSource::new(
-                "example",
-                "src/bit_array_entry.gleam",
-                include_str!("fixtures/prepared/bit_array_entry.gleam"),
-            )],
-        )],
-        HostProviderSet::<work_provider::Profile>::new([]).unwrap(),
-    )
-    .unwrap();
-    let prepared = geam_core::PreparedHostedEntry::try_from_module_plan(
-        geam_core::plan_host_program(typed).unwrap(),
-    )
-    .unwrap();
-    assert_eq!(
-        prepared.emit_rust(),
-        include_str!("fixtures/prepared/bit_array_entry.rs").trim()
-    );
+fn prepared_bit_array_entry_selects_the_compiled_return() {
     assert_eq!(BIT_ARRAY_ENTRY.program.compiled.customs.len(), 1);
     assert!(matches!(
         BIT_ARRAY_ENTRY.program.compiled.customs[0].implementation,
@@ -3112,17 +2783,7 @@ macro_rules! numeric_functions {
 #[test]
 fn numeric_switch_resumes_after_its_prefix_and_preserves_every_selected_arm() {
     use data::compiled::numeric::NumericValues;
-
     let source = include_str!("fixtures/prepared/numeric_switch.gleam");
-    let typed = compile_typed_module("example", "src/example.gleam", source).unwrap();
-    let (bindings, _) = ModuleBuilder::new(typed)
-        .unwrap()
-        .function(FunctionDeclaration::<(BigInt,), BigInt>::new("choose"))
-        .unwrap();
-    assert_eq!(
-        bindings.prepare().emit_rust(),
-        include_str!("fixtures/prepared/numeric_switch.rs").trim()
-    );
     let typed = compile_typed_module("example", "src/example.gleam", source).unwrap();
     let (bindings, direct_choose) = ModuleBuilder::new(typed)
         .unwrap()
@@ -3209,21 +2870,8 @@ fn numeric_switch_resumes_after_its_prefix_and_preserves_every_selected_arm() {
 }
 
 #[test]
-fn numeric_control_flow_matches_preparation_and_compiled_execution() {
+fn numeric_control_flow_preserves_dynamic_and_compiled_execution() {
     let source = include_str!("fixtures/prepared/numeric.gleam");
-    let typed = compile_typed_module("example", "src/example.gleam", source).unwrap();
-    let (mut bindings, arithmetic) = ModuleBuilder::new(typed)
-        .unwrap()
-        .function(FunctionDeclaration::<(BigInt, BigInt), BigInt>::new(
-            "arithmetic",
-        ))
-        .unwrap();
-    let _ = numeric_functions!(bindings, arithmetic);
-    assert_eq!(
-        bindings.prepare().emit_rust(),
-        include_str!("fixtures/prepared/numeric.rs").trim()
-    );
-
     for prepared in [false, true] {
         let (module, functions) = if prepared {
             let mut bindings = NUMERIC.load().unwrap();
@@ -3567,33 +3215,7 @@ macro_rules! hosted_numeric_functions {
 }
 
 #[test]
-fn numeric_hosted_and_standalone_artifacts_match_public_preparation_and_admit_generated_targets() {
-    let typed = compile_typed_host_program(
-        "example",
-        "example",
-        [PackageSource::new(
-            "example",
-            Vec::<String>::new(),
-            [ModuleSource::new(
-                "example",
-                "src/example.gleam",
-                include_str!("fixtures/prepared/numeric.gleam"),
-            )],
-        )],
-        HostProviderSet::<work_provider::Profile>::new([]).unwrap(),
-    )
-    .unwrap();
-    let (mut bindings, arithmetic) = HostedModuleBuilder::new(typed)
-        .unwrap()
-        .function(FunctionDeclaration::<(BigInt, BigInt), BigInt>::new(
-            "arithmetic",
-        ))
-        .unwrap();
-    let _ = hosted_numeric_functions!(bindings, arithmetic);
-    assert_eq!(
-        bindings.prepare().unwrap().emit_rust(),
-        include_str!("fixtures/prepared/numeric_hosted.rs").trim()
-    );
+fn prepared_numeric_modules_and_entries_admit_the_generated_targets() {
     let mut bindings = NUMERIC_HOSTED
         .load(HostProviderSet::<work_provider::Profile>::new([]).unwrap())
         .unwrap();
@@ -3610,29 +3232,6 @@ fn numeric_hosted_and_standalone_artifacts_match_public_preparation_and_admit_ge
     assert_eq!(
         NUMERIC_HOSTED.module.program.compiled.bools[0].function,
         NUMERIC_HOSTED.module.entries.bools[0].function
-    );
-    let typed = compile_typed_host_program(
-        "example",
-        "example",
-        [PackageSource::new(
-            "example",
-            Vec::<String>::new(),
-            [ModuleSource::new(
-                "example",
-                "src/numeric_entry.gleam",
-                include_str!("fixtures/prepared/numeric_entry.gleam"),
-            )],
-        )],
-        HostProviderSet::<work_provider::Profile>::new([]).unwrap(),
-    )
-    .unwrap();
-    let prepared = geam_core::PreparedHostedEntry::try_from_module_plan(
-        geam_core::plan_host_program(typed).unwrap(),
-    )
-    .unwrap();
-    assert_eq!(
-        prepared.emit_rust(),
-        include_str!("fixtures/prepared/numeric_entry.rs").trim()
     );
     assert_eq!(NUMERIC_ENTRY.program.compiled.ints.len(), 1);
     NUMERIC_ENTRY
@@ -3763,55 +3362,65 @@ fn generated_hosted_calls_keep_scope_cancellation_captures_and_standalone_output
     );
 }
 
-static VALUES: data::ModuleArtifact<Infallible> = include!("fixtures/prepared/values.rs");
+static VALUES: data::ModuleArtifact<Infallible> = include!("fixtures/prepared/generated/values.rs");
 
 static NESTED_PATTERNS: data::ModuleArtifact<Infallible> =
-    include!("fixtures/prepared/nested_patterns.rs");
+    include!("fixtures/prepared/generated/nested_patterns.rs");
 
 static INTERLEAVED_PATTERNS: data::ModuleArtifact<Infallible> =
-    include!("fixtures/prepared/interleaved_patterns.rs");
+    include!("fixtures/prepared/generated/interleaved_patterns.rs");
 #[cfg(feature = "tokio")]
 static INTERLEAVED_PATTERNS_HOSTED: data::HostedModuleArtifact =
-    include!("fixtures/prepared/interleaved_patterns_hosted.rs");
+    include!("fixtures/prepared/generated/interleaved_patterns_hosted.rs");
 
 static SYMBOLIC_PATTERNS: data::ModuleArtifact<Infallible> =
-    include!("fixtures/prepared/symbolic_patterns.rs");
+    include!("fixtures/prepared/generated/symbolic_patterns.rs");
 
 static MULTI_SUBJECT_PATTERNS: data::ModuleArtifact<Infallible> =
-    include!("fixtures/prepared/multi_subject_patterns.rs");
+    include!("fixtures/prepared/generated/multi_subject_patterns.rs");
 
 static SPARSE_PATTERNS: data::ModuleArtifact<Infallible> =
-    include!("fixtures/prepared/sparse_patterns.rs");
+    include!("fixtures/prepared/generated/sparse_patterns.rs");
 
 static BIT_ARRAY_PATTERNS: data::ModuleArtifact<Infallible> =
-    include!("fixtures/prepared/bit_array_patterns.rs");
+    include!("fixtures/prepared/generated/bit_array_patterns.rs");
 
 #[path = "support/work_fixture.rs"]
 mod work_fixture;
+#[expect(
+    dead_code,
+    reason = "preparation is used by the public fixture generator"
+)]
 #[path = "fixtures/prepared/work_provider.rs"]
 mod work_provider;
 
-static WORK: data::HostedModuleArtifact = include!("fixtures/prepared/work.rs");
+static WORK: data::HostedModuleArtifact = include!("fixtures/prepared/generated/work.rs");
 
-static ENTRY: data::HostedEntryArtifact = include!("fixtures/prepared/entry.rs");
-static ENTRY_WORK: data::HostedEntryArtifact = include!("fixtures/prepared/entry_work.rs");
-static ENTRY_FAILURE: data::HostedEntryArtifact = include!("fixtures/prepared/entry_failure.rs");
+static ENTRY: data::HostedEntryArtifact = include!("fixtures/prepared/generated/entry.rs");
+static ENTRY_WORK: data::HostedEntryArtifact =
+    include!("fixtures/prepared/generated/entry_work.rs");
+static ENTRY_FAILURE: data::HostedEntryArtifact =
+    include!("fixtures/prepared/generated/entry_failure.rs");
 
+#[expect(
+    dead_code,
+    reason = "preparation is used by the public fixture generator"
+)]
 #[path = "fixtures/prepared/shared_provider.rs"]
 mod shared_provider;
 
+#[expect(
+    dead_code,
+    reason = "preparation is used by the public fixture generator"
+)]
 #[path = "fixtures/prepared/opaque_provider.rs"]
 mod opaque_provider;
 
 static OPAQUE_FUNCTIONS: data::HostedModuleArtifact =
-    include!("fixtures/prepared/opaque_functions.rs");
+    include!("fixtures/prepared/generated/opaque_functions.rs");
 
 #[test]
 fn opaque_custom_function_fields_preserve_symbolic_storage_and_exact_prepared_roles() {
-    assert_eq!(
-        opaque_provider::prepare().emit_rust(),
-        include_str!("fixtures/prepared/opaque_functions.rs").trim(),
-    );
     assert_eq!(
         OPAQUE_FUNCTIONS
             .load(opaque_provider::hosts(true))
@@ -3891,19 +3500,20 @@ fn opaque_custom_function_fields_preserve_symbolic_storage_and_exact_prepared_ro
     }
 }
 
+#[expect(
+    dead_code,
+    reason = "preparation is used by the public fixture generator"
+)]
 #[path = "fixtures/prepared/function_value_provider.rs"]
 mod function_value_provider;
 
 static FUNCTION_VALUES: data::HostedModuleArtifact =
-    include!("fixtures/prepared/function_values.rs");
+    include!("fixtures/prepared/generated/function_values.rs");
 
 #[test]
 fn general_function_values_preserve_owned_sources_and_exact_prepared_roles() {
     use function_value_provider::FieldRole;
-    assert_eq!(
-        function_value_provider::prepare().emit_rust(),
-        include_str!("fixtures/prepared/function_values.rs").trim()
-    );
+
     for role in [FieldRole::Opaque, FieldRole::Strict] {
         assert_eq!(
             FUNCTION_VALUES
@@ -3987,14 +3597,11 @@ fn general_function_values_preserve_owned_sources_and_exact_prepared_roles() {
     }
 }
 
-static SHARED_CUSTOM: data::HostedModuleArtifact = include!("fixtures/prepared/shared_custom.rs");
+static SHARED_CUSTOM: data::HostedModuleArtifact =
+    include!("fixtures/prepared/generated/shared_custom.rs");
 
 #[test]
 fn shared_custom_values_preserve_nominal_payloads_and_require_their_producer() {
-    assert_eq!(
-        shared_provider::prepare().emit_rust(),
-        include_str!("fixtures/prepared/shared_custom.rs").trim()
-    );
     assert_eq!(
         SHARED_CUSTOM
             .load(shared_provider::hosts(false))
@@ -4054,15 +3661,6 @@ fn shared_custom_values_preserve_nominal_payloads_and_require_their_producer() {
 fn multi_subject_patterns_preserve_dynamic_and_compiled_prepared_results() {
     let source = include_str!("fixtures/prepared/multi_subject_patterns.gleam");
     let typed = compile_typed_module("example", "src/example.gleam", source).unwrap();
-    let (bindings, _) = ModuleBuilder::new(typed)
-        .unwrap()
-        .function(FunctionDeclaration::<(), StringValue>::new("main"))
-        .unwrap();
-    assert_eq!(
-        bindings.prepare().emit_rust(),
-        include_str!("fixtures/prepared/multi_subject_patterns.rs").trim()
-    );
-    let typed = compile_typed_module("example", "src/example.gleam", source).unwrap();
     let (bindings, main) = ModuleBuilder::new(typed)
         .unwrap()
         .function(FunctionDeclaration::<(), StringValue>::new("main"))
@@ -4093,16 +3691,6 @@ fn multi_subject_patterns_preserve_dynamic_and_compiled_prepared_results() {
 #[test]
 fn nested_constructor_exclusions_and_bindings_preserve_dynamic_and_prepared_results() {
     let source = include_str!("fixtures/prepared/nested_patterns.gleam");
-    let typed = compile_typed_module("example", "src/example.gleam", source).unwrap();
-    let (bindings, _) = ModuleBuilder::new(typed)
-        .unwrap()
-        .function(FunctionDeclaration::<(), StringValue>::new("main"))
-        .unwrap();
-    assert_eq!(
-        bindings.prepare().emit_rust(),
-        include_str!("fixtures/prepared/nested_patterns.rs").trim()
-    );
-
     for prepared in [false, true] {
         let (module, main) = if prepared {
             let mut bindings = NESTED_PATTERNS.load().unwrap();
@@ -4132,21 +3720,6 @@ fn nested_constructor_exclusions_and_bindings_preserve_dynamic_and_prepared_resu
 #[test]
 fn interleaved_constructor_patterns_preserve_live_and_prepared_library_results() {
     let source = include_str!("fixtures/prepared/interleaved_patterns.gleam");
-    let typed = compile_typed_module("example", "src/example.gleam", source).unwrap();
-    let (mut bindings, _) = ModuleBuilder::new(typed)
-        .unwrap()
-        .function(FunctionDeclaration::<(BigInt,), BigInt>::new("selected"))
-        .unwrap();
-    bindings
-        .function(FunctionDeclaration::<(BigInt,), BigInt>::new(
-            "selected_grouped",
-        ))
-        .unwrap();
-    assert_eq!(
-        bindings.prepare().emit_rust(),
-        include_str!("fixtures/prepared/interleaved_patterns.rs").trim()
-    );
-
     for prepared in [false, true] {
         let (module, selected, grouped) = if prepared {
             let mut bindings = INTERLEAVED_PATTERNS.load().unwrap();
@@ -4191,30 +3764,6 @@ fn interleaved_constructor_patterns_preserve_live_and_prepared_library_results()
 #[test]
 fn interleaved_constructor_patterns_preserve_hosted_library_admission_and_calls() {
     let source = include_str!("fixtures/prepared/interleaved_patterns.gleam");
-    let typed = compile_typed_host_program(
-        "example",
-        "example",
-        [PackageSource::new(
-            "example",
-            Vec::<String>::new(),
-            [ModuleSource::new("example", "src/example.gleam", source)],
-        )],
-        HostProviderSet::<StatelessHostProfile>::new([]).unwrap(),
-    )
-    .unwrap();
-    let (mut bindings, _) = HostedModuleBuilder::new(typed)
-        .unwrap()
-        .function(FunctionDeclaration::<(BigInt,), BigInt>::new("selected"))
-        .unwrap();
-    bindings
-        .function(FunctionDeclaration::<(BigInt,), BigInt>::new(
-            "selected_grouped",
-        ))
-        .unwrap();
-    assert_eq!(
-        bindings.prepare().unwrap().emit_rust(),
-        include_str!("fixtures/prepared/interleaved_patterns_hosted.rs").trim()
-    );
     let runtime = tokio::runtime::Builder::new_current_thread()
         .build()
         .unwrap();
@@ -4284,15 +3833,6 @@ fn interleaved_constructor_patterns_preserve_hosted_library_admission_and_calls(
 #[test]
 fn symbolic_nested_patterns_preserve_dynamic_and_compiled_prepared_results() {
     let source = include_str!("fixtures/prepared/symbolic_patterns.gleam");
-    let typed = compile_typed_module("example", "src/example.gleam", source).unwrap();
-    let (bindings, _) = ModuleBuilder::new(typed)
-        .unwrap()
-        .function(FunctionDeclaration::<(), ()>::new("main"))
-        .unwrap();
-    assert_eq!(
-        bindings.prepare().emit_rust(),
-        include_str!("fixtures/prepared/symbolic_patterns.rs").trim()
-    );
     for prepared in [false, true] {
         let (module, main) = if prepared {
             let mut bindings = SYMBOLIC_PATTERNS.load().unwrap();
@@ -4319,16 +3859,6 @@ fn symbolic_nested_patterns_preserve_dynamic_and_compiled_prepared_results() {
 #[test]
 fn unconstructed_pattern_variants_preserve_dynamic_and_prepared_results() {
     let source = include_str!("fixtures/prepared/sparse_patterns.gleam");
-    let typed = compile_typed_module("example", "src/example.gleam", source).unwrap();
-    let (bindings, _) = ModuleBuilder::new(typed)
-        .unwrap()
-        .function(FunctionDeclaration::<(), StringValue>::new("main"))
-        .unwrap();
-    assert_eq!(
-        bindings.prepare().emit_rust(),
-        include_str!("fixtures/prepared/sparse_patterns.rs").trim()
-    );
-
     for prepared in [false, true] {
         let (module, main) = if prepared {
             let mut bindings = SPARSE_PATTERNS.load().unwrap();
@@ -4358,40 +3888,7 @@ fn unconstructed_pattern_variants_preserve_dynamic_and_prepared_results() {
 #[test]
 fn zero_width_bit_array_fields_preserve_dynamic_and_prepared_results() {
     type Fields = (BigInt, f64, BitArrayValue, BigInt);
-
     let source = include_str!("fixtures/prepared/bit_array_patterns.gleam");
-    let typed = compile_typed_module("example", "src/example.gleam", source).unwrap();
-    let (mut bindings, _) = ModuleBuilder::new(typed)
-        .unwrap()
-        .function(FunctionDeclaration::<(BitArrayValue, BigInt), Fields>::new(
-            "zero_fields",
-        ))
-        .unwrap();
-    bindings
-        .function(
-            FunctionDeclaration::<(BitArrayValue, BigInt, BigInt), BigInt>::new("signed_little"),
-        )
-        .unwrap();
-    bindings
-        .function(FunctionDeclaration::<(BitArrayValue,), BigInt>::new(
-            "dependent_fields",
-        ))
-        .unwrap();
-    bindings
-        .function(FunctionDeclaration::<(BitArrayValue,), BigInt>::new(
-            "fixed_fields",
-        ))
-        .unwrap();
-    bindings
-        .function(FunctionDeclaration::<(BitArrayValue,), BigInt>::new(
-            "fixed_failure",
-        ))
-        .unwrap();
-    assert_eq!(
-        bindings.prepare().emit_rust(),
-        include_str!("fixtures/prepared/bit_array_patterns.rs").trim()
-    );
-
     for prepared in [false, true] {
         let (module, zero_fields) = if prepared {
             let mut bindings = BIT_ARRAY_PATTERNS.load().unwrap();
@@ -4640,24 +4137,8 @@ fn signed_little_endian_fields_preserve_dynamic_and_prepared_results() {
 }
 
 #[test]
-fn standalone_artifacts_match_preparation_and_link_without_embedding_exports() {
-    for (module, artifact, expected) in [
-        ("entry", &ENTRY, include_str!("fixtures/prepared/entry.rs")),
-        (
-            "entry_work",
-            &ENTRY_WORK,
-            include_str!("fixtures/prepared/entry_work.rs"),
-        ),
-        (
-            "entry_failure",
-            &ENTRY_FAILURE,
-            include_str!("fixtures/prepared/entry_failure.rs"),
-        ),
-    ] {
-        assert_eq!(
-            work_provider::prepare_entry(module).emit_rust(),
-            expected.trim()
-        );
+fn prepared_standalone_entries_link_without_embedding_exports() {
+    for artifact in [&ENTRY, &ENTRY_WORK, &ENTRY_FAILURE] {
         artifact.load(work_provider::hosts()).unwrap();
     }
 }
@@ -4726,7 +4207,8 @@ fn standalone_entries_preserve_generic_function_outer_work_and_source_failure_be
 
 #[test]
 fn incompatible_format_never_produces_a_prepared_binding_owner() {
-    const ARTIFACT: data::ModuleArtifact<Infallible> = include!("fixtures/prepared/arithmetic.rs");
+    const ARTIFACT: data::ModuleArtifact<Infallible> =
+        include!("fixtures/prepared/generated/arithmetic.rs");
     let mut incompatible = ARTIFACT;
     incompatible.format = 6;
     let incompatible = Box::leak(Box::new(incompatible));
@@ -4738,11 +4220,7 @@ fn incompatible_format_never_produces_a_prepared_binding_owner() {
 }
 
 #[test]
-fn work_data_matches_preparation_and_contains_external_storage_families() {
-    assert_eq!(
-        work_provider::prepare().emit_rust(),
-        include_str!("fixtures/prepared/work.rs").trim()
-    );
+fn prepared_work_admits_each_external_storage_family() {
     WORK.load(work_provider::hosts()).unwrap();
     let tables = &WORK.module.program.functions;
     for length in [
@@ -4760,7 +4238,7 @@ fn work_data_matches_preparation_and_contains_external_storage_families() {
 
 #[test]
 fn prepared_loading_rejects_an_unregistered_external_type_even_when_unused() {
-    const ARTIFACT: data::HostedModuleArtifact = include!("fixtures/prepared/work.rs");
+    const ARTIFACT: data::HostedModuleArtifact = include!("fixtures/prepared/generated/work.rs");
     let mut artifact = ARTIFACT;
     let table = &mut artifact.module.program.external_types;
     let mut types = table.types.to_vec();
@@ -4795,7 +4273,8 @@ fn prepared_loading_rejects_an_unregistered_external_type_even_when_unused() {
 
 #[test]
 fn prepared_loading_rejects_an_unregistered_custom_producer_even_when_unused() {
-    const ARTIFACT: data::HostedModuleArtifact = include!("fixtures/prepared/numeric_hosted.rs");
+    const ARTIFACT: data::HostedModuleArtifact =
+        include!("fixtures/prepared/generated/numeric_hosted.rs");
     let mut artifact = ARTIFACT;
     let table = &mut artifact.module.program.custom_types;
     let mut definitions = table.definitions.to_vec();
@@ -4821,7 +4300,8 @@ fn prepared_loading_rejects_an_unregistered_custom_producer_even_when_unused() {
 
 #[test]
 fn prepared_loading_rejects_a_producer_lifetime_changed_in_the_artifact() {
-    const ARTIFACT: data::HostedModuleArtifact = include!("fixtures/prepared/numeric_hosted.rs");
+    const ARTIFACT: data::HostedModuleArtifact =
+        include!("fixtures/prepared/generated/numeric_hosted.rs");
     let mut artifact = ARTIFACT;
     let table = &mut artifact.module.program.external_types;
     assert!(table.types.is_empty());
@@ -5314,30 +4794,7 @@ fn selected_program_covers_all_plain_function_storage_families() {
 }
 
 #[test]
-fn value_data_matches_complete_selected_preparation_and_dynamic_results() {
-    let module = compile_typed_program(
-        "example",
-        [ModuleSource::new(
-            "example",
-            "src/example.gleam",
-            include_str!("fixtures/prepared/values.gleam"),
-        )],
-    )
-    .unwrap();
-    let (mut bindings, _) = ModuleBuilder::from_program(module)
-        .unwrap()
-        .function(FunctionDeclaration::<(), BigInt>::new("run"))
-        .unwrap();
-    bindings
-        .function(FunctionDeclaration::<(), BigInt>::new("fail"))
-        .unwrap();
-    bindings
-        .function(FunctionDeclaration::<(BigInt,), BigInt>::new("assertion"))
-        .unwrap();
-    assert_eq!(
-        bindings.prepare().emit_rust(),
-        include_str!("fixtures/prepared/values.rs").trim()
-    );
+fn source_values_preserve_the_prepared_fixture_result_and_echo() {
     let module = compile_typed_program(
         "example",
         [ModuleSource::new(
@@ -5427,38 +4884,21 @@ fn emitted_plain_program_loads_into_independent_callable_modules() {
     }
 }
 
-#[test]
-fn plain_data_matches_preparation_output() {
-    let module = compile_typed_module(
-        "example",
-        "src/example.gleam",
-        include_str!("fixtures/prepared/arithmetic.gleam"),
-    )
-    .unwrap();
-    let (bindings, _) = ModuleBuilder::new(module)
-        .unwrap()
-        .function(FunctionDeclaration::<(), BigInt>::new("main"))
-        .unwrap();
-    assert_eq!(
-        bindings.prepare().emit_rust(),
-        include_str!("fixtures/prepared/arithmetic.rs").trim()
-    );
-}
-
 #[path = "fixtures/prepared/native_provider.rs"]
 mod native_provider;
 
+#[expect(
+    dead_code,
+    reason = "preparation is used by the public fixture generator"
+)]
 #[path = "fixtures/prepared/function_view_provider.rs"]
 mod function_view_provider;
 
-static FUNCTION_VIEWS: data::HostedModuleArtifact = include!("fixtures/prepared/function_views.rs");
+static FUNCTION_VIEWS: data::HostedModuleArtifact =
+    include!("fixtures/prepared/generated/function_views.rs");
 
 #[test]
-fn native_function_view_data_matches_preparation_output() {
-    assert_eq!(
-        function_view_provider::prepare().emit_rust(),
-        include_str!("fixtures/prepared/function_views.rs").trim()
-    );
+fn prepared_native_function_views_admit_fresh_providers() {
     FUNCTION_VIEWS
         .load(function_view_provider::hosts())
         .unwrap();
@@ -5519,7 +4959,8 @@ fn never_native_metadata_rejects_a_source_span_outside_the_original_module() {
         .load(function_view_provider::hosts())
         .unwrap();
 
-    const BASE: data::HostedModuleArtifact = include!("fixtures/prepared/function_views.rs");
+    const BASE: data::HostedModuleArtifact =
+        include!("fixtures/prepared/generated/function_views.rs");
     let mut artifact = BASE;
     let mut functions = artifact.never_functions.to_vec();
     let source = include_str!("fixtures/prepared/function_views.gleam");
@@ -5562,7 +5003,8 @@ fn native_function_view_metadata_rejects_changed_parent_source_edges_and_capture
         Change::Captures,
         Change::TypeArguments,
     ] {
-        const BASE: data::HostedModuleArtifact = include!("fixtures/prepared/function_views.rs");
+        const BASE: data::HostedModuleArtifact =
+            include!("fixtures/prepared/generated/function_views.rs");
         let mut artifact = BASE;
         let mut functions = artifact.value_functions.to_vec();
         let view_index = functions
@@ -5633,7 +5075,8 @@ fn native_function_view_metadata_rejects_changed_conversion_candidates_and_custo
         Change::Capture,
         Change::CustomTag,
     ] {
-        const BASE: data::HostedModuleArtifact = include!("fixtures/prepared/function_views.rs");
+        const BASE: data::HostedModuleArtifact =
+            include!("fixtures/prepared/generated/function_views.rs");
         let mut artifact = BASE;
         let mut functions = artifact.value_functions.to_vec();
         let parent_index = functions
@@ -5692,7 +5135,7 @@ fn native_function_view_metadata_rejects_changed_conversion_candidates_and_custo
     }
 }
 
-static NATIVE: data::HostedModuleArtifact = include!("fixtures/prepared/native.rs");
+static NATIVE: data::HostedModuleArtifact = include!("fixtures/prepared/generated/native.rs");
 
 #[test]
 fn hosted_loading_rejects_missing_providers_before_selecting_functions() {
@@ -5746,52 +5189,7 @@ fn hosted_selection_failure_preserves_the_name_and_success_reserves_it() {
 }
 
 #[test]
-fn native_data_matches_preparation_output() {
-    let program = compile_typed_host_program(
-        "application",
-        "main",
-        [PackageSource::new(
-            "application",
-            Vec::<String>::new(),
-            [ModuleSource::new(
-                "main",
-                "src/main.gleam",
-                include_str!("fixtures/prepared/native.gleam"),
-            )],
-        )],
-        native_provider::hosts(),
-    )
-    .unwrap();
-    let (mut bindings, _) = HostedModuleBuilder::new(program)
-        .unwrap()
-        .function(FunctionDeclaration::<(), (bool, bool, BigInt)>::new("run"))
-        .unwrap();
-    bindings
-        .function(FunctionDeclaration::<(StringValue,), (bool, StringValue)>::new("substring"))
-        .unwrap();
-    bindings
-        .function(FunctionDeclaration::<
-            (BitArrayValue, BigInt, BigInt),
-            BitArrayValue,
-        >::new("bit_range"))
-        .unwrap();
-    bindings
-        .function(FunctionDeclaration::<(BitArrayValue,), BitArrayValue>::new(
-            "bit_tail",
-        ))
-        .unwrap();
-    bindings
-        .function(FunctionDeclaration::<(), bool>::new("generic_results"))
-        .unwrap();
-    bindings
-        .function(FunctionDeclaration::<(List<BigInt>, BigInt), BigInt>::new(
-            "list_callback",
-        ))
-        .unwrap();
-    assert_eq!(
-        bindings.prepare().unwrap().emit_rust(),
-        include_str!("fixtures/prepared/native.rs").trim()
-    );
+fn prepared_native_data_admits_fresh_providers() {
     NATIVE.load(native_provider::hosts()).unwrap();
 }
 
@@ -6081,6 +5479,10 @@ fn emitted_native_program_preserves_recursive_values_and_resuming_callbacks() {
     }
 }
 
+#[expect(
+    dead_code,
+    reason = "preparation is used by the public fixture generator"
+)]
 #[path = "fixtures/prepared/callable_declarations.rs"]
 mod callable_declarations;
 #[path = "fixtures/prepared/callable_provider.rs"]
@@ -6093,7 +5495,7 @@ mod pricing {
     }
 }
 
-static CALLABLES: data::HostedModuleArtifact = include!("fixtures/prepared/callables.rs");
+static CALLABLES: data::HostedModuleArtifact = include!("fixtures/prepared/generated/callables.rs");
 
 #[test]
 fn never_native_metadata_rejects_a_signature_different_from_the_registered_callable() {
@@ -6101,7 +5503,7 @@ fn never_native_metadata_rejects_a_signature_different_from_the_registered_calla
         .load(callable_provider::implementations())
         .unwrap();
 
-    const BASE: data::HostedModuleArtifact = include!("fixtures/prepared/callables.rs");
+    const BASE: data::HostedModuleArtifact = include!("fixtures/prepared/generated/callables.rs");
     let mut artifact = BASE;
     let mut functions = artifact.never_functions.to_vec();
     functions[0].signature.arguments = vec![data::type_::TypeMetadata::Int].into();
@@ -6118,15 +5520,7 @@ fn never_native_metadata_rejects_a_signature_different_from_the_registered_calla
 
 #[cfg(feature = "tokio")]
 static EMBEDDED_CALLABLES: data::HostedModuleArtifact =
-    include!("fixtures/prepared/callable_embedding.rs");
-
-#[test]
-fn scoped_callable_artifact_matches_declaration_only_preparation() {
-    assert_eq!(
-        callable_declarations::prepare_scoped().emit_rust(),
-        include_str!("fixtures/prepared/callable_embedding.rs").trim(),
-    );
-}
+    include!("fixtures/prepared/generated/callable_embedding.rs");
 
 #[cfg(feature = "tokio")]
 #[test]
@@ -6275,10 +5669,6 @@ fn scoped_function_inputs_returns_and_nested_codecs_match_in_dynamic_and_prepare
 
 #[test]
 fn native_callable_artifact_uses_declarations_only_and_requires_fresh_body_bindings() {
-    assert_eq!(
-        callable_declarations::prepare().emit_rust(),
-        include_str!("fixtures/prepared/callables.rs").trim()
-    );
     let program = compile_typed_host_program(
         "application",
         "library",
@@ -6363,7 +5753,8 @@ fn declaration_only_callable_artifacts_run_app_bodies_with_dynamic_capture_and_i
     }
 }
 
-static NATIVE_VIEWS: data::HostedModuleArtifact = include!("fixtures/prepared/callable_views.rs");
+static NATIVE_VIEWS: data::HostedModuleArtifact =
+    include!("fixtures/prepared/generated/callable_views.rs");
 
 #[cfg(feature = "tokio")]
 #[test]
@@ -6415,14 +5806,6 @@ fn generated_bool_native_bridge_resumes_the_source_capture_and_caller_once() {
             ["8"]
         );
     }
-}
-
-#[test]
-fn native_view_artifact_matches_declaration_only_preparation() {
-    assert_eq!(
-        callable_declarations::prepare_native_views().emit_rust(),
-        include_str!("fixtures/prepared/callable_views.rs").trim()
-    );
 }
 
 #[cfg(feature = "tokio")]
@@ -6523,7 +5906,7 @@ fn malformed_native_construction_metadata_is_rejected_before_execution() {
         Change::Invocation,
     ] {
         const ARTIFACT: data::HostedModuleArtifact =
-            include!("fixtures/prepared/callable_embedding.rs");
+            include!("fixtures/prepared/generated/callable_embedding.rs");
         let mut artifact = ARTIFACT;
         let mut entries = artifact.callables.to_vec();
         let entry = entries
@@ -6578,7 +5961,8 @@ fn native_selection_requires_a_prepared_exact_declaration_and_rust_view() {
         "Rust views do not match the exact types of native callable support:support/private.constant"
     );
 
-    const ARTIFACT: data::HostedModuleArtifact = include!("fixtures/prepared/callable_views.rs");
+    const ARTIFACT: data::HostedModuleArtifact =
+        include!("fixtures/prepared/generated/callable_views.rs");
     let mut artifact = ARTIFACT;
     let mut entries = artifact.callables.to_vec();
     entries.remove(1); // Only the opaque Result capture codec remains for Constant.

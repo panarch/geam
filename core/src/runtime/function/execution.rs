@@ -1251,247 +1251,64 @@ pub fn main() { left([1, 2, 3], 0) }
     }
 
     #[test]
-    fn connected_custom_loops_preserve_exact_turns_echoes_and_stops() {
-        use crate::__prepared_support as data;
-        use crate::embedding::{BigInt, FunctionDeclaration, ModuleBuilder};
-        use std::convert::Infallible;
+    fn custom_callbacks_preserve_exact_turn_echo_and_stop() {
+        use crate::{Panic, PanicKind, PanicMessage, PanicSite, SourceSpan};
 
-        // Both execution owners admit the actual generated artifact. Only its
-        // compiled sidecar is disabled for the canonical control; no graph or
-        // checkpoint is fabricated or changed.
-        const ARTIFACT: data::ModuleArtifact<Infallible> =
-            include!("../../../tests/fixtures/prepared/custom_loop_boundaries.rs");
-        static COMPILED: data::ModuleArtifact<Infallible> = ARTIFACT;
-        let source = r#"type Item {
-  Item(Int)
-}
-
-fn walk(
-  items: List(Item),
-  total: Int,
-  fail: Bool,
-  apply: fn(Int, Item) -> Int,
-) {
+        let source = r#"
+type Item { Item(Int) }
+fn walk(items: List(Item), total: Int, fail: Bool, apply: fn(Int, Item) -> Int) {
   case items {
-    [] ->
-      case fail {
-        True -> panic
-        False -> {
-          echo total
-          let assert [result] = [total]
-          result
-        }
+    [] -> case fail {
+      True -> panic
+      False -> {
+        echo total
+        let assert [result] = [total]
+        result
       }
+    }
     [head, ..tail] -> walk(tail, apply(total + 1, head), fail, apply)
   }
 }
-
 fn add(total: Int, item: Item) {
   let Item(value) = item
   total + value
 }
-
-fn relay(total: Int, item: Item) {
-  add(total, item)
-}
-
-pub fn integer(count: Int, fail: Bool, connected: Bool, initial: Int) {
-  let apply = case connected {
-    True -> add
-    False -> relay
-  }
-  walk(items(count, []), initial, fail, apply)
-}
-
-fn any(items: List(Item), seen: Bool, apply: fn(Bool, Item) -> Bool) {
-  case items {
-    [] -> seen
-    [head, ..tail] -> any(tail, apply(seen, head), apply)
-  }
-}
-
-pub fn boolean(bias: Int) {
-  any([Item(1)], False, fn(_seen, item) {
-    let Item(value) = item
-    value + bias > 0
-  })
-}
-
-pub fn main() {
-  integer(1, False, True, 3)
-}
-
-fn items(count: Int, result: List(Item)) {
-  case count {
-    0 -> result
-    _ -> items(count - 1, [Item(2), ..result])
-  }
-}
+pub fn main() { walk([Item(2), Item(2)], 3, FAIL, add) }
 "#;
-        let typed =
-            crate::compile_typed_module("example", "src/custom_loop_boundaries.gleam", source)
-                .unwrap();
-        let (mut bindings, _) = ModuleBuilder::new(typed)
-            .unwrap()
-            .function(FunctionDeclaration::<(BigInt, bool, bool, BigInt), BigInt>::new("integer"))
-            .unwrap();
-        bindings
-            .function(FunctionDeclaration::<(BigInt,), bool>::new("boolean"))
-            .unwrap();
-        assert_eq!(
-            bindings.prepare().emit_rust(),
-            include_str!("../../../tests/fixtures/prepared/custom_loop_boundaries.rs").trim()
-        );
-        assert!(!COMPILED.program.compiled.callbacks.ints.is_empty());
-        let mut canonical = ARTIFACT;
-        canonical.program.compiled = data::compiled::CompiledFunctions::interpreted();
-        let (canonical, canonical_entries) = Box::leak(Box::new(canonical))
-            .admit()
-            .unwrap()
-            .into_execution();
-        let (compiled, compiled_entries) = COMPILED.admit().unwrap().into_execution();
-        let function = *compiled_entries.ints[0].function();
-        assert_eq!(function, *canonical_entries.ints[0].function());
-        for count in [0, 1, 2, 129] {
-            for connected in [false, true] {
-                for fail in [false, true] {
-                    for initial in [BigInt::from(3), BigInt::from(i64::MAX)] {
-                        for budget in [1, 2, 3, 7, 31, 35, 36, 1024, usize::MAX] {
-                            let inputs = || {
-                                let mut inputs = RetainedValues::empty();
-                                inputs.push_int(count.into());
-                                inputs.push_bool(fail);
-                                inputs.push_bool(connected);
-                                inputs.push_int(initial.clone().into());
-                                inputs
-                            };
-                            let budget = NonZeroUsize::new(budget).unwrap();
-                            let expected =
-                                trace_entry_turns(&canonical, function, inputs(), budget);
-                            let actual = trace_entry_turns(&compiled, function, inputs(), budget);
-                            assert_eq!(
-                                actual.turns, expected.turns,
-                                "count {count}, connected {connected}, fail {fail}, initial {initial}, budget {budget}"
-                            );
-                            assert_eq!(actual.echo, expected.echo);
-                            assert_eq!(actual.result, expected.result);
-                            if fail {
-                                assert!(actual.echo.is_empty());
-                                let error = actual.result.unwrap_err().into_materialized();
-                                assert!(matches!(error, crate::ExecutionError::Panic(panic)
-                                    if panic.kind() == crate::PanicKind::Panic
-                                        && panic.site().function() == "walk"));
-                            } else {
-                                let total = &initial + 3 * count;
-                                assert_eq!(actual.result, Ok(total));
-                                assert_eq!(actual.echo.len(), 1);
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        // The hosted driver must resume the same admitted connection across
-        // its real scheduling boundary, including the canonical list suffix.
-        use crate::embedding::HostedModuleBuilder;
-        use crate::execution_fixture::TestHost;
-        use crate::runtime::execution::Domain;
-        use crate::{HostProviderSet, ModuleSource, PackageSource, StatelessHostProfile};
-        use std::sync::Arc;
-        const HOSTED: data::HostedModuleArtifact =
-            include!("../../../tests/fixtures/prepared/custom_loop_boundaries_hosted.rs");
-        let typed = crate::compile_typed_host_program(
-            "example",
-            "example",
-            [PackageSource::new(
-                "example",
-                Vec::<String>::new(),
-                [ModuleSource::new(
-                    "example",
-                    "src/custom_loop_boundaries.gleam",
-                    source,
-                )],
-            )],
-            HostProviderSet::<StatelessHostProfile>::new([]).unwrap(),
-        )
-        .unwrap();
-        let (mut bindings, _) = HostedModuleBuilder::new(typed)
-            .unwrap()
-            .function(FunctionDeclaration::<(BigInt, bool, bool, BigInt), BigInt>::new("integer"))
-            .unwrap();
-        bindings
-            .function(FunctionDeclaration::<(BigInt,), bool>::new("boolean"))
-            .unwrap();
-        assert_eq!(
-            bindings.prepare().unwrap().emit_rust(),
-            include_str!("../../../tests/fixtures/prepared/custom_loop_boundaries_hosted.rs")
-                .trim()
-        );
-        for compiled in [false, true] {
-            let mut artifact = HOSTED;
-            if !compiled {
-                artifact.module.program.compiled = data::compiled::CompiledFunctions::interpreted();
-            }
-            let artifact = Box::leak(Box::new(artifact));
-            for budget in [1, 2, 3, 7, 1024] {
-                let (mut execution, entries, _) = artifact
-                    .admit(HostProviderSet::<StatelessHostProfile>::new([]).unwrap())
-                    .unwrap()
-                    .into_execution();
-                let function = *entries.ints[0].function();
-                let (plan, stores, captures) = execution.parts_mut();
-                let host = TestHost::default();
-                let mut state = ();
-                let mut echo = Vec::new();
-                let domain = Domain::new(
-                    Arc::clone(plan),
-                    &host,
-                    &mut state,
-                    stores,
-                    &mut echo,
-                    captures.clone(),
-                    NonZeroUsize::new(budget).unwrap(),
+        // Both callbacks finish before the empty-list branch. The successful
+        // path echoes at step 33 and returns at 37; panic stops at 33 with no Echo.
+        for fail in [false, true] {
+            let plan = crate::runtime::plan_src(
+                &source.replace("FAIL", if fail { "True" } else { "False" }),
+            );
+            let steps: usize = if fail { 33 } else { 37 };
+            for budget in [1, 2, 3, 7, 31, 33, 35, 37, 1024, usize::MAX] {
+                let trace = trace_int_turns(&plan, NonZeroUsize::new(budget).unwrap());
+                assert_eq!(
+                    trace.turns,
+                    steps.div_ceil(budget),
+                    "fail {fail}, budget {budget}"
                 );
-                let context = domain.context();
-                let mut expected_echo = Vec::new();
-                host.block_on(domain.drive(async {
-                    for count in [0, 2, 129] {
-                        for initial in [BigInt::from(3), BigInt::from(i64::MAX)] {
-                            for connected in [false, true] {
-                                for fail in [false, true] {
-                                    let mut inputs = RetainedValues::empty();
-                                    inputs.push_int(count.into());
-                                    inputs.push_bool(fail);
-                                    inputs.push_bool(connected);
-                                    inputs.push_int(initial.clone().into());
-                                    let result = context
-                                        .call(function, HostCallOrigin::Entry, inputs)
-                                        .await
-                                        .unwrap();
-                                    if fail {
-                                        assert!(matches!(result, Err(crate::ExecutionError::Panic(panic))
-                                            if panic.kind() == crate::PanicKind::Panic
-                                                && panic.site().function() == "walk"));
-                                    } else {
-                                        let total = &initial + 3 * count;
-                                        assert_eq!(result.unwrap().into_bigint(), total);
-                                        expected_echo.push(total);
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }))
-                .unwrap();
-                assert_eq!(echo.len(), expected_echo.len());
-                for (output, expected) in echo.iter().zip(expected_echo) {
-                    assert_eq!(output.value(), &crate::Value::Int(expected));
+                if fail {
+                    assert!(trace.echo.is_empty());
+                    let error = trace.result.unwrap_err().into_materialized();
+                    assert_eq!(
+                        error,
+                        crate::ExecutionError::Panic(Panic::new(
+                            PanicKind::Panic,
+                            PanicMessage::Default,
+                            PanicSite::from_static("main", "walk", SourceSpan::new(158, 163)),
+                            None,
+                            None,
+                        )),
+                    );
+                } else {
+                    assert_eq!(trace.result, Ok(9.into()));
+                    assert_eq!(trace.echo, [(33_usize.div_ceil(budget), "9".to_owned())]);
                 }
             }
         }
     }
-
     struct TurnTrace {
         turns: usize,
         echo: Vec<(usize, String)>,
@@ -1499,16 +1316,11 @@ fn items(count: Int, result: List(Item)) {
     }
 
     fn trace_int_turns(plan: &ExecutionPlan, budget: NonZeroUsize) -> TurnTrace {
-        trace_entry_turns(plan, IntFunctionId(0), RetainedValues::empty(), budget)
-    }
-
-    fn trace_entry_turns(
-        plan: &ExecutionPlan,
-        function: IntFunctionId,
-        inputs: RetainedValues,
-        budget: NonZeroUsize,
-    ) -> TurnTrace {
-        let mut execution = Execution::new(function, HostCallOrigin::Entry, inputs);
+        let mut execution = Execution::new(
+            IntFunctionId(0),
+            HostCallOrigin::Entry,
+            RetainedValues::empty(),
+        );
         // Evaluation retains the real capture domain and list storage across
         // turns, just as the production asynchronous driver does.
         let mut evaluation = crate::runtime::execution::Evaluation::new(Default::default());

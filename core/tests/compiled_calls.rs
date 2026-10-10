@@ -9,23 +9,14 @@ use geam_core::{ExecutionError, PanicKind, PanicMessage};
 use std::convert::Infallible;
 use std::sync::Mutex;
 
-static CALLS: data::ModuleArtifact<Infallible> = include!("fixtures/prepared/function_calls.rs");
+static CALLS: data::ModuleArtifact<Infallible> =
+    include!("fixtures/prepared/generated/function_calls.rs");
 
 static BOOLEAN_CALLS: data::ModuleArtifact<Infallible> =
-    include!("fixtures/prepared/boolean_calls.rs");
+    include!("fixtures/prepared/generated/boolean_calls.rs");
 
 #[test]
 fn generated_boolean_only_calls_compile_without_unused_step_variants_and_return_both_values() {
-    let source = include_str!("fixtures/prepared/boolean_calls.gleam");
-    let typed = compile_typed_module("example", "src/example.gleam", source).unwrap();
-    let (bindings, _) = ModuleBuilder::new(typed)
-        .unwrap()
-        .function(FunctionDeclaration::<(bool,), bool>::new("flip"))
-        .unwrap();
-    assert_eq!(
-        bindings.prepare().emit_rust(),
-        include_str!("fixtures/prepared/boolean_calls.rs").trim()
-    );
     assert!(!BOOLEAN_CALLS.program.compiled.function_calls.is_empty());
     let mut bindings = BOOLEAN_CALLS.load().unwrap();
     let compiled_flip = bindings
@@ -43,20 +34,11 @@ fn generated_boolean_only_calls_compile_without_unused_step_variants_and_return_
 }
 
 static BOOLEAN_BRIDGE: data::ModuleArtifact<Infallible> =
-    include!("fixtures/prepared/boolean_bridge.rs");
+    include!("fixtures/prepared/generated/boolean_bridge.rs");
 
 #[test]
-fn terminal_boolean_bridges_match_live_calls_and_keep_stable_generated_data() {
+fn terminal_boolean_bridges_preserve_live_and_compiled_results() {
     let source = include_str!("fixtures/prepared/boolean_bridge.gleam");
-    let typed = compile_typed_module("example", "src/example.gleam", source).unwrap();
-    let (bindings, _) = ModuleBuilder::new(typed)
-        .unwrap()
-        .function(FunctionDeclaration::<(), bool>::new("verify"))
-        .unwrap();
-    assert_eq!(
-        bindings.prepare().emit_rust(),
-        include_str!("fixtures/prepared/boolean_bridge.rs").trim()
-    );
     let typed = compile_typed_module("example", "src/example.gleam", source).unwrap();
     let (bindings, live_verify) = ModuleBuilder::new(typed)
         .unwrap()
@@ -150,7 +132,8 @@ fn limited_boolean_bridge(
 
 #[test]
 fn connected_boolean_calls_preserve_zero_budget_yields_and_single_step_resumption() {
-    const BASE: data::ModuleArtifact<Infallible> = include!("fixtures/prepared/boolean_bridge.rs");
+    const BASE: data::ModuleArtifact<Infallible> =
+        include!("fixtures/prepared/generated/boolean_bridge.rs");
     let mut artifact = BASE;
     let original_rows = artifact.program.compiled.function_calls.len();
     assert_eq!(original_rows, 2);
@@ -333,7 +316,8 @@ fn limited_capture_chain(
 
 #[test]
 fn actual_generated_calls_preserve_every_charged_return_at_small_budget_boundaries() {
-    const BASE: data::ModuleArtifact<Infallible> = include!("fixtures/prepared/function_calls.rs");
+    const BASE: data::ModuleArtifact<Infallible> =
+        include!("fixtures/prepared/generated/function_calls.rs");
     let mut artifact = BASE;
     let target = CallTarget::Int(artifact.entries.ints[0].function);
     artifact.program.compiled.function_calls = artifact
@@ -418,75 +402,6 @@ fn actual_generated_calls_preserve_every_charged_return_at_small_budget_boundari
 #[test]
 fn generated_function_calls_cover_production_capture_and_nested_return_paths() {
     let source = include_str!("fixtures/prepared/function_calls.gleam");
-    let typed = compile_typed_module("example", "src/example.gleam", source).unwrap();
-    let (mut bindings, _) = ModuleBuilder::new(typed)
-        .unwrap()
-        .function(FunctionDeclaration::<(BigInt, BigInt), BigInt>::new(
-            "capture_chain",
-        ))
-        .unwrap();
-    bindings
-        .function(FunctionDeclaration::<(bool, BigInt), BigInt>::new(
-            "dynamic_target",
-        ))
-        .unwrap();
-    bindings
-        .function(FunctionDeclaration::<(BigInt,), BigInt>::new("nested"))
-        .unwrap();
-    bindings
-        .function(FunctionDeclaration::<(BigInt,), bool>::new("mutual"))
-        .unwrap();
-    bindings
-        .function(FunctionDeclaration::<(BigInt, BigInt), bool>::new(
-            "callable_captures",
-        ))
-        .unwrap();
-    bindings
-        .function(FunctionDeclaration::<(BigInt, BigInt), bool>::new(
-            "aliases",
-        ))
-        .unwrap();
-    bindings
-        .function(FunctionDeclaration::<(BigInt,), BigInt>::new("canonical"))
-        .unwrap();
-    bindings
-        .function(FunctionDeclaration::<(BigInt,), BigInt>::new("big_return"))
-        .unwrap();
-    bindings
-        .function(FunctionDeclaration::<(BigInt,), BigInt>::new("failure"))
-        .unwrap();
-    bindings
-        .function(FunctionDeclaration::<(BigInt, BigInt), BigInt>::new(
-            "producer_suffix_int",
-        ))
-        .unwrap();
-    bindings
-        .function(FunctionDeclaration::<(BigInt, BigInt), bool>::new(
-            "producer_suffix_bool",
-        ))
-        .unwrap();
-    bindings
-        .function(FunctionDeclaration::<(BigInt, BigInt), BigInt>::new(
-            "reuse_callback",
-        ))
-        .unwrap();
-    bindings
-        .function(FunctionDeclaration::<(BigInt, BigInt, BigInt), BigInt>::new("repeated_roots"))
-        .unwrap();
-    bindings
-        .function(FunctionDeclaration::<(BigInt,), bool>::new(
-            "canonical_bool",
-        ))
-        .unwrap();
-    bindings
-        .function(FunctionDeclaration::<(bool, BigInt, BigInt), bool>::new(
-            "bool_captures",
-        ))
-        .unwrap();
-    assert_eq!(
-        bindings.prepare().emit_rust(),
-        include_str!("fixtures/prepared/function_calls.rs").trim()
-    );
     assert!(!CALLS.program.compiled.function_calls.is_empty());
 
     for prepared in [false, true] {

@@ -9,7 +9,7 @@ use geam_core::{
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 static PROGRAM: data::HostedModuleArtifact =
-    include!("../../core/tests/fixtures/prepared/native_loop.rs");
+    include!("../../core/tests/fixtures/prepared/generated/native_loop.rs");
 static CALLS: [AtomicUsize; 9] = [const { AtomicUsize::new(0) }; 9];
 
 #[geam_macros::provider(package = "application", modules = [native_loop], crate_path = geam_core)]

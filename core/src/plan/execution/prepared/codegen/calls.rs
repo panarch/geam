@@ -3523,6 +3523,67 @@ let int3 = region5;
     }
 
     #[test]
+    fn scalar_emission_preserves_nullary_identity_float_arithmetic_and_prefix_byte_offsets() {
+        use super::super::string::StringOperation;
+        use super::shape::FloatOperation;
+        use crate::plan::execution::graph::CustomLocalId;
+        use crate::plan::execution::type_::{CustomConstructorId, CustomTypeId};
+
+        let mut code = Code::default();
+        write_scalar(
+            &mut code,
+            &CallScalar::Nullary {
+                output: CustomLocalId(2),
+                constructor: CustomConstructorId {
+                    type_id: CustomTypeId(3),
+                    index: 1,
+                },
+            },
+        );
+        assert_eq!(
+            code.as_str(),
+            "let nullary2 = CallNullary::new(data::type_::CustomConstructorId {\n    type_id: data::type_::CustomTypeId(3),\n    index: 1,\n});\n"
+        );
+        for (operation, expected) in [
+            (
+                FloatOperation::Add(FloatLocalId(1), FloatLocalId(2)),
+                "let float3 = float1 + float2;\n",
+            ),
+            (
+                FloatOperation::Subtract(FloatLocalId(1), FloatLocalId(2)),
+                "let float3 = float1 - float2;\n",
+            ),
+            (
+                FloatOperation::Multiply(FloatLocalId(1), FloatLocalId(2)),
+                "let float3 = float1 * float2;\n",
+            ),
+            (
+                FloatOperation::Divide(FloatLocalId(1), FloatLocalId(2)),
+                "let float3 = if float2 == 0.0 { 0.0 } else { float1 / float2 };\n",
+            ),
+        ] {
+            let mut code = Code::default();
+            write_scalar(&mut code, &CallScalar::Float(FloatLocalId(3), operation));
+            assert_eq!(code.as_str(), expected);
+        }
+        let mut code = Code::default();
+        write_scalar(
+            &mut code,
+            &CallScalar::String(
+                StringLocalId(1),
+                StringOperation::DropPrefix {
+                    value: StringLocalId(0),
+                    bytes: "λ".len(),
+                },
+            ),
+        );
+        assert_eq!(
+            code.as_str(),
+            "let string1 = string0.slice(2..string0.len());\n"
+        );
+    }
+
+    #[test]
     fn every_generated_return_family_has_its_exact_rust_name() {
         for (family, expected) in [
             (CallFamily::Int, "Int"),
