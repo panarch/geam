@@ -1,6 +1,6 @@
-use super::SystemCargo;
 use super::control::{CONTROL_ENV, RunnerControl};
 use super::source::{APPLICATION_SOURCE, GENERATED_HEADER, PROGRAM_SOURCE, read_generated_source};
+use super::{SystemCargo, binary_name};
 use crate::cargo::{CargoMetadataLoader, CargoMetadataMode, SystemCargoMetadata};
 use crate::error::CliError;
 use crate::process::run_checked_with_progress;
@@ -73,15 +73,15 @@ impl ExecutableBuilder for SystemCargo {
         progress: &mut Progress<'_>,
     ) -> Result<Utf8PathBuf, CliError> {
         let program = project_root.join(PROGRAM_SOURCE);
-        read_generated_source(&program)?;
+        let current = read_generated_source(&program)?;
         let temporary = temporary_program(&project_root.join("build/geam"))?;
         progress.report(format_args!("Preparing executable data for {module}"))?;
         run_checked_with_progress(
-            &mut preparation_command(project_root, module, &temporary, profile),
+            &mut preparation_command(project_root, module, package, &temporary, profile),
             progress,
             Stdio::inherit(),
         )?;
-        // The helper writes a complete source file; publish it only after success.
+        // The helper writes a complete source file; publish changes only after success.
         let prepared =
             std::fs::read_to_string(&temporary).map_err(|error| CliError::PreparedProgramRead {
                 path: temporary.to_path_buf(),
@@ -93,12 +93,14 @@ impl ExecutableBuilder for SystemCargo {
                 "preparer did not write generated program data",
             ));
         }
-        temporary
-            .persist(&program)
-            .map_err(|error| CliError::FileWrite {
-                path: program,
-                error: error.error,
-            })?;
+        if current.as_deref() != Some(prepared.as_str()) {
+            temporary
+                .persist(&program)
+                .map_err(|error| CliError::FileWrite {
+                    path: program,
+                    error: error.error,
+                })?;
+        }
         let metadata = SystemCargoMetadata.load(
             project_root,
             &project_root.join("Cargo.toml"),
@@ -138,10 +140,11 @@ fn temporary_program(directory: &Utf8Path) -> Result<tempfile::TempPath, CliErro
 fn preparation_command(
     root: &Utf8Path,
     module: &str,
+    package: &str,
     destination: &Path,
     profile: BuildProfile,
 ) -> Command {
-    let mut command = cargo_command(root, "run", "geam-runner", profile);
+    let mut command = cargo_command(root, "run", &binary_name(package), profile);
     command.arg("--").env(
         CONTROL_ENV,
         RunnerControl::Prepare(destination).encode(root, module),
@@ -242,14 +245,16 @@ mod tests {
     };
     use crate::error::CliError;
     use crate::progress::Progress;
+    use crate::runner::binary_name;
     use crate::runner::control::CONTROL_ENV;
     use camino::{Utf8Path, Utf8PathBuf};
     use cargo_metadata::PackageId;
     use serde_json::json;
     use std::ffi::OsStr;
-    use std::fs;
+    use std::fs::{self, File, FileTimes};
     use std::io::{self, Write};
     use std::process::Command;
+    use std::time::{Duration, SystemTime};
 
     #[test]
     fn helper_and_application_share_package_lock_target_and_profile() {
@@ -261,11 +266,12 @@ mod tests {
             let prepare = preparation_command(
                 root,
                 "tools/report",
+                "my_app",
                 std::path::Path::new("output.rs"),
                 profile,
             );
             let build = build_command(root, "my_app", profile);
-            let mut expected = vec!["run", "--locked", "--bin", "geam-runner"];
+            let mut expected = vec!["run", "--locked", "--bin", "my_app-geam-runner"];
             expected.extend(flag);
             expected.push("--");
             assert_eq!(prepare.get_args().collect::<Vec<_>>(), expected);
@@ -300,6 +306,76 @@ mod tests {
                 assert_eq!(command.get_program(), "cargo");
                 assert_eq!(command.get_current_dir(), Some(root.as_std_path()));
             }
+        }
+    }
+
+    #[test]
+    fn project_runners_keep_their_identity_with_a_shared_build_directory() {
+        let directory = tempfile::tempdir().unwrap();
+        let root = Utf8PathBuf::from_path_buf(directory.path().canonicalize().unwrap()).unwrap();
+        let shared = root.join("shared-build");
+        for package in ["alpha_app", "beta_app"] {
+            let project = root.join(package);
+            fs::create_dir_all(project.join("build/geam")).unwrap();
+            fs::write(
+                project.join("Cargo.toml"),
+                format!(
+                    r#"[package]
+name = "{package}"
+version = "0.0.0"
+edition = "2024"
+
+[[bin]]
+name = "{runner}"
+path = "build/geam/runner.rs"
+
+[workspace]
+"#,
+                    runner = binary_name(package),
+                ),
+            )
+            .unwrap();
+            fs::write(
+                project.join("build/geam/runner.rs"),
+                format!(
+                    r#"fn main() {{
+    println!("{package}");
+}}
+"#
+                ),
+            )
+            .unwrap();
+            let lock = Command::new("cargo")
+                .args(["generate-lockfile", "--offline"])
+                .current_dir(&project)
+                .output()
+                .unwrap();
+            assert!(lock.status.success(), "{lock:?}");
+        }
+        for package in ["alpha_app", "beta_app", "alpha_app", "beta_app"] {
+            let project = root.join(package);
+            let mut command = preparation_command(
+                &project,
+                "tools/report",
+                package,
+                project.join("output.rs").as_std_path(),
+                BuildProfile::Debug,
+            );
+            let output = command
+                .env("CARGO_BUILD_BUILD_DIR", &shared)
+                .env("CARGO_NET_OFFLINE", "true")
+                .output()
+                .unwrap();
+            assert!(output.status.success(), "{command:?}: {output:?}");
+            assert_eq!(output.stdout, format!("{package}\n").as_bytes());
+            assert!(
+                project
+                    .join(format!(
+                        "build/geam/target/debug/{package}-geam-runner{}",
+                        std::env::consts::EXE_SUFFIX,
+                    ))
+                    .is_file()
+            );
         }
     }
 
@@ -452,7 +528,7 @@ mod tests {
     }
 
     #[test]
-    fn builds_real_cargo_targets_and_does_not_report_stale_artifacts_on_failure() {
+    fn builds_real_cargo_targets_and_preserves_identical_prepared_sources() {
         let directory = tempfile::tempdir().unwrap();
         let root = Utf8PathBuf::from_path_buf(directory.path().canonicalize().unwrap()).unwrap();
         fs::create_dir_all(root.join("build/geam")).unwrap();
@@ -466,7 +542,7 @@ edition = "2024"
 [dependencies]
 toml = "0.9"
 [[bin]]
-name = "geam-runner"
+name = "my_app-geam-runner"
 path = "build/geam/runner.rs"
 [[bin]]
 name = "my_app"
@@ -534,6 +610,7 @@ fn main() {
                 matches!(error, CliError::PreparationProgressIo(error) if error.kind() == io::ErrorKind::BrokenPipe)
             );
         }
+        let program = root.join("build/geam/program.rs");
         for (profile, name, text) in [
             (BuildProfile::Debug, "debug", "root:true\n"),
             (BuildProfile::Debug, "debug", "tools/report:true\n"),
@@ -559,8 +636,29 @@ fn main() {
             assert_eq!(run.stdout, text.as_bytes());
             assert!(run.stderr.is_empty());
             assert_eq!(fs::read(root.join("Cargo.lock")).unwrap(), original_lock);
+
+            let prepared = fs::read(&program).unwrap();
+            // An old timestamp makes unnecessary replacement visible without sleeping.
+            File::options()
+                .write(true)
+                .open(&program)
+                .unwrap()
+                .set_times(
+                    FileTimes::new()
+                        .set_modified(SystemTime::UNIX_EPOCH + Duration::from_secs(1_000_000_000)),
+                )
+                .unwrap();
+            let modified = fs::metadata(&program).unwrap().modified().unwrap();
+            let repeated = SystemCargo
+                .build(&root, module, "my_app", profile, &mut Progress::Hidden)
+                .unwrap();
+            assert_eq!(repeated, path);
+            assert_eq!(fs::read(&program).unwrap(), prepared);
+            assert_eq!(
+                fs::metadata(&program).unwrap().modified().unwrap(),
+                modified
+            );
         }
-        let program = root.join("build/geam/program.rs");
         let previous = fs::read(&program).unwrap();
         for (module, expected) in [
             ("fail", "process"),

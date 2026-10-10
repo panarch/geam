@@ -782,7 +782,7 @@ pub fn main() {{
         );
     }
     let runner = project.join(format!(
-        "build/geam/target/debug/geam-runner{}",
+        "build/geam/target/debug/standalone_fixture-geam-runner{}",
         std::env::consts::EXE_SUFFIX
     ));
     for (control, diagnostic) in [
@@ -1030,6 +1030,10 @@ fn geam(directory: &Path, arguments: &[&str]) -> Command {
     command
         .current_dir(directory)
         .args(arguments)
+        .env(
+            "CARGO_BUILD_BUILD_DIR",
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("target/standalone-acceptance"),
+        )
         .env_remove("CARGO_ENCODED_RUSTFLAGS")
         .env_remove("CARGO_LLVM_COV")
         .env_remove("CARGO_LLVM_COV_TARGET_DIR")

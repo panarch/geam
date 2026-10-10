@@ -1,4 +1,5 @@
 use crate::error::CliError;
+use crate::runner::binary_name;
 use camino::{Utf8Path, Utf8PathBuf};
 use semver::Version;
 use std::collections::{BTreeMap, BTreeSet};
@@ -137,43 +138,61 @@ impl ManagedProject {
     }
 
     fn render(&self) -> String {
-        let mut source = String::from(MANAGED_HEADER);
-        source.push_str("\n[package]\nname = ");
-        source.push_str(&quoted(&format!("{}-geam-runner", self.root_package)));
-        source.push_str(
-            "\nversion = \"0.0.0\"\nedition = \"2024\"\npublish = false\n\n[package.metadata.geam.runner]\nschema = 1\n\n[[bin]]\nname = \"geam-runner\"\npath = \"build/geam/runner.rs\"\n\n[[bin]]\nname = ",
+        let runner = quoted(&binary_name(&self.root_package));
+        let application = quoted(&self.root_package);
+        let version = env!("CARGO_PKG_VERSION");
+        let mut source = format!(
+            r#"{MANAGED_HEADER}
+[package]
+name = {runner}
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[package.metadata.geam.runner]
+schema = 1
+
+[[bin]]
+name = {runner}
+path = "build/geam/runner.rs"
+
+[[bin]]
+name = {application}
+path = "build/geam/application.rs"
+
+[dependencies]
+geam = {{ version = "={version}", default-features = false, features = ["standalone"] }}
+tokio = {{ version = "1.53.1", default-features = false, features = ["rt-multi-thread", "net", "time"] }}
+"#
         );
-        source.push_str(&quoted(&self.root_package));
-        source.push_str("\npath = \"build/geam/application.rs\"\n\n[dependencies]\n");
-        source.push_str("geam = { version = ");
-        source.push_str(&quoted(&format!("={}", env!("CARGO_PKG_VERSION"))));
-        source
-            .push_str(", default-features = false, features = [\"standalone\"] }\ntokio = { version = \"1.53.1\", default-features = false, features = [\"rt-multi-thread\", \"net\", \"time\"] }\n");
         for provider in self.providers.values() {
-            source.push_str(&provider.alias());
-            source.push_str(" = { package = ");
-            source.push_str(&quoted(provider.crate_name()));
+            source.push_str(&format!(
+                "{} = {{ package = {}",
+                provider.alias(),
+                quoted(provider.crate_name()),
+            ));
             match provider.source() {
                 ProviderSource::Registry { version } => {
-                    source.push_str(", version = ");
-                    source.push_str(&quoted(&format!("={version}")));
+                    source.push_str(&format!(", version = {}", quoted(&format!("={version}"))));
                 }
                 ProviderSource::Path { path } => {
-                    source.push_str(", path = ");
-                    source.push_str(&quoted(path.as_str()));
+                    source.push_str(&format!(", path = {}", quoted(path.as_str())));
                 }
                 ProviderSource::Git { url, rev } => {
-                    source.push_str(", git = ");
-                    source.push_str(&quoted(url));
+                    source.push_str(&format!(", git = {}", quoted(url)));
                     if let Some(rev) = rev {
-                        source.push_str(", rev = ");
-                        source.push_str(&quoted(rev));
+                        source.push_str(&format!(", rev = {}", quoted(rev)));
                     }
                 }
             }
             source.push_str(" }\n");
         }
-        source.push_str("\n[workspace]\nresolver = \"3\"\n");
+        source.push_str(
+            r#"
+[workspace]
+resolver = "3"
+"#,
+        );
         source
     }
 }
@@ -370,19 +389,42 @@ mod tests {
         );
         let source = fs::read_to_string(root.join("Cargo.toml"))
             .expect("managed manifest should be readable");
-        assert!(source.starts_with("# Managed by Geam."));
-        assert!(source.contains(&format!(
-            "geam = {{ version = \"={}\", default-features = false, features = [\"standalone\"] }}",
-            env!("CARGO_PKG_VERSION"),
-        )));
-        assert!(source.contains(
-            "geam_provider_images = { package = \"geam-images\", version = \"=1.2.3\" }"
-        ));
-        assert!(source.contains(
-            "geam_provider_search = { package = \"geam-search\", path = \"/providers/search\" }"
-        ));
-        assert!(source.contains("geam_provider_video = { package = \"geam-video\", git = \"https://example.com/video.git\", rev = \"abc123\" }"));
-        assert!(source.contains("geam_provider_websocket = { package = \"geam-websocket\", git = \"https://example.com/websocket.git\" }"));
+        assert_eq!(
+            source,
+            format!(
+                r#"# Managed by Geam. Use `geam provider` commands to change providers.
+
+[package]
+name = "application-geam-runner"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[package.metadata.geam.runner]
+schema = 1
+
+[[bin]]
+name = "application-geam-runner"
+path = "build/geam/runner.rs"
+
+[[bin]]
+name = "application"
+path = "build/geam/application.rs"
+
+[dependencies]
+geam = {{ version = "={version}", default-features = false, features = ["standalone"] }}
+tokio = {{ version = "1.53.1", default-features = false, features = ["rt-multi-thread", "net", "time"] }}
+geam_provider_images = {{ package = "geam-images", version = "=1.2.3" }}
+geam_provider_search = {{ package = "geam-search", path = "/providers/search" }}
+geam_provider_video = {{ package = "geam-video", git = "https://example.com/video.git", rev = "abc123" }}
+geam_provider_websocket = {{ package = "geam-websocket", git = "https://example.com/websocket.git" }}
+
+[workspace]
+resolver = "3"
+"#,
+                version = env!("CARGO_PKG_VERSION"),
+            )
+        );
 
         let reloaded =
             ManagedProject::load(&root, "application").expect("managed manifest should reload");

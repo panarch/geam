@@ -397,6 +397,15 @@ fn prepares_app_local_callables_and_runs_without_source_or_compilers() {
     assert_eq!(output.stderr, b"");
 }
 
+fn standalone_build(directory: &Path) -> Command {
+    let mut command = command(env!("CARGO_BIN_EXE_geam"), directory);
+    command.arg("build").env(
+        "CARGO_BUILD_BUILD_DIR",
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("target/standalone-acceptance"),
+    );
+    command
+}
+
 fn command(program: impl AsRef<std::ffi::OsStr>, directory: &Path) -> Command {
     let mut command = Command::new(program);
     command
@@ -404,6 +413,7 @@ fn command(program: impl AsRef<std::ffi::OsStr>, directory: &Path) -> Command {
         .env("CARGO_INCREMENTAL", "0")
         .env("CARGO_NET_OFFLINE", "true")
         .env_remove("CARGO_TARGET_DIR")
+        .env_remove("CARGO_BUILD_BUILD_DIR")
         .env_remove("CARGO_ENCODED_RUSTFLAGS")
         .env_remove("CARGO_LLVM_COV")
         .env_remove("CARGO_LLVM_COV_TARGET_DIR")
