@@ -17,7 +17,7 @@ pub(in crate::plan::execution::lowering) fn generic_expr(
     let shape = context.concrete_parameter(expression.parameter());
     match context
         .representations
-        .representation(&shape)
+        .inhabitation(&shape)
         .into_representability()
     {
         Representability::Uninhabited => {

@@ -711,20 +711,11 @@ fn parameter_list_kind(
 
 fn generic_elements(
     elements: &[module::GenericExpr],
-    item: &StoredValueShape,
     cursor: DraftCursor,
     graph: &mut DraftGraph,
     context: &mut super::super::LoweringContext,
 ) -> Lowered<Vec<DraftValueRef>> {
-    lower_element_sequence(
-        elements,
-        cursor,
-        graph,
-        context,
-        |element, cursor, graph, context| {
-            generic::stored_expr(element, item, cursor, graph, context)
-        },
-    )
+    lower_element_sequence(elements, cursor, graph, context, generic::generic_expr)
 }
 
 fn typed_generic_list_value(
@@ -1189,17 +1180,15 @@ fn stored_generic_list_kind(
     let item_shape = item.to_specialized();
     let result_shape = StoredValueShape::List(Box::new(item_shape.clone()));
     match kind {
-        E::Value(elements) => {
-            generic_elements(elements, item, cursor, graph, context).map(|flow| {
-                flow.map_cursor(|cursor, elements| {
-                    graph.list_instruction(
-                        cursor,
-                        item_shape.clone(),
-                        typed_generic_list_value(item, elements, context),
-                    )
-                })
+        E::Value(elements) => generic_elements(elements, cursor, graph, context).map(|flow| {
+            flow.map_cursor(|cursor, elements| {
+                graph.list_instruction(
+                    cursor,
+                    item_shape.clone(),
+                    typed_generic_list_value(item, elements, context),
+                )
             })
-        }
+        }),
         E::Constant(constant) => {
             stored_generic_list_constant(item, constant, context).map(|kind| {
                 let mut cursor = cursor;
@@ -1207,7 +1196,7 @@ fn stored_generic_list_kind(
                 DraftFlow::value(cursor, value)
             })
         }
-        E::Spread { elements, tail } => generic_elements(elements, item, cursor, graph, context)
+        E::Spread { elements, tail } => generic_elements(elements, cursor, graph, context)
             .and_then(|flow| {
                 flow.and_then(|cursor, elements| {
                     stored_generic_list_kind(tail, item, cursor, graph, context).map(|flow| {
@@ -2668,6 +2657,68 @@ mod tests {
             Representability::Inhabited(DraftFlow::Diverged) => FlowOutcome::Diverged,
             Representability::Inhabited(DraftFlow::Value { .. }) => FlowOutcome::Value,
         }
+    }
+
+    #[test]
+    fn generic_empty_list_items_propagate_source_failure_before_the_tail() {
+        for item_type in ["Empty", "#(Empty, Int)", "Wrapper(Empty)"] {
+            for construction in ["[stop()]", "[stop(), ..tail()]"] {
+                let source = format!(
+                    r#"
+pub type Empty
+pub type Wrapper(a) {{ Wrapper(a) }}
+fn stop() -> a {{ panic as "body" }}
+fn tail() -> List(a) {{ echo "tail" [] }}
+fn stopped_list() -> List(a) {{ {construction} }}
+pub fn main() {{
+  let values: List({item_type}) = stopped_list()
+  values
+}}
+"#,
+                );
+                let typed = crate::compile_typed_module("main", "main.gleam", &source).unwrap();
+                let plan =
+                    crate::ExecutionPlan::from_module_plan(crate::plan_module(typed).unwrap());
+                let mut echo = Vec::new();
+                assert_eq!(
+                    crate::run_main(&plan, &mut echo).unwrap_err().to_string(),
+                    "panic: body",
+                    "item type {item_type}, construction {construction}",
+                );
+                assert_eq!(echo, Vec::new());
+            }
+        }
+    }
+
+    #[test]
+    fn generic_lists_preserve_empty_only_storage_and_inhabited_items() {
+        use crate::ListValue;
+
+        let source = r#"
+pub type Empty
+fn empty() -> List(a) { [] }
+pub fn main() {
+  let values: List(Empty) = empty()
+  values
+}
+"#;
+        let typed = crate::compile_typed_module("main", "main.gleam", source).unwrap();
+        let plan = crate::ExecutionPlan::from_module_plan(crate::plan_module(typed).unwrap());
+        assert_eq!(
+            crate::run_main(&plan, &mut Vec::new()).unwrap(),
+            Value::List(ListValue::empty(ValueType::Custom(CustomType::new(
+                CustomTypeName::new("geam".into(), "main".into(), "Empty".into()),
+                Vec::new(),
+            )))),
+        );
+
+        let source = "fn one(value: a) -> List(a) { [value] } pub fn main() { one(42) }";
+        let typed = crate::compile_typed_module("main", "main.gleam", source).unwrap();
+        let plan = crate::ExecutionPlan::from_module_plan(crate::plan_module(typed).unwrap());
+        assert_eq!(
+            crate::run_main(&plan, &mut Vec::new()).unwrap(),
+            Value::List(ListValue::int(vec![42.into()])),
+        );
     }
 
     struct ListFamily {

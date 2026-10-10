@@ -812,6 +812,7 @@ mod execution_errors {
 
     mod functions {
         execution_error_cases!("functions";
+            generic_empty_list_item_failure,
             generic_unresolved_argument,
             custom_function_binding_failure,
             generic_unresolved_discarded_value,
