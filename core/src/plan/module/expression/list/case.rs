@@ -487,7 +487,7 @@ mod tests {
     #[test]
     fn bool_case_branches_dispatch_every_non_int_item_family() {
         let function_type = FunctionType::new(Vec::new(), ValueType::Int);
-        let parameter = TypeParameterId(0);
+        let parameter = TypeParameterId::new(0);
 
         assert_eq!(
             ListExpr::bool_case(
@@ -664,8 +664,8 @@ mod tests {
 
     #[test]
     fn parameter_list_case_branches_reject_wrong_family_and_parameter() {
-        let expected_parameter = TypeParameterId(0);
-        let actual_parameter = TypeParameterId(1);
+        let expected_parameter = TypeParameterId::new(0);
+        let actual_parameter = TypeParameterId::new(1);
         let expected = ValueType::List(Box::new(ValueType::Parameter(expected_parameter)));
 
         assert_eq!(
@@ -921,8 +921,8 @@ mod tests {
         let second_custom = custom_type("Second");
         let first_external = external_type("First");
         let second_external = external_type("Second");
-        let first_parameter = crate::plan::TypeParameterId(0);
-        let second_parameter = crate::plan::TypeParameterId(1);
+        let first_parameter = crate::plan::TypeParameterId::new(0);
+        let second_parameter = crate::plan::TypeParameterId::new(1);
 
         assert_eq!(
             ListCaseBranches::from_exprs(

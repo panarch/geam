@@ -1205,7 +1205,7 @@ pub fn main() { 0 }
                 reason: InvalidTypedAstReason::FunctionShape {
                     name: "<anonymous:0>".into(),
                     reason: InvalidFunctionShapeReason::ExpressionType {
-                        actual: ValueType::Parameter(crate::plan::TypeParameterId(0)),
+                        actual: ValueType::Parameter(crate::plan::TypeParameterId::new(0)),
                     },
                 },
             }),

@@ -1,4 +1,5 @@
 import dynamic_provider/declarations
+import native_parameter
 
 @external(erlang, "dynamic_provider", "Dynamic")
 pub type Dynamic
@@ -110,6 +111,7 @@ fn increment(value: Int) -> Int {
 
 pub fn transfer_flow() {
   check_list_values()
+  let assert "Parameter" = kind(cast(native_parameter.coerce(42)))
   let first = cast(7)
   let equal = cast(7)
   let text = cast("seven")
@@ -158,6 +160,7 @@ pub fn transfer_flow() {
 
 pub fn main() {
   check_list_values()
+  let assert "Parameter" = kind(cast(native_parameter.coerce(42)))
   let assert <<codepoint:utf8_codepoint>> = <<"A":utf8>>
   let first = cast(7)
   let equal = cast(7)

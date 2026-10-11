@@ -568,6 +568,12 @@ fn generic_public_registrations_keep_concrete_values_and_unresolved_errors() {
     for (body, expected, effects, calls) in [
         (
             r#"let label = "retained" let function = fn(_) { label } let alias = sdk.keep_function(function) #(alias == function, sdk.function_is_callable(alias))"#,
+            Ok("#(True, True)"),
+            vec![],
+            0,
+        ),
+        (
+            r#"let label = "retained" let function = fn(_: Empty) { label } let alias = sdk.keep_function(function) #(alias == function, sdk.function_is_callable(alias))"#,
             Ok("#(True, False)"),
             vec![],
             0,
@@ -630,8 +636,9 @@ fn generic_public_registrations_keep_concrete_values_and_unresolved_errors() {
             1,
         ),
         ("let _: Nil = sdk.native_value() 42", Ok("42"), vec![], 1),
+        ("let _ = sdk.native_value() 42", Ok("42"), vec![], 1),
         (
-            "let _ = sdk.native_value() 42",
+            "let _: String = sdk.native_value() 42",
             Err(
                 "host function provider_sdk_example::provider/sdk.native_value failed: native value does not match the registered return type",
             ),
@@ -649,7 +656,7 @@ fn generic_public_registrations_keep_concrete_values_and_unresolved_errors() {
         let providers =
             <Component as HostProviderComponentRegistration<Profile>>::providers().unwrap();
         let hosts = HostProviderSet::from_providers(providers).unwrap();
-        let source = format!("import provider/sdk\npub fn main() {{ {body} }}");
+        let source = format!("import provider/sdk\npub type Empty\npub fn main() {{ {body} }}");
         let typed = compile_typed_host_program(
             "provider_sdk_example",
             "main",

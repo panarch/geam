@@ -426,7 +426,8 @@ mod tests {
         use crate::plan::execution::graph::{NeverCall, NeverCallTarget, NeverFunctionLocalId};
         use crate::plan::execution::prepared::admission::catalog::CatalogError;
         let source = r#"
-fn stop(message: String) -> a { panic as message }
+pub type Never
+fn stop(message: String) -> Never { panic as message }
 pub fn main() { #(stop, "message", 42) }
 "#;
         let typed = crate::compile_typed_module("example", "src/example.gleam", source).unwrap();

@@ -20,8 +20,8 @@ pub(in crate::runtime) use function::{
     EvaluatedExternalListFunction, EvaluatedFloatFunction, EvaluatedFunction,
     EvaluatedFunctionFunction, EvaluatedFunctionValue, EvaluatedFunctionValueKind,
     EvaluatedGenericFunction, EvaluatedIntFunction, EvaluatedListFunction, EvaluatedNeverFunction,
-    EvaluatedNilFunction, EvaluatedStringFunction, EvaluatedTupleFunction,
-    EvaluatedUtfCodepointFunction, FunctionCreation, FunctionReferenceId,
+    EvaluatedNilFunction, EvaluatedParameterFunction, EvaluatedStringFunction,
+    EvaluatedTupleFunction, EvaluatedUtfCodepointFunction, FunctionCreation, FunctionReferenceId,
 };
 pub(in crate::runtime) use read::{EvaluatedFunctionRef, EvaluatedListRef, EvaluatedValueRef};
 pub(in crate::runtime) use source::{value_refs_equal, value_source_hash, values_equal};
@@ -147,6 +147,7 @@ impl EvaluatedCustomValue {
 
 #[derive(Debug, Clone, PartialEq)]
 pub(in crate::runtime) enum EvaluatedValue {
+    Parameter(crate::ParameterValue),
     Int(IntegerValue),
     Float(f64),
     String(StringValue),
@@ -176,9 +177,7 @@ impl From<ListValueId> for EvaluatedValue {
             ListValueId::Bool(value) => Self::List(StoredListValueId::Bool(value)),
             ListValueId::Nil(value) => Self::List(StoredListValueId::Nil(value)),
             ListValueId::Tuple(value) => Self::List(StoredListValueId::Tuple(value)),
-            ListValueId::ParameterList(value) => {
-                Self::List(StoredListValueId::ParameterList(value))
-            }
+
             ListValueId::List(value) => Self::List(StoredListValueId::List(value)),
             ListValueId::Function(value) => Self::List(StoredListValueId::Function(value)),
         }
@@ -187,7 +186,10 @@ impl From<ListValueId> for EvaluatedValue {
 
 impl From<StoredListValueId> for EvaluatedValue {
     fn from(value: StoredListValueId) -> Self {
-        Self::List(value)
+        match value {
+            StoredListValueId::Parameter(value) => Self::ParameterList(value),
+            value => Self::List(value),
+        }
     }
 }
 
@@ -197,18 +199,32 @@ impl EvaluatedValue {
         metadata: RuntimeValueMetadata<'_>,
     ) -> bool {
         match self {
-            Self::Custom(value) => metadata
-                .custom_lifetime(value.type_id())
-                .requires_execution(),
+            Self::Parameter(value) => value.requires_execution(),
+            Self::Custom(value) => {
+                metadata
+                    .custom_lifetime(value.type_id())
+                    .requires_execution()
+                    || (metadata.custom_parameter_lifetime(value.type_id())
+                        && value
+                            .fields()
+                            .iter()
+                            .any(|field| field.requires_execution(metadata)))
+            }
             Self::External(value) => metadata
                 .external_lifetime(value.type_id())
                 .requires_execution(),
-            Self::List(value) => metadata
-                .list_lifetime(value.list_type())
-                .requires_execution(),
-            Self::ParameterList(value) => metadata
-                .list_lifetime(value.type_id().list_type())
-                .requires_execution(),
+            Self::List(value) => {
+                metadata
+                    .list_lifetime(value.list_type())
+                    .requires_execution()
+                    || (metadata.list_parameter_lifetime(value.list_type())
+                        && read::EvaluatedListRef::from(value)
+                            .iter_prefix(usize::MAX)
+                            .any(|item| item.retain().requires_execution(metadata)))
+            }
+            Self::ParameterList(value) => {
+                value.values().iter().any(|item| item.requires_execution())
+            }
             Self::Tuple(values) => values
                 .iter()
                 .any(|value| value.requires_execution(metadata)),
@@ -225,6 +241,7 @@ impl EvaluatedValue {
 
     pub(in crate::runtime) fn value_type(&self, metadata: RuntimeValueMetadata<'_>) -> ValueType {
         match self {
+            Self::Parameter(value) => ValueType::Parameter(value.parameter()),
             Self::Int(_) => ValueType::Int,
             Self::Float(_) => ValueType::Float,
             Self::String(_) => ValueType::String,
@@ -315,6 +332,48 @@ mod tests {
 
         assert_eq!(value.bits(), &[0b0100_0000u8].view_bits::<Msb0>()[..2],);
         assert_eq!(value.bits().len(), 2);
+    }
+
+    #[test]
+    fn parameter_list_lifetime_follows_its_native_payloads() {
+        use crate::host::StatelessHostProfile;
+        use crate::plan::execution::type_::{FunctionType, ValueType};
+        use crate::runtime::execution::ExecutionServices;
+        use crate::runtime::{
+            NativeValue, NativeValues, RuntimeListStorage, StoredRuntimeValue, ValueRetention,
+        };
+
+        let plan = crate::runtime::plan_src(
+            "fn values() -> List(a) { [] } pub fn main() { #(values, fn(value: Int) { value }) }",
+        );
+        let lists = RuntimeListStorage::default();
+        let type_id = plan.parameter_list_function_id(0).type_id();
+        let metadata = plan.value_metadata();
+        let native = NativeValues::new(&lists, metadata);
+        let pure = native.parameter(type_id.item, &native.integer(42.into()), false);
+        let services = ExecutionServices::<StatelessHostProfile>::new(Default::default());
+        let execution = services.context();
+        let function = EvaluatedIntFunction::reference(
+            IntFunctionId(0),
+            Default::default(),
+            FunctionType::new(vec![ValueType::Int], ValueType::Int),
+        );
+        let retention = ValueRetention::new(metadata).with_endpoint(execution.endpoint());
+        let callable = NativeValue::from_stored(StoredRuntimeValue::from_retention(
+            EvaluatedValue::Function(function.into()),
+            retention.as_borrowed(),
+        ));
+        let lifetime = callable.retention_lifetime(&execution).unwrap();
+        assert!(lifetime);
+        let callback = native.parameter(type_id.item, &callable, lifetime);
+        for (values, expected) in [
+            (vec![], false),
+            (vec![pure.clone()], false),
+            (vec![pure, callback], true),
+        ] {
+            let value = EvaluatedValue::ParameterList(lists.parameter(type_id, values));
+            assert_eq!(value.requires_execution(metadata), expected);
+        }
     }
 
     #[test]

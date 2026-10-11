@@ -25,6 +25,21 @@ impl<'call> NativeValues<'call> {
         self.metadata
     }
 
+    pub(crate) fn parameter(
+        self,
+        parameter: crate::plan::TypeParameterId,
+        value: &NativeValue,
+        requires_execution: bool,
+    ) -> crate::ParameterValue {
+        crate::ParameterValue::new(
+            parameter,
+            value.parameter_source(),
+            self.metadata,
+            self.lists,
+            requires_execution,
+        )
+    }
+
     pub fn equal(self, left: &NativeValue, right: &NativeValue) -> bool {
         values_equal(self.lists, left, right)
     }

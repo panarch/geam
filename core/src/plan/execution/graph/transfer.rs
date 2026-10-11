@@ -30,12 +30,12 @@ pub enum StorageFamily {
     String,
     BitArray,
     UtfCodepoint,
+    Parameter,
     Custom,
     External,
     Bool,
     Tuple,
     ParameterList,
-    ParameterListList,
     IntList,
     StringList,
     BitArrayList,
@@ -53,6 +53,7 @@ pub enum StorageFamily {
     StringFunction,
     BitArrayFunction,
     UtfCodepointFunction,
+    ParameterFunction,
     CustomFunction,
     ExternalFunction,
     BoolFunction,
@@ -61,7 +62,6 @@ pub enum StorageFamily {
     GenericFunction,
     NeverFunction,
     ParameterListFunction,
-    ParameterListListFunction,
     IntListFunction,
     StringListFunction,
     BitArrayListFunction,
@@ -93,6 +93,7 @@ impl ParamLocal {
             Self::String(local) => (F::String, local.0),
             Self::BitArray(local) => (F::BitArray, local.0),
             Self::UtfCodepoint(local) => (F::UtfCodepoint, local.0),
+            Self::Parameter { local, .. } => (F::Parameter, local.0),
             Self::Custom(local) => (F::Custom, local.id().0),
             Self::External(local) => (F::External, local.id().0),
             Self::Bool(local) => (F::Bool, local.0),
@@ -100,7 +101,7 @@ impl ParamLocal {
             Self::Nil(_) => return None,
             Self::List(list) => match list {
                 ListLocal::Parameter { local, .. } => (F::ParameterList, local.0),
-                ListLocal::ParameterList { local, .. } => (F::ParameterListList, local.0),
+
                 ListLocal::Int { local, .. } => (F::IntList, local.0),
                 ListLocal::String { local, .. } => (F::StringList, local.0),
                 ListLocal::BitArray { local, .. } => (F::BitArrayList, local.0),
@@ -119,6 +120,7 @@ impl ParamLocal {
             Self::StringFunction { local, .. } => (F::StringFunction, local.0),
             Self::BitArrayFunction { local, .. } => (F::BitArrayFunction, local.0),
             Self::UtfCodepointFunction { local, .. } => (F::UtfCodepointFunction, local.0),
+            Self::ParameterFunction { local, .. } => (F::ParameterFunction, local.0),
             Self::CustomFunction(local) => (F::CustomFunction, local.id().0),
             Self::ExternalFunction(local) => (F::ExternalFunction, local.id().0),
             Self::BoolFunction { local, .. } => (F::BoolFunction, local.0),
@@ -128,9 +130,7 @@ impl ParamLocal {
             Self::NeverFunction(local) => (F::NeverFunction, local.id().0),
             Self::ListFunction(function) => match function {
                 ListFunctionLocal::Parameter { local, .. } => (F::ParameterListFunction, local.0),
-                ListFunctionLocal::ParameterList { local, .. } => {
-                    (F::ParameterListListFunction, local.0)
-                }
+
                 ListFunctionLocal::Int { local, .. } => (F::IntListFunction, local.0),
                 ListFunctionLocal::String { local, .. } => (F::StringListFunction, local.0),
                 ListFunctionLocal::BitArray { local, .. } => (F::BitArrayListFunction, local.0),
@@ -193,12 +193,13 @@ impl Emit for StorageFamily {
             Self::String => "graph::StorageFamily::String",
             Self::BitArray => "graph::StorageFamily::BitArray",
             Self::UtfCodepoint => "graph::StorageFamily::UtfCodepoint",
+            Self::Parameter => "graph::StorageFamily::Parameter",
             Self::Custom => "graph::StorageFamily::Custom",
             Self::External => "graph::StorageFamily::External",
             Self::Bool => "graph::StorageFamily::Bool",
             Self::Tuple => "graph::StorageFamily::Tuple",
             Self::ParameterList => "graph::StorageFamily::ParameterList",
-            Self::ParameterListList => "graph::StorageFamily::ParameterListList",
+
             Self::IntList => "graph::StorageFamily::IntList",
             Self::StringList => "graph::StorageFamily::StringList",
             Self::BitArrayList => "graph::StorageFamily::BitArrayList",
@@ -216,6 +217,7 @@ impl Emit for StorageFamily {
             Self::StringFunction => "graph::StorageFamily::StringFunction",
             Self::BitArrayFunction => "graph::StorageFamily::BitArrayFunction",
             Self::UtfCodepointFunction => "graph::StorageFamily::UtfCodepointFunction",
+            Self::ParameterFunction => "graph::StorageFamily::ParameterFunction",
             Self::CustomFunction => "graph::StorageFamily::CustomFunction",
             Self::ExternalFunction => "graph::StorageFamily::ExternalFunction",
             Self::BoolFunction => "graph::StorageFamily::BoolFunction",
@@ -224,7 +226,7 @@ impl Emit for StorageFamily {
             Self::GenericFunction => "graph::StorageFamily::GenericFunction",
             Self::NeverFunction => "graph::StorageFamily::NeverFunction",
             Self::ParameterListFunction => "graph::StorageFamily::ParameterListFunction",
-            Self::ParameterListListFunction => "graph::StorageFamily::ParameterListListFunction",
+
             Self::IntListFunction => "graph::StorageFamily::IntListFunction",
             Self::StringListFunction => "graph::StorageFamily::StringListFunction",
             Self::BitArrayListFunction => "graph::StorageFamily::BitArrayListFunction",
@@ -272,10 +274,6 @@ mod tests {
             (
                 StorageFamily::ParameterList,
                 "data::graph::StorageFamily::ParameterList",
-            ),
-            (
-                StorageFamily::ParameterListList,
-                "data::graph::StorageFamily::ParameterListList",
             ),
             (
                 StorageFamily::IntList,
@@ -376,10 +374,6 @@ mod tests {
             (
                 StorageFamily::ParameterListFunction,
                 "data::graph::StorageFamily::ParameterListFunction",
-            ),
-            (
-                StorageFamily::ParameterListListFunction,
-                "data::graph::StorageFamily::ParameterListListFunction",
             ),
             (
                 StorageFamily::IntListFunction,

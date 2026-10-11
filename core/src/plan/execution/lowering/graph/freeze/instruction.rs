@@ -2,9 +2,9 @@ use super::super::draft::instruction::{
     DraftBitArrayBitsSize, DraftBitArrayEvaluatedSize, DraftBitArrayInstruction,
     DraftBitArraySegment, DraftBoolInstruction, DraftCustomInstruction, DraftExternalInstruction,
     DraftFloatInstruction, DraftFunctionInstruction, DraftFunctionTarget, DraftIntInstruction,
-    DraftListInstruction, DraftNilInstruction, DraftParameterListInstruction,
-    DraftStringInstruction, DraftTupleInstruction, DraftTypedListInstruction,
-    DraftUtfCodepointInstruction,
+    DraftListInstruction, DraftNilInstruction, DraftParameterInstruction,
+    DraftParameterListInstruction, DraftStringInstruction, DraftTupleInstruction,
+    DraftTypedListInstruction, DraftUtfCodepointInstruction,
 };
 use super::super::draft::{DraftFunction, DraftInstruction, DraftList};
 use super::bool_test;
@@ -57,6 +57,9 @@ pub(super) fn freeze(
             output.erase(),
             K::UtfCodepoint(freeze_utf_codepoint(kind, values)),
         ),
+        DraftInstruction::Parameter { output, kind } => {
+            (output.erase(), K::Parameter(freeze_parameter(kind, values)))
+        }
         DraftInstruction::Custom { output, kind } => {
             (output.erase(), K::Custom(freeze_custom(kind, values)))
         }
@@ -102,6 +105,7 @@ fn function_return_family(
             StoredValueShape::String => F::String,
             StoredValueShape::BitArray => F::BitArray,
             StoredValueShape::UtfCodepoint => F::UtfCodepoint,
+            StoredValueShape::Parameter(_) => F::Parameter,
             StoredValueShape::Custom(_) => F::Custom,
             StoredValueShape::External(_) => F::External,
             StoredValueShape::Bool => F::Bool,
@@ -457,6 +461,46 @@ fn freeze_utf_codepoint(
     }
 }
 
+fn freeze_parameter(
+    instruction: &DraftParameterInstruction,
+    values: &BlockValues,
+) -> execution::graph::ParameterInstruction {
+    use execution::graph::ParameterInstruction as E;
+
+    match instruction {
+        DraftParameterInstruction::Call {
+            function,
+            args,
+            site,
+        } => E::Call {
+            function: *function,
+            args: values.any_slice(args).into(),
+            site: site.clone(),
+        },
+        DraftParameterInstruction::FunctionCall {
+            function,
+            args,
+            site,
+        } => E::FunctionCall {
+            function: values.parameter_function(function),
+            args: values.any_slice(args).into(),
+            site: site.clone(),
+        },
+        DraftParameterInstruction::TupleIndex { tuple, index } => E::TupleIndex {
+            tuple: values.tuple(tuple),
+            index: *index,
+        },
+        DraftParameterInstruction::CustomField { source, index } => E::CustomField {
+            source: values.custom(source),
+            index: *index,
+        },
+        DraftParameterInstruction::ListIndex { list, index } => E::ListIndex {
+            list: values.parameter_list(list),
+            index: *index,
+        },
+    }
+}
+
 fn freeze_custom(
     instruction: &DraftCustomInstruction,
     values: &BlockValues,
@@ -679,7 +723,25 @@ fn freeze_parameter_list(
     use execution::graph::ParameterListInstruction as E;
 
     match instruction {
-        DraftParameterListInstruction::Empty => E::Empty,
+        DraftParameterListInstruction::Value(elements) => E::Value(
+            elements
+                .iter()
+                .map(|e| values.parameter(e))
+                .collect::<Vec<_>>()
+                .into(),
+        ),
+        DraftParameterListInstruction::Spread { elements, tail } => E::Spread {
+            elements: elements
+                .iter()
+                .map(|e| values.parameter(e))
+                .collect::<Vec<_>>()
+                .into(),
+            tail: values.parameter_list(tail),
+        },
+        DraftParameterListInstruction::DropFirst { list, count } => E::DropFirst {
+            list: values.parameter_list(list),
+            count: *count,
+        },
         DraftParameterListInstruction::Constant(id) => E::Constant(*id),
         DraftParameterListInstruction::Call {
             function,
@@ -708,7 +770,7 @@ fn freeze_parameter_list(
             index: *index,
         },
         DraftParameterListInstruction::ListIndex { list, index } => E::ListIndex {
-            list: values.parameter_list_list(list),
+            list: values.list_list(list),
             index: *index,
         },
     }
@@ -726,15 +788,7 @@ fn freeze_list(
             *type_id,
             freeze_parameter_list(instruction, values),
         )),
-        DraftListInstruction::ParameterList(type_id, instruction) => K::List(E::ParameterList(
-            *type_id,
-            freeze_typed_list(
-                instruction,
-                values,
-                BlockValues::parameter_list,
-                BlockValues::parameter_list_list,
-            ),
-        )),
+
         DraftListInstruction::Int(type_id, instruction) => K::List(E::Int(
             *type_id,
             freeze_typed_list(instruction, values, BlockValues::int, BlockValues::int_list),
@@ -1095,6 +1149,9 @@ fn freeze_function_target(target: &DraftFunctionTarget) -> FrozenFunctionTarget 
         DraftFunctionTarget::UtfCodepoint(function) => {
             FrozenFunctionTarget::Function(F::UtfCodepoint(*function))
         }
+        DraftFunctionTarget::Parameter(function) => {
+            FrozenFunctionTarget::Function(F::Parameter(*function))
+        }
         DraftFunctionTarget::Custom(function) => {
             FrozenFunctionTarget::Function(F::Custom(*function))
         }
@@ -1160,6 +1217,7 @@ fn freeze_function_function_target(
         F::UtfCodepoint(function) => {
             FrozenFunctionFunctionTarget::Function(F::UtfCodepoint(*function))
         }
+        F::Parameter(function) => FrozenFunctionFunctionTarget::Function(F::Parameter(*function)),
         F::Custom(function) => FrozenFunctionFunctionTarget::Function(F::Custom(function.clone())),
         F::External(function) => FrozenFunctionFunctionTarget::External(
             execution::graph::ExternalFunctionCallTarget::Function(function.clone()),
@@ -1211,15 +1269,7 @@ fn freeze_list_function_function_target(
             type_: type_.clone(),
             list_type: *list_type,
         }),
-        F::ParameterList {
-            id,
-            type_,
-            list_type,
-        } => Ok(F::ParameterList {
-            id: *id,
-            type_: type_.clone(),
-            list_type: *list_type,
-        }),
+
         F::Int {
             id,
             type_,
@@ -1337,17 +1387,17 @@ mod tests {
         DraftBitArrayInstruction, DraftBoolInstruction, DraftCustomInstruction,
         DraftExternalInstruction, DraftFloatInstruction, DraftFunctionInstruction,
         DraftFunctionTarget, DraftIntInstruction, DraftListInstruction, DraftNilInstruction,
-        DraftStringInstruction, DraftTupleInstruction, DraftTypedListInstruction,
-        DraftUtfCodepointInstruction,
+        DraftParameterInstruction, DraftStringInstruction, DraftTupleInstruction,
+        DraftTypedListInstruction, DraftUtfCodepointInstruction,
     };
     use super::super::super::draft::{DraftGraphBuilder, DraftNil};
     use crate::plan::execution::function::{
         ExternalFunctionId, ExternalListFunctionId, HostedExecutionGraph, IntFunctionId,
-        UtfCodepointFunctionId,
+        ParameterFunctionId, UtfCodepointFunctionId,
     };
     use crate::plan::execution::graph::{
         BlockId, ExternalInstruction, FunctionInstructionKind, InstructionKind, NilInstruction,
-        ProfiledInstruction, ProfiledInstructionKind,
+        ParameterInstruction, ProfiledInstruction, ProfiledInstructionKind,
     };
     use crate::plan::execution::lowering::specialization::{
         SpecializedCustomValueShape, SpecializedExternalValueShape, SpecializedFunctionShape,
@@ -1356,7 +1406,7 @@ mod tests {
     use crate::plan::execution::type_::{CustomConstructorId, CustomTypeId};
     use crate::plan::{
         CustomConstructorDefinition, CustomConstructorRefinement, CustomTypeDefinition,
-        CustomTypeName, CustomTypePublicity, ExternalTypeName, ExternalValueShape,
+        CustomTypeName, CustomTypePublicity, ExternalTypeName, ExternalValueShape, TypeParameterId,
     };
 
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1366,6 +1416,7 @@ mod tests {
         String,
         BitArray,
         UtfCodepoint,
+        Parameter,
         Custom,
         External,
         Bool,
@@ -1462,6 +1513,15 @@ mod tests {
             SpecializedFunctionShape::new(Vec::new(), SpecializedValueShape::Custom(custom_shape)),
             DraftFunctionInstruction::Constructor(constructor),
         );
+        draft.parameter_instruction(
+            &mut entry,
+            TypeParameterId::scoped(0, 0),
+            DraftParameterInstruction::Call {
+                function: ParameterFunctionId(9),
+                args: Vec::new(),
+                site: crate::plan::HostCallSite::unknown(),
+            },
+        );
         draft.finish_return(entry, nil);
 
         let lowered = super::super::freeze(draft, &mut context);
@@ -1491,6 +1551,7 @@ mod tests {
                 InstructionFamily::List,
                 InstructionFamily::Function,
                 InstructionFamily::Function,
+                InstructionFamily::Parameter,
             ],
         );
 
@@ -1503,9 +1564,14 @@ mod tests {
         assert_eq!(external_call(&instructions[6]), (external_function, 0),);
         assert_eq!(int_function_reference(&instructions[11]), IntFunctionId(7));
         nil_value(&instructions[8]);
+        assert_eq!(
+            parameter_call(&instructions[15]),
+            (ParameterFunctionId(9), 0)
+        );
 
         assert!(std::panic::catch_unwind(|| int_value(&instructions[1])).is_err());
         assert!(std::panic::catch_unwind(|| utf_codepoint_call(&instructions[0])).is_err());
+        assert!(std::panic::catch_unwind(|| parameter_call(&instructions[0])).is_err());
         assert!(std::panic::catch_unwind(|| custom_construct(&instructions[0])).is_err());
         assert!(std::panic::catch_unwind(|| external_call(&instructions[0])).is_err());
         assert!(std::panic::catch_unwind(|| nil_value(&instructions[0])).is_err());
@@ -1532,6 +1598,17 @@ mod tests {
                 },
             ) => (*function, args.len()),
             _ => panic!("UtfCodepoint draft instruction should preserve its call"),
+        }
+    }
+
+    fn parameter_call(
+        instruction: &ProfiledInstruction<HostedExecutionGraph>,
+    ) -> (ParameterFunctionId, usize) {
+        match instruction.value().unwrap().kind() {
+            InstructionKind::Parameter(ParameterInstruction::Call { function, args, .. }) => {
+                (*function, args.len())
+            }
+            _ => panic!("Parameter draft instruction should preserve its call"),
         }
     }
 
@@ -1590,6 +1667,7 @@ mod tests {
             ProfiledInstructionKind::String(_) => InstructionFamily::String,
             ProfiledInstructionKind::BitArray(_) => InstructionFamily::BitArray,
             ProfiledInstructionKind::UtfCodepoint(_) => InstructionFamily::UtfCodepoint,
+            ProfiledInstructionKind::Parameter(_) => InstructionFamily::Parameter,
             ProfiledInstructionKind::Custom(_) => InstructionFamily::Custom,
             ProfiledInstructionKind::External(_) => InstructionFamily::External,
             ProfiledInstructionKind::ExternalList(_) => InstructionFamily::List,

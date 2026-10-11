@@ -51,7 +51,7 @@ impl<'value> BorrowedValue<'value> {
             EvaluatedValue::Function(value) => {
                 row.functions = crate::runtime::embedding::CallableView::new(value)
             }
-            EvaluatedValue::Nil => {}
+            EvaluatedValue::Nil | EvaluatedValue::Parameter(_) => {}
         }
         row
     }
@@ -107,7 +107,7 @@ impl<'value> BorrowedValue<'value> {
 
     pub(in crate::runtime) fn list(&self) -> ListValueId {
         if let Some(value) = self.parameter_lists.first() {
-            ListValueId::Parameter(*value)
+            ListValueId::Parameter(value.clone())
         } else {
             self.stored_list().clone().into()
         }
@@ -177,6 +177,10 @@ impl BorrowedValue<'_> {
             StoredListValueId::UtfCodepoint(value) => {
                 item!(value, utf_codepoints)
             }
+            StoredListValueId::Parameter(value) => value
+                .values()
+                .get(index)
+                .map(|_| read(BorrowedValue::empty())),
             StoredListValueId::Bool(value) => item!(value, bools),
             StoredListValueId::Tuple(value) => {
                 value.values().get_with_cache(index).map(|(value, cache)| {
@@ -194,9 +198,6 @@ impl BorrowedValue<'_> {
                 read(row)
             }),
             StoredListValueId::Nil(value) => {
-                (index < value.len()).then(|| read(BorrowedValue::empty()))
-            }
-            StoredListValueId::ParameterList(value) => {
                 (index < value.len()).then(|| read(BorrowedValue::empty()))
             }
         }
@@ -282,7 +283,7 @@ pub fn run() {
   check([[1]], "list")
   check([Nil], "")
   check([fn(value: Int) { value + 1 }], "")
-  check([[]], "")
+  check([[]], "list")
   check([], "parameter_list")
 }
 "#,
@@ -361,6 +362,41 @@ pub fn run() {
         .into_iter()
         .filter_map(|(name, length)| (length == 1).then_some(name))
         .collect()
+    }
+
+    #[test]
+    fn unresolved_parameter_rows_keep_native_payloads_without_selecting_a_concrete_column() {
+        use crate::plan::execution::runtime::RuntimeExecutionPlan;
+        use crate::runtime::NativeValues;
+
+        let plan = crate::runtime::plan_src("pub fn main() -> List(a) { [] }");
+        let storage = RuntimeListStorage::default();
+        let type_id = plan.parameter_list_function_id(0).type_id();
+        let values = NativeValues::new(&storage, plan.value_metadata());
+        let native = values.string("opaque payload".into());
+        let parameter = values.parameter(type_id.item(), &native, false);
+        let original = StoredRuntimeValue::new(
+            EvaluatedValue::Parameter(parameter.clone()),
+            plan.value_metadata(),
+        );
+        assert_eq!(
+            populated_columns(BorrowedValue::from_stored(&original)),
+            Vec::<&str>::new()
+        );
+        let list = storage.parameter(type_id, vec![parameter]);
+        let stored = StoredListValueId::Parameter(list.clone());
+        assert_eq!(
+            BorrowedValue::read_list_item(&stored, 0, populated_columns),
+            Some(Vec::<&str>::new())
+        );
+        assert_eq!(
+            BorrowedValue::read_list_item(&stored, 1, populated_columns),
+            None
+        );
+        assert_eq!(
+            list.values().get(0).unwrap().native().as_string(),
+            Some("opaque payload".into())
+        );
     }
 
     #[test]

@@ -3,16 +3,16 @@ use crate::plan::execution::ExecutionPlan;
 use crate::plan::execution::function::{
     BitArrayListFunctionId, BoolListFunctionId, CustomListFunctionId, FloatListFunctionId,
     FunctionListFunctionId, IntListFunctionId, ListFunctionId, ListListFunctionId,
-    NilListFunctionId, ParameterListFunctionId, ParameterListListFunctionId,
-    ProfiledListFunctionId, StringListFunctionId, TupleListFunctionId, UtfCodepointListFunctionId,
+    NilListFunctionId, ParameterListFunctionId, ProfiledListFunctionId, StringListFunctionId,
+    TupleListFunctionId, UtfCodepointListFunctionId,
 };
 use crate::runtime::error::{ExecutionResult, HostCallOrigin};
 use crate::runtime::graph::RetainedValues;
 use crate::runtime::state::RuntimeState;
 use crate::runtime::state::list::{
     BitArrayListValueId, BoolListValueId, CustomListValueId, FloatListValueId, FunctionListValueId,
-    IntListValueId, ListListValueId, ListValueId, NilListValueId, ParameterListListValueId,
-    ParameterListValueId, StringListValueId, TupleListValueId, UtfCodepointListValueId,
+    IntListValueId, ListListValueId, ListValueId, NilListValueId, ParameterListValueId,
+    StringListValueId, TupleListValueId, UtfCodepointListValueId,
 };
 
 pub(in crate::runtime) fn run_list(
@@ -41,10 +41,7 @@ pub(in crate::runtime) fn run_core_list(
         ListFunctionId::Parameter(function) => {
             run_parameter_list(plan, state, function, origin, inputs).map(ListValueId::Parameter)
         }
-        ListFunctionId::ParameterList(function) => {
-            run_parameter_list_list(plan, state, function, origin, inputs)
-                .map(ListValueId::ParameterList)
-        }
+
         ListFunctionId::Int(function) => {
             run_int_list(plan, state, function, origin, inputs).map(ListValueId::Int)
         }
@@ -89,16 +86,6 @@ pub(in crate::runtime) fn run_parameter_list(
     origin: HostCallOrigin,
     inputs: RetainedValues,
 ) -> ExecutionResult<ParameterListValueId> {
-    run(plan, state, function, origin, inputs)
-}
-
-pub(in crate::runtime) fn run_parameter_list_list(
-    plan: &ExecutionPlan,
-    state: &mut RuntimeState<'_>,
-    function: ParameterListListFunctionId,
-    origin: HostCallOrigin,
-    inputs: RetainedValues,
-) -> ExecutionResult<ParameterListListValueId> {
     run(plan, state, function, origin, inputs)
 }
 

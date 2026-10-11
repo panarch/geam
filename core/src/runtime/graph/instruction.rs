@@ -186,6 +186,15 @@ pub(super) fn advance<'plan, Plan: ExecutableRuntimePlan>(
                     expected
                 ));
             }
+            ProfiledInstructionKind::Parameter(instruction) => {
+                store_without_constant!(value::parameter(
+                    plan,
+                    state,
+                    environment,
+                    instruction,
+                    expected
+                ));
+            }
             ProfiledInstructionKind::Custom(instruction) => evaluate_value!(custom, instruction),
             ProfiledInstructionKind::Bool(instruction) => evaluate_value!(bool, instruction),
             ProfiledInstructionKind::Nil(instruction) => evaluate_value!(nil, instruction),
@@ -268,7 +277,7 @@ pub(super) fn advance<'plan, Plan: ExecutableRuntimePlan>(
                 }
                 match instruction {
                     ListInstruction::Parameter(type_id, instruction) => {
-                        store_value!(list::parameter(
+                        store_list!(list::parameter(
                             plan,
                             state,
                             environment,
@@ -277,9 +286,7 @@ pub(super) fn advance<'plan, Plan: ExecutableRuntimePlan>(
                             expected
                         ));
                     }
-                    ListInstruction::ParameterList(type_id, instruction) => {
-                        evaluate_list!(ParameterListFamily, type_id, instruction)
-                    }
+
                     ListInstruction::Int(type_id, instruction) => {
                         evaluate_list!(IntFamily, type_id, instruction)
                     }
@@ -367,6 +374,7 @@ pub(super) fn advance<'plan, Plan: ExecutableRuntimePlan>(
                             F::String(id) => enter!(id),
                             F::BitArray(id) => enter!(id),
                             F::UtfCodepoint(id) => enter!(id),
+                            F::Parameter(id) => enter!(id),
                             F::Custom(id) => enter!(id),
                             F::External(never) => match never {},
                             F::Bool(id) => enter!(id),
@@ -567,6 +575,107 @@ mod tests {
     }
 
     #[test]
+    fn native_parameters_preserve_their_binding_across_projections_lists_and_callbacks() {
+        use crate::host::native::{NativeCall, NativeRules};
+        use crate::{
+            HostCallCompletion, HostCallError, HostProviderModule, HostTypeIndex0, HostTypeList,
+            HostTypeListEnd, HostTypeParameter, HostValue,
+        };
+        type Input = HostTypeParameter<1>;
+        type Output = HostTypeParameter<0>;
+        type One<Type> = HostTypeList<Type, HostTypeListEnd>;
+        let mut providers = WorkComponent::providers::<Profile>().unwrap();
+        providers.push(
+            HostProviderModule::new("application", "main")
+                .unwrap()
+                .with_native_function::<WorkComponent, (Input,), Output, One<Output>, _>(
+                    "coerce",
+                    NativeRules::default(),
+                    |mut call: NativeCall<'_, Profile, WorkComponent, Output, One<Output>>,
+                     value: HostValue<'_, Input>| {
+                        let source = call.source::<Input>(value);
+                        let result = call
+                            .convert::<HostTypeIndex0>(&source)
+                            .expect("declared parameter conversion");
+                        Ok::<HostCallCompletion<'_, Output>, HostCallError>(call.finish(result))
+                    },
+                )
+                .unwrap(),
+        );
+        let source = r#"
+@external(erlang, "fixture", "coerce") fn coerce(value: b) -> a
+pub type Box(a) { Box(value: a) }
+pub type Lists(a) { Lists(values: List(a)) }
+fn round_trip(values: List(a)) {
+  case values { [head, ..tail] -> [head, ..tail] [] -> [] }
+}
+fn factory() { round_trip }
+fn capture(value: a) { fn() { value } }
+pub type Empty
+fn symbolic_factory() { fn(_: Empty) { 42 } }
+fn never_factory() { fn() { panic as "must not run" } }
+pub fn main() {
+  let symbolic = symbolic_factory()
+  let stopped: fn() -> Empty = never_factory()
+  let assert True = symbolic == symbolic && stopped == stopped
+  let original = coerce(42)
+  let tuple = #(original)
+  let boxed = Box(tuple.0)
+  let values = [boxed.value]
+  let returned = round_trip(values)
+  let call = factory()
+  let transferred = call(returned)
+  let list_tuple = #(transferred)
+  let list_box = Lists(list_tuple.0)
+  let nested = [list_box.values]
+  let assert [restored] = nested
+  let assert [first, ..tail] = restored
+  let repeated = [first, ..tail]
+  let callback = capture(first)
+  let indirect = fn() { callback() }
+  let assert True = indirect() == original
+  let assert True = repeated == values
+  42
+}
+"#;
+        let typed = crate::compile_typed_host_program(
+            "application",
+            "main",
+            [
+                PackageSource::new(
+                    "work_fixture",
+                    Vec::<String>::new(),
+                    [ModuleSource::new(
+                        "fixture/work",
+                        "fixture/work.gleam",
+                        WorkComponent::SOURCE,
+                    )],
+                ),
+                PackageSource::new(
+                    "application",
+                    ["work_fixture"],
+                    [ModuleSource::new("main", "main.gleam", source)],
+                ),
+            ],
+            HostProviderSet::from_providers(providers).unwrap(),
+        )
+        .expect(source);
+        let mut execution =
+            HostedExecution::try_from_module_plan(crate::plan_host_program(typed).unwrap())
+                .unwrap();
+        let host = TestHost::default();
+        let mut echo = Vec::new();
+        assert_eq!(
+            host.block_on(execution.run_main(&host, &mut (), &mut echo))
+                .unwrap()
+                .try_into_value()
+                .unwrap(),
+            crate::Value::Int(42.into())
+        );
+        assert!(echo.is_empty());
+    }
+
+    #[test]
     fn resumed_instructions_preserve_each_tuple_projection_and_reject_corrupted_values() {
         let mut state = ();
         assert!(ptr::eq(Profile::component_state(&mut state), &state));
@@ -604,7 +713,9 @@ mod tests {
             (
                 "List(a)",
                 "[]",
-                ValueType::List(Box::new(ValueType::Parameter(TypeParameterId(0)))),
+                ValueType::List(Box::new(ValueType::Parameter(TypeParameterId::scoped(
+                    0, 0,
+                )))),
             ),
             (
                 "List(work.Work(Int))",

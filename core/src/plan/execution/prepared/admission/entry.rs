@@ -503,7 +503,10 @@ mod tests {
             plan,
             LibraryEntry::new(
                 main,
-                LibraryValueType::Function(callback.clone()),
+                LibraryValueType::Function(crate::plan::LibraryCallableType::new(
+                    vec![ValueType::Int],
+                    LibraryValueType::Int,
+                )),
                 vec![],
                 vec![],
             )
@@ -1198,7 +1201,7 @@ mod tests {
             );
             for (signature, expected) in [
                 (
-                    TypeMetadata::Parameter(crate::plan::TypeParameterId(0)),
+                    TypeMetadata::Parameter(crate::plan::TypeParameterId::new(0)),
                     ExportError::ReturnFamily,
                 ),
                 (
@@ -1245,7 +1248,7 @@ mod tests {
         .unwrap();
         for (return_, expected) in [
             (
-                TypeMetadata::Parameter(crate::plan::TypeParameterId(0)),
+                TypeMetadata::Parameter(crate::plan::TypeParameterId::new(0)),
                 ExportError::ReturnFamily,
             ),
             (

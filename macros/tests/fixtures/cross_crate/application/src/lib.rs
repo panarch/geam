@@ -154,6 +154,8 @@ pub fn invoke_twice(
 
 @external(erlang, "macro_consumer", "keep_function")
 pub fn keep_function(function: fn(item) -> String) -> fn(item) -> String
+@external(erlang, "macro_consumer", "function_is_callable")
+pub fn function_is_callable(function: fn(item) -> String) -> Bool
 @external(erlang, "macro_consumer", "invoke_function")
 pub fn invoke_function(function: fn(values.Status) -> Int, value: Int) -> Future(#(Int, Int))
 "#;
@@ -163,6 +165,8 @@ import geam/future
 import gleam/option.{None, Some}
 import macro_consumer/main
 import macro_declarations/values
+
+pub type Empty
 
 fn score(status: values.Status) -> Int {
   case status {
@@ -198,9 +202,13 @@ pub fn run(value: Int) {
 }
 
 pub fn retained(value: Int) {
-  let capture = "symbolic"
+  let capture = "retained"
   let original = fn(_) { capture }
   assert main.keep_function(original) == original
+  assert main.function_is_callable(original)
+  let symbolic = fn(_: Empty) { capture }
+  assert main.keep_function(symbolic) == symbolic
+  assert !main.function_is_callable(symbolic)
   let forwarded = values.keep_status_function(score)
   assert forwarded == score
   main.invoke_function(forwarded, value)

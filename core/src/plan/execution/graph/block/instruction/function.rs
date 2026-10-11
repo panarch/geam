@@ -6,7 +6,8 @@ use crate::plan::execution::function::{
     BitArrayFunctionId, CustomFunctionId, ExecutionGraphProfile, ExternalFunctionFunctionId,
     ExternalFunctionId, ExternalListFunctionFunctionId, ExternalListFunctionId,
     FunctionReturnFamily, GenericCallableId, IntFunctionId, ListFunctionId, NilFunctionId,
-    ProfiledFunctionFunctionId, StringFunctionId, TupleFunctionId, UtfCodepointFunctionId,
+    ParameterFunctionId, ProfiledFunctionFunctionId, StringFunctionId, TupleFunctionId,
+    UtfCodepointFunctionId,
 };
 use crate::plan::execution::graph::LocalLabel;
 use crate::plan::execution::graph::{
@@ -14,7 +15,7 @@ use crate::plan::execution::graph::{
     CustomLocal, ExternalFunctionFunctionLocal, ExternalFunctionLocal, ExternalListLocalId,
     ExternalLocal, FloatListLocalId, FunctionFunctionLocal, FunctionListLocalId,
     GenericFunctionLocal, IntListLocalId, IntLocalId, ListFunctionLocal, ListListLocalId,
-    NeverFunctionLocal, NilListLocalId, ParamLocal, ParameterListListLocalId, ParameterListLocalId,
+    NeverFunctionLocal, NilListLocalId, ParamLocal, ParameterListLocalId, ParameterLocalId,
     StringListLocalId, StringLocalId, TupleListLocalId, TupleLocalId, UtfCodepointListLocalId,
     UtfCodepointLocalId,
 };
@@ -32,6 +33,7 @@ pub enum FunctionTarget {
     String(StringFunctionId),
     BitArray(BitArrayFunctionId),
     UtfCodepoint(UtfCodepointFunctionId),
+    Parameter(ParameterFunctionId),
     Custom(CustomFunctionId),
     Bool(crate::plan::execution::function::BoolFunctionId),
     Nil(NilFunctionId),
@@ -102,6 +104,10 @@ pub enum FunctionCapture {
         target: UtfCodepointLocalId,
         source: UtfCodepointLocalId,
     },
+    Parameter {
+        target: ParameterLocalId,
+        source: ParameterLocalId,
+    },
     Custom {
         target: CustomLocal,
         source: CustomLocal,
@@ -125,10 +131,6 @@ pub enum FunctionCapture {
     ParameterList {
         target: ParameterListLocalId,
         source: ParameterListLocalId,
-    },
-    ParameterListList {
-        target: ParameterListListLocalId,
-        source: ParameterListListLocalId,
     },
     IntList {
         target: IntListLocalId,
@@ -197,6 +199,10 @@ pub enum FunctionCapture {
     UtfCodepointFunction {
         target: crate::plan::execution::graph::UtfCodepointFunctionLocalId,
         source: crate::plan::execution::graph::UtfCodepointFunctionLocalId,
+    },
+    ParameterFunction {
+        target: crate::plan::execution::graph::ParameterFunctionLocalId,
+        source: crate::plan::execution::graph::ParameterFunctionLocalId,
     },
     GenericFunction {
         target: GenericFunctionLocal,
@@ -339,6 +345,9 @@ impl Explain for FunctionTarget {
             FunctionTarget::UtfCodepoint(function) => {
                 function.function_label().write(context.output())
             }
+            FunctionTarget::Parameter(function) => {
+                function.function_label().write(context.output())
+            }
             FunctionTarget::Custom(function) => function.function_label().write(context.output()),
             FunctionTarget::Bool(function) => function.function_label().write(context.output()),
             FunctionTarget::Nil(function) => function.function_label().write(context.output()),
@@ -411,6 +420,9 @@ impl Explain for FunctionCapture {
             FunctionCapture::UtfCodepoint { target, source } => {
                 write_capture(output, target, source);
             }
+            FunctionCapture::Parameter { target, source } => {
+                write_capture(output, target, source);
+            }
             FunctionCapture::Custom { target, source } => write_capture(output, target, source),
             FunctionCapture::External { target, source } => write_capture(output, target, source),
             FunctionCapture::Bool { target, source } => write_capture(output, target, source),
@@ -419,9 +431,7 @@ impl Explain for FunctionCapture {
             FunctionCapture::ParameterList { target, source } => {
                 write_capture(output, target, source);
             }
-            FunctionCapture::ParameterListList { target, source } => {
-                write_capture(output, target, source);
-            }
+
             FunctionCapture::IntList { target, source } => write_capture(output, target, source),
             FunctionCapture::StringList { target, source } => write_capture(output, target, source),
             FunctionCapture::BitArrayList { target, source } => {
@@ -457,6 +467,9 @@ impl Explain for FunctionCapture {
                 write_capture(output, target, source);
             }
             FunctionCapture::UtfCodepointFunction { target, source } => {
+                write_capture(output, target, source);
+            }
+            FunctionCapture::ParameterFunction { target, source } => {
                 write_capture(output, target, source);
             }
             FunctionCapture::GenericFunction { target, source } => {
@@ -628,6 +641,7 @@ impl Emit for FunctionTarget {
             Self::UtfCodepoint(field_0) => {
                 output.call("graph::FunctionTarget::UtfCodepoint", &[field_0])
             }
+            Self::Parameter(field_0) => output.call("graph::FunctionTarget::Parameter", &[field_0]),
             Self::Custom(field_0) => output.call("graph::FunctionTarget::Custom", &[field_0]),
             Self::Bool(field_0) => output.call("graph::FunctionTarget::Bool", &[field_0]),
             Self::Nil(field_0) => output.call("graph::FunctionTarget::Nil", &[field_0]),
@@ -727,6 +741,10 @@ impl Emit for FunctionCapture {
                 "graph::FunctionCapture::UtfCodepoint",
                 &[("target", target), ("source", source)],
             ),
+            Self::Parameter { target, source } => output.structure(
+                "graph::FunctionCapture::Parameter",
+                &[("target", target), ("source", source)],
+            ),
             Self::Custom { target, source } => output.structure(
                 "graph::FunctionCapture::Custom",
                 &[("target", target), ("source", source)],
@@ -751,10 +769,7 @@ impl Emit for FunctionCapture {
                 "graph::FunctionCapture::ParameterList",
                 &[("target", target), ("source", source)],
             ),
-            Self::ParameterListList { target, source } => output.structure(
-                "graph::FunctionCapture::ParameterListList",
-                &[("target", target), ("source", source)],
-            ),
+
             Self::IntList { target, source } => output.structure(
                 "graph::FunctionCapture::IntList",
                 &[("target", target), ("source", source)],
@@ -821,6 +836,10 @@ impl Emit for FunctionCapture {
             ),
             Self::UtfCodepointFunction { target, source } => output.structure(
                 "graph::FunctionCapture::UtfCodepointFunction",
+                &[("target", target), ("source", source)],
+            ),
+            Self::ParameterFunction { target, source } => output.structure(
+                "graph::FunctionCapture::ParameterFunction",
                 &[("target", target), ("source", source)],
             ),
             Self::GenericFunction { target, source } => output.structure(
@@ -945,11 +964,12 @@ impl Emit for ExternalFunctionInstructionKind {
 #[cfg(test)]
 mod emission_tests {
     use super::{FunctionCapture, FunctionTarget};
+    use crate::plan::execution::explain;
     use crate::plan::execution::function::{
         BitArrayFunctionId, BoolFunctionId, CustomFunctionId, FloatFunctionId, GenericCallableId,
         IntFunctionFunctionId, IntFunctionId, IntListFunctionId, ListFunctionId, NeverFunctionId,
-        NilFunctionId, ProfiledFunctionFunctionId, StringFunctionId, TupleFunctionId,
-        UtfCodepointFunctionId,
+        NilFunctionId, ParameterFunctionId, ProfiledFunctionFunctionId, StringFunctionId,
+        TupleFunctionId, UtfCodepointFunctionId,
     };
     use crate::plan::execution::graph::{
         BitArrayFunctionLocalId, BitArrayListLocalId, BitArrayLocalId, BoolFunctionLocalId,
@@ -957,8 +977,8 @@ mod emission_tests {
         ExternalListLocalId, ExternalLocal, ExternalLocalId, FloatFunctionLocalId,
         FloatListLocalId, FloatLocalId, FunctionListLocalId, IntFunctionLocalId, IntListLocalId,
         IntLocalId, ListListLocalId, NilFunctionLocalId, NilListLocalId, NilLocalId,
-        ParameterListListLocalId, ParameterListLocalId, StringFunctionLocalId, StringListLocalId,
-        StringLocalId, TupleFunctionLocalId, TupleListLocalId, TupleLocalId,
+        ParameterFunctionLocalId, ParameterListLocalId, ParameterLocalId, StringFunctionLocalId,
+        StringListLocalId, StringLocalId, TupleFunctionLocalId, TupleListLocalId, TupleLocalId,
         UtfCodepointFunctionLocalId, UtfCodepointListLocalId, UtfCodepointLocalId,
     };
     use crate::plan::execution::prepared::rust::Rust;
@@ -983,7 +1003,7 @@ mod emission_tests {
 
         let symbolic = FunctionType::new(
             Vec::new(),
-            ValueType::Parameter(crate::plan::TypeParameterId(0)),
+            ValueType::Parameter(crate::plan::TypeParameterId::new(0)),
         );
         let inner = FunctionType::new(Vec::new(), ValueType::Int);
         let cases = [
@@ -1039,6 +1059,7 @@ data::graph::FunctionCapture::GenericFunction {
         },
     },
 }"#.trim_start_matches('\n'),
+                "%function.generic#2<-%function.generic#5",
             ),
             (
                 FunctionCapture::NeverFunction {
@@ -1092,6 +1113,7 @@ data::graph::FunctionCapture::NeverFunction {
         },
     },
 }"#.trim_start_matches('\n'),
+                "%function.never#2<-%function.never#5",
             ),
             (
                 FunctionCapture::CustomFunction {
@@ -1143,6 +1165,7 @@ data::graph::FunctionCapture::CustomFunction {
         },
     },
 }"#.trim_start_matches('\n'),
+                "%function.custom#2<-%function.custom#5",
             ),
             (
                 FunctionCapture::ExternalFunction {
@@ -1188,6 +1211,7 @@ data::graph::FunctionCapture::ExternalFunction {
         },
     },
 }"#.trim_start_matches('\n'),
+                "%function.external#2<-%function.external#5",
             ),
             (
                 FunctionCapture::ListFunction {
@@ -1225,6 +1249,7 @@ data::graph::FunctionCapture::ListFunction {
         },
     },
 }"#.trim_start_matches('\n'),
+                "%function.list.int#2<-%function.list.int#5",
             ),
             (
                 FunctionCapture::FunctionFunction {
@@ -1288,6 +1313,7 @@ data::graph::FunctionCapture::FunctionFunction {
         },
     }),
 }"#.trim_start_matches('\n'),
+                "%function.function#2<-%function.function#5",
             ),
             (
                 FunctionCapture::FunctionFunction {
@@ -1351,10 +1377,15 @@ data::graph::FunctionCapture::FunctionFunction {
         },
     }),
 }"#.trim_start_matches('\n'),
+                "%function.function.external#2<-%function.function.external#5",
             ),
         ];
-        for (capture, expected) in cases {
+        for (capture, expected, expected_label) in cases {
             assert_eq!(Rust::expression(&capture), expected);
+            explain::assert_rendered("pub fn main() { 1 }", expected_label, |plan, output| {
+                let mut context = explain::ExplainContext::new(plan, output);
+                context.write(&capture);
+            });
         }
     }
 
@@ -1828,6 +1859,32 @@ data::graph::ExternalFunctionInstruction {
     fn emits_capture_source_and_destination_without_conflating_families() {
         let cases = [
             (
+                FunctionCapture::Parameter {
+                    target: ParameterLocalId(2),
+                    source: ParameterLocalId(5),
+                },
+                r#"
+data::graph::FunctionCapture::Parameter {
+    target: data::graph::ParameterLocalId(2),
+    source: data::graph::ParameterLocalId(5),
+}"#
+                .trim_start_matches('\n'),
+                "%parameter#2<-%parameter#5",
+            ),
+            (
+                FunctionCapture::ParameterFunction {
+                    target: ParameterFunctionLocalId(2),
+                    source: ParameterFunctionLocalId(5),
+                },
+                r#"
+data::graph::FunctionCapture::ParameterFunction {
+    target: data::graph::ParameterFunctionLocalId(2),
+    source: data::graph::ParameterFunctionLocalId(5),
+}"#
+                .trim_start_matches('\n'),
+                "%function.parameter#2<-%function.parameter#5",
+            ),
+            (
                 FunctionCapture::Int {
                     target: IntLocalId(2),
                     source: IntLocalId(5),
@@ -1838,6 +1895,7 @@ data::graph::FunctionCapture::Int {
     source: data::graph::IntLocalId(5),
 }"#
                 .trim_start_matches('\n'),
+                "%int#2<-%int#5",
             ),
             (
                 FunctionCapture::Float {
@@ -1850,6 +1908,7 @@ data::graph::FunctionCapture::Float {
     source: data::graph::FloatLocalId(5),
 }"#
                 .trim_start_matches('\n'),
+                "%float#2<-%float#5",
             ),
             (
                 FunctionCapture::String {
@@ -1862,6 +1921,7 @@ data::graph::FunctionCapture::String {
     source: data::graph::StringLocalId(5),
 }"#
                 .trim_start_matches('\n'),
+                "%string#2<-%string#5",
             ),
             (
                 FunctionCapture::BitArray {
@@ -1874,6 +1934,7 @@ data::graph::FunctionCapture::BitArray {
     source: data::graph::BitArrayLocalId(5),
 }"#
                 .trim_start_matches('\n'),
+                "%bit_array#2<-%bit_array#5",
             ),
             (
                 FunctionCapture::UtfCodepoint {
@@ -1886,6 +1947,7 @@ data::graph::FunctionCapture::UtfCodepoint {
     source: data::graph::UtfCodepointLocalId(5),
 }"#
                 .trim_start_matches('\n'),
+                "%utf_codepoint#2<-%utf_codepoint#5",
             ),
             (
                 FunctionCapture::Bool {
@@ -1898,6 +1960,7 @@ data::graph::FunctionCapture::Bool {
     source: data::graph::BoolLocalId(5),
 }"#
                 .trim_start_matches('\n'),
+                "%bool#2<-%bool#5",
             ),
             (
                 FunctionCapture::Nil {
@@ -1910,6 +1973,7 @@ data::graph::FunctionCapture::Nil {
     source: data::graph::NilLocalId(5),
 }"#
                 .trim_start_matches('\n'),
+                "%nil#2<-%nil#5",
             ),
             (
                 FunctionCapture::Tuple {
@@ -1922,6 +1986,7 @@ data::graph::FunctionCapture::Tuple {
     source: data::graph::TupleLocalId(5),
 }"#
                 .trim_start_matches('\n'),
+                "%tuple#2<-%tuple#5",
             ),
             (
                 FunctionCapture::ParameterList {
@@ -1934,18 +1999,7 @@ data::graph::FunctionCapture::ParameterList {
     source: data::graph::ParameterListLocalId(5),
 }"#
                 .trim_start_matches('\n'),
-            ),
-            (
-                FunctionCapture::ParameterListList {
-                    target: ParameterListListLocalId(2),
-                    source: ParameterListListLocalId(5),
-                },
-                r#"
-data::graph::FunctionCapture::ParameterListList {
-    target: data::graph::ParameterListListLocalId(2),
-    source: data::graph::ParameterListListLocalId(5),
-}"#
-                .trim_start_matches('\n'),
+                "%list.parameter#2<-%list.parameter#5",
             ),
             (
                 FunctionCapture::IntList {
@@ -1958,6 +2012,7 @@ data::graph::FunctionCapture::IntList {
     source: data::graph::IntListLocalId(5),
 }"#
                 .trim_start_matches('\n'),
+                "%list.int#2<-%list.int#5",
             ),
             (
                 FunctionCapture::StringList {
@@ -1970,6 +2025,7 @@ data::graph::FunctionCapture::StringList {
     source: data::graph::StringListLocalId(5),
 }"#
                 .trim_start_matches('\n'),
+                "%list.string#2<-%list.string#5",
             ),
             (
                 FunctionCapture::BitArrayList {
@@ -1982,6 +2038,7 @@ data::graph::FunctionCapture::BitArrayList {
     source: data::graph::BitArrayListLocalId(5),
 }"#
                 .trim_start_matches('\n'),
+                "%list.bit_array#2<-%list.bit_array#5",
             ),
             (
                 FunctionCapture::UtfCodepointList {
@@ -1994,6 +2051,7 @@ data::graph::FunctionCapture::UtfCodepointList {
     source: data::graph::UtfCodepointListLocalId(5),
 }"#
                 .trim_start_matches('\n'),
+                "%list.utf_codepoint#2<-%list.utf_codepoint#5",
             ),
             (
                 FunctionCapture::CustomList {
@@ -2006,6 +2064,7 @@ data::graph::FunctionCapture::CustomList {
     source: data::graph::CustomListLocalId(5),
 }"#
                 .trim_start_matches('\n'),
+                "%list.custom#2<-%list.custom#5",
             ),
             (
                 FunctionCapture::ExternalList {
@@ -2018,6 +2077,7 @@ data::graph::FunctionCapture::ExternalList {
     source: data::graph::ExternalListLocalId(5),
 }"#
                 .trim_start_matches('\n'),
+                "%list.external#2<-%list.external#5",
             ),
             (
                 FunctionCapture::FloatList {
@@ -2030,6 +2090,7 @@ data::graph::FunctionCapture::FloatList {
     source: data::graph::FloatListLocalId(5),
 }"#
                 .trim_start_matches('\n'),
+                "%list.float#2<-%list.float#5",
             ),
             (
                 FunctionCapture::BoolList {
@@ -2042,6 +2103,7 @@ data::graph::FunctionCapture::BoolList {
     source: data::graph::BoolListLocalId(5),
 }"#
                 .trim_start_matches('\n'),
+                "%list.bool#2<-%list.bool#5",
             ),
             (
                 FunctionCapture::NilList {
@@ -2054,6 +2116,7 @@ data::graph::FunctionCapture::NilList {
     source: data::graph::NilListLocalId(5),
 }"#
                 .trim_start_matches('\n'),
+                "%list.nil#2<-%list.nil#5",
             ),
             (
                 FunctionCapture::TupleList {
@@ -2066,6 +2129,7 @@ data::graph::FunctionCapture::TupleList {
     source: data::graph::TupleListLocalId(5),
 }"#
                 .trim_start_matches('\n'),
+                "%list.tuple#2<-%list.tuple#5",
             ),
             (
                 FunctionCapture::ListList {
@@ -2078,6 +2142,7 @@ data::graph::FunctionCapture::ListList {
     source: data::graph::ListListLocalId(5),
 }"#
                 .trim_start_matches('\n'),
+                "%list.list#2<-%list.list#5",
             ),
             (
                 FunctionCapture::FunctionList {
@@ -2090,6 +2155,7 @@ data::graph::FunctionCapture::FunctionList {
     source: data::graph::FunctionListLocalId(5),
 }"#
                 .trim_start_matches('\n'),
+                "%list.function#2<-%list.function#5",
             ),
             (
                 FunctionCapture::IntFunction {
@@ -2102,6 +2168,7 @@ data::graph::FunctionCapture::IntFunction {
     source: data::graph::IntFunctionLocalId(5),
 }"#
                 .trim_start_matches('\n'),
+                "%function.int#2<-%function.int#5",
             ),
             (
                 FunctionCapture::FloatFunction {
@@ -2114,6 +2181,7 @@ data::graph::FunctionCapture::FloatFunction {
     source: data::graph::FloatFunctionLocalId(5),
 }"#
                 .trim_start_matches('\n'),
+                "%function.float#2<-%function.float#5",
             ),
             (
                 FunctionCapture::StringFunction {
@@ -2126,6 +2194,7 @@ data::graph::FunctionCapture::StringFunction {
     source: data::graph::StringFunctionLocalId(5),
 }"#
                 .trim_start_matches('\n'),
+                "%function.string#2<-%function.string#5",
             ),
             (
                 FunctionCapture::BitArrayFunction {
@@ -2138,6 +2207,7 @@ data::graph::FunctionCapture::BitArrayFunction {
     source: data::graph::BitArrayFunctionLocalId(5),
 }"#
                 .trim_start_matches('\n'),
+                "%function.bit_array#2<-%function.bit_array#5",
             ),
             (
                 FunctionCapture::UtfCodepointFunction {
@@ -2150,6 +2220,7 @@ data::graph::FunctionCapture::UtfCodepointFunction {
     source: data::graph::UtfCodepointFunctionLocalId(5),
 }"#
                 .trim_start_matches('\n'),
+                "%function.utf_codepoint#2<-%function.utf_codepoint#5",
             ),
             (
                 FunctionCapture::BoolFunction {
@@ -2162,6 +2233,7 @@ data::graph::FunctionCapture::BoolFunction {
     source: data::graph::BoolFunctionLocalId(5),
 }"#
                 .trim_start_matches('\n'),
+                "%function.bool#2<-%function.bool#5",
             ),
             (
                 FunctionCapture::NilFunction {
@@ -2174,6 +2246,7 @@ data::graph::FunctionCapture::NilFunction {
     source: data::graph::NilFunctionLocalId(5),
 }"#
                 .trim_start_matches('\n'),
+                "%function.nil#2<-%function.nil#5",
             ),
             (
                 FunctionCapture::TupleFunction {
@@ -2186,6 +2259,7 @@ data::graph::FunctionCapture::TupleFunction {
     source: data::graph::TupleFunctionLocalId(5),
 }"#
                 .trim_start_matches('\n'),
+                "%function.tuple#2<-%function.tuple#5",
             ),
             (
                 FunctionCapture::Custom {
@@ -2216,6 +2290,7 @@ data::graph::FunctionCapture::Custom {
     },
 }"#
                 .trim_start_matches('\n'),
+                "%custom#2<-%custom#5",
             ),
             (
                 FunctionCapture::External {
@@ -2234,16 +2309,25 @@ data::graph::FunctionCapture::External {
     },
 }"#
                 .trim_start_matches('\n'),
+                "%external#2<-%external#5",
             ),
         ];
-        for (capture, expected) in cases {
+        for (capture, expected, expected_label) in cases {
             assert_eq!(Rust::expression(&capture), expected);
+            explain::assert_rendered("pub fn main() { 1 }", expected_label, |plan, output| {
+                let mut context = explain::ExplainContext::new(plan, output);
+                context.write(&capture);
+            });
         }
     }
 
     #[test]
     fn emits_direct_symbolic_and_nested_function_targets() {
         let cases = [
+            (
+                FunctionTarget::Parameter(ParameterFunctionId(2)),
+                "data::graph::FunctionTarget::Parameter(data::function::ParameterFunctionId(2))",
+            ),
             (
                 FunctionTarget::Never(NeverFunctionId(2)),
                 "data::graph::FunctionTarget::Never(data::function::NeverFunctionId(2))",
@@ -2551,20 +2635,67 @@ mod function_target_explain_tests {
     use super::{ExternalFunctionTarget, FunctionTarget};
     use crate::plan::execution::explain;
     use crate::plan::execution::function::{
-        ExternalFunctionFunctionId, ExternalFunctionId, ExternalListFunctionFunctionId,
-        GenericCallableId, IntFunctionId,
+        BitArrayFunctionId, BoolFunctionId, CustomFunctionId, ExternalFunctionFunctionId,
+        ExternalFunctionId, ExternalListFunctionFunctionId, FloatFunctionId, GenericCallableId,
+        IntFunctionFunctionId, IntFunctionId, IntListFunctionId, ListFunctionId, NeverFunctionId,
+        NilFunctionId, ParameterFunctionId, ProfiledFunctionFunctionId, StringFunctionId,
+        TupleFunctionId, UtfCodepointFunctionId,
     };
     use crate::plan::execution::type_::{
-        ExternalFunctionType, ExternalListTypeId, ExternalTypeId, FunctionType, ListTypeId,
-        ValueShapeId, ValueType,
+        CustomConstructorId, CustomTypeId, CustomValueShape, CustomValueShapeId,
+        ExternalFunctionType, ExternalListTypeId, ExternalTypeId, FunctionType, IntListTypeId,
+        ListTypeId, ValueShapeId, ValueType,
     };
 
     #[test]
     fn writes_core_function_target() {
-        let target = FunctionTarget::Int(IntFunctionId(2));
-        let expected = "int#2";
+        let cases = [
+            (FunctionTarget::Int(IntFunctionId(2)), "int#2"),
+            (FunctionTarget::Float(FloatFunctionId(3)), "float#3"),
+            (FunctionTarget::String(StringFunctionId(4)), "string#4"),
+            (
+                FunctionTarget::BitArray(BitArrayFunctionId(5)),
+                "bit_array#5",
+            ),
+            (
+                FunctionTarget::UtfCodepoint(UtfCodepointFunctionId(6)),
+                "utf_codepoint#6",
+            ),
+            (
+                FunctionTarget::Custom(CustomFunctionId::new(
+                    7,
+                    CustomValueShape::new(CustomTypeId::new(0), CustomValueShapeId::new(0)),
+                )),
+                "custom#7",
+            ),
+            (FunctionTarget::Bool(BoolFunctionId(8)), "bool#8"),
+            (FunctionTarget::Nil(NilFunctionId(9)), "nil#9"),
+            (FunctionTarget::Tuple(TupleFunctionId(10)), "tuple#10"),
+            (
+                FunctionTarget::List(ListFunctionId::Int(IntListFunctionId::new(
+                    11,
+                    IntListTypeId::new(ListTypeId::new(0)),
+                ))),
+                "list.int#11",
+            ),
+            (
+                FunctionTarget::Function(ProfiledFunctionFunctionId::Int(IntFunctionFunctionId(
+                    12,
+                ))),
+                "function.int#12",
+            ),
+        ];
+        for (target, expected) in cases {
+            assert_explanation(&target, expected);
+        }
+    }
 
-        assert_explanation(&target, expected);
+    #[test]
+    fn writes_parameter_function_target() {
+        assert_explanation(
+            &FunctionTarget::Parameter(ParameterFunctionId(3)),
+            "parameter#3",
+        );
     }
 
     #[test]
@@ -2574,6 +2705,16 @@ mod function_target_explain_tests {
         let expected = "template#3 shapes=[shape#4]";
 
         assert_explanation(&target, expected);
+    }
+
+    #[test]
+    fn writes_symbolic_constructor_and_never_function_targets() {
+        let constructor = FunctionTarget::Generic(GenericCallableId::Constructor(
+            CustomConstructorId::new(CustomTypeId::new(7), 2),
+        ));
+        assert_explanation(&constructor, "custom_type#7.constructor#2");
+        let function = FunctionTarget::Never(NeverFunctionId(3));
+        assert_explanation(&function, "never#3");
     }
 
     #[test]
@@ -2629,10 +2770,13 @@ mod function_capture_explain_tests {
     use crate::plan::execution::explain;
     use crate::plan::execution::graph::{
         ExternalFunctionLocal, ExternalFunctionLocalId, ExternalListLocalId, ExternalLocal,
-        ExternalLocalId, IntLocalId,
+        ExternalLocalId, GenericFunctionLocal, GenericFunctionLocalId, IntLocalId,
+        NeverFunctionLocal, NeverFunctionLocalId, ParameterFunctionLocalId, ParameterListLocalId,
+        ParameterLocalId,
     };
     use crate::plan::execution::type_::{
-        ExternalFunctionType, ExternalTypeId, FunctionType, ValueType,
+        CustomTypeId, ExternalFunctionType, ExternalTypeId, FunctionShape, FunctionType,
+        GenericFunctionType, ValueShapeId, ValueType,
     };
 
     #[test]
@@ -2644,6 +2788,56 @@ mod function_capture_explain_tests {
         let expected = "%int#1<-%int#0";
 
         assert_explanation(&capture, expected);
+    }
+
+    #[test]
+    fn writes_parameter_captures_without_relabeling_their_family() {
+        let value = FunctionCapture::Parameter {
+            target: ParameterLocalId(3),
+            source: ParameterLocalId(2),
+        };
+        assert_explanation(&value, "%parameter#3<-%parameter#2");
+        let function = FunctionCapture::ParameterFunction {
+            target: ParameterFunctionLocalId(5),
+            source: ParameterFunctionLocalId(4),
+        };
+        assert_explanation(&function, "%function.parameter#5<-%function.parameter#4");
+        let list = FunctionCapture::ParameterList {
+            target: ParameterListLocalId(7),
+            source: ParameterListLocalId(6),
+        };
+        assert_explanation(&list, "%list.parameter#7<-%list.parameter#6");
+    }
+
+    #[test]
+    fn writes_generic_and_never_function_capture_families() {
+        let type_ = FunctionType::new(Vec::new(), ValueType::Custom(CustomTypeId::new(0)));
+        let generic_type = GenericFunctionType::from_shapes(
+            type_.clone(),
+            FunctionShape::new(ValueShapeId::new(0), type_),
+        );
+        let generic = FunctionCapture::GenericFunction {
+            target: GenericFunctionLocal {
+                id: GenericFunctionLocalId(3),
+                type_: generic_type.clone(),
+            },
+            source: GenericFunctionLocal {
+                id: GenericFunctionLocalId(2),
+                type_: generic_type.clone(),
+            },
+        };
+        assert_explanation(&generic, "%function.generic#3<-%function.generic#2");
+        let never = FunctionCapture::NeverFunction {
+            target: NeverFunctionLocal {
+                id: NeverFunctionLocalId(5),
+                type_: generic_type.clone(),
+            },
+            source: NeverFunctionLocal {
+                id: NeverFunctionLocalId(4),
+                type_: generic_type,
+            },
+        };
+        assert_explanation(&never, "%function.never#5<-%function.never#4");
     }
 
     #[test]

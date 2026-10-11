@@ -1315,7 +1315,7 @@ pub fn main() -> Int {
         let functions = HashMap::new();
         let mut anonymous = AnonymousFunctions::default();
         let mut context = PlanContext::new(&module_name, &functions, &mut anonymous);
-        let parameter = TypeParameterId(0);
+        let parameter = TypeParameterId::new(0);
         let site = context.panic_site(dummy_span());
         assert_eq!(
             super::plan_expr(
@@ -1491,7 +1491,7 @@ pub fn main() -> Int {
         let generic_expression = Expr::generic(crate::plan::GenericExpr::local_get(
             crate::plan::GenericLocal::new(
                 crate::plan::GenericLocalId(0),
-                crate::plan::TypeParameterId(0),
+                crate::plan::TypeParameterId::new(0),
             ),
             "value".into(),
         ));
@@ -1550,7 +1550,7 @@ pub fn main() -> Int {
 
     #[test]
     fn generic_projection_and_panic_helpers_preserve_parameter_shapes() {
-        let parameter = TypeParameterId(0);
+        let parameter = TypeParameterId::new(0);
         let local = GenericLocal::new(GenericLocalId(0), parameter);
         let generic = GenericExpr::local_get(local, "value".into());
         let tuple = TupleExpr::value(
@@ -2336,7 +2336,7 @@ pub fn main() {
                 PlanError::InvalidTypedAst {
                     reason: InvalidTypedAstReason::ExpressionShape {
                         kind: InvalidExpressionShapeKind::TupleType {
-                            actual: ValueType::Parameter(TypeParameterId(0)),
+                            actual: ValueType::Parameter(TypeParameterId::new(0)),
                         },
                     },
                 },
@@ -2462,7 +2462,7 @@ pub fn main() {
                 },
                 PlanError::InvalidTypedAst {
                     reason: InvalidTypedAstReason::ExpressionValueTypeMismatch {
-                        expected: ValueType::Parameter(TypeParameterId(0)),
+                        expected: ValueType::Parameter(TypeParameterId::new(0)),
                         actual: ValueType::Int,
                     },
                 },
@@ -2548,7 +2548,7 @@ pub fn main() {
                 PlanError::InvalidTypedAst {
                     reason: InvalidTypedAstReason::ExpressionShape {
                         kind: InvalidExpressionShapeKind::ListType {
-                            actual: ValueType::Parameter(TypeParameterId(0)),
+                            actual: ValueType::Parameter(TypeParameterId::new(0)),
                         },
                     },
                 },
@@ -2828,7 +2828,7 @@ pub fn main() {
             }),
         );
 
-        let parameter = TypeParameterId(0);
+        let parameter = TypeParameterId::new(0);
         let item_type = ValueType::List(Box::new(ValueType::Parameter(parameter)));
         let parameter_list = ListExpr::value(Vec::new(), item_type.clone())
             .with_item_shape(ValueShape::List(Box::new(ValueShape::Int)));

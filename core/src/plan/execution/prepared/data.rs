@@ -44,8 +44,8 @@ pub mod type_ {
     pub use crate::plan::execution::type_::list::{
         BitArrayListTypeId, BoolListTypeId, CustomListTypeId, ExternalListTypeId, FloatListTypeId,
         FunctionItemTypeId, FunctionListTypeId, IntListTypeId, ListListTypeId, ListStorageTypeId,
-        ListTypeId, ListTypeTable, NilListTypeId, ParameterListListTypeId, ParameterListTypeId,
-        StringListTypeId, TupleItemTypeId, TupleListTypeId, UtfCodepointListTypeId,
+        ListTypeId, ListTypeTable, NilListTypeId, ParameterListTypeId, StringListTypeId,
+        TupleItemTypeId, TupleListTypeId, UtfCodepointListTypeId,
     };
     pub use crate::plan::execution::type_::metadata::{
         FunctionMetadata, NominalTypeMetadata, TypeMetadata,
@@ -56,7 +56,11 @@ pub mod type_ {
     };
     pub use crate::plan::execution::type_::value::ValueType;
     pub const fn parameter_id(index: usize) -> crate::plan::TypeParameterId {
-        crate::plan::TypeParameterId(index)
+        crate::plan::TypeParameterId::new(index)
+    }
+
+    pub const fn scoped_parameter_id(scope: usize, index: usize) -> crate::plan::TypeParameterId {
+        crate::plan::TypeParameterId::scoped(scope, index)
     }
 
     #[cfg(test)]
@@ -64,8 +68,14 @@ pub mod type_ {
         #[test]
         fn parameter_identity_preserves_the_generated_index() {
             const PARAMETER: crate::plan::TypeParameterId = super::parameter_id(7);
-            assert_eq!(PARAMETER, crate::plan::TypeParameterId(7));
+            assert_eq!(PARAMETER, crate::plan::TypeParameterId::new(7));
             assert_eq!(super::parameter_id(std::hint::black_box(7)), PARAMETER);
+            const BOUND: crate::plan::TypeParameterId = super::scoped_parameter_id(3, 7);
+            assert_eq!(BOUND, crate::plan::TypeParameterId::scoped(3, 7));
+            assert_eq!(
+                super::scoped_parameter_id(std::hint::black_box(3), std::hint::black_box(7)),
+                BOUND,
+            );
         }
     }
 }
@@ -85,19 +95,18 @@ pub mod function {
         FloatListFunctionFunctionId, FunctionFunctionFunctionId, FunctionListFunctionFunctionId,
         GenericFunctionFunctionId, IntFunctionFunctionId, IntListFunctionFunctionId,
         ListListFunctionFunctionId, NeverFunctionFunctionId, NilFunctionFunctionId,
-        NilListFunctionFunctionId, ParameterListFunctionFunctionId,
-        ParameterListListFunctionFunctionId, ProfiledFunctionFunctionId,
-        ProfiledListFunctionFunctionId, StringFunctionFunctionId, StringListFunctionFunctionId,
-        TupleFunctionFunctionId, TupleListFunctionFunctionId, UtfCodepointFunctionFunctionId,
-        UtfCodepointListFunctionFunctionId,
+        NilListFunctionFunctionId, ParameterFunctionFunctionId, ParameterListFunctionFunctionId,
+        ProfiledFunctionFunctionId, ProfiledListFunctionFunctionId, StringFunctionFunctionId,
+        StringListFunctionFunctionId, TupleFunctionFunctionId, TupleListFunctionFunctionId,
+        UtfCodepointFunctionFunctionId, UtfCodepointListFunctionFunctionId,
     };
     pub use crate::plan::execution::function::function_return::table::FunctionFunctionTables;
     pub use crate::plan::execution::function::list_return::id::{
         BitArrayListFunctionId, BoolListFunctionId, CustomListFunctionId, ExternalListFunctionId,
         FloatListFunctionId, FunctionListFunctionId, IntListFunctionId, LibraryListFunctionId,
         ListFunctionId, ListListFunctionId, NilListFunctionId, ParameterListFunctionId,
-        ParameterListListFunctionId, ProfiledListFunctionId, StringListFunctionId,
-        TupleListFunctionId, UtfCodepointListFunctionId,
+        ProfiledListFunctionId, StringListFunctionId, TupleListFunctionId,
+        UtfCodepointListFunctionId,
     };
     pub use crate::plan::execution::function::list_return::table::ListFunctionTables;
     pub use crate::plan::execution::function::parameters::FunctionTableFamily;
@@ -113,8 +122,8 @@ pub mod function {
     pub use crate::plan::execution::function::value_return::entry::ValueFunctionEntry;
     pub use crate::plan::execution::function::value_return::id::{
         BitArrayFunctionId, BoolFunctionId, CustomFunctionId, ExternalFunctionId, FloatFunctionId,
-        IntFunctionId, NeverFunctionId, NilFunctionId, StringFunctionId, TupleFunctionId,
-        UtfCodepointFunctionId,
+        IntFunctionId, NeverFunctionId, NilFunctionId, ParameterFunctionId, StringFunctionId,
+        TupleFunctionId, UtfCodepointFunctionId,
     };
     pub use crate::plan::execution::function::value_return::table::ValueFunctionTables;
 }
@@ -149,6 +158,7 @@ pub mod graph {
         ExternalListInstruction, ListInstruction, ParameterListInstruction, TypedListInstruction,
     };
     pub use crate::plan::execution::graph::block::instruction::nil::NilInstruction;
+    pub use crate::plan::execution::graph::block::instruction::parameter::ParameterInstruction;
     pub use crate::plan::execution::graph::block::instruction::string::StringInstruction;
     pub use crate::plan::execution::graph::block::instruction::tuple::TupleInstruction;
     pub use crate::plan::execution::graph::block::instruction::utf_codepoint::UtfCodepointInstruction;
@@ -197,20 +207,21 @@ pub mod graph {
         FloatListFunctionLocalId, FunctionFunctionLocal, FunctionListFunctionLocalId,
         FunctionLocal, GenericFunctionLocal, GenericFunctionLocalId, IntFunctionLocalId,
         IntListFunctionLocalId, ListFunctionLocal, ListListFunctionLocalId, NeverFunctionLocal,
-        NeverFunctionLocalId, NilFunctionLocalId, NilListFunctionLocalId,
-        ParameterListFunctionLocalId, ParameterListListFunctionLocalId, StringFunctionLocalId,
-        StringListFunctionLocalId, TupleFunctionLocalId, TupleListFunctionLocalId,
-        UtfCodepointFunctionLocalId, UtfCodepointListFunctionLocalId,
+        NeverFunctionLocalId, NilFunctionLocalId, NilListFunctionLocalId, ParameterFunctionLocalId,
+        ParameterListFunctionLocalId, StringFunctionLocalId, StringListFunctionLocalId,
+        TupleFunctionLocalId, TupleListFunctionLocalId, UtfCodepointFunctionLocalId,
+        UtfCodepointListFunctionLocalId,
     };
     pub use crate::plan::execution::graph::value::list::{
         BitArrayListLocalId, BoolListLocalId, CustomListLocalId, ExternalListLocalId,
         FloatListLocalId, FunctionListLocalId, IntListLocalId, ListListLocalId, ListLocal,
-        NilListLocalId, ParameterListListLocalId, ParameterListLocalId, StoredListLocal,
-        StringListLocalId, TupleListLocalId, UtfCodepointListLocalId,
+        NilListLocalId, ParameterListLocalId, StoredListLocal, StringListLocalId, TupleListLocalId,
+        UtfCodepointListLocalId,
     };
     pub use crate::plan::execution::graph::value::local::{
         BitArrayLocalId, BoolLocalId, CustomLocal, CustomLocalId, ExternalLocal, ExternalLocalId,
-        FloatLocalId, IntLocalId, NilLocalId, StringLocalId, TupleLocalId, UtfCodepointLocalId,
+        FloatLocalId, IntLocalId, NilLocalId, ParameterLocalId, StringLocalId, TupleLocalId,
+        UtfCodepointLocalId,
     };
     pub use crate::plan::execution::graph::value::param::{ParamLocal, ParamSlot};
 }

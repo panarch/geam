@@ -741,15 +741,15 @@ mod tests {
     }
 
     #[test]
-    fn graph_entry_omits_uninhabited_parameters_and_captures() {
-        let parameter = TypeParameterId(0);
+    fn graph_entry_stores_bound_parameters_and_captures() {
+        let parameter = TypeParameterId::new(0);
         let template = FunctionTemplate::with_captures(
             FunctionTemplateId::new(2),
             "entry".into(),
             vec![
                 Param::named_shape(
                     ModuleParamLocal::generic(GenericLocal::new(GenericLocalId(0), parameter)),
-                    "uninhabited".into(),
+                    "parameter".into(),
                     ValueShape::Parameter(parameter),
                 ),
                 Param::named_shape(
@@ -776,34 +776,27 @@ mod tests {
         graph.finish_return(cursor, value);
         let lowered = super::super::super::freeze::freeze(graph, &mut context);
 
-        assert_eq!(lowered.parameter_count, 1);
-        assert_eq!(lowered.body.block_graph().blocks().len(), 1);
+        assert_eq!(lowered.parameter_count, 2);
+        let body = lowered.body.block_graph();
+        assert_eq!(body.blocks().len(), 1);
         assert_eq!(
-            lowered
-                .body
-                .block_graph()
-                .block(lowered.body.block_graph().entry())
+            body.block(body.entry())
                 .params()
-                .len(),
-            2,
-        );
-        assert_eq!(
-            lowered
-                .body
-                .block_graph()
-                .block(lowered.body.block_graph().entry())
-                .params()[0]
-                .local(),
-            &ParamLocal::Int(crate::plan::execution::graph::IntLocalId(0)),
-        );
-        assert_eq!(
-            lowered
-                .body
-                .block_graph()
-                .block(lowered.body.block_graph().entry())
-                .params()[1]
-                .local(),
-            &ParamLocal::Int(crate::plan::execution::graph::IntLocalId(1)),
+                .iter()
+                .map(|slot| slot.local().clone())
+                .collect::<Vec<_>>(),
+            vec![
+                ParamLocal::Parameter {
+                    local: crate::plan::execution::graph::ParameterLocalId(0),
+                    parameter: TypeParameterId::scoped(0, 0)
+                },
+                ParamLocal::Int(crate::plan::execution::graph::IntLocalId(0)),
+                ParamLocal::Parameter {
+                    local: crate::plan::execution::graph::ParameterLocalId(1),
+                    parameter: TypeParameterId::scoped(0, 0)
+                },
+                ParamLocal::Int(crate::plan::execution::graph::IntLocalId(1)),
+            ],
         );
     }
 
@@ -893,7 +886,7 @@ mod tests {
                 cursor,
                 &mut graph,
                 &mut context,
-                reject_never_expression,
+                finish_never_expression,
                 finish_never_function,
             ),
             Representability::Inhabited(()),
@@ -901,7 +894,7 @@ mod tests {
         let lowered = super::super::super::freeze::freeze(graph, &mut context);
         assert_eq!(lowered.body.block_graph().blocks().len(), 1);
 
-        let parameter = TypeParameterId(0);
+        let parameter = TypeParameterId::new(0);
         let target = crate::plan::FunctionCallTarget::new(
             function,
             crate::plan::HostCallSite::new(
@@ -1201,7 +1194,7 @@ mod tests {
         assert_eq!(entry.instructions().len(), 1);
         assert_eq!(source_stop_kind(entry.terminator()), SourceStopKind::Panic);
 
-        let parameter = TypeParameterId(0);
+        let parameter = TypeParameterId::new(0);
         let body = ReturnBody::expr(GenericExpr::panic(
             parameter,
             PanicExpr::panic_at(None, PanicSite::unknown()),

@@ -100,9 +100,11 @@ pub(super) fn admit(
             | (TypeMetadata::Bool, NativeConversionKind::Bool)
             | (TypeMetadata::Nil, NativeConversionKind::Nil)
             | (
-                TypeMetadata::Parameter(_) | TypeMetadata::Function(_) | TypeMetadata::External(_),
+                TypeMetadata::Function(_) | TypeMetadata::External(_),
                 NativeConversionKind::Exact,
             ) => {}
+            (TypeMetadata::Parameter(expected), NativeConversionKind::Parameter(actual))
+                if expected == actual && actual.scope().is_some() => {}
             (TypeMetadata::Tuple(items), NativeConversionKind::Tuple(children)) => {
                 if children.len() != items.len() {
                     return Err(ContractError::Native);
@@ -338,6 +340,128 @@ mod tests {
     }
 
     #[test]
+    fn parameter_conversions_require_the_exact_sealed_binding() {
+        use crate::execution_fixture::TestHost;
+        use crate::plan::TypeParameterId;
+        use crate::{HostedExecution, ModuleSource, PackageSource, Value};
+
+        type Input = HostTypeParameter<0>;
+        type Targets = HostTypeList<Input, HostTypeListEnd>;
+        fn ready<'call>(
+            call: NativeCall<'call, StatelessHostProfile, Provider, bool, Targets>,
+            _value: HostValue<'call, Input>,
+        ) -> Result<HostCallCompletion<'call, bool>, HostCallError> {
+            Ok(call.finish(true))
+        }
+        let hosts = || {
+            HostProviderSet::from_providers([HostProviderModule::new("app", "main")
+                .unwrap()
+                .with_native_function::<Provider, (Input,), bool, Targets, _>(
+                    "ready",
+                    NativeRules::default(),
+                    ready,
+                )
+                .unwrap()])
+            .unwrap()
+        };
+        let source = r#"
+@external(erlang, "native", "ready")
+fn ready(value: a) -> Bool
+fn check(value: a) { ready(value) }
+pub fn main() { echo check True }
+"#;
+        let (program, values, nevers) = lowered(source, hosts());
+        let executable_source = r#"
+@external(erlang, "native", "ready") fn ready(value: a) -> Bool
+fn check(value: a) { ready(value) }
+pub fn main() { check(True) }
+"#;
+        let typed = crate::compile_typed_host_program(
+            "app",
+            "main",
+            [PackageSource::new(
+                "app",
+                Vec::<String>::new(),
+                [ModuleSource::new("main", "main.gleam", executable_source)],
+            )],
+            hosts(),
+        )
+        .unwrap();
+        let mut execution =
+            HostedExecution::try_from_module_plan(crate::plan_host_program(typed).unwrap())
+                .unwrap();
+        let host = TestHost::default();
+        let mut echo = Vec::new();
+        assert_eq!(
+            host.block_on(execution.run_main(&host, &mut (), &mut echo))
+                .unwrap()
+                .try_into_value()
+                .unwrap(),
+            Value::Bool(true)
+        );
+        assert!(echo.is_empty());
+        let registration = NativeFunctions::new(&values, &nevers, hosts())
+            .unwrap()
+            .registrations
+            .pop()
+            .unwrap();
+        let common = &program.common;
+        let types = Types::admit(
+            &common.list_types,
+            &common.custom_types,
+            &common.external_types,
+            &common.value_shapes,
+        )
+        .unwrap();
+        assert_eq!(values.len(), 1);
+        let metadata = &values[0];
+        let arguments = metadata
+            .type_arguments
+            .iter()
+            .map(|argument| argument.type_.materialize())
+            .collect::<Vec<_>>();
+        assert_eq!(
+            admit(metadata, &registration, &arguments, &HashSet::new(), &types),
+            Ok(())
+        );
+        let root = metadata.constructions.natives.roots[0];
+        let binding = TypeParameterId::scoped(0, 0);
+        assert_eq!(
+            metadata.constructions.natives.nodes[root.0].type_,
+            TypeMetadata::Parameter(binding)
+        );
+        assert!(binding.scope().is_some());
+        let mut changed = metadata.clone();
+        let mut nodes = changed.constructions.natives.nodes.to_vec();
+        nodes[root.0].kind = NativeConversionKind::Parameter(TypeParameterId::scoped(
+            binding.scope().unwrap(),
+            binding.index() + 1,
+        ));
+        changed.constructions.natives.nodes = nodes.into();
+        assert_eq!(
+            admit(&changed, &registration, &arguments, &HashSet::new(), &types),
+            Err(ContractError::Native)
+        );
+
+        // A declaration-local parameter is not an executable conversion binding.
+        let unsealed = TypeParameterId::new(binding.index());
+        let mut nodes = metadata.constructions.natives.nodes.to_vec();
+        nodes[root.0].type_ = TypeMetadata::Parameter(unsealed);
+        nodes[root.0].kind = NativeConversionKind::Parameter(unsealed);
+        changed.constructions.natives.nodes = nodes.into();
+        assert_eq!(
+            admit(
+                &changed,
+                &registration,
+                &[crate::plan::ValueType::Parameter(unsealed)],
+                &HashSet::new(),
+                &types
+            ),
+            Err(ContractError::Native)
+        );
+    }
+
+    #[test]
     fn rejects_wrong_roots_edges_types_and_unclaimed_native_nodes_without_execution() {
         type Item = HostTypeParameter<0>;
         type Targets = HostTypeList<Item, HostTypeListEnd>;
@@ -408,7 +532,15 @@ pub fn main() { check(#(1, "text", [2], True, Nil, 1.25, <<1>>)) }
             TypeMetadata::List(Node::Static(&TypeMetadata::Int))
         );
         let original = metadata.constructions.natives.clone();
-        let cases: [fn(&mut NativeConversions); 13] = [
+        let cases: [fn(&mut NativeConversions); 14] = [
+            |graph| {
+                let mut nodes = graph.nodes.clone().into_vec();
+                nodes.push(NativeConversion {
+                    type_: TypeMetadata::UtfCodepoint,
+                    kind: NativeConversionKind::UtfCodepoint,
+                });
+                graph.nodes = nodes.into();
+            },
             |graph| graph.roots = Table::Static(&[]),
             |graph| graph.roots = vec![NativeConversionId(99)].into(),
             |graph| graph.roots = vec![NativeConversionId(1)].into(),
@@ -420,7 +552,7 @@ pub fn main() { check(#(1, "text", [2], True, Nil, 1.25, <<1>>)) }
             |graph| {
                 let mut nodes = graph.nodes.clone().into_vec();
                 nodes.push(NativeConversion {
-                    type_: TypeMetadata::Parameter(crate::plan::TypeParameterId(99)),
+                    type_: TypeMetadata::Parameter(crate::plan::TypeParameterId::new(99)),
                     kind: NativeConversionKind::Exact,
                 });
                 graph.nodes = nodes.into();
@@ -490,8 +622,8 @@ pub fn main() { check(#(1, "text", [2], True, Nil, 1.25, <<1>>)) }
             metadata.constructions.natives = original.clone();
             mutate(&mut metadata.constructions.natives);
             let expected = match index {
-                10 => ContractError::Type(TypeError::MissingList { index: 99 }),
-                11 => ContractError::Type(TypeError::RecursiveMetadata),
+                11 => ContractError::Type(TypeError::MissingList { index: 99 }),
+                12 => ContractError::Type(TypeError::RecursiveMetadata),
                 _ => ContractError::Native,
             };
             assert_eq!(

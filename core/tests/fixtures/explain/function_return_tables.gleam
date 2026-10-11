@@ -48,8 +48,8 @@ pub fn main() -> fn() -> Int {
 //     %function.function#5:shape#28(fn() -> fn() -> Bool) = function[Function] reference function.bool#0
 //     %function.function#6:shape#29(fn() -> fn() -> Nil) = function[Function] reference function.nil#0
 //     %function.function#7:shape#30(fn() -> fn() -> #(Int)) = function[Function] reference function.tuple#0
-//     %function.function#8:shape#31(fn() -> fn(param#0) -> param#0) = function[Function] reference function.generic#0
-//     %function.function#9:shape#32(fn() -> fn() -> param#1) = function[Function] reference function.never#0
+//     %function.function#8:shape#31(fn() -> fn(param#0) -> param#0) = function[Function] reference function.parameter#0
+//     %function.function#9:shape#32(fn() -> fn() -> param#1) = function[Function] reference function.parameter#1
 //     %function.function#10:shape#33(fn() -> fn() -> fn() -> Int) = function[Function] reference function.function#0
 //     %tuple#0:shape#34(#(fn() -> fn() -> Float, fn() -> fn() -> String, fn() -> fn() -> BitArray, fn() -> fn() -> UtfCodepoint, fn() -> fn() -> custom_type#0, fn() -> fn() -> Bool, fn() -> fn() -> Nil, fn() -> fn() -> #(Int), fn() -> fn(param#0) -> param#0, fn() -> fn() -> param#1, fn() -> fn() -> fn() -> Int)) = tuple.value elements=[%function.function#0, %function.function#1, %function.function#2, %function.function#3, %function.function#4, %function.function#5, %function.function#6, %function.function#7, %function.function#8, %function.function#9, %function.function#10]
 //     tail function.int#1 args=[]
@@ -79,6 +79,16 @@ pub fn main() -> fn() -> Int {
 //   block b0 params=[]
 //     jump b0()
 //
+// function function.parameter#0
+//   entry b0 params=[] captures=[]
+//   block b0 params=[]
+//     jump b0()
+//
+// function function.parameter#1
+//   entry b0 params=[] captures=[]
+//   block b0 params=[]
+//     jump b0()
+//
 // function function.custom#0
 //   entry b0 params=[] captures=[]
 //   block b0 params=[]
@@ -95,16 +105,6 @@ pub fn main() -> fn() -> Int {
 //     jump b0()
 //
 // function function.tuple#0
-//   entry b0 params=[] captures=[]
-//   block b0 params=[]
-//     jump b0()
-//
-// function function.generic#0
-//   entry b0 params=[] captures=[]
-//   block b0 params=[]
-//     jump b0()
-//
-// function function.never#0
 //   entry b0 params=[] captures=[]
 //   block b0 params=[]
 //     jump b0()

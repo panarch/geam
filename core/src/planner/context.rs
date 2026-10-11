@@ -3122,7 +3122,7 @@ mod tests {
         let functions = HashMap::<EcoString, FunctionInfo>::new();
         let mut anonymous = AnonymousFunctions::default();
         let mut context = PlanContext::new(&module, &functions, &mut anonymous);
-        let parameter = TypeParameterId(0);
+        let parameter = TypeParameterId::new(0);
         let shape = FunctionShape::new(
             vec![ValueShape::Parameter(parameter)],
             ValueShape::Parameter(parameter),
@@ -3704,7 +3704,7 @@ mod tests {
         let mut context = PlanContext::new(&module, &functions, &mut anonymous);
         let tuple_type = vec![ValueType::Int, ValueType::String];
         let nested_function_type = FunctionType::new(vec![ValueType::Int], ValueType::String);
-        let parameter = TypeParameterId(0);
+        let parameter = TypeParameterId::new(0);
 
         assert_eq!(
             context.define_list_local_shape("generic".into(), ValueShape::Parameter(parameter)),
@@ -3786,7 +3786,7 @@ mod tests {
         let functions = HashMap::<EcoString, FunctionInfo>::new();
         let mut anonymous = AnonymousFunctions::default();
         let mut context = PlanContext::new(&module, &functions, &mut anonymous);
-        let parameter = TypeParameterId(0);
+        let parameter = TypeParameterId::new(0);
         let value = ListExpr::try_value(Vec::new(), ValueType::Parameter(parameter))
             .expect("an empty generic list has a sealed item parameter");
         let typed_value = value

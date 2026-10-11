@@ -29,6 +29,7 @@ pub(super) struct ScopedValues {
     strings: Vec<crate::StringValue>,
     bit_arrays: Vec<EvaluatedBitArray>,
     utf_codepoints: Vec<char>,
+    parameters: Vec<crate::ParameterValue>,
     bools: Vec<bool>,
     parameter_lists: Vec<ParameterListValueId>,
     lists: Vec<StoredListValueId>,
@@ -153,6 +154,10 @@ pub(crate) struct StoredRuntimeListCustomFields<'value> {
 }
 
 impl StoredRuntimeValue {
+    pub(in crate::runtime) fn requires_execution(&self) -> bool {
+        self.retained.requires_execution
+    }
+
     pub(in crate::runtime) fn new(
         value: EvaluatedValue,
         metadata: crate::plan::execution::runtime::RuntimeValueMetadata<'_>,
@@ -267,6 +272,7 @@ impl StoredRuntimeValue {
             EvaluatedValue::String(_) => HostStoredValueFamily::String,
             EvaluatedValue::BitArray(_) => HostStoredValueFamily::BitArray,
             EvaluatedValue::UtfCodepoint(_) => HostStoredValueFamily::UtfCodepoint,
+            EvaluatedValue::Parameter(_) => HostStoredValueFamily::Parameter,
             EvaluatedValue::Custom(_) => HostStoredValueFamily::Custom,
             EvaluatedValue::External(_) => HostStoredValueFamily::External,
             EvaluatedValue::Bool(_) => HostStoredValueFamily::Bool,
@@ -476,6 +482,9 @@ impl<'value> StoredRuntimeListItem<'value> {
             HostValueFamily::UtfCodepoint => {
                 EvaluatedValue::UtfCodepoint(self.values.take_utf_codepoint(self.token))
             }
+            HostValueFamily::Parameter => {
+                EvaluatedValue::Parameter(self.values.take_parameter(self.token))
+            }
             HostValueFamily::Bool => EvaluatedValue::Bool(self.values.take_bool(self.token)),
             HostValueFamily::Nil => EvaluatedValue::Nil,
             HostValueFamily::Tuple => EvaluatedValue::Tuple(self.values.take_tuple(self.token)),
@@ -567,6 +576,7 @@ impl ScopedValues {
         self.strings.clear();
         self.bit_arrays.clear();
         self.utf_codepoints.clear();
+        self.parameters.clear();
         self.bools.clear();
         self.parameter_lists.clear();
         self.lists.clear();
@@ -589,6 +599,9 @@ impl ScopedValues {
             }
             HostValueFamily::UtfCodepoint => {
                 retained.push_utf_codepoint(self.utf_codepoints[token.index])
+            }
+            HostValueFamily::Parameter => {
+                retained.push_parameter(self.parameters[token.index].clone())
             }
             HostValueFamily::Bool => retained.push_bool(self.bools[token.index]),
             HostValueFamily::Nil => retained.push_nil(),
@@ -648,6 +661,14 @@ impl ScopedValues {
                 self.utf_codepoints.push(value);
                 HostValueToken {
                     family: HostValueFamily::UtfCodepoint,
+                    index,
+                }
+            }
+            EvaluatedValue::Parameter(value) => {
+                let index = self.parameters.len();
+                self.parameters.push(value);
+                HostValueToken {
+                    family: HostValueFamily::Parameter,
                     index,
                 }
             }
@@ -713,7 +734,7 @@ impl ScopedValues {
             ListValueId::Bool(value) => self.push_stored(value.into()),
             ListValueId::Nil(value) => self.push_stored(value.into()),
             ListValueId::Tuple(value) => self.push_stored(value.into()),
-            ListValueId::ParameterList(value) => self.push_stored(value.into()),
+
             ListValueId::List(value) => self.push_stored(value.into()),
             ListValueId::Function(value) => self.push_stored(value.into()),
         };
@@ -749,6 +770,7 @@ impl ScopedValues {
                 EvaluatedBitArray::from_value(value),
             )),
             HostScopedValue::UtfCodepoint(value) => self.push(EvaluatedValue::UtfCodepoint(value)),
+            HostScopedValue::Parameter(value) => self.push(EvaluatedValue::Parameter(value)),
             HostScopedValue::Bool(value) => self.push(EvaluatedValue::Bool(value)),
             HostScopedValue::Nil => self.push(EvaluatedValue::Nil),
             HostScopedValue::Value(token) => token,
@@ -783,6 +805,9 @@ impl ScopedValues {
             HostValueFamily::UtfCodepoint => {
                 EvaluatedValue::UtfCodepoint(self.utf_codepoints[token.index])
             }
+            HostValueFamily::Parameter => {
+                EvaluatedValue::Parameter(self.parameters[token.index].clone())
+            }
             HostValueFamily::Bool => EvaluatedValue::Bool(self.bools[token.index]),
             HostValueFamily::Nil => EvaluatedValue::Nil,
             HostValueFamily::List => {
@@ -804,7 +829,9 @@ impl ScopedValues {
 
     pub(super) fn list_value(&self, token: HostListToken) -> ListValueId {
         match token {
-            HostListToken::Parameter(index) => ListValueId::Parameter(self.parameter_lists[index]),
+            HostListToken::Parameter(index) => {
+                ListValueId::Parameter(self.parameter_lists[index].clone())
+            }
             HostListToken::Stored(index) => self.lists[index].clone().into_value(),
         }
     }
@@ -855,6 +882,13 @@ impl ScopedValues {
                 let index = self.functions.len();
                 self.functions.push(crate::runtime::RetainedCallable::new(
                     InvocableFunctionValue::UtfCodepoint(function),
+                ));
+                HostFunctionValueToken::Invocable(index)
+            }
+            EvaluatedFunctionValueKind::Parameter(function) => {
+                let index = self.functions.len();
+                self.functions.push(crate::runtime::RetainedCallable::new(
+                    InvocableFunctionValue::Parameter(function),
                 ));
                 HostFunctionValueToken::Invocable(index)
             }
@@ -920,7 +954,15 @@ impl ScopedValues {
         values: &[HostValueToken],
     ) -> ListValueId {
         match storage_type {
-            ListStorageTypeId::Parameter(type_id) => ParameterListValueId::new(type_id).into(),
+            ListStorageTypeId::Parameter(type_id) => storage
+                .parameter(
+                    type_id,
+                    values
+                        .iter()
+                        .map(|token| self.parameters[token.index].clone())
+                        .collect(),
+                )
+                .into(),
             ListStorageTypeId::Int(type_id) => storage
                 .int(
                     type_id,
@@ -1000,9 +1042,7 @@ impl ScopedValues {
                         .collect(),
                 )
                 .into(),
-            ListStorageTypeId::ParameterList(type_id) => {
-                storage.parameter_list_list(type_id, values.len()).into()
-            }
+
             ListStorageTypeId::List(type_id) => storage
                 .list(
                     type_id,
@@ -1040,11 +1080,12 @@ impl ScopedValues {
                 EvaluatedValue::BitArray(EvaluatedBitArray::from_value(value))
             }
             HostScopedValue::UtfCodepoint(value) => EvaluatedValue::UtfCodepoint(value),
+            HostScopedValue::Parameter(value) => EvaluatedValue::Parameter(value),
             HostScopedValue::Bool(value) => EvaluatedValue::Bool(value),
             HostScopedValue::Nil => EvaluatedValue::Nil,
             HostScopedValue::Value(token) => self.value(token),
             HostScopedValue::List(HostListToken::Parameter(index)) => {
-                EvaluatedValue::ParameterList(self.parameter_lists[index])
+                EvaluatedValue::ParameterList(self.parameter_lists[index].clone())
             }
             HostScopedValue::List(HostListToken::Stored(index)) => {
                 EvaluatedValue::List(self.lists[index].clone())
@@ -1134,6 +1175,10 @@ impl ScopedValues {
 
     fn take_utf_codepoint(&mut self, value: HostValueToken) -> char {
         self.utf_codepoints.swap_remove(value.index)
+    }
+
+    fn take_parameter(&mut self, value: HostValueToken) -> crate::ParameterValue {
+        self.parameters.swap_remove(value.index)
     }
 
     fn take_bool(&mut self, value: HostValueToken) -> bool {
@@ -1318,6 +1363,46 @@ mod tests {
     use num_bigint::BigInt;
 
     #[test]
+    fn stored_parameter_items_keep_their_binding_through_scoped_roundtrips() {
+        use crate::host::HostStoredValueFamily;
+        use crate::plan::ValueType;
+        use crate::runtime::{NativeValues, ValueRetention};
+
+        let plan = crate::runtime::plan_src("pub fn main() -> List(a) { [] }");
+        let lists = RuntimeListStorage::default();
+        let native = NativeValues::new(&lists, plan.value_metadata());
+        let parameter = plan.parameter_list_function_id(0).type_id().item;
+        let payload = native.parameter(parameter, &native.string("detail".into()), false);
+        let value = EvaluatedValue::Parameter(payload.clone());
+        let stored = StoredRuntimeValue::new(value.clone(), plan.value_metadata());
+        assert_eq!(stored.family(), HostStoredValueFamily::Parameter);
+        assert_eq!(stored.type_(), &ValueType::Parameter(parameter));
+
+        let retention = ValueRetention::new(plan.value_metadata());
+        let mut scoped = ScopedValues::default();
+        let restored =
+            StoredRuntimeListItem::new(&mut scoped, value.clone(), &retention).into_stored();
+        assert_eq!(restored.type_(), stored.type_());
+        assert_eq!(restored.value(), &value);
+        assert_eq!(scoped.parameters.len(), 0);
+        assert_eq!(payload.inspection(), "\"detail\"");
+        let token = scoped.push(EvaluatedValue::Parameter(payload.clone()));
+        let mut allocated = RuntimeListStorage::default();
+        let list = scoped.allocate_list(
+            crate::plan::execution::type_::ListStorageTypeId::Parameter(
+                plan.parameter_list_function_id(0).type_id(),
+            ),
+            &mut allocated,
+            &[token],
+        );
+        assert_eq!(
+            allocated.evaluated_value_at(&list, 0),
+            Some(EvaluatedValue::Parameter(payload)),
+        );
+        assert_eq!(allocated.list_len(&list), 1);
+    }
+
+    #[test]
     fn stored_runtime_value_preserves_its_exact_type_and_restores_its_value() {
         let stored = StoredRuntimeValue::test_int(7.into());
         let mut scoped = ScopedValues::default();
@@ -1451,9 +1536,11 @@ mod tests {
             "fn values(items: List(value)) { items } pub fn main() { values([]) }",
         );
         let list = ParameterListValueId::new(plan.parameter_list_function_id(0).type_id());
-        let item = crate::plan::TypeParameterId(0);
-        let stored =
-            StoredRuntimeValue::new(EvaluatedValue::ParameterList(list), plan.value_metadata());
+        let item = crate::plan::TypeParameterId::scoped(0, 0);
+        let stored = StoredRuntimeValue::new(
+            EvaluatedValue::ParameterList(list.clone()),
+            plan.value_metadata(),
+        );
 
         assert_eq!(
             crate::runtime::BorrowedValue::from_stored(&stored).list(),
@@ -1463,6 +1550,18 @@ mod tests {
             stored.type_(),
             &crate::plan::ValueType::List(Box::new(crate::plan::ValueType::Parameter(item))),
         );
+        let lists = crate::runtime::RuntimeListStorage::default();
+        let native = crate::runtime::NativeValues::new(&lists, plan.value_metadata());
+        let parameter = native.parameter(item, &native.integer(42.into()), false);
+        let stored = StoredRuntimeValue::new(
+            EvaluatedValue::Parameter(parameter.clone()),
+            plan.value_metadata(),
+        );
+        assert_eq!(
+            stored.family(),
+            crate::host::HostStoredValueFamily::Parameter
+        );
+        assert_eq!(stored.value(), &EvaluatedValue::Parameter(parameter));
     }
 
     #[test]

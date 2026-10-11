@@ -155,7 +155,7 @@ mod tests {
         let functions = HashMap::<EcoString, FunctionInfo>::new();
         let mut anonymous = AnonymousFunctions::default();
         let mut context = PlanContext::new(&module, &functions, &mut anonymous);
-        let parameter = TypeParameterId(0);
+        let parameter = TypeParameterId::new(0);
         let generic_type = type_::generic_var(0);
 
         let variable = Pattern::Variable {
@@ -276,7 +276,7 @@ mod tests {
         let functions = HashMap::<EcoString, FunctionInfo>::new();
         let mut anonymous = AnonymousFunctions::default();
         let mut context = PlanContext::new(&module, &functions, &mut anonymous);
-        let parameter = TypeParameterId(0);
+        let parameter = TypeParameterId::new(0);
         let source_local = GenericLocal::new(GenericLocalId(7), parameter);
         let subject = GenericExpr::local_get(source_local, "input".into());
         let local = GenericLocal::new(GenericLocalId(0), parameter);
@@ -304,7 +304,7 @@ pub fn main() { 1 }
 "#,
         ))
         .expect("a total generic case should plan");
-        let parameter = TypeParameterId(0);
+        let parameter = TypeParameterId::new(0);
         let input = GenericLocal::new(GenericLocalId(0), parameter);
         let subject = GenericLocal::new(GenericLocalId(1), parameter);
 
@@ -335,7 +335,7 @@ pub fn main() { 1 }
             plan(
                 type_::int(),
                 typed_int_expr(1),
-                TypeParameterId(0),
+                TypeParameterId::new(0),
                 Vec::new(),
                 &mut context,
             ),

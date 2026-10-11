@@ -25,8 +25,8 @@ pub(in crate::plan::execution::lowering) use float::float_function_expr;
 pub(in crate::plan::execution::lowering) use generic::executable_function_expr as generic_executable_function_expr;
 pub(in crate::plan::execution::lowering) use generic::{
     generic_bit_array_function_expr, generic_bool_function_expr, generic_float_function_expr,
-    generic_int_function_expr, generic_nil_function_expr, generic_string_function_expr,
-    generic_tuple_function_expr, generic_utf_codepoint_function_expr,
+    generic_int_function_expr, generic_nil_function_expr, generic_parameter_function_expr,
+    generic_string_function_expr, generic_tuple_function_expr, generic_utf_codepoint_function_expr,
     symbolic_bit_array_function_expr, symbolic_bool_function_expr,
     symbolic_custom_function_expr_kind, symbolic_external_function_expr_kind,
     symbolic_float_function_expr, symbolic_function_function_expr_kind,
@@ -429,18 +429,18 @@ pub fn main() {{
     #[test]
     fn symbolic_callable_families_stop_when_an_owner_source_diverges() {
         let targets = [
-            "fn target(_value) { 1 }",
-            "fn target(_value) { 1.5 }",
-            "fn target(_value) { \"value\" }",
-            "fn target(_value) { <<1>> }",
-            "fn target(_value) { codepoint() }",
-            "fn target(_value) { True }",
-            "fn target(_value) { Nil }",
-            "fn target(_value) { #(1) }",
-            "fn target(value) { Boxed(value) }",
-            "fn target(value) { [value] }",
-            "fn target(value) { fn() { value } }",
-            "fn target(_value: Int) -> value { panic as \"target\" }",
+            "fn target(_value: Empty) { 1 }",
+            "fn target(_value: Empty) { 1.5 }",
+            "fn target(_value: Empty) { \"value\" }",
+            "fn target(_value: Empty) { <<1>> }",
+            "fn target(_value: Empty) { codepoint() }",
+            "fn target(_value: Empty) { True }",
+            "fn target(_value: Empty) { Nil }",
+            "fn target(_value: Empty) { #(1) }",
+            "fn target(value: Empty) { Boxed(value) }",
+            "fn target(value: Empty) { [value] }",
+            "fn target(value: Empty) { fn() { value } }",
+            "fn target(_value: Int) -> Empty { panic as \"target\" }",
         ];
         let expressions = [
             "provider(panic as \"source\")",
@@ -705,6 +705,7 @@ pub fn main() {{
     fn symbolic_diverging_source(target: &str, expression: &str) -> String {
         format!(
             r#"
+pub type Empty
 pub type Boxed(value) {{ Boxed(value) }}
 pub type Holder(value) {{ Holder(selected: value) }}
 

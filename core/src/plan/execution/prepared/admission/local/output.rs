@@ -125,7 +125,9 @@ impl Family {
             ValueType::Custom(_) => self == Self::Custom,
             ValueType::External(_) => self == Self::External,
             ValueType::List(id) => self.matches_list(types.lists.types[id.index()], false),
-            ValueType::Parameter(_) => false,
+            ValueType::Parameter(parameter) => {
+                parameter.scope().is_some() && self == Self::Parameter
+            }
             ValueType::Function(function) => match function.return_() {
                 ValueType::Int => self == Self::IntFunction,
                 ValueType::Float => self == Self::FloatFunction,
@@ -138,7 +140,13 @@ impl Family {
                 ValueType::Custom(_) => self == Self::CustomFunction,
                 ValueType::External(_) => self == Self::ExternalFunction,
                 ValueType::List(id) => self.matches_list(types.lists.types[id.index()], true),
-                ValueType::Parameter(_) => self == Self::NeverFunction,
+                ValueType::Parameter(parameter) => {
+                    self == if parameter.scope().is_some() {
+                        Self::ParameterFunction
+                    } else {
+                        Self::NeverFunction
+                    }
+                }
                 ValueType::Function(_) => matches!(
                     self,
                     Self::CoreFunctionFunction | Self::ExternalFunctionFunction
@@ -150,9 +158,7 @@ impl Family {
     fn matches_list(self, type_: ListStorageTypeId, function: bool) -> bool {
         let (list, callable) = match type_ {
             ListStorageTypeId::Parameter(_) => (Self::ParameterList, Self::ParameterListFunction),
-            ListStorageTypeId::ParameterList(_) => {
-                (Self::ParameterListList, Self::ParameterListListFunction)
-            }
+
             ListStorageTypeId::Int(_) => (Self::IntList, Self::IntListFunction),
             ListStorageTypeId::String(_) => (Self::StringList, Self::StringListFunction),
             ListStorageTypeId::BitArray(_) => (Self::BitArrayList, Self::BitArrayListFunction),
@@ -181,9 +187,11 @@ mod tests {
     fn return_outputs_preserve_each_source_family_and_reject_other_shapes() {
         let source = r#"
 pub type Box(a) { Box(a) }
+pub type Empty
 fn capture(value) { fn() { echo value 42 } }
 fn unchanged(value) { value }
-fn stop(_value: Int) -> a { panic }
+fn symbolic(value: Empty) -> Empty { value }
+fn stop(_value: Int) -> Empty { panic }
 fn point() { let assert <<value:utf8_codepoint>> = <<65>> value }
 pub fn main() {
   let _ = #(capture(42), capture(1.5), capture("text"), capture(True), capture(Nil),
@@ -194,12 +202,13 @@ pub fn main() {
   let _ = #(capture(fn() { 42 }), capture(fn() { 1.5 }), capture(fn() { "text" }),
     capture(fn() { True }), capture(fn() { Nil }), capture(fn() { <<1>> }),
     capture(fn() { point() }), capture(fn() { #(1, True) }), capture(fn() { Box(7) }),
-    capture(unchanged), capture(stop))
+    capture(unchanged), capture(symbolic), capture(stop))
   let _ = #(capture(fn() { [42] }), capture(fn() { [1.5] }), capture(fn() { ["text"] }),
     capture(fn() { [True] }), capture(fn() { [Nil] }), capture(fn() { [<<1>>] }),
     capture(fn() { [point()] }), capture(fn() { [#(1, True)] }), capture(fn() { [Box(7)] }),
     capture(fn() { [] }), capture(fn() { [[]] }), capture(fn() { [[42]] }),
     capture(fn() { [unchanged] }), capture(fn() { unchanged }))
+  let _ = fn(value: a) { capture(value) }
   42
 }
 "#;
@@ -218,7 +227,7 @@ pub fn main() {
             .functions
             .function_returns
             .int_function_functions;
-        assert_eq!(functions.len(), 47);
+        assert_eq!(functions.len(), 50);
         for function in functions.iter() {
             let block = function
                 .body()
@@ -272,6 +281,7 @@ pub fn main() {
         let key = ExternalTypeId(0);
         let key_list = ExternalListTypeId::new(ListTypeId(0), key);
         let lists = ListTypeTable {
+            parameter_lifetimes: crate::plan::execution::storage::Table::Static(&[false; 1]),
             lifetimes: Table::Static(&[HostValueLifetime::Execution]),
             types: vec![ListStorageTypeId::External(key_list)].into(),
             tuple_items: Table::Static(&[]),
@@ -400,7 +410,12 @@ pub fn main() {
 
     #[test]
     fn ordinary_function_outputs_do_not_admit_symbolic_callable_storage() {
-        let source = "fn discard(value) { echo value 42 } pub fn main() { echo 42 discard }";
+        use crate::plan::{
+            TypeParameterId,
+            execution::type_::{FunctionType, ValueType},
+        };
+
+        let source = "pub type Never fn discard(value: Never) { echo value 42 } pub fn main() { echo 42 discard }";
         let typed = crate::compile_typed_module("example", "src/example.gleam", source).unwrap();
         let plan = crate::ExecutionPlan::from_module_plan(crate::plan_module(typed).unwrap());
         let common = &plan.program.common;
@@ -437,6 +452,12 @@ pub fn main() {
             graph::IntFunctionLocalId(0).admit(shape, &types),
             Err(TypeError::FunctionRepresentation)
         );
+        let declaration = ValueType::Function(FunctionType::new(
+            Vec::new(),
+            ValueType::Parameter(TypeParameterId::new(0)),
+        ));
+        assert!(super::Family::NeverFunction.matches(&declaration, &types));
+        assert!(!super::Family::ParameterFunction.matches(&declaration, &types));
     }
 
     fn typed_output(local: &ParamLocal) -> Box<dyn Output> {
@@ -446,6 +467,8 @@ pub fn main() {
             ParamLocal::String(id) => Box::new(*id),
             ParamLocal::BitArray(id) => Box::new(*id),
             ParamLocal::UtfCodepoint(id) => Box::new(*id),
+            ParamLocal::Parameter { local, .. } => Box::new(*local),
+            ParamLocal::ParameterFunction { local, .. } => Box::new(*local),
             ParamLocal::Bool(id) => Box::new(*id),
             ParamLocal::Nil(id) => Box::new(*id),
             ParamLocal::Tuple { local, .. } => Box::new(*local),
@@ -472,7 +495,7 @@ pub fn main() {
             ParamLocal::TupleFunction { local, .. } => Box::new(*local),
             ParamLocal::List(local) => match local {
                 graph::ListLocal::Parameter { local, .. } => Box::new(*local),
-                graph::ListLocal::ParameterList { local, .. } => Box::new(*local),
+
                 graph::ListLocal::Int { local, .. } => Box::new(*local),
                 graph::ListLocal::String { local, .. } => Box::new(*local),
                 graph::ListLocal::BitArray { local, .. } => Box::new(*local),

@@ -574,7 +574,7 @@ mod tests {
             assert_eq!(shape.substitute(&substitution), shape);
         }
 
-        let parameter = ValueShape::Parameter(crate::plan::TypeParameterId(0));
+        let parameter = ValueShape::Parameter(crate::plan::TypeParameterId::new(0));
         assert_eq!(parameter.merge(&parameter), Some(parameter));
     }
 

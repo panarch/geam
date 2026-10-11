@@ -19,8 +19,8 @@ pub(crate) use function::{
 pub(crate) use list::{
     BitArrayListTypeId, BoolListTypeId, CustomListTypeId, ExternalListTypeId, FloatListTypeId,
     FunctionListTypeId, IntListTypeId, ListListTypeId, ListStorageTypeId, ListTypeId,
-    ListTypeTable, NilListTypeId, ParameterListListTypeId, ParameterListTypeId, StringListTypeId,
-    TupleListTypeId, UtfCodepointListTypeId,
+    ListTypeTable, NilListTypeId, ParameterListTypeId, StringListTypeId, TupleListTypeId,
+    UtfCodepointListTypeId,
 };
 pub(crate) use metadata::{FunctionMetadata, NominalTypeMetadata, TypeMetadata};
 pub(crate) use shape::{

@@ -25,6 +25,7 @@ pub(in crate::runtime) fn value_refs_equal(
         (EvaluatedValueRef::UtfCodepoint(left), EvaluatedValueRef::UtfCodepoint(right)) => {
             left == right
         }
+        (EvaluatedValueRef::Parameter(left), EvaluatedValueRef::Parameter(right)) => left == right,
         (EvaluatedValueRef::Custom(left), EvaluatedValueRef::Custom(right)) => {
             left.constructor == right.constructor
                 && left.fields().len() == right.fields().len()
@@ -48,6 +49,12 @@ pub(in crate::runtime) fn value_refs_equal(
         }
         (EvaluatedValueRef::ParameterList(left), EvaluatedValueRef::ParameterList(right)) => {
             left.type_id() == right.type_id()
+                && left.values().len() == right.values().len()
+                && left
+                    .values()
+                    .iter()
+                    .zip(right.values().iter())
+                    .all(|(left, right)| left == right)
         }
         (EvaluatedValueRef::List(left), EvaluatedValueRef::List(right)) => {
             lists_equal(storage, left, right)
@@ -74,6 +81,11 @@ fn hash_value(
     hasher: &mut DefaultHasher,
 ) {
     match value {
+        EvaluatedValue::Parameter(value) => {
+            13u8.hash(hasher);
+            value.parameter().hash(hasher);
+            value.source_hash().hash(hasher);
+        }
         EvaluatedValue::Int(value) => {
             0u8.hash(hasher);
             value.hash(hasher);
@@ -129,6 +141,10 @@ fn hash_value(
         EvaluatedValue::ParameterList(value) => {
             10u8.hash(hasher);
             value.type_id().hash(hasher);
+            value.values().len().hash(hasher);
+            for item in value.values().iter() {
+                hash_value(storage, &EvaluatedValue::Parameter(item.clone()), hasher);
+            }
         }
         EvaluatedValue::List(value) => {
             11u8.hash(hasher);
@@ -206,6 +222,56 @@ mod tests {
     use crate::runtime::state::RuntimeState;
     use crate::runtime::state::list::{ListValueId, ParameterListValueId, StoredListValueId};
     use bitvec::order::Msb0;
+
+    #[test]
+    fn parameter_hashes_and_list_facades_preserve_binding_and_native_contents() {
+        use crate::plan::execution::runtime::RuntimeExecutionPlan;
+        use crate::runtime::{NativeValues, RuntimeListStorage};
+
+        let plan = crate::runtime::plan_src("pub fn main() -> List(a) { [] }");
+        let storage = RuntimeListStorage::default();
+        let type_id = plan.parameter_list_function_id(0).type_id();
+        let native = NativeValues::new(&storage, plan.value_metadata());
+        let first = native.parameter(type_id.item, &native.string("detail".into()), false);
+        let equal = native.parameter(type_id.item, &native.string("detail".into()), false);
+        let other = native.parameter(type_id.item, &native.integer(42.into()), false);
+        let value = EvaluatedValue::Parameter(first.clone());
+        let copy = EvaluatedValue::Parameter(equal.clone());
+        assert!(values_equal(&storage, &value, &copy));
+        assert_eq!(
+            value_source_hash(&storage, &value),
+            value_source_hash(&storage, &copy)
+        );
+        assert!(!values_equal(
+            &storage,
+            &value,
+            &EvaluatedValue::Parameter(other.clone())
+        ));
+
+        let list = storage.parameter(type_id, vec![first.clone(), other.clone()]);
+        let same = storage.parameter(type_id, vec![equal, other.clone()]);
+        let different = storage.parameter(type_id, vec![other.clone(), first.clone()]);
+        let values = EvaluatedValue::ParameterList(list.clone());
+        let copies = EvaluatedValue::ParameterList(same);
+        assert!(values_equal(&storage, &values, &copies));
+        assert_eq!(
+            value_source_hash(&storage, &values),
+            value_source_hash(&storage, &copies)
+        );
+        assert!(!values_equal(
+            &storage,
+            &values,
+            &EvaluatedValue::ParameterList(different)
+        ));
+
+        let stored = StoredListValueId::from(list.clone());
+        assert_eq!(stored.list_type(), type_id.list_type);
+        assert_eq!(stored.clone().into_value(), ListValueId::Parameter(list));
+        assert_eq!(
+            storage.evaluated_values(&stored),
+            vec![value, EvaluatedValue::Parameter(other)]
+        );
+    }
 
     #[test]
     fn function_returning_references_preserve_identity_across_return_families() {
@@ -593,9 +659,9 @@ pub fn main() { floats() }
             Default::default(),
             crate::plan::execution::type_::FunctionType::new(
                 Vec::new(),
-                crate::plan::execution::type_::ValueType::Parameter(crate::plan::TypeParameterId(
-                    0,
-                )),
+                crate::plan::execution::type_::ValueType::Parameter(
+                    crate::plan::TypeParameterId::new(0),
+                ),
             ),
         );
         let function_pairs = [

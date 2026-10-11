@@ -17,6 +17,7 @@ pub(in crate::plan::execution) struct ValueLifetimes {
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 struct Dependencies {
     execution: bool,
+    parameter_payload: bool,
     parameters: BTreeSet<usize>,
 }
 
@@ -35,6 +36,7 @@ impl ValueLifetimes {
                         Dependencies {
                             execution: definition.retention_lifetime.requires_execution(),
                             parameters: BTreeSet::new(),
+                            parameter_payload: false,
                         },
                     )
                 })
@@ -93,6 +95,9 @@ impl ValueLifetimes {
             .zip(custom_lifetimes)
             .map(|(mut type_, lifetime)| {
                 type_.lifetime = lifetime;
+                type_.parameter_lifetime = self
+                    .dependencies(&TypeMetadata::Custom(type_.type_.clone()))
+                    .parameter_payload;
                 type_
             })
             .collect();
@@ -107,6 +112,13 @@ impl ValueLifetimes {
                 self.lifetime(&TypeMetadata::from_public(&type_))
             })
             .collect();
+        lists.parameter_lifetimes = (0..lists.types.len())
+            .map(|index| {
+                let type_ = lists.list_value_type(super::ListTypeId(index), customs, externals);
+                self.dependencies(&TypeMetadata::from_public(&type_))
+                    .parameter_payload
+            })
+            .collect();
     }
 
     pub(in crate::plan::execution) fn matches(
@@ -116,9 +128,14 @@ impl ValueLifetimes {
         externals: &ExternalTypeTable,
     ) -> bool {
         lists.lifetimes.len() == lists.types.len()
+            && lists.parameter_lifetimes.len() == lists.types.len()
             && externals.lifetimes.len() == externals.types.len()
             && customs.types.iter().all(|type_| {
                 type_.lifetime == self.lifetime(&TypeMetadata::Custom(type_.type_.clone()))
+                    && type_.parameter_lifetime
+                        == self
+                            .dependencies(&TypeMetadata::Custom(type_.type_.clone()))
+                            .parameter_payload
             })
             && externals
                 .types
@@ -130,6 +147,10 @@ impl ValueLifetimes {
             && lists.lifetimes.iter().enumerate().all(|(index, lifetime)| {
                 let type_ = lists.list_value_type(super::ListTypeId(index), customs, externals);
                 *lifetime == self.lifetime(&TypeMetadata::from_public(&type_))
+                    && lists.parameter_lifetimes[index]
+                        == self
+                            .dependencies(&TypeMetadata::from_public(&type_))
+                            .parameter_payload
             })
     }
 
@@ -145,7 +166,11 @@ impl ValueLifetimes {
         let mut dependencies = Dependencies::default();
         match type_ {
             TypeMetadata::Parameter(parameter) => {
-                dependencies.parameters.insert(parameter.0);
+                if parameter.scope().is_some() {
+                    dependencies.parameter_payload = true;
+                } else {
+                    dependencies.parameters.insert(parameter.index());
+                }
             }
             TypeMetadata::Function(_) => dependencies.execution = true,
             TypeMetadata::Tuple(items) => {
@@ -161,6 +186,7 @@ impl ValueLifetimes {
                     type_.name.as_str(),
                 ))];
                 dependencies.execution = template.execution;
+                dependencies.parameter_payload = template.parameter_payload;
                 for parameter in &template.parameters {
                     dependencies.include(self.dependencies(&type_.arguments[*parameter]));
                 }
@@ -191,6 +217,7 @@ impl ValueLifetimes {
 impl Dependencies {
     fn include(&mut self, other: Self) {
         self.execution |= other.execution;
+        self.parameter_payload |= other.parameter_payload;
         self.parameters.extend(other.parameters);
     }
 }

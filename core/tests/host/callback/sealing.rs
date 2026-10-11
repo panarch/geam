@@ -1,13 +1,12 @@
-use geam_core::StringValue;
 use geam_core::{
-    BitArrayValue, HostCall, HostCallCompletion, HostCallError, HostCustom,
-    HostCustomConstructorDefinition, HostCustomConstructorList, HostCustomConstructorListEnd,
-    HostCustomField, HostCustomFieldList, HostCustomFieldListEnd, HostCustomSchema, HostCustomType,
-    HostCustomTypeArgument, HostFunctionType, HostList, HostListType, HostProvider,
-    HostProviderModule, HostProviderSet, HostSpecializationErrorReason, HostTuple, HostTupleType,
-    HostTypeIndex0, HostTypeIndexNext, HostTypeList, HostTypeListEnd, HostTypeParameter,
-    HostedExecution, ModuleSource, PackageSource, StatelessHostProfile, compile_typed_host_program,
-    plan_host_program,
+    BitArrayValue, CustomType, CustomTypeName, HostCall, HostCallCompletion, HostCallError,
+    HostCustom, HostCustomConstructorDefinition, HostCustomConstructorList,
+    HostCustomConstructorListEnd, HostCustomField, HostCustomFieldList, HostCustomFieldListEnd,
+    HostCustomSchema, HostCustomType, HostCustomTypeArgument, HostFunctionType, HostList,
+    HostListType, HostProvider, HostProviderModule, HostProviderSet, HostSpecializationErrorReason,
+    HostTuple, HostTupleType, HostTypeIndex0, HostTypeIndexNext, HostTypeList, HostTypeListEnd,
+    HostTypeParameter, HostedExecution, ModuleSource, PackageSource, StatelessHostProfile,
+    StringValue, ValueType, compile_typed_host_program, plan_host_program,
 };
 use num_bigint::BigInt;
 
@@ -65,7 +64,7 @@ fn accept_uninhabited_tuple<'call>(
 }
 
 #[test]
-fn rejects_a_symbolic_callback_nested_in_a_list() {
+fn rejects_an_empty_argument_callback_nested_in_a_list() {
     let provider = HostProviderModule::<StatelessHostProfile>::new("application", "main")
         .expect("provider module should be valid")
         .with_scoped_function::<Provider, (CallbackList,), BigInt, _>("accept_list", accept_list)
@@ -74,7 +73,9 @@ fn rejects_a_symbolic_callback_nested_in_a_list() {
 @external(erlang, "host", "accept_list")
 fn accept_list(values: List(fn(value) -> Int)) -> Int
 
-fn generic(_value) {
+pub type Empty
+
+fn generic(_value: Empty) {
   1
 }
 
@@ -107,7 +108,7 @@ pub fn main() {
 }
 
 #[test]
-fn rejects_a_symbolic_callback_nested_in_a_tuple() {
+fn rejects_an_empty_argument_callback_nested_in_a_tuple() {
     let provider = HostProviderModule::<StatelessHostProfile>::new("application", "main")
         .expect("provider module should be valid")
         .with_scoped_function::<Provider, (CallbackTuple,), BigInt, _>("accept_tuple", accept_tuple)
@@ -116,7 +117,9 @@ fn rejects_a_symbolic_callback_nested_in_a_tuple() {
 @external(erlang, "host", "accept_tuple")
 fn accept_tuple(value: #(fn(argument) -> Int, Int)) -> Int
 
-fn generic(_value) {
+pub type Empty
+
+fn generic(_value: Empty) {
   1
 }
 
@@ -146,10 +149,13 @@ pub fn main() {
     else {
         panic!("the tuple callback should own the sealing reason");
     };
-    assert!(matches!(
-        callback.argument_types()[0],
-        geam_core::ValueType::Parameter(_)
-    ));
+    assert_eq!(
+        callback.argument_types(),
+        &[ValueType::Custom(CustomType::new(
+            CustomTypeName::new("application".into(), "main".into(), "Empty".into()),
+            Vec::new(),
+        ))],
+    );
 }
 
 #[test]
@@ -426,7 +432,7 @@ fn accept_envelope<'call>(
 }
 
 #[test]
-fn rejects_a_symbolic_callback_nested_in_a_complete_recursive_custom_schema() {
+fn rejects_an_empty_argument_callback_nested_in_a_complete_recursive_custom_schema() {
     let provider = HostProviderModule::<StatelessHostProfile>::new("application", "main")
         .expect("provider module should be valid")
         .with_scoped_function::<Provider, (Envelope,), BigInt, _>(
@@ -465,7 +471,9 @@ pub type Envelope(first, callback_argument) {
 @external(erlang, "host", "accept_envelope")
 fn accept_envelope(value: Envelope(Int, callback_argument)) -> Int
 
-fn generic(_value) {
+pub type Empty
+
+fn generic(_value: Empty) {
   1
 }
 
@@ -512,9 +520,12 @@ pub fn main() {
     else {
         panic!("the custom-contained callback should own the sealing reason");
     };
-    assert!(matches!(
-        callback.argument_types()[0],
-        geam_core::ValueType::Parameter(_)
-    ));
-    assert_eq!(callback.return_(), &geam_core::ValueType::Int);
+    assert_eq!(
+        callback.argument_types(),
+        &[ValueType::Custom(CustomType::new(
+            CustomTypeName::new("application".into(), "main".into(), "Empty".into()),
+            Vec::new(),
+        ))],
+    );
+    assert_eq!(callback.return_(), &ValueType::Int);
 }

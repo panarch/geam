@@ -752,11 +752,13 @@ fn preserves_symbolic_external_function_handoffs() {
 @external(erlang, "host", "Counter")
 pub type Counter
 
+pub type Empty
+
 pub type CallableBox(input) {
   CallableBox(run: fn(input) -> Counter)
 }
 
-fn diverge(_value) -> Counter {
+fn diverge(_value: Empty) -> Counter {
   panic as "unreached external function"
 }
 
@@ -782,7 +784,7 @@ fn failing_divergence_provider() {
   panic as "unreached symbolic function source"
 }
 
-fn unreachable_divergence(which: Int) -> fn(input) -> Counter {
+fn unreachable_divergence(which: Int) -> fn(Empty) -> Counter {
   case which {
     1 -> {
       divergence_provider(panic as "unreached symbolic direct argument")
@@ -817,12 +819,12 @@ fn unreachable_divergence(which: Int) -> fn(input) -> Counter {
 }
 
 fn exercise(
-  function: fn(input) -> Counter,
+  function: fn(Empty) -> Counter,
   bool_selector: Bool,
   int_selector: Int,
   string_selector: String,
   float_selector: Float,
-) -> fn(input) -> Counter {
+) -> fn(Empty) -> Counter {
   let local = function
   let from_list = case [local] {
     [first] -> first
@@ -866,7 +868,7 @@ fn same(function: fn(input) -> Counter) {
   function == function
 }
 
-fn panic_value() -> fn(input) -> Counter {
+fn panic_value() -> fn(Empty) -> Counter {
   panic as "unselected external function panic"
 }
 

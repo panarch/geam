@@ -537,19 +537,19 @@ pub fn main() {
         assert_eq!(
             replace_first.params()[0].shape().value_type(),
             pair_type(
-                crate::plan::TypeParameterId(2),
-                crate::plan::TypeParameterId(1),
+                crate::plan::TypeParameterId::new(2),
+                crate::plan::TypeParameterId::new(1),
             ),
         );
         assert_eq!(
             replace_first.params()[1].shape().value_type(),
-            ValueType::Parameter(crate::plan::TypeParameterId(0)),
+            ValueType::Parameter(crate::plan::TypeParameterId::new(0)),
         );
         assert_eq!(
             replace_first.return_().value_type(),
             pair_type(
-                crate::plan::TypeParameterId(0),
-                crate::plan::TypeParameterId(1),
+                crate::plan::TypeParameterId::new(0),
+                crate::plan::TypeParameterId::new(1),
             ),
         );
     }

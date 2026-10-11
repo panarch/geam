@@ -96,6 +96,17 @@ pub(super) fn lower_host_return(
                 ),
             ));
         }
+        StoredValueShape::Parameter(_) => {
+            let return_ = execution_graph::ParameterLocalId(0);
+            functions.parameter.push((
+                index,
+                lowered_host_target::<execution_function::ParameterFunctionBody>(
+                    key,
+                    specialization,
+                    return_,
+                ),
+            ));
+        }
         StoredValueShape::Custom(shape) => {
             let return_ = execution_graph::CustomLocal::new(
                 execution_graph::CustomLocalId(0),
@@ -168,14 +179,7 @@ pub(super) fn lower_host_return(
                             execution_graph::ParameterListLocalId(0),
                         ),
                     )),
-                    L::ParameterList(id) => functions.parameter_list_list.push((
-                        id,
-                        lowered_host_target::<execution_function::ParameterListListFunctionBody>(
-                            key,
-                            specialization,
-                            execution_graph::ParameterListListLocalId(0),
-                        ),
-                    )),
+
                     L::Int(id) => functions.int_list.push((
                         id,
                         lowered_host_target::<execution_function::IntListFunctionBody>(
@@ -350,6 +354,16 @@ fn lower_host_function_return(
                 ),
             ));
         }
+        F::Parameter { local: return_, .. } => {
+            functions.parameter_function_functions.push((
+                index,
+                lowered_host_target::<execution_function::ParameterFunctionFunctionBody>(
+                    key,
+                    specialization,
+                    return_,
+                ),
+            ));
+        }
         F::Custom(return_) => functions.custom_function_functions.push((
             index,
             lowered_host_target::<execution_function::CustomFunctionFunctionBody>(
@@ -404,16 +418,7 @@ fn lower_host_function_return(
                         ),
                     ))
                 }
-                return_ @ L::ParameterList { .. } => {
-                    functions.parameter_list_list_function_functions.push((
-                        index,
-                        lowered_host_target::<execution_function::CoreListFunctionFunctionBody>(
-                            key,
-                            specialization,
-                            return_,
-                        ),
-                    ))
-                }
+
                 return_ @ L::Int { .. } => functions.int_list_function_functions.push((
                     index,
                     lowered_host_target::<execution_function::CoreListFunctionFunctionBody>(

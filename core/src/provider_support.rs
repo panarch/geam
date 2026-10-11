@@ -8,6 +8,7 @@ pub struct HostOpaqueFunctionType<Arguments, Return>(PhantomData<(Arguments, Ret
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum HostStoredValueFamily {
+    Parameter,
     Int,
     Float,
     String,

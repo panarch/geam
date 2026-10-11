@@ -147,12 +147,16 @@ trusted execution boundary through artifact admission.
 Generic function and constant templates are validated once in `ModulePlan`.
 Execution lowering must remain total from the validated template and publish a
 closed executable plan in which every retained reference has a matching runtime
-entry. It must not re-plan a body, interpret a template at runtime, or recover a
-bare type parameter through a generic runtime payload or downcast. A successful
-runtime value may preserve parameter metadata only when its payload is
-representable without fabricating a parameter value. Constant evaluation
-strategy must preserve source evaluation order, control flow, and function
-identity.
+entry. It must not re-plan a body or interpret a template at runtime.
+
+Keep scheme-local parameter identities distinct from sealed execution bindings.
+Preserve sealed bindings across value and container boundaries. Do not infer new
+bindings or concrete source types from runtime payload kinds or downcasts.
+Retaining a generic value must not grant additional structural access,
+restoration, or invocation permissions.
+
+Constant evaluation strategy must preserve source evaluation order, control
+flow, and function identity.
 
 Linked execution-plan structures must cross phase boundaries only as complete,
 immutable owners. Their construction phase owns target creation; raw links,

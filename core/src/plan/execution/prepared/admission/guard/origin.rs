@@ -42,6 +42,7 @@ pub(super) fn instruction<Graph: ExecutionGraphProfile>(
         | ProfiledInstructionKind::Float(_)
         | ProfiledInstructionKind::BitArray(_)
         | ProfiledInstructionKind::UtfCodepoint(_)
+        | ProfiledInstructionKind::Parameter(_)
         | ProfiledInstructionKind::Custom(_)
         | ProfiledInstructionKind::Bool(_)
         | ProfiledInstructionKind::Nil(_)
@@ -55,9 +56,17 @@ pub(super) fn instruction<Graph: ExecutionGraphProfile>(
 fn list(value: &ListInstruction) -> Origin<'_> {
     match value {
         ListInstruction::Parameter(_, value) => match value {
-            ParameterListInstruction::Empty => Origin::List {
-                head: 0,
+            ParameterListInstruction::Value(elements) => Origin::List {
+                head: elements.len(),
                 tail: None,
+            },
+            ParameterListInstruction::Spread { elements, tail } => Origin::List {
+                head: elements.len(),
+                tail: Some((*tail).into()),
+            },
+            ParameterListInstruction::DropFirst { list, count } => Origin::ListDrop {
+                source: (*list).into(),
+                count: *count,
             },
             ParameterListInstruction::Constant(_)
             | ParameterListInstruction::Call { .. }
@@ -66,7 +75,7 @@ fn list(value: &ListInstruction) -> Origin<'_> {
             | ParameterListInstruction::CustomField { .. }
             | ParameterListInstruction::ListIndex { .. } => Origin::Unknown,
         },
-        ListInstruction::ParameterList(_, value) => typed_list(value),
+
         ListInstruction::Int(_, value) => typed_list(value),
         ListInstruction::String(_, value) => typed_list(value),
         ListInstruction::BitArray(_, value) => typed_list(value),
@@ -114,7 +123,7 @@ mod tests {
         BitArrayListLocalId, BoolInstruction, BoolListLocalId, CustomListLocalId,
         ExternalListInstruction, ExternalListLocalId, FloatListLocalId, FunctionListLocalId,
         IntListLocalId, IntLocalId, ListInstruction, ListListLocalId, NilListLocalId,
-        ParameterListInstruction, ParameterListListLocalId, ProfiledInstructionKind,
+        ParameterListInstruction, ParameterListLocalId, ParameterLocalId, ProfiledInstructionKind,
         StringInstruction, StringListLocalId, StringLocalId, TupleListLocalId, TupleLocalId,
         TypedListInstruction, UtfCodepointListLocalId,
     };
@@ -122,21 +131,37 @@ mod tests {
     use crate::plan::execution::type_::{
         BitArrayListTypeId, BoolListTypeId, CustomListTypeId, CustomTypeId, ExternalListTypeId,
         ExternalTypeId, FloatListTypeId, FunctionListTypeId, IntListTypeId, ListListTypeId,
-        ListTypeId, NilListTypeId, ParameterListListTypeId, ParameterListTypeId, StringListTypeId,
-        TupleListTypeId, UtfCodepointListTypeId,
+        ListTypeId, NilListTypeId, ParameterListTypeId, StringListTypeId, TupleListTypeId,
+        UtfCodepointListTypeId,
     };
     use crate::plan::{Text, TypeParameterId};
 
     #[test]
     fn list_origins_preserve_construction_tail_and_drop_for_each_element_family() {
         type Kind = ProfiledInstructionKind<HostedExecutionGraph>;
-        let parameter = ParameterListTypeId::new(ListTypeId(0), TypeParameterId(0));
+        let parameter = ParameterListTypeId::new(ListTypeId(0), TypeParameterId::new(0));
         let cases = [
             (
-                ListInstruction::Parameter(parameter, ParameterListInstruction::Empty),
+                ListInstruction::Parameter(
+                    parameter,
+                    ParameterListInstruction::Value(Vec::new().into()),
+                ),
                 Origin::List {
                     head: 0,
                     tail: None,
+                },
+            ),
+            (
+                ListInstruction::Parameter(
+                    parameter,
+                    ParameterListInstruction::Spread {
+                        elements: vec![ParameterLocalId(2)].into(),
+                        tail: ParameterListLocalId(3),
+                    },
+                ),
+                Origin::List {
+                    head: 1,
+                    tail: Some(ParameterListLocalId(3).into()),
                 },
             ),
             (
@@ -150,50 +175,17 @@ mod tests {
                 Origin::Unknown,
             ),
             (
-                ListInstruction::ParameterList(
-                    ParameterListListTypeId::new(ListTypeId(1), parameter),
-                    TypedListInstruction::Value(Table::Static(&[])),
-                ),
-                Origin::List {
-                    head: 0,
-                    tail: None,
-                },
-            ),
-            (
-                ListInstruction::ParameterList(
-                    ParameterListListTypeId::new(ListTypeId(1), parameter),
-                    TypedListInstruction::Spread {
-                        elements: Table::Static(&[]),
-                        tail: ParameterListListLocalId(3),
-                    },
-                ),
-                Origin::List {
-                    head: 0,
-                    tail: Some(ParameterListListLocalId(3).into()),
-                },
-            ),
-            (
-                ListInstruction::ParameterList(
-                    ParameterListListTypeId::new(ListTypeId(1), parameter),
-                    TypedListInstruction::DropFirst {
-                        list: ParameterListListLocalId(3),
+                ListInstruction::Parameter(
+                    parameter,
+                    ParameterListInstruction::DropFirst {
+                        list: ParameterListLocalId(3),
                         count: 2,
                     },
                 ),
                 Origin::ListDrop {
-                    source: ParameterListListLocalId(3).into(),
+                    source: ParameterListLocalId(3).into(),
                     count: 2,
                 },
-            ),
-            (
-                ListInstruction::ParameterList(
-                    ParameterListListTypeId::new(ListTypeId(1), parameter),
-                    TypedListInstruction::TupleIndex {
-                        tuple: TupleLocalId(2),
-                        index: 1,
-                    },
-                ),
-                Origin::Unknown,
             ),
             (
                 ListInstruction::Int(

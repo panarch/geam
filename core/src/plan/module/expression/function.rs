@@ -1099,7 +1099,7 @@ mod tests {
             FunctionExpr::generic(generic_function_value()).type_(),
             FunctionType::new(
                 vec![ValueType::Int],
-                ValueType::Parameter(TypeParameterId(0))
+                ValueType::Parameter(TypeParameterId::new(0))
             ),
         );
         assert_eq!(
@@ -1266,7 +1266,7 @@ mod tests {
     fn generic_function_value() -> GenericFunctionExpr {
         GenericFunctionExpr::panic(
             PanicExpr::panic_at(None, PanicSite::unknown()),
-            GenericFunctionType::new(vec![ValueShape::Int], TypeParameterId(0)),
+            GenericFunctionType::new(vec![ValueShape::Int], TypeParameterId::new(0)),
         )
     }
 

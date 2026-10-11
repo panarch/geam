@@ -5,8 +5,8 @@ use crate::plan::execution::function::{
 use crate::plan::execution::prepared::rust::{Emit, Rust};
 use crate::plan::execution::type_::{
     BitArrayListTypeId, BoolListTypeId, CustomListTypeId, ExternalListTypeId, FloatListTypeId,
-    FunctionListTypeId, IntListTypeId, ListListTypeId, NilListTypeId, ParameterListListTypeId,
-    ParameterListTypeId, StringListTypeId, TupleListTypeId, UtfCodepointListTypeId,
+    FunctionListTypeId, IntListTypeId, ListListTypeId, NilListTypeId, ParameterListTypeId,
+    StringListTypeId, TupleListTypeId, UtfCodepointListTypeId,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -37,12 +37,6 @@ pub struct UtfCodepointListFunctionId {
 pub struct ParameterListFunctionId {
     pub index: usize,
     pub type_id: ParameterListTypeId,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct ParameterListListFunctionId {
-    pub index: usize,
-    pub type_id: ParameterListListTypeId,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -96,7 +90,6 @@ pub struct FunctionListFunctionId {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ListFunctionId {
     Parameter(ParameterListFunctionId),
-    ParameterList(ParameterListListFunctionId),
     Int(IntListFunctionId),
     String(StringListFunctionId),
     BitArray(BitArrayListFunctionId),
@@ -225,20 +218,6 @@ impl ParameterListFunctionId {
     }
 }
 
-impl ParameterListListFunctionId {
-    pub(in crate::plan::execution) fn new(index: usize, type_id: ParameterListListTypeId) -> Self {
-        Self { index, type_id }
-    }
-
-    pub(crate) fn index(self) -> usize {
-        self.index
-    }
-
-    pub(crate) fn type_id(self) -> ParameterListListTypeId {
-        self.type_id
-    }
-}
-
 impl CustomListFunctionId {
     pub(in crate::plan::execution) fn new(index: usize, type_id: CustomListTypeId) -> Self {
         Self { index, type_id }
@@ -357,12 +336,6 @@ impl FunctionLabelSource for ParameterListFunctionId {
     }
 }
 
-impl FunctionLabelSource for ParameterListListFunctionId {
-    fn function_label(&self) -> FunctionLabel {
-        FunctionLabel::new("list.parameter_list", self.index())
-    }
-}
-
 impl FunctionLabelSource for IntListFunctionId {
     fn function_label(&self) -> FunctionLabel {
         FunctionLabel::new("list.int", self.index())
@@ -451,7 +424,7 @@ impl FunctionLabelSource for ListFunctionId {
     fn function_label(&self) -> FunctionLabel {
         match self {
             Self::Parameter(id) => id.function_label(),
-            Self::ParameterList(id) => id.function_label(),
+
             Self::Int(id) => id.function_label(),
             Self::String(id) => id.function_label(),
             Self::BitArray(id) => id.function_label(),
@@ -512,16 +485,6 @@ impl Emit for ParameterListFunctionId {
         let Self { index, type_id } = self;
         output.structure(
             "function::ParameterListFunctionId",
-            &[("index", index), ("type_id", type_id)],
-        );
-    }
-}
-
-impl Emit for ParameterListListFunctionId {
-    fn emit(&self, output: &mut Rust) {
-        let Self { index, type_id } = self;
-        output.structure(
-            "function::ParameterListListFunctionId",
             &[("index", index), ("type_id", type_id)],
         );
     }
@@ -613,9 +576,7 @@ impl Emit for ListFunctionId {
             Self::Parameter(field_0) => {
                 output.call("function::ListFunctionId::Parameter", &[field_0])
             }
-            Self::ParameterList(field_0) => {
-                output.call("function::ListFunctionId::ParameterList", &[field_0])
-            }
+
             Self::Int(field_0) => output.call("function::ListFunctionId::Int", &[field_0]),
             Self::String(field_0) => output.call("function::ListFunctionId::String", &[field_0]),
             Self::BitArray(field_0) => {
@@ -697,8 +658,8 @@ mod emission_tests {
         BitArrayListFunctionId, BoolListFunctionId, CustomListFunctionId, ExternalListFunctionId,
         FloatListFunctionId, FunctionListFunctionId, IntListFunctionId, LibraryListFunctionId,
         ListFunctionId, ListListFunctionId, NilListFunctionId, ParameterListFunctionId,
-        ParameterListListFunctionId, ProfiledListFunctionId, StringListFunctionId,
-        TupleListFunctionId, UtfCodepointListFunctionId,
+        ProfiledListFunctionId, StringListFunctionId, TupleListFunctionId,
+        UtfCodepointListFunctionId,
     };
     use crate::plan::execution::function::HostedExecutionGraph;
     use crate::plan::execution::prepared::rust::Rust;
@@ -706,8 +667,8 @@ mod emission_tests {
     use crate::plan::execution::type_::{
         BitArrayListTypeId, BoolListTypeId, CustomListTypeId, CustomTypeId, ExternalListTypeId,
         ExternalTypeId, FloatListTypeId, FunctionListTypeId, IntListTypeId, ListListTypeId,
-        ListTypeId, NilListTypeId, ParameterListListTypeId, ParameterListTypeId, StringListTypeId,
-        TupleListTypeId, UtfCodepointListTypeId,
+        ListTypeId, NilListTypeId, ParameterListTypeId, StringListTypeId, TupleListTypeId,
+        UtfCodepointListTypeId,
     };
 
     #[test]
@@ -808,7 +769,7 @@ data::function::ListFunctionId::Nil(data::function::NilListFunctionId {
             (
                 ListFunctionId::Parameter(ParameterListFunctionId::new(
                     2,
-                    ParameterListTypeId::new(ListTypeId(3), crate::plan::TypeParameterId(4)),
+                    ParameterListTypeId::new(ListTypeId(3), crate::plan::TypeParameterId::new(4)),
                 )),
                 r#"
 data::function::ListFunctionId::Parameter(data::function::ParameterListFunctionId {
@@ -816,27 +777,6 @@ data::function::ListFunctionId::Parameter(data::function::ParameterListFunctionI
     type_id: data::type_::ParameterListTypeId {
         list_type: data::type_::ListTypeId(3),
         item: data::type_::parameter_id(4),
-    },
-})"#
-                .trim_start_matches('\n'),
-            ),
-            (
-                ListFunctionId::ParameterList(ParameterListListFunctionId::new(
-                    2,
-                    ParameterListListTypeId::new(
-                        ListTypeId(3),
-                        ParameterListTypeId::new(ListTypeId(4), crate::plan::TypeParameterId(5)),
-                    ),
-                )),
-                r#"
-data::function::ListFunctionId::ParameterList(data::function::ParameterListListFunctionId {
-    index: 2,
-    type_id: data::type_::ParameterListListTypeId {
-        list_type: data::type_::ListTypeId(3),
-        item_type: data::type_::ParameterListTypeId {
-            list_type: data::type_::ListTypeId(4),
-            item: data::type_::parameter_id(5),
-        },
     },
 })"#
                 .trim_start_matches('\n'),
@@ -1144,10 +1084,7 @@ mod explain_tests {
     fn labels_list_function_families() {
         let cases = [
             ("pub fn main() -> List(value) { [] }", "list.parameter#0"),
-            (
-                "pub fn main() -> List(List(value)) { [[]] }",
-                "list.parameter_list#0",
-            ),
+            ("pub fn main() -> List(List(value)) { [[]] }", "list.list#0"),
             ("pub fn main() -> List(Int) { [] }", "list.int#0"),
             ("pub fn main() -> List(String) { [] }", "list.string#0"),
             ("pub fn main() -> List(BitArray) { [] }", "list.bit_array#0"),

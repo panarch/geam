@@ -159,6 +159,7 @@ impl Diagnostic for InvariantError {
 
 fn render_value(value: &Value) -> String {
     match value {
+        Value::Parameter(value) => value.inspection().to_string(),
         Value::Int(value) => format!("Int({value})"),
         Value::Float(value) => format!("Float({value:?})"),
         Value::String(value) => format!("String({value:?})"),
@@ -635,9 +636,25 @@ mod tests {
     }
 
     #[test]
+    fn a_parameter_diagnostic_preserves_native_contents_and_the_sealed_source_type() {
+        use crate::plan::TypeParameterId;
+        use crate::plan::execution::runtime::RuntimeExecutionPlan;
+        use crate::runtime::{NativeValues, RuntimeListStorage};
+
+        let plan = crate::runtime::plan_src("pub fn main() -> List(a) { [] }");
+        let lists = RuntimeListStorage::default();
+        let native = NativeValues::new(&lists, plan.value_metadata());
+        let parameter = TypeParameterId::scoped(0, 0);
+        let value =
+            Value::Parameter(native.parameter(parameter, &native.string("detail".into()), false));
+        assert_eq!(value.value_type(), ValueType::Parameter(parameter));
+        assert_eq!(render_value(&value), "\"detail\"");
+    }
+
+    #[test]
     fn render_value_type_preserves_compound_shapes() {
         assert_eq!(
-            render_value_type(&ValueType::Parameter(crate::plan::TypeParameterId(2))),
+            render_value_type(&ValueType::Parameter(crate::plan::TypeParameterId::new(2))),
             "Parameter(2)",
         );
         assert_eq!(render_value_type(&ValueType::BitArray), "BitArray");

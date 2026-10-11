@@ -29,7 +29,7 @@ pub(super) enum FunctionInstantiationMismatch {
 
 impl TypeParameterScope {
     pub(super) fn resolve(&mut self, source_id: u64) -> TypeParameterId {
-        let next = TypeParameterId(self.parameters.len());
+        let next = TypeParameterId::new(self.parameters.len());
         *self.parameters.entry(source_id).or_insert(next)
     }
 
@@ -232,18 +232,18 @@ mod tests {
     fn type_parameter_scope_canonicalizes_source_ids_per_scheme() {
         let mut scope = TypeParameterScope::default();
 
-        assert_eq!(scope.resolve(41), TypeParameterId(0));
-        assert_eq!(scope.resolve(7), TypeParameterId(1));
-        assert_eq!(scope.resolve(41), TypeParameterId(0));
+        assert_eq!(scope.resolve(41), TypeParameterId::new(0));
+        assert_eq!(scope.resolve(7), TypeParameterId::new(1));
+        assert_eq!(scope.resolve(41), TypeParameterId::new(0));
         assert_eq!(
             scope.scheme().parameters(),
-            &[TypeParameterId(0), TypeParameterId(1)],
+            &[TypeParameterId::new(0), TypeParameterId::new(1)],
         );
     }
 
     #[test]
     fn function_instantiation_reports_each_shape_boundary() {
-        let parameter = ValueShape::Parameter(TypeParameterId(0));
+        let parameter = ValueShape::Parameter(TypeParameterId::new(0));
         let polymorphic = function_signature(1, vec![parameter.clone()], parameter.clone());
 
         assert_eq!(
@@ -276,7 +276,7 @@ mod tests {
                 &FunctionShape::new(vec![ValueShape::Int], ValueShape::String),
             ),
             Err(FunctionInstantiationMismatch::ReturnShape {
-                expected: crate::plan::ValueType::Parameter(TypeParameterId(0)),
+                expected: crate::plan::ValueType::Parameter(TypeParameterId::new(0)),
                 actual: crate::plan::ValueType::String,
             }),
         );
@@ -316,7 +316,7 @@ mod tests {
 
     #[test]
     fn function_instantiation_preserves_recursive_shapes_and_refinements() {
-        let parameter = ValueShape::Parameter(TypeParameterId(0));
+        let parameter = ValueShape::Parameter(TypeParameterId::new(0));
         let template_custom =
             custom_shape(CustomConstructorRefinement::Any, vec![parameter.clone()]);
         let actual_custom = custom_shape(
@@ -380,9 +380,9 @@ mod tests {
             1,
             vec![custom_shape(
                 CustomConstructorRefinement::Exact(0),
-                vec![ValueShape::Parameter(TypeParameterId(0))],
+                vec![ValueShape::Parameter(TypeParameterId::new(0))],
             )],
-            ValueShape::Parameter(TypeParameterId(0)),
+            ValueShape::Parameter(TypeParameterId::new(0)),
         );
         assert_eq!(
             instantiate(
@@ -410,7 +410,7 @@ mod tests {
             ConstantTemplateId::new(0),
             0,
             TypeScheme::new(1),
-            ValueShape::Parameter(TypeParameterId(0)),
+            ValueShape::Parameter(TypeParameterId::new(0)),
         );
 
         let instantiation =
@@ -427,7 +427,7 @@ mod tests {
             ConstantTemplateId::new(1),
             1,
             TypeScheme::new(2),
-            ValueShape::Parameter(TypeParameterId(0)),
+            ValueShape::Parameter(TypeParameterId::new(0)),
         );
         assert_eq!(
             instantiate_constant(&unresolved, &ValueShape::List(Box::new(ValueShape::String)),),
@@ -437,7 +437,7 @@ mod tests {
 
     #[test]
     fn recursive_shape_matching_propagates_nested_mismatches() {
-        let parameter = ValueShape::Parameter(TypeParameterId(0));
+        let parameter = ValueShape::Parameter(TypeParameterId::new(0));
         let tuple_signature = function_signature(
             1,
             vec![ValueShape::Tuple(
@@ -458,8 +458,11 @@ mod tests {
             Err(FunctionInstantiationMismatch::ArgumentShape {
                 index: 0,
                 expected: ValueShape::Tuple(
-                    vec![ValueShape::Parameter(TypeParameterId(0)), ValueShape::Int,]
-                        .into_boxed_slice(),
+                    vec![
+                        ValueShape::Parameter(TypeParameterId::new(0)),
+                        ValueShape::Int,
+                    ]
+                    .into_boxed_slice(),
                 )
                 .value_type(),
                 actual: ValueShape::Tuple(
@@ -492,7 +495,10 @@ mod tests {
                 index: 0,
                 expected: custom_shape(
                     CustomConstructorRefinement::Any,
-                    vec![ValueShape::Parameter(TypeParameterId(0)), ValueShape::Int,],
+                    vec![
+                        ValueShape::Parameter(TypeParameterId::new(0)),
+                        ValueShape::Int,
+                    ],
                 )
                 .value_type(),
                 actual: custom_shape(
@@ -509,9 +515,12 @@ mod tests {
             1,
             vec![ValueShape::External(ExternalValueShape::new(
                 external_name.clone(),
-                vec![ValueShape::Parameter(TypeParameterId(0)), ValueShape::Int],
+                vec![
+                    ValueShape::Parameter(TypeParameterId::new(0)),
+                    ValueShape::Int,
+                ],
             ))],
-            ValueShape::Parameter(TypeParameterId(0)),
+            ValueShape::Parameter(TypeParameterId::new(0)),
         );
         assert_eq!(
             instantiate(
@@ -532,7 +541,10 @@ mod tests {
                         "dependency/box".into(),
                         "Box".into(),
                     ),
-                    vec![ValueShape::Parameter(TypeParameterId(0)), ValueShape::Int,],
+                    vec![
+                        ValueShape::Parameter(TypeParameterId::new(0)),
+                        ValueShape::Int,
+                    ],
                 ))
                 .value_type(),
                 actual: ValueShape::External(ExternalValueShape::new(

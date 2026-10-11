@@ -1,5 +1,6 @@
 use geam_core::embedding::{BigInt, BitArrayValue, StringValue};
 use geam_core::host::native::{NativeCall, NativeRules};
+use geam_core::provider::advanced::NativeValue;
 use geam_core::{
     HostCall, HostCallCompletion, HostCallContinuation, HostCallError, HostCallable,
     HostConstructions, HostCustomConstructorAt, HostCustomConstructorDefinition,
@@ -168,8 +169,31 @@ fn keep_bits<'call>(
     Ok(call.return_value(value))
 }
 
+fn payload<'call>(
+    mut call: NativeCall<
+        'call,
+        StatelessHostProfile,
+        Provider,
+        Source,
+        HostTypeList<Source, HostTypeListEnd>,
+    >,
+) -> Result<HostCallCompletion<'call, Source>, HostCallError> {
+    let native = NativeValue::tuple([
+        NativeValue::symbol("reason"),
+        call.call().native_values().string("detail".into()),
+    ]);
+    let value = call.convert::<HostTypeIndex0>(&native).unwrap();
+    Ok(call.finish(value))
+}
+
 pub fn hosts() -> HostProviderSet {
     HostProviderSet::from_providers([HostProviderModule::new("application", "main")
+        .unwrap()
+        .with_native_function::<Provider, (), Source, HostTypeList<Source, HostTypeListEnd>, _>(
+            "payload",
+            NativeRules::default(),
+            payload,
+        )
         .unwrap()
         .with_native_function::<Provider, (Source, Target), bool, Targets, _>(
             "equal_native",

@@ -1802,9 +1802,10 @@ pub fn check(kind: Int, cancel: Bool) {
                         "main",
                         "main.gleam",
                         r#"
+pub type Empty
 @external(erlang, "fixture", "selected")
 fn selected(function: fn(item) -> Int) -> Bool
-pub fn main() { selected(fn(_) { echo "must not run" 42 }) }
+pub fn main() { selected(fn(_: Empty) { echo "must not run" 42 }) }
 "#,
                     )],
                 )],

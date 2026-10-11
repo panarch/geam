@@ -15,6 +15,7 @@ pub(crate) struct EmbeddingOutput {
     customs: Vec<EvaluatedCustomValue>,
     _externals: Vec<EvaluatedExternalValue>,
     bools: Vec<bool>,
+    _parameters: Vec<crate::ParameterValue>,
     _parameter_lists: Vec<ParameterListValueId>,
     lists: Vec<StoredListValueId>,
     functions: Vec<super::EmbeddingCallable>,
@@ -101,6 +102,7 @@ impl EmbeddingOutput {
             customs: Vec::new(),
             _externals: Vec::new(),
             bools: Vec::new(),
+            _parameters: Vec::new(),
             _parameter_lists: Vec::new(),
             lists: Vec::new(),
             functions: Vec::new(),
@@ -114,6 +116,7 @@ impl EmbeddingOutput {
             EvaluatedValue::String(value) => self.strings.push(value),
             EvaluatedValue::BitArray(value) => self.bit_arrays.push(value.into_value()),
             EvaluatedValue::UtfCodepoint(value) => self.utf_codepoints.push(value),
+            EvaluatedValue::Parameter(value) => self._parameters.push(value),
             EvaluatedValue::Custom(value) => self.customs.push(value),
             EvaluatedValue::External(value) => self._externals.push(value),
             EvaluatedValue::Bool(value) => self.bools.push(value),
@@ -143,7 +146,9 @@ mod tests {
     use super::EmbeddingOutput;
     use crate::host::HostExternalStore;
     use crate::plan::execution::function::IntFunctionId;
+    use crate::plan::execution::runtime::RuntimeExecutionPlan;
     use crate::plan::execution::type_::{ExternalTypeId, FunctionType, ValueType};
+    use crate::runtime::NativeValues;
     use crate::runtime::evaluated::{
         EvaluatedExternalValue, EvaluatedFunctionValue, EvaluatedIntFunction, EvaluatedValue,
     };
@@ -154,7 +159,8 @@ mod tests {
     fn symbolic_functions_do_not_create_an_invocable_output_column() {
         let plan = crate::runtime::plan_src(
             r#"
-fn identity(value) { value }
+pub type Empty
+fn identity(value: Empty) { value }
 pub fn main() { #(identity, 42) }
 "#,
         );
@@ -194,6 +200,12 @@ pub fn main() {
             .lists_mut()
             .int(plan.int_list_function_id(0).type_id(), vec![1.into()]);
         let parameter = ParameterListValueId::new(plan.parameter_list_function_id(0).type_id());
+        let native = NativeValues::new(state.lists(), plan.value_metadata());
+        let payload = native.parameter(
+            parameter.type_id().item,
+            &native.string("opaque".into()),
+            false,
+        );
         let store = HostExternalStore::default();
         let external = store.insert(
             crate::host::HostStoredValue::<num_bigint::BigInt>::new(
@@ -226,6 +238,7 @@ pub fn main() {
         let mut output = EmbeddingOutput::empty();
 
         output.push_reversed(EvaluatedValue::External(external));
+        output.push_reversed(EvaluatedValue::Parameter(payload.clone()));
         output.push_reversed(EvaluatedValue::ParameterList(parameter));
         output.push_reversed(EvaluatedValue::from(ListValueId::Int(list)));
         output.push_reversed(EvaluatedValue::Function(EvaluatedFunctionValue::from(
@@ -233,6 +246,8 @@ pub fn main() {
         )));
 
         assert_eq!(output._externals.len(), 1);
+        assert_eq!(output._parameters, vec![payload]);
+        assert!(output.strings.is_empty());
         assert_eq!(output._parameter_lists.len(), 1);
         assert_eq!(output.lists.len(), 1);
         assert_eq!(output.functions.len(), 1);

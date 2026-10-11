@@ -266,7 +266,7 @@ impl HostTypeDescriptor {
     pub(crate) fn value_shape(&self) -> crate::plan::ValueShape {
         match self {
             Self::Parameter(index) => {
-                crate::plan::ValueShape::Parameter(crate::plan::TypeParameterId(*index))
+                crate::plan::ValueShape::Parameter(crate::plan::TypeParameterId::new(*index))
             }
             Self::Int => crate::plan::ValueShape::Int,
             Self::Float => crate::plan::ValueShape::Float,

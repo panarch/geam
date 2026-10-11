@@ -9,6 +9,7 @@ pub(in crate::plan::execution) mod function;
 pub(in crate::plan::execution) mod int;
 pub(in crate::plan::execution) mod list;
 pub(in crate::plan::execution) mod nil;
+pub(in crate::plan::execution) mod parameter;
 pub(in crate::plan::execution) mod string;
 pub(in crate::plan::execution) mod tuple;
 pub(in crate::plan::execution) mod utf_codepoint;
@@ -31,6 +32,7 @@ pub(crate) use list::{
     ParameterListInstruction, TypedListInstruction,
 };
 pub(crate) use nil::NilInstruction;
+pub(crate) use parameter::ParameterInstruction;
 pub(crate) use string::StringInstruction;
 pub(crate) use tuple::TupleInstruction;
 pub(crate) use utf_codepoint::UtfCodepointInstruction;
@@ -65,6 +67,7 @@ pub enum ProfiledInstructionKind<Graph: ExecutionGraphProfile> {
     String(StringInstruction),
     BitArray(BitArrayInstruction),
     UtfCodepoint(UtfCodepointInstruction),
+    Parameter(ParameterInstruction),
     Custom(CustomInstruction),
     External(Graph::ExternalInstruction),
     ExternalList(Graph::ExternalListInstruction),
@@ -147,6 +150,7 @@ where
             Self::String(instruction) => context.write(instruction),
             Self::BitArray(instruction) => context.write(instruction),
             Self::UtfCodepoint(instruction) => context.write(instruction),
+            Self::Parameter(instruction) => context.write(instruction),
             Self::Custom(instruction) => context.write(instruction),
             Self::External(instruction) => context.write(instruction),
             Self::ExternalList(instruction) => context.write(instruction),
@@ -265,6 +269,9 @@ where
             }
             Self::UtfCodepoint(field_0) => {
                 output.call("graph::ProfiledInstructionKind::UtfCodepoint", &[field_0])
+            }
+            Self::Parameter(field_0) => {
+                output.call("graph::ProfiledInstructionKind::Parameter", &[field_0])
             }
             Self::Custom(field_0) => {
                 output.call("graph::ProfiledInstructionKind::Custom", &[field_0])
@@ -631,6 +638,23 @@ pub fn main() { #(Boxed) }
         for (source, expected) in cases {
             assert_explanation(source, expected);
         }
+    }
+
+    #[test]
+    fn dispatches_parameter_instructions_without_resolving_a_concrete_type() {
+        use crate::plan::execution::graph::{ParameterInstruction, TupleLocalId};
+        explain::assert_rendered(
+            "pub fn main() { 1 }",
+            "parameter.tuple_index %tuple#2 index=3",
+            |plan, output| {
+                let instruction = InstructionKind::Parameter(ParameterInstruction::TupleIndex {
+                    tuple: TupleLocalId(2),
+                    index: 3,
+                });
+                let mut context = explain::ExplainContext::new(plan, output);
+                context.write(&instruction);
+            },
+        );
     }
 
     #[test]

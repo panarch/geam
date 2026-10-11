@@ -467,7 +467,7 @@ pub fn main() -> Bool { False }
         ] {
             let name = CustomTypeName::new("geam".into(), "main".into(), "Node".into());
             let arguments = if generic {
-                vec![ValueShape::Parameter(TypeParameterId(0))]
+                vec![ValueShape::Parameter(TypeParameterId::new(0))]
             } else {
                 Vec::new()
             };
@@ -482,7 +482,7 @@ pub fn main() -> Bool { False }
                 CustomConstructorRefinement::Exact(element_index),
             );
             let children = ValueType::List(Box::new(if generic {
-                ValueType::Parameter(TypeParameterId(0))
+                ValueType::Parameter(TypeParameterId::new(0))
             } else {
                 ValueType::Int
             }));
@@ -738,12 +738,12 @@ pub fn main() -> Bool { False }
         let parameter = type_::generic_var(7);
         assert_eq!(
             context.value_shape(parameter.as_ref()),
-            ValueShape::Parameter(TypeParameterId(0)),
+            ValueShape::Parameter(TypeParameterId::new(0)),
         );
         let name = CustomTypeName::new("geam".into(), module.clone(), "Node".into());
         let source = CustomValueShape::new(
             name.clone(),
-            vec![ValueShape::Parameter(TypeParameterId(0))],
+            vec![ValueShape::Parameter(TypeParameterId::new(0))],
             CustomConstructorRefinement::Exact(0),
         );
         context.define_custom_local_shape("node".into(), source.clone());
@@ -754,7 +754,7 @@ pub fn main() -> Bool { False }
                 Some(0),
                 CustomValueShape::new(
                     CustomTypeName::new("geam".into(), module.clone(), "Other".into()),
-                    vec![ValueShape::Parameter(TypeParameterId(0))],
+                    vec![ValueShape::Parameter(TypeParameterId::new(0))],
                     CustomConstructorRefinement::Exact(0),
                 ),
             ),
@@ -764,7 +764,7 @@ pub fn main() -> Bool { False }
                 Some(0),
                 CustomValueShape::new(
                     name.clone(),
-                    vec![ValueShape::Parameter(TypeParameterId(1))],
+                    vec![ValueShape::Parameter(TypeParameterId::new(1))],
                     CustomConstructorRefinement::Exact(0),
                 ),
             ),
@@ -774,7 +774,7 @@ pub fn main() -> Bool { False }
                 Some(1),
                 CustomValueShape::new(
                     name,
-                    vec![ValueShape::Parameter(TypeParameterId(0))],
+                    vec![ValueShape::Parameter(TypeParameterId::new(0))],
                     CustomConstructorRefinement::Exact(1),
                 ),
             ),
@@ -1826,7 +1826,7 @@ pub fn main(first: String, second: String, value: Int, tail: List(Int), expected
         );
         let external_local =
             context.define_external_local_shape("external".into(), external_shape.clone());
-        let parameter = TypeParameterId(0);
+        let parameter = TypeParameterId::new(0);
         let generic_local = context.define_generic_local("generic".into(), parameter);
         let generic_function_type = GenericFunctionType::new(Vec::new(), parameter);
         let generic_function_local = context.define_generic_function_local_shape(
@@ -2140,7 +2140,7 @@ pub fn main(first: String, second: String, value: Int, tail: List(Int), expected
     fn invalid_expression_type_classification_is_exact() {
         assert_eq!(
             [
-                ValueType::Parameter(TypeParameterId(0)),
+                ValueType::Parameter(TypeParameterId::new(0)),
                 ValueType::Int,
                 ValueType::Float,
                 ValueType::String,

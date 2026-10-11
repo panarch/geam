@@ -1534,9 +1534,9 @@ pub fn main() {
         assert_eq!(
             actual.main_function().return_(),
             &crate::plan::ReturnExpr::generic_body(
-                TypeParameterId(0),
+                TypeParameterId::new(0),
                 ReturnBody::expr(GenericExpr::panic(
-                    TypeParameterId(0),
+                    TypeParameterId::new(0),
                     PanicExpr::empty_function_at(PanicSite::new(
                         "main".into(),
                         "main".into(),
@@ -1573,7 +1573,7 @@ pub fn main() {
                 &|_| false,
             )
             .value_type(),
-            ValueType::Parameter(TypeParameterId(0)),
+            ValueType::Parameter(TypeParameterId::new(0)),
         );
         assert_eq!(parameters.scheme(), TypeScheme::new(1));
     }
@@ -1597,7 +1597,7 @@ pub fn main() {
                 &mut source_stop_parameters,
                 &|_| false,
             ),
-            ValueShape::Parameter(TypeParameterId(0)),
+            ValueShape::Parameter(TypeParameterId::new(0)),
         );
         assert_eq!(source_stop_parameters.scheme(), TypeScheme::new(1));
 
@@ -1608,7 +1608,7 @@ pub fn main() {
                 &mut inferred_parameters,
                 &|_| false,
             ),
-            ValueShape::Parameter(TypeParameterId(0)),
+            ValueShape::Parameter(TypeParameterId::new(0)),
         );
         assert_eq!(inferred_parameters.scheme(), TypeScheme::new(1));
     }
@@ -1623,7 +1623,7 @@ pub fn main() {
                 &|_| false,
             )
             .value_type(),
-            ValueType::Parameter(TypeParameterId(0)),
+            ValueType::Parameter(TypeParameterId::new(0)),
         );
         assert_eq!(parameters.scheme(), TypeScheme::new(1));
     }
@@ -1643,7 +1643,7 @@ pub fn main() {
         ))
         .expect("generic source-stop function should plan as a template");
         let fail = &actual.functions()[0];
-        let parameter = TypeParameterId(0);
+        let parameter = TypeParameterId::new(0);
         assert_eq!(fail.scheme(), &TypeScheme::new(1));
         assert_eq!(
             fail.return_(),
@@ -1674,7 +1674,7 @@ pub fn main() {
         assert_eq!(actual.main_function().scheme(), &TypeScheme::new(1));
         assert_eq!(
             actual.main_function().signature().shape().return_shape(),
-            &ValueShape::List(Box::new(ValueShape::Parameter(TypeParameterId(0)))),
+            &ValueShape::List(Box::new(ValueShape::Parameter(TypeParameterId::new(0)))),
         );
     }
 
@@ -2168,7 +2168,7 @@ pub fn main() {
             .iter()
             .find(|function| function.name() == "apply")
             .expect("apply template should be planned");
-        let parameter = TypeParameterId(0);
+        let parameter = TypeParameterId::new(0);
         let callable = GenericFunctionType::new(vec![ValueShape::Parameter(parameter)], parameter);
 
         assert_eq!(apply.scheme(), &TypeScheme::new(1));

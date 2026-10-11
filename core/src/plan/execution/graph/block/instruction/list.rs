@@ -6,28 +6,35 @@ use crate::plan::execution::function::FunctionLabelSource;
 use crate::plan::execution::function::{
     BitArrayListFunctionId, BoolListFunctionId, CustomListFunctionId, FloatListFunctionId,
     FunctionListFunctionId, IntListFunctionId, ListListFunctionId, NilListFunctionId,
-    ParameterListFunctionId, ParameterListListFunctionId, StringListFunctionId,
-    TupleListFunctionId, UtfCodepointListFunctionId,
+    ParameterListFunctionId, StringListFunctionId, TupleListFunctionId, UtfCodepointListFunctionId,
 };
 use crate::plan::execution::graph::LocalLabel;
 use crate::plan::execution::graph::{
     BitArrayListLocalId, BoolListLocalId, CustomListLocalId, CustomLocal, ExternalListLocalId,
     ExternalLocal, FloatListLocalId, FloatLocalId, FunctionListLocalId, IntListLocalId, IntLocalId,
-    ListFunctionLocal, ListListLocalId, NilListLocalId, ParamLocal, ParameterListListLocalId,
-    ParameterListLocalId, StringListLocalId, StringLocalId, TupleListLocalId, TupleLocalId,
+    ListFunctionLocal, ListListLocalId, NilListLocalId, ParamLocal, ParameterListLocalId,
+    ParameterLocalId, StringListLocalId, StringLocalId, TupleListLocalId, TupleLocalId,
     UtfCodepointListLocalId, UtfCodepointLocalId,
 };
 use crate::plan::execution::prepared::rust::{Emit, Rust};
 use crate::plan::execution::storage::Table;
 use crate::plan::execution::type_::{
     BitArrayListTypeId, BoolListTypeId, CustomListTypeId, ExternalListTypeId, FloatListTypeId,
-    FunctionListTypeId, IntListTypeId, ListListTypeId, NilListTypeId, ParameterListListTypeId,
-    ParameterListTypeId, StringListTypeId, TupleListTypeId, UtfCodepointListTypeId,
+    FunctionListTypeId, IntListTypeId, ListListTypeId, NilListTypeId, ParameterListTypeId,
+    StringListTypeId, TupleListTypeId, UtfCodepointListTypeId,
 };
 
 #[derive(Clone)]
 pub enum ParameterListInstruction {
-    Empty,
+    Value(Table<ParameterLocalId>),
+    Spread {
+        elements: Table<ParameterLocalId>,
+        tail: ParameterListLocalId,
+    },
+    DropFirst {
+        list: ParameterListLocalId,
+        count: usize,
+    },
     Constant(ConstantId<ParameterListLocalId>),
     Call {
         function: ParameterListFunctionId,
@@ -48,7 +55,7 @@ pub enum ParameterListInstruction {
         index: usize,
     },
     ListIndex {
-        list: ParameterListListLocalId,
+        list: ListListLocalId,
         index: usize,
     },
 }
@@ -120,14 +127,6 @@ pub trait ExternalListInstructionView {
 #[derive(Clone)]
 pub enum ListInstruction {
     Parameter(ParameterListTypeId, ParameterListInstruction),
-    ParameterList(
-        ParameterListListTypeId,
-        TypedListInstruction<
-            ParameterListLocalId,
-            ParameterListListLocalId,
-            ParameterListListFunctionId,
-        >,
-    ),
     Int(
         IntListTypeId,
         TypedListInstruction<IntLocalId, IntListLocalId, IntListFunctionId>,
@@ -200,12 +199,7 @@ impl Explain for ListInstruction {
                 output.push_str("] ");
                 write_parameter(output, instruction);
             }
-            Self::ParameterList(type_id, instruction) => write_typed(
-                output,
-                "parameter_list",
-                type_id.list_type().index(),
-                instruction,
-            ),
+
             Self::Int(type_id, instruction) => {
                 write_typed(output, "int", type_id.list_type().index(), instruction);
             }
@@ -321,7 +315,22 @@ impl Explain for ExternalListInstruction {
 
 fn write_parameter(output: &mut String, instruction: &ParameterListInstruction) {
     match instruction {
-        ParameterListInstruction::Empty => output.push_str("empty"),
+        ParameterListInstruction::Value(elements) => {
+            output.push_str("value elements=");
+            write_list_values(output, elements);
+        }
+        ParameterListInstruction::Spread { elements, tail } => {
+            output.push_str("spread elements=");
+            write_list_values(output, elements);
+            output.push_str(" tail=");
+            tail.write_local_label(output);
+        }
+        ParameterListInstruction::DropFirst { list, count } => {
+            output.push_str("drop_first ");
+            list.write_local_label(output);
+            output.push_str(" count=");
+            output.push_str(&count.to_string());
+        }
         ParameterListInstruction::Constant(id) => write_constant(output, "list.parameter", *id),
         ParameterListInstruction::Call { function, args, .. } => {
             write_call(output, "call", function, args);
@@ -409,7 +418,17 @@ fn write_list_values<Value: LocalLabel>(output: &mut String, values: &[Value]) {
 impl Emit for ParameterListInstruction {
     fn emit(&self, output: &mut Rust) {
         match self {
-            Self::Empty => output.path("graph::ParameterListInstruction::Empty"),
+            Self::Value(elements) => {
+                output.call("graph::ParameterListInstruction::Value", &[elements])
+            }
+            Self::Spread { elements, tail } => output.structure(
+                "graph::ParameterListInstruction::Spread",
+                &[("elements", elements), ("tail", tail)],
+            ),
+            Self::DropFirst { list, count } => output.structure(
+                "graph::ParameterListInstruction::DropFirst",
+                &[("list", list), ("count", count)],
+            ),
             Self::Constant(field_0) => {
                 output.call("graph::ParameterListInstruction::Constant", &[field_0])
             }
@@ -519,9 +538,7 @@ impl Emit for ListInstruction {
             Self::Parameter(field_0, field_1) => {
                 output.call("graph::ListInstruction::Parameter", &[field_0, field_1])
             }
-            Self::ParameterList(field_0, field_1) => {
-                output.call("graph::ListInstruction::ParameterList", &[field_0, field_1])
-            }
+
             Self::Int(field_0, field_1) => {
                 output.call("graph::ListInstruction::Int", &[field_0, field_1])
             }
@@ -570,8 +587,8 @@ mod emission_tests {
     use crate::plan::execution::type_::{
         BitArrayListTypeId, BoolListTypeId, CustomListTypeId, CustomTypeId, ExternalListTypeId,
         ExternalTypeId, FloatListTypeId, FunctionListTypeId, IntListTypeId, ListListTypeId,
-        ListTypeId, NilListTypeId, ParameterListListTypeId, ParameterListTypeId, StringListTypeId,
-        TupleListTypeId, UtfCodepointListTypeId,
+        ListTypeId, NilListTypeId, ParameterListTypeId, StringListTypeId, TupleListTypeId,
+        UtfCodepointListTypeId,
     };
 
     #[test]
@@ -579,8 +596,8 @@ mod emission_tests {
         use crate::plan::execution::constant::ConstantId;
         use crate::plan::execution::function::ParameterListFunctionId;
         use crate::plan::execution::graph::{
-            CustomLocal, CustomLocalId, ListFunctionLocal, ParamLocal,
-            ParameterListFunctionLocalId, ParameterListListLocalId, TupleLocalId,
+            CustomLocal, CustomLocalId, ListFunctionLocal, ListListLocalId, ParamLocal,
+            ParameterListFunctionLocalId, ParameterListLocalId, ParameterLocalId, TupleLocalId,
         };
         use crate::plan::execution::type_::{
             CustomValueShape, CustomValueShapeId, FunctionType, ValueType,
@@ -589,8 +606,44 @@ mod emission_tests {
 
         let cases = [
             (
-                ParameterListInstruction::Empty,
-                "data::graph::ParameterListInstruction::Empty",
+                ParameterListInstruction::Spread {
+                    elements: vec![ParameterLocalId(1), ParameterLocalId(2)].into(),
+                    tail: ParameterListLocalId(3),
+                },
+                r#"
+data::graph::ParameterListInstruction::Spread {
+    elements: data::Storage::Static(&[
+        data::graph::ParameterLocalId(1),
+        data::graph::ParameterLocalId(2),
+    ]),
+    tail: data::graph::ParameterListLocalId(3),
+}"#.trim_start_matches('\n'),
+            ),
+            (
+                ParameterListInstruction::DropFirst {
+                    list: ParameterListLocalId(3),
+                    count: 2,
+                },
+                r#"
+data::graph::ParameterListInstruction::DropFirst {
+    list: data::graph::ParameterListLocalId(3),
+    count: 2,
+}"#.trim_start_matches('\n'),
+            ),
+            (
+                ParameterListInstruction::ListIndex {
+                    list: ListListLocalId(3),
+                    index: 2,
+                },
+                r#"
+data::graph::ParameterListInstruction::ListIndex {
+    list: data::graph::ListListLocalId(3),
+    index: 2,
+}"#.trim_start_matches('\n'),
+            ),
+            (
+                ParameterListInstruction::Value(Vec::new().into()),
+                "data::graph::ParameterListInstruction::Value(data::Storage::Static(&[]))",
             ),
             (
                 ParameterListInstruction::Constant(ConstantId::new(2)),
@@ -604,7 +657,7 @@ data::graph::ParameterListInstruction::Constant(data::constant::ConstantId {
                 ParameterListInstruction::Call {
                     function: ParameterListFunctionId::new(
                         2,
-                        ParameterListTypeId::new(ListTypeId(3), crate::plan::TypeParameterId(4)),
+                        ParameterListTypeId::new(ListTypeId(3), crate::plan::TypeParameterId::new(4)),
                     ),
                     args: Vec::<ParamLocal>::new().into(),
                     site: HostCallSite::new("example".into(), "main".into(), SourceSpan::new(3, 8)),
@@ -629,7 +682,7 @@ data::graph::ParameterListInstruction::Call {
                         type_: FunctionType::new(Vec::new(), ValueType::List(ListTypeId(3))),
                         list_type: ParameterListTypeId::new(
                             ListTypeId(3),
-                            crate::plan::TypeParameterId(4),
+                            crate::plan::TypeParameterId::new(4),
                         ),
                     },
                     args: Vec::new().into(),
@@ -680,17 +733,6 @@ data::graph::ParameterListInstruction::CustomField {
             shape_id: data::type_::CustomValueShapeId(4),
         },
     },
-    index: 1,
-}"#.trim_start_matches('\n'),
-            ),
-            (
-                ParameterListInstruction::ListIndex {
-                    list: ParameterListListLocalId(2),
-                    index: 1,
-                },
-                r#"
-data::graph::ParameterListInstruction::ListIndex {
-    list: data::graph::ParameterListListLocalId(2),
     index: 1,
 }"#.trim_start_matches('\n'),
             ),
@@ -939,32 +981,14 @@ data::graph::ListInstruction::Nil(data::type_::NilListTypeId {
             ),
             (
                 ListInstruction::Parameter(
-                    ParameterListTypeId::new(ListTypeId(3), crate::plan::TypeParameterId(4)),
-                    ParameterListInstruction::Empty,
+                    ParameterListTypeId::new(ListTypeId(3), crate::plan::TypeParameterId::new(4)),
+                    ParameterListInstruction::Value(Vec::new().into()),
                 ),
                 r#"
 data::graph::ListInstruction::Parameter(data::type_::ParameterListTypeId {
     list_type: data::type_::ListTypeId(3),
     item: data::type_::parameter_id(4),
-}, data::graph::ParameterListInstruction::Empty)"#
-                    .trim_start_matches('\n'),
-            ),
-            (
-                ListInstruction::ParameterList(
-                    ParameterListListTypeId::new(
-                        ListTypeId(3),
-                        ParameterListTypeId::new(ListTypeId(4), crate::plan::TypeParameterId(5)),
-                    ),
-                    TypedListInstruction::Value(Vec::new().into()),
-                ),
-                r#"
-data::graph::ListInstruction::ParameterList(data::type_::ParameterListListTypeId {
-    list_type: data::type_::ListTypeId(3),
-    item_type: data::type_::ParameterListTypeId {
-        list_type: data::type_::ListTypeId(4),
-        item: data::type_::parameter_id(5),
-    },
-}, data::graph::TypedListInstruction::Value(data::Storage::Static(&[])))"#
+}, data::graph::ParameterListInstruction::Value(data::Storage::Static(&[])))"#
                     .trim_start_matches('\n'),
             ),
             (
@@ -1094,11 +1118,104 @@ mod external_list_view_tests {
 
 #[cfg(test)]
 mod explain_tests {
-    use super::{ExternalListInstruction, TypedListInstruction};
+    use super::{
+        ExternalListInstruction, ListInstruction, ParameterListInstruction, TypedListInstruction,
+    };
+    use crate::plan::execution::constant::ConstantId;
     use crate::plan::execution::explain;
-    use crate::plan::execution::function::TupleFunctionId;
-    use crate::plan::execution::graph::{ExternalLocal, ExternalLocalId};
-    use crate::plan::execution::type_::{ExternalListTypeId, ExternalTypeId, ListTypeId};
+    use crate::plan::execution::function::{ParameterListFunctionId, TupleFunctionId};
+    use crate::plan::execution::graph::{
+        CustomLocal, CustomLocalId, ExternalLocal, ExternalLocalId, ListFunctionLocal,
+        ListListLocalId, ParamLocal, ParameterListFunctionLocalId, ParameterListLocalId,
+        ParameterLocalId, TupleLocalId,
+    };
+    use crate::plan::execution::type_::{
+        CustomTypeId, CustomValueShape, CustomValueShapeId, ExternalListTypeId, ExternalTypeId,
+        FunctionType, ListTypeId, ParameterListTypeId, ValueType,
+    };
+    use crate::plan::{HostCallSite, TypeParameterId};
+
+    #[test]
+    fn writes_every_parameter_list_operation_without_relabeling_its_storage() {
+        let list_type = ParameterListTypeId::new(ListTypeId(3), TypeParameterId::scoped(4, 0));
+        for (instruction, expected) in [
+            (
+                ParameterListInstruction::Value(vec![ParameterLocalId(1)].into()),
+                "list.parameter[type#3] value elements=[%parameter#1]",
+            ),
+            (
+                ParameterListInstruction::Spread {
+                    elements: vec![ParameterLocalId(1), ParameterLocalId(2)].into(),
+                    tail: ParameterListLocalId(3),
+                },
+                "list.parameter[type#3] spread elements=[%parameter#1, %parameter#2] tail=%list.parameter#3",
+            ),
+            (
+                ParameterListInstruction::DropFirst {
+                    list: ParameterListLocalId(3),
+                    count: 2,
+                },
+                "list.parameter[type#3] drop_first %list.parameter#3 count=2",
+            ),
+            (
+                ParameterListInstruction::Constant(ConstantId::new(2)),
+                "list.parameter[type#3] constant.list.parameter#2",
+            ),
+            (
+                ParameterListInstruction::Call {
+                    function: ParameterListFunctionId::new(2, list_type),
+                    args: vec![ParamLocal::Parameter {
+                        local: ParameterLocalId(1),
+                        parameter: TypeParameterId::scoped(4, 0),
+                    }]
+                    .into(),
+                    site: HostCallSite::unknown(),
+                },
+                "list.parameter[type#3] call list.parameter#2 args=[%parameter#1]",
+            ),
+            (
+                ParameterListInstruction::FunctionCall {
+                    function: ListFunctionLocal::Parameter {
+                        local: ParameterListFunctionLocalId(2),
+                        type_: FunctionType::new(Vec::new(), ValueType::List(ListTypeId(3))),
+                        list_type,
+                    },
+                    args: Vec::new().into(),
+                    site: HostCallSite::unknown(),
+                },
+                "list.parameter[type#3] function_call %function.list.parameter#2 args=[]",
+            ),
+            (
+                ParameterListInstruction::TupleIndex {
+                    tuple: TupleLocalId(4),
+                    index: 1,
+                },
+                "list.parameter[type#3] tuple_index %tuple#4 index=1",
+            ),
+            (
+                ParameterListInstruction::CustomField {
+                    source: CustomLocal::new(
+                        CustomLocalId(5),
+                        CustomValueShape::new(CustomTypeId(7), CustomValueShapeId(6)),
+                    ),
+                    index: 1,
+                },
+                "list.parameter[type#3] custom_field %custom#5 index=1",
+            ),
+            (
+                ParameterListInstruction::ListIndex {
+                    list: ListListLocalId(6),
+                    index: 1,
+                },
+                "list.parameter[type#3] list_index %list.list#6 index=1",
+            ),
+        ] {
+            explain::assert_rendered("pub fn main() { 1 }", expected, |plan, output| {
+                let mut context = explain::ExplainContext::new(plan, output);
+                context.write(&ListInstruction::Parameter(list_type, instruction));
+            });
+        }
+    }
 
     #[test]
     fn writes_list_instruction_grammar() {
@@ -1118,7 +1235,7 @@ pub fn main() {
             "    %int#2:shape#0(Int) = int.value 2\n",
             "    %list.int#1:shape#1(list_type#1) = list.int[type#1] spread ",
             "elements=[%int#1, %int#2] tail=%list.int#0\n",
-            "    %list.parameter#0:shape#3(list_type#0) = list.parameter[type#0] empty\n",
+            "    %list.parameter#0:shape#3(list_type#0) = list.parameter[type#0] value elements=[]\n",
             "    %tuple#0:shape#4(#(list_type#0, list_type#1, list_type#1)) = ",
             "tuple.value elements=[%list.parameter#0, %list.int#1, %list.int#0]\n",
         );

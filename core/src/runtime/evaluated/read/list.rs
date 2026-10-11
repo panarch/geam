@@ -8,9 +8,7 @@ use crate::runtime::evaluated::{
     EvaluatedValue,
 };
 use crate::runtime::integer::IntegerValue;
-use crate::runtime::state::list::{
-    ListSequenceIter, ParameterListValueId, StoredListValueId, StoredListValueRef,
-};
+use crate::runtime::state::list::{ListSequenceIter, StoredListValueId, StoredListValueRef};
 #[cfg(test)]
 use std::cell::Cell;
 use std::ops::Range;
@@ -29,11 +27,11 @@ pub(in crate::runtime) struct EvaluatedListIter<'value> {
 
 enum ListItems<'value> {
     Nil(Range<usize>),
-    ParameterList(ParameterListValueId, Range<usize>),
     Int(ListSequenceIter<'value, IntegerValue, IntegerReadCell>),
     String(ListSequenceIter<'value, StringValue>),
     BitArray(ListSequenceIter<'value, EvaluatedBitArray>),
     UtfCodepoint(ListSequenceIter<'value, char>),
+    Parameter(ListSequenceIter<'value, crate::ParameterValue>),
     Custom(ListSequenceIter<'value, EvaluatedCustomValue>),
     External(ListSequenceIter<'value, EvaluatedExternalValue>),
     Float(ListSequenceIter<'value, f64>),
@@ -55,11 +53,12 @@ impl<'value> EvaluatedListRef<'value> {
     pub(in crate::runtime::evaluated) fn list_type(&self) -> ListTypeId {
         match self.handle {
             StoredListValueRef::Nil(value) => value.type_id().list_type(),
-            StoredListValueRef::ParameterList(value) => value.type_id().list_type(),
+
             StoredListValueRef::Int(value) => value.type_id().list_type(),
             StoredListValueRef::String(value) => value.type_id().list_type(),
             StoredListValueRef::BitArray(value) => value.type_id().list_type(),
             StoredListValueRef::UtfCodepoint(value) => value.type_id().list_type(),
+            StoredListValueRef::Parameter(value) => value.type_id().list_type(),
             StoredListValueRef::Custom(value) => value.type_id().list_type(),
             StoredListValueRef::External(value) => value.type_id().list_type(),
             StoredListValueRef::Float(value) => value.type_id().list_type(),
@@ -73,11 +72,12 @@ impl<'value> EvaluatedListRef<'value> {
     pub(in crate::runtime) fn len(&self) -> usize {
         match self.handle {
             StoredListValueRef::Nil(value) => value.len(),
-            StoredListValueRef::ParameterList(value) => value.len(),
+
             StoredListValueRef::Int(value) => value.values().len(),
             StoredListValueRef::String(value) => value.values().len(),
             StoredListValueRef::BitArray(value) => value.values().len(),
             StoredListValueRef::UtfCodepoint(value) => value.values().len(),
+            StoredListValueRef::Parameter(value) => value.values().len(),
             StoredListValueRef::Custom(value) => value.values().len(),
             StoredListValueRef::External(value) => value.values().len(),
             StoredListValueRef::Float(value) => value.values().len(),
@@ -91,10 +91,7 @@ impl<'value> EvaluatedListRef<'value> {
     pub(in crate::runtime) fn iter_prefix(&self, limit: usize) -> EvaluatedListIter<'_> {
         let inner = match self.handle {
             StoredListValueRef::Nil(value) => ListItems::Nil(0..limit.min(value.len())),
-            StoredListValueRef::ParameterList(value) => ListItems::ParameterList(
-                ParameterListValueId::new(value.type_id().item_type()),
-                0..limit.min(value.len()),
-            ),
+
             StoredListValueRef::Int(value) => ListItems::Int(value.values().iter_prefix(limit)),
             StoredListValueRef::String(value) => {
                 ListItems::String(value.values().iter_prefix(limit))
@@ -104,6 +101,9 @@ impl<'value> EvaluatedListRef<'value> {
             }
             StoredListValueRef::UtfCodepoint(value) => {
                 ListItems::UtfCodepoint(value.values().iter_prefix(limit))
+            }
+            StoredListValueRef::Parameter(value) => {
+                ListItems::Parameter(value.values().iter_prefix(limit))
             }
             StoredListValueRef::Custom(value) => {
                 ListItems::Custom(value.values().iter_prefix(limit))
@@ -129,11 +129,12 @@ impl<'value> EvaluatedListRef<'value> {
     pub(in crate::runtime) fn retain(&self) -> EvaluatedValue {
         match self.handle {
             StoredListValueRef::Nil(value) => EvaluatedValue::List(value.clone().into()),
-            StoredListValueRef::ParameterList(value) => EvaluatedValue::List(value.clone().into()),
+
             StoredListValueRef::Int(value) => EvaluatedValue::List(value.clone().into()),
             StoredListValueRef::String(value) => EvaluatedValue::List(value.clone().into()),
             StoredListValueRef::BitArray(value) => EvaluatedValue::List(value.clone().into()),
             StoredListValueRef::UtfCodepoint(value) => EvaluatedValue::List(value.clone().into()),
+            StoredListValueRef::Parameter(value) => EvaluatedValue::ParameterList(value.clone()),
             StoredListValueRef::Custom(value) => EvaluatedValue::List(value.clone().into()),
             StoredListValueRef::External(value) => EvaluatedValue::List(value.clone().into()),
             StoredListValueRef::Float(value) => EvaluatedValue::List(value.clone().into()),
@@ -149,7 +150,7 @@ impl<'value> EvaluatedListRef<'value> {
         lists: &RuntimeListStorage,
         count: usize,
     ) -> EvaluatedValue {
-        EvaluatedValue::List(lists.drop_first(self.handle, count))
+        EvaluatedValue::from(lists.drop_first(self.handle, count))
     }
 
     #[cfg(test)]
@@ -170,15 +171,13 @@ impl<'value> Iterator for EvaluatedListIter<'value> {
     fn next(&mut self) -> Option<Self::Item> {
         let value = match &mut self.inner {
             ListItems::Nil(values) => values.next().map(|_| EvaluatedValueRef::Nil),
-            ListItems::ParameterList(value, values) => values
-                .next()
-                .map(|_| EvaluatedValueRef::ParameterList(*value)),
             ListItems::Int(values) => values.next().map(EvaluatedValueRef::Int),
             ListItems::String(values) => values.next().map(EvaluatedValueRef::String),
             ListItems::BitArray(values) => values.next().map(EvaluatedValueRef::BitArray),
             ListItems::UtfCodepoint(values) => {
                 values.next().copied().map(EvaluatedValueRef::UtfCodepoint)
             }
+            ListItems::Parameter(values) => values.next().map(EvaluatedValueRef::Parameter),
             ListItems::Custom(values) => values.next().map(EvaluatedValueRef::Custom),
             ListItems::External(values) => values.next().map(EvaluatedValueRef::External),
             ListItems::Float(values) => values.next().copied().map(EvaluatedValueRef::Float),

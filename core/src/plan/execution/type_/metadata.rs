@@ -318,7 +318,8 @@ pub(in crate::plan::execution) fn substitute(
     arguments: &[TypeMetadata],
 ) -> TypeMetadata {
     match template {
-        TypeMetadata::Parameter(id) => arguments[id.0].clone(),
+        TypeMetadata::Parameter(id) if id.scope().is_some() => template.clone(),
+        TypeMetadata::Parameter(id) => arguments[id.index()].clone(),
         TypeMetadata::Tuple(items) => TypeMetadata::Tuple(
             items
                 .iter()
@@ -376,11 +377,42 @@ mod tests {
     use std::hash::{Hash, Hasher};
 
     #[test]
+    fn substitution_and_emission_preserve_the_complete_parameter_binding() {
+        use super::substitute;
+        use crate::plan::execution::prepared::rust::Rust;
+        let bound = plan::TypeParameterId::scoped(5, 0);
+        let template = TypeMetadata::Tuple(
+            vec![
+                TypeMetadata::Parameter(plan::TypeParameterId::new(0)),
+                TypeMetadata::List(Box::new(TypeMetadata::Parameter(bound)).into()),
+            ]
+            .into(),
+        );
+        let expected = TypeMetadata::Tuple(
+            vec![
+                TypeMetadata::String,
+                TypeMetadata::List(Box::new(TypeMetadata::Parameter(bound)).into()),
+            ]
+            .into(),
+        );
+        assert_eq!(substitute(&template, &[TypeMetadata::String]), expected);
+        assert_eq!(TypeMetadata::from_public(&expected.materialize()), expected);
+        assert_ne!(
+            TypeMetadata::Parameter(bound),
+            TypeMetadata::Parameter(plan::TypeParameterId::scoped(6, 0))
+        );
+        assert_eq!(
+            Rust::expression(&TypeMetadata::Parameter(bound)),
+            "data::type_::TypeMetadata::Parameter(const { data::type_::scoped_parameter_id(5, 0) })"
+        );
+    }
+
+    #[test]
     fn emits_all_metadata_families_and_their_nested_fields() {
         use crate::plan::execution::prepared::rust::Rust;
         let cases = [
             (
-                TypeMetadata::Parameter(plan::TypeParameterId(2)),
+                TypeMetadata::Parameter(plan::TypeParameterId::new(2)),
                 "data::type_::TypeMetadata::Parameter(data::type_::parameter_id(2))",
             ),
             (TypeMetadata::Int, "data::type_::TypeMetadata::Int"),
@@ -480,8 +512,8 @@ data::type_::TypeMetadata::External(data::type_::NominalTypeMetadata {
             ))
         };
         let types = vec![
-            V::Parameter(plan::TypeParameterId(0)),
-            V::Parameter(plan::TypeParameterId(2)),
+            V::Parameter(plan::TypeParameterId::new(0)),
+            V::Parameter(plan::TypeParameterId::new(2)),
             V::Int,
             V::Float,
             V::String,
@@ -525,7 +557,7 @@ data::type_::TypeMetadata::External(data::type_::NominalTypeMetadata {
     #[test]
     fn nominal_metadata_preserves_every_public_type_family() {
         let scalar_types = vec![
-            plan::ValueType::Parameter(plan::TypeParameterId(3)),
+            plan::ValueType::Parameter(plan::TypeParameterId::new(3)),
             plan::ValueType::Int,
             plan::ValueType::Float,
             plan::ValueType::String,
@@ -552,7 +584,7 @@ data::type_::TypeMetadata::External(data::type_::NominalTypeMetadata {
                             "native/key".into(),
                             "Key".into(),
                         ),
-                        vec![plan::ValueType::Parameter(plan::TypeParameterId(3))],
+                        vec![plan::ValueType::Parameter(plan::TypeParameterId::new(3))],
                     )),
                 ),
             )))),

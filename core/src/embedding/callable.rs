@@ -16,7 +16,8 @@ use crate::plan::execution::{
     LibraryCallable, LibraryFunctionEntries, LibraryInputConstructions, LibraryListConstructions,
 };
 use crate::plan::{
-    FunctionType, LibraryCallableSignature, LibraryValueType, LibraryVariant, StandardVariant,
+    FunctionType, LibraryCallableSignature, LibraryCallableType, LibraryValueType, LibraryVariant,
+    StandardVariant,
 };
 use crate::runtime::{
     BorrowedValue, EmbeddingCallable, EmbeddingInputStorage, EmbeddingOutput, RetainedInputs,
@@ -113,7 +114,10 @@ impl<Args: Arguments, Return: EmbeddingValue> EmbeddingValue for CallableType<Ar
     const LIST_FAMILY: ListFamily = ListFamily::Function;
 
     fn library_type() -> LibraryValueType {
-        LibraryValueType::Function(FunctionType::new(Args::value_types(), Return::value_type()))
+        LibraryValueType::Function(LibraryCallableType::new(
+            Args::value_types(),
+            Return::library_type(),
+        ))
     }
 
     fn collect_variants(variants: &mut Vec<StandardVariant>) {

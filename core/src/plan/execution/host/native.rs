@@ -29,6 +29,7 @@ pub struct NativeConversion {
 #[derive(Clone)]
 pub enum NativeConversionKind {
     Exact,
+    Parameter(crate::plan::TypeParameterId),
     Int,
     Float,
     String,
@@ -187,6 +188,9 @@ impl Emit for NativeConversionKind {
     fn emit(&self, output: &mut Rust) {
         match self {
             Self::Exact => output.path("host::NativeConversionKind::Exact"),
+            Self::Parameter(parameter) => {
+                output.call("host::NativeConversionKind::Parameter", &[parameter])
+            }
             Self::Int => output.path("host::NativeConversionKind::Int"),
             Self::Float => output.path("host::NativeConversionKind::Float"),
             Self::String => output.path("host::NativeConversionKind::String"),
@@ -431,6 +435,7 @@ mod tests {
 
     #[test]
     fn emitted_native_kinds_preserve_scalar_and_structural_conversion_rules() {
+        use crate::plan::TypeParameterId;
         let cases = [
             (
                 NativeConversionKind::Function(Vec::new().into()),
@@ -443,6 +448,10 @@ mod tests {
             (
                 NativeConversionKind::Exact,
                 "data::host::NativeConversionKind::Exact",
+            ),
+            (
+                NativeConversionKind::Parameter(TypeParameterId::scoped(3, 2)),
+                "data::host::NativeConversionKind::Parameter(const { data::type_::scoped_parameter_id(3, 2) })",
             ),
             (
                 NativeConversionKind::Int,

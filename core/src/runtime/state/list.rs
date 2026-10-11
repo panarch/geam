@@ -13,8 +13,7 @@ use crate::StringValue;
 use crate::plan::execution::type_::{
     BitArrayListTypeId, BoolListTypeId, CustomListTypeId, ExternalListTypeId, FloatListTypeId,
     FunctionListTypeId, IntListTypeId, ListListTypeId, ListTypeId, NilListTypeId,
-    ParameterListListTypeId, ParameterListTypeId, StringListTypeId, TupleListTypeId,
-    UtfCodepointListTypeId,
+    ParameterListTypeId, StringListTypeId, TupleListTypeId, UtfCodepointListTypeId,
 };
 
 use crate::runtime::evaluated::{
@@ -74,13 +73,6 @@ macro_rules! typed_list_value_id {
             pub(in crate::runtime) fn type_id(&self) -> $type_id {
                 self.type_id
             }
-
-            pub(in crate::runtime) fn from_stored(value: &StoredListValueId) -> Option<Self> {
-                match value {
-                    StoredListValueId::$variant(value) => Some(value.clone()),
-                    _ => None,
-                }
-            }
         }
 
         // This is handle identity, not source list equality.
@@ -118,38 +110,22 @@ typed_list_value_id!(FloatListValueId, FloatListTypeId, Float, items f64);
 typed_list_value_id!(BoolListValueId, BoolListTypeId, Bool, items bool);
 typed_list_value_id!(NilListValueId, NilListTypeId, Nil, length);
 typed_list_value_id!(TupleListValueId, TupleListTypeId, Tuple, composite Vec<EvaluatedValue>, reads SharedIntegerReads);
-typed_list_value_id!(
-    ParameterListListValueId,
-    ParameterListListTypeId,
-    ParameterList,
-    length
-);
+
 typed_list_value_id!(ListListValueId, ListListTypeId, List, composite StoredListValueId);
 typed_list_value_id!(FunctionListValueId, FunctionListTypeId, Function, composite EvaluatedFunctionValue);
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(in crate::runtime) struct ParameterListValueId {
-    type_id: ParameterListTypeId,
-}
+typed_list_value_id!(ParameterListValueId, ParameterListTypeId, Parameter, composite crate::ParameterValue);
 
 impl ParameterListValueId {
+    #[cfg(test)]
     pub(in crate::runtime) fn new(type_id: ParameterListTypeId) -> Self {
-        Self { type_id }
-    }
-
-    pub(in crate::runtime) fn type_id(self) -> ParameterListTypeId {
-        self.type_id
-    }
-}
-
-impl From<ParameterListValueId> for ListValueId {
-    fn from(value: ParameterListValueId) -> Self {
-        Self::Parameter(value)
+        RuntimeListStorage::default().parameter(type_id, Vec::new())
     }
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub(in crate::runtime) enum StoredListValueId {
+    Parameter(ParameterListValueId),
     Int(IntListValueId),
     String(StringListValueId),
     BitArray(BitArrayListValueId),
@@ -160,7 +136,6 @@ pub(in crate::runtime) enum StoredListValueId {
     Bool(BoolListValueId),
     Nil(NilListValueId),
     Tuple(TupleListValueId),
-    ParameterList(ParameterListListValueId),
     List(ListListValueId),
     Function(FunctionListValueId),
 }
@@ -175,6 +150,7 @@ macro_rules! stored_list_value_id_from {
     };
 }
 
+stored_list_value_id_from!(ParameterListValueId, Parameter);
 stored_list_value_id_from!(IntListValueId, Int);
 stored_list_value_id_from!(StringListValueId, String);
 stored_list_value_id_from!(BitArrayListValueId, BitArray);
@@ -185,7 +161,7 @@ stored_list_value_id_from!(FloatListValueId, Float);
 stored_list_value_id_from!(BoolListValueId, Bool);
 stored_list_value_id_from!(NilListValueId, Nil);
 stored_list_value_id_from!(TupleListValueId, Tuple);
-stored_list_value_id_from!(ParameterListListValueId, ParameterList);
+
 stored_list_value_id_from!(ListListValueId, List);
 stored_list_value_id_from!(FunctionListValueId, Function);
 
@@ -230,7 +206,6 @@ pub(in crate::runtime) enum ListValueId {
     Bool(BoolListValueId),
     Nil(NilListValueId),
     Tuple(TupleListValueId),
-    ParameterList(ParameterListListValueId),
     List(ListListValueId),
     Function(FunctionListValueId),
 }
@@ -249,7 +224,7 @@ impl ListValueId {
             Self::Bool(value) => value.type_id().list_type(),
             Self::Nil(value) => value.type_id().list_type(),
             Self::Tuple(value) => value.type_id().list_type(),
-            Self::ParameterList(value) => value.type_id().list_type(),
+
             Self::List(value) => value.type_id().list_type(),
             Self::Function(value) => value.type_id().list_type(),
         }
@@ -263,13 +238,14 @@ impl StoredListValueId {
             Self::String(value) => value.type_id().list_type(),
             Self::BitArray(value) => value.type_id().list_type(),
             Self::UtfCodepoint(value) => value.type_id().list_type(),
+            Self::Parameter(value) => value.type_id().list_type(),
             Self::Custom(value) => value.type_id().list_type(),
             Self::External(value) => value.type_id().list_type(),
             Self::Float(value) => value.type_id().list_type(),
             Self::Bool(value) => value.type_id().list_type(),
             Self::Nil(value) => value.type_id().list_type(),
             Self::Tuple(value) => value.type_id().list_type(),
-            Self::ParameterList(value) => value.type_id().list_type(),
+
             Self::List(value) => value.type_id().list_type(),
             Self::Function(value) => value.type_id().list_type(),
         }
@@ -281,13 +257,14 @@ impl StoredListValueId {
             Self::String(value) => ListValueId::String(value),
             Self::BitArray(value) => ListValueId::BitArray(value),
             Self::UtfCodepoint(value) => ListValueId::UtfCodepoint(value),
+            Self::Parameter(value) => ListValueId::Parameter(value),
             Self::Custom(value) => ListValueId::Custom(value),
             Self::External(value) => ListValueId::External(value),
             Self::Float(value) => ListValueId::Float(value),
             Self::Bool(value) => ListValueId::Bool(value),
             Self::Nil(value) => ListValueId::Nil(value),
             Self::Tuple(value) => ListValueId::Tuple(value),
-            Self::ParameterList(value) => ListValueId::ParameterList(value),
+
             Self::List(value) => ListValueId::List(value),
             Self::Function(value) => ListValueId::Function(value),
         }
@@ -390,6 +367,7 @@ macro_rules! composite_list_item {
     };
 }
 
+composite_list_item!(crate::ParameterValue, Parameter);
 composite_list_item!(EvaluatedCustomValue, Custom);
 composite_list_item!(EvaluatedExternalValue, External);
 composite_list_item!(Vec<EvaluatedValue>, Tuple, SharedIntegerReads);
@@ -409,6 +387,7 @@ struct ListReleaseState {
 
 // Only pending destruction is type-erased. Live payloads remain in typed leases.
 enum ReleasedList {
+    Parameter(ListSequence<crate::ParameterValue>),
     Custom(ListSequence<EvaluatedCustomValue>),
     External(ListSequence<EvaluatedExternalValue>),
     Tuple(ListSequence<Vec<EvaluatedValue>, SharedIntegerReads>),
@@ -457,6 +436,7 @@ impl ListReleaseQueue {
 impl ReleasedList {
     fn drop_values(self) {
         match self {
+            Self::Parameter(values) => drop(values),
             Self::Custom(values) => drop(values),
             Self::External(values) => drop(values),
             Self::Tuple(values) => drop(values),
@@ -552,6 +532,17 @@ macro_rules! sequence_storage {
 }
 
 impl RuntimeListStorage {
+    value_storage!(
+        parameter,
+        store_parameter,
+        parameter_values,
+        prepend_parameter,
+        tail_parameter,
+        ParameterListTypeId,
+        crate::ParameterValue,
+        ParameterListValueId
+    );
+
     value_storage!(
         int,
         store_int,
@@ -687,27 +678,9 @@ impl RuntimeListStorage {
         value.len()
     }
 
-    pub(in crate::runtime) fn parameter_list_list(
-        &self,
-        type_id: ParameterListListTypeId,
-        len: usize,
-    ) -> ParameterListListValueId {
-        ParameterListListValueId {
-            type_id,
-            lease: Arc::new(len),
-        }
-    }
-
-    pub(in crate::runtime) fn parameter_list_list_len(
-        &self,
-        value: &ParameterListListValueId,
-    ) -> usize {
-        value.len()
-    }
-
     pub(in crate::runtime) fn list_len(&self, value: &ListValueId) -> usize {
         match value {
-            ListValueId::Parameter(_) => 0,
+            ListValueId::Parameter(value) => self.parameter_values(value).len(),
             ListValueId::Int(value) => self.int_values(value).len(),
             ListValueId::String(value) => self.string_values(value).len(),
             ListValueId::BitArray(value) => self.bit_array_values(value).len(),
@@ -718,7 +691,7 @@ impl RuntimeListStorage {
             ListValueId::Bool(value) => self.bool_values(value).len(),
             ListValueId::Nil(value) => self.nil_len(value),
             ListValueId::Tuple(value) => self.tuple_values(value).len(),
-            ListValueId::ParameterList(value) => self.parameter_list_list_len(value),
+
             ListValueId::List(value) => self.list_values(value).len(),
             ListValueId::Function(value) => self.function_values(value).len(),
         }
@@ -753,6 +726,12 @@ impl RuntimeListStorage {
                 .copied()
                 .map(EvaluatedValue::UtfCodepoint)
                 .collect(),
+            StoredListValueId::Parameter(value) => self
+                .parameter_values(value)
+                .iter()
+                .cloned()
+                .map(EvaluatedValue::Parameter)
+                .collect(),
             StoredListValueId::Custom(value) => self
                 .custom_values(value)
                 .iter()
@@ -784,12 +763,7 @@ impl RuntimeListStorage {
                 .cloned()
                 .map(EvaluatedValue::Tuple)
                 .collect(),
-            StoredListValueId::ParameterList(value) => vec![
-                EvaluatedValue::ParameterList(
-                    ParameterListValueId::new(value.type_id().item_type())
-                );
-                self.parameter_list_list_len(value)
-            ],
+
             StoredListValueId::List(value) => self
                 .list_values(value)
                 .iter()
@@ -811,7 +785,11 @@ impl RuntimeListStorage {
         index: usize,
     ) -> Option<EvaluatedValue> {
         match value {
-            ListValueId::Parameter(_) => None,
+            ListValueId::Parameter(value) => self
+                .parameter_values(value)
+                .get(index)
+                .cloned()
+                .map(EvaluatedValue::Parameter),
             ListValueId::Int(value) => self
                 .int_values(value)
                 .get(index)
@@ -858,10 +836,7 @@ impl RuntimeListStorage {
                 .get(index)
                 .cloned()
                 .map(EvaluatedValue::Tuple),
-            ListValueId::ParameterList(value) => (index < self.parameter_list_list_len(value))
-                .then_some(EvaluatedValue::ParameterList(ParameterListValueId::new(
-                    value.type_id().item_type(),
-                ))),
+
             ListValueId::List(value) => self
                 .list_values(value)
                 .get(index)
@@ -893,27 +868,6 @@ impl RuntimeListStorage {
         self.nil(type_id, len + self.nil_len(tail))
     }
 
-    pub(in crate::runtime) fn tail_parameter_list_list(
-        &self,
-        type_id: ParameterListListTypeId,
-        value: &ParameterListListValueId,
-        count: usize,
-    ) -> ParameterListListValueId {
-        self.parameter_list_list(
-            type_id,
-            self.parameter_list_list_len(value).saturating_sub(count),
-        )
-    }
-
-    pub(in crate::runtime) fn prepend_parameter_list_list(
-        &self,
-        type_id: ParameterListListTypeId,
-        len: usize,
-        tail: &ParameterListListValueId,
-    ) -> ParameterListListValueId {
-        self.parameter_list_list(type_id, len + self.parameter_list_list_len(tail))
-    }
-
     pub(in crate::runtime) fn drop_first(
         &self,
         value: StoredListValueRef<'_>,
@@ -930,6 +884,9 @@ impl RuntimeListStorage {
             StoredListValueRef::UtfCodepoint(value) => self
                 .tail_utf_codepoint(value.type_id(), value, count)
                 .into(),
+            StoredListValueRef::Parameter(value) => {
+                self.tail_parameter(value.type_id(), value, count).into()
+            }
             StoredListValueRef::Custom(value) => {
                 self.tail_custom(value.type_id(), value, count).into()
             }
@@ -944,9 +901,7 @@ impl RuntimeListStorage {
             StoredListValueRef::Tuple(value) => {
                 self.tail_tuple(value.type_id(), value, count).into()
             }
-            StoredListValueRef::ParameterList(value) => self
-                .tail_parameter_list_list(value.type_id(), value, count)
-                .into(),
+
             StoredListValueRef::List(value) => self.tail_list(value.type_id(), value, count).into(),
             StoredListValueRef::Function(value) => {
                 self.tail_function(value.type_id(), value, count).into()
@@ -1757,17 +1712,8 @@ pub fn main() -> List(Counter) {
     }
 
     #[test]
-    fn nil_and_parameter_list_updates_use_only_lengths() {
-        let plan = plan_src(
-            r#"
-fn nils() -> List(Nil) { [] }
-fn parameters(values: List(List(a))) { values }
-pub fn main() {
-  let _ = nils()
-  parameters([[]])
-}
-"#,
-        );
+    fn nil_list_updates_use_only_lengths() {
+        let plan = plan_src("pub fn main() -> List(Nil) { [] }");
         let storage = RuntimeListStorage::default();
         let len = usize::MAX / 2;
         let nil_type = plan.nil_list_function_id(0).type_id();
@@ -1781,28 +1727,6 @@ pub fn main() {
         );
         assert_eq!(
             storage.nil_len(&storage.tail_nil(nil_type, &grown_nils, usize::MAX)),
-            0
-        );
-
-        let parameter_type = plan.parameter_list_list_function_id(0).type_id();
-        let parameters = storage.parameter_list_list(parameter_type, len);
-        let grown_parameters = storage.prepend_parameter_list_list(parameter_type, 17, &parameters);
-        assert_eq!(storage.parameter_list_list_len(&parameters), len);
-        assert_eq!(storage.parameter_list_list_len(&grown_parameters), len + 17);
-        assert_eq!(
-            storage.parameter_list_list_len(&storage.tail_parameter_list_list(
-                parameter_type,
-                &grown_parameters,
-                17
-            )),
-            len
-        );
-        assert_eq!(
-            storage.parameter_list_list_len(&storage.tail_parameter_list_list(
-                parameter_type,
-                &grown_parameters,
-                usize::MAX
-            )),
             0
         );
     }
@@ -1910,8 +1834,18 @@ pub fn main() {
             vec![tuple_value.clone()],
         );
         let parameter = ParameterListValueId::new(plan.parameter_list_function_id(0).type_id());
+        let parameter_list_type = plan.list_list_function_id(1).type_id();
+        let parameter_item_type = crate::plan::execution::type_::ParameterListTypeId {
+            list_type: parameter_list_type.item_type(),
+            item: crate::plan::TypeParameterId::scoped(0, 1),
+        };
+        assert_eq!(
+            plan.list_storage_type(parameter_list_type.item_type()),
+            crate::plan::execution::type_::ListStorageTypeId::Parameter(parameter_item_type),
+        );
+        let parameter_child = ParameterListValueId::new(parameter_item_type);
         let parameter_list =
-            storage.parameter_list_list(plan.parameter_list_list_function_id(0).type_id(), 1);
+            storage.list(parameter_list_type, vec![parameter_child.clone().into()]);
         let child = storage.int(plan.int_list_function_id(0).type_id(), vec![1.into()]);
         let child_value = EvaluatedValue::from(StoredListValueId::from(child.clone()));
         let list = storage.list(plan.list_list_function_id(0).type_id(), vec![child.into()]);
@@ -1949,7 +1883,7 @@ pub fn main() {
         identity!(bool_, BoolListValueId);
         identity!(nil, NilListValueId);
         identity!(tuple, TupleListValueId);
-        identity!(parameter_list, ParameterListListValueId);
+
         identity!(list, ListListValueId);
         identity!(function, FunctionListValueId);
 
@@ -1987,11 +1921,7 @@ pub fn main() {
             ),
             (
                 StoredListValueId::from(parameter_list),
-                EvaluatedValue::ParameterList(ParameterListValueId::new(
-                    plan.parameter_list_list_function_id(0)
-                        .type_id()
-                        .item_type(),
-                )),
+                EvaluatedValue::ParameterList(parameter_child),
             ),
             (StoredListValueId::from(list), child_value),
             (
@@ -2000,9 +1930,12 @@ pub fn main() {
             ),
         ];
 
-        assert_eq!(storage.list_len(&ListValueId::Parameter(parameter)), 0,);
         assert_eq!(
-            storage.evaluated_value_at(&ListValueId::Parameter(parameter), 0),
+            storage.list_len(&ListValueId::Parameter(parameter.clone())),
+            0,
+        );
+        assert_eq!(
+            storage.evaluated_value_at(&ListValueId::Parameter(parameter.clone()), 0),
             None,
         );
 
@@ -2027,8 +1960,8 @@ pub fn main() {
 mod tests {
     use super::super::RuntimeState;
     use super::{
-        CustomListAllocation, ListLease, ListListTypeId, ListValueId, ParameterListListValueId,
-        ParameterListValueId, RuntimeListStorage, StoredListValueId, lock,
+        CustomListAllocation, ListLease, ListListTypeId, ListValueId, ParameterListValueId,
+        RuntimeListStorage, StoredListValueId, lock,
     };
     use crate::plan::execution::function::{
         CoreRuntimeFunctionId, IntFunctionId, ListFunctionId, ProfiledListFunctionId,
@@ -2762,9 +2695,19 @@ pub fn main() { done(10000, []) == [1] }
             vec![vec![EvaluatedValue::Int(1.into())]],
         );
         let parameter = ParameterListValueId::new(plan.parameter_list_function_id(0).type_id());
+        let parameter_list_type = plan.list_list_function_id(1).type_id();
+        let parameter_item_type = crate::plan::execution::type_::ParameterListTypeId {
+            list_type: parameter_list_type.item_type(),
+            item: crate::plan::TypeParameterId::scoped(0, 1),
+        };
+        assert_eq!(
+            plan.list_storage_type(parameter_list_type.item_type()),
+            crate::plan::execution::type_::ListStorageTypeId::Parameter(parameter_item_type),
+        );
+        let parameter_child = ParameterListValueId::new(parameter_item_type);
         let parameter_list = state
             .lists_mut()
-            .parameter_list_list(plan.parameter_list_list_function_id(0).type_id(), 1);
+            .list(parameter_list_type, vec![parameter_child.clone().into()]);
         let child = state
             .lists_mut()
             .int(plan.int_list_function_id(0).type_id(), vec![1.into()]);
@@ -2815,7 +2758,7 @@ pub fn main() { done(10000, []) == [1] }
             ),
             (
                 StoredListValueId::from(parameter_list.clone()),
-                ListValueId::ParameterList(parameter_list.clone()),
+                ListValueId::List(parameter_list.clone()),
             ),
             (
                 StoredListValueId::from(list.clone()),
@@ -2840,7 +2783,7 @@ pub fn main() { done(10000, []) == [1] }
         assert_eq!(
             state
                 .lists()
-                .evaluated_value_at(&ListValueId::Parameter(parameter), 0),
+                .evaluated_value_at(&ListValueId::Parameter(parameter.clone()), 0),
             None,
         );
         assert_eq!(
@@ -2902,10 +2845,8 @@ pub fn main() { done(10000, []) == [1] }
         assert_eq!(
             state
                 .lists()
-                .evaluated_value_at(&ListValueId::ParameterList(parameter_list.clone()), 0),
-            Some(EvaluatedValue::ParameterList(ParameterListValueId::new(
-                parameter_list.type_id().item_type(),
-            ))),
+                .evaluated_value_at(&ListValueId::List(parameter_list.clone()), 0),
+            Some(EvaluatedValue::ParameterList(parameter_child)),
         );
         assert_eq!(
             state
@@ -2938,7 +2879,7 @@ pub fn main() { done(10000, []) == [1] }
             StoredListValueId::Bool(bool_),
             StoredListValueId::Nil(nil),
             StoredListValueId::Tuple(tuple),
-            StoredListValueId::ParameterList(parameter_list.clone()),
+            StoredListValueId::List(parameter_list.clone()),
             StoredListValueId::List(list),
             StoredListValueId::Function(function),
         ];
@@ -2952,29 +2893,25 @@ pub fn main() { done(10000, []) == [1] }
         }
 
         assert_eq!(
-            ParameterListListValueId::from_stored(&parameter_list.clone().into()),
-            Some(parameter_list.clone()),
-        );
-        assert_eq!(
-            state.lists().list_len(&ListValueId::Parameter(parameter)),
+            state
+                .lists()
+                .list_len(&ListValueId::Parameter(parameter.clone())),
             0
         );
         assert_eq!(
             state
                 .lists()
-                .list_len(&ListValueId::ParameterList(parameter_list.clone())),
+                .list_len(&ListValueId::List(parameter_list.clone())),
             1
         );
         let dropped = state.lists_mut().drop_first(
-            (&StoredListValueId::ParameterList(parameter_list)).into(),
+            (&StoredListValueId::List(parameter_list)).into(),
             usize::MAX,
         );
         assert_eq!(state.lists().list_len(&dropped.clone().into_value()), 0);
         assert_eq!(
             dropped.list_type(),
-            plan.parameter_list_list_function_id(0)
-                .type_id()
-                .list_type(),
+            plan.list_list_function_id(1).type_id().list_type(),
         );
     }
 

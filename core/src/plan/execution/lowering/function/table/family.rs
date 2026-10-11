@@ -7,11 +7,11 @@ use crate::plan::execution::function::{
     FloatFunctionId, FloatListFunctionId, FunctionFunctionId, FunctionListFunctionId,
     IntFunctionFunctionId, IntFunctionId, IntListFunctionId, ListFunctionFunctionId,
     ListFunctionId, ListListFunctionId, NilFunctionFunctionId, NilFunctionId, NilListFunctionId,
-    ParameterListFunctionId, ParameterListListFunctionId, ProfiledFunctionFunctionId,
-    ProfiledListFunctionFunctionId, RuntimeFunctionFunctionTarget, RuntimeFunctionId,
-    RuntimeListFunctionId, StringFunctionFunctionId, StringFunctionId, StringListFunctionId,
-    TupleFunctionFunctionId, TupleFunctionId, TupleListFunctionId, UtfCodepointFunctionFunctionId,
-    UtfCodepointFunctionId, UtfCodepointListFunctionId,
+    ParameterFunctionFunctionId, ParameterFunctionId, ParameterListFunctionId,
+    ProfiledFunctionFunctionId, ProfiledListFunctionFunctionId, RuntimeFunctionFunctionTarget,
+    RuntimeFunctionId, RuntimeListFunctionId, StringFunctionFunctionId, StringFunctionId,
+    StringListFunctionId, TupleFunctionFunctionId, TupleFunctionId, TupleListFunctionId,
+    UtfCodepointFunctionFunctionId, UtfCodepointFunctionId, UtfCodepointListFunctionId,
 };
 use crate::plan::execution::graph::ExternalFunctionCallTarget;
 use crate::plan::execution::lowering::specialization::{
@@ -40,7 +40,6 @@ pub(in crate::plan::execution::lowering) struct ExternalListFunctionFunctionSign
 #[derive(Clone, Copy)]
 pub(super) enum CoreListFunctionReturn {
     Parameter(execution::type_::ParameterListTypeId),
-    ParameterList(execution::type_::ParameterListListTypeId),
     Int(execution::type_::IntListTypeId),
     String(execution::type_::StringListTypeId),
     BitArray(execution::type_::BitArrayListTypeId),
@@ -96,9 +95,7 @@ impl CoreListFunctionFunctionSignature {
     pub(in crate::plan::execution::lowering) fn table_family(&self) -> FunctionTableFamily {
         match self.return_ {
             CoreListFunctionReturn::Parameter(_) => FunctionTableFamily::ParameterListFunction,
-            CoreListFunctionReturn::ParameterList(_) => {
-                FunctionTableFamily::ParameterListListFunction
-            }
+
             CoreListFunctionReturn::Int(_) => FunctionTableFamily::IntListFunction,
             CoreListFunctionReturn::String(_) => FunctionTableFamily::StringListFunction,
             CoreListFunctionReturn::BitArray(_) => FunctionTableFamily::BitArrayListFunction,
@@ -130,13 +127,7 @@ impl CoreListFunctionFunctionSignature {
                     list_type,
                 }
             }
-            CoreListFunctionReturn::ParameterList(list_type) => {
-                ProfiledListFunctionFunctionId::ParameterList {
-                    id: execution::function::ParameterListListFunctionFunctionId(index),
-                    type_,
-                    list_type,
-                }
-            }
+
             CoreListFunctionReturn::Int(list_type) => ProfiledListFunctionFunctionId::Int {
                 id: execution::function::IntListFunctionFunctionId(index),
                 type_,
@@ -233,6 +224,9 @@ pub(in crate::plan::execution::lowering) fn function_id(
         StoredValueShape::UtfCodepoint => RuntimeFunctionId::Core(
             CoreRuntimeFunctionId::UtfCodepoint(UtfCodepointFunctionId(index)),
         ),
+        StoredValueShape::Parameter(_) => {
+            RuntimeFunctionId::Core(CoreRuntimeFunctionId::Parameter(ParameterFunctionId(index)))
+        }
         StoredValueShape::Custom(shape) => RuntimeFunctionId::Core(CoreRuntimeFunctionId::Custom(
             execution::function::CustomFunctionId::new(index, types.custom_value_shape(shape)),
         )),
@@ -276,6 +270,7 @@ pub(in crate::plan::execution::lowering) fn stored_function_table_family(
         StoredValueShape::String => FunctionTableFamily::String,
         StoredValueShape::BitArray => FunctionTableFamily::BitArray,
         StoredValueShape::UtfCodepoint => FunctionTableFamily::UtfCodepoint,
+        StoredValueShape::Parameter(_) => FunctionTableFamily::Parameter,
         StoredValueShape::Custom(_) => FunctionTableFamily::Custom,
         StoredValueShape::External(_) => FunctionTableFamily::External,
         StoredValueShape::Bool => FunctionTableFamily::Bool,
@@ -303,10 +298,7 @@ pub(in crate::plan::execution::lowering) fn list_function_table_family(
         SpecializedValueShape::Bool => FunctionTableFamily::BoolList,
         SpecializedValueShape::Nil => FunctionTableFamily::NilList,
         SpecializedValueShape::Tuple(_) => FunctionTableFamily::TupleList,
-        SpecializedValueShape::List(item) => match item.as_ref() {
-            SpecializedValueShape::Parameter(_) => FunctionTableFamily::ParameterListList,
-            _ => FunctionTableFamily::ListList,
-        },
+        SpecializedValueShape::List(_) => FunctionTableFamily::ListList,
         SpecializedValueShape::Function(_) => FunctionTableFamily::FunctionList,
     }
 }
@@ -331,6 +323,7 @@ fn executable_function_function_table_family(return_: &StoredValueShape) -> Func
         StoredValueShape::String => FunctionTableFamily::StringFunction,
         StoredValueShape::BitArray => FunctionTableFamily::BitArrayFunction,
         StoredValueShape::UtfCodepoint => FunctionTableFamily::UtfCodepointFunction,
+        StoredValueShape::Parameter(_) => FunctionTableFamily::ParameterFunction,
         StoredValueShape::Custom(_) => FunctionTableFamily::CustomFunction,
         StoredValueShape::External(_) => FunctionTableFamily::ExternalFunction,
         StoredValueShape::Bool => FunctionTableFamily::BoolFunction,
@@ -348,12 +341,7 @@ fn executable_function_function_table_family(return_: &StoredValueShape) -> Func
             SpecializedValueShape::Bool => FunctionTableFamily::BoolListFunction,
             SpecializedValueShape::Nil => FunctionTableFamily::NilListFunction,
             SpecializedValueShape::Tuple(_) => FunctionTableFamily::TupleListFunction,
-            SpecializedValueShape::List(item) => match item.as_ref() {
-                SpecializedValueShape::Parameter(_) => {
-                    FunctionTableFamily::ParameterListListFunction
-                }
-                _ => FunctionTableFamily::ListListFunction,
-            },
+            SpecializedValueShape::List(_) => FunctionTableFamily::ListListFunction,
             SpecializedValueShape::Function(_) => FunctionTableFamily::FunctionListFunction,
         },
         StoredValueShape::Function(_) => FunctionTableFamily::FunctionFunction,
@@ -395,14 +383,10 @@ pub(in crate::plan::execution::lowering) fn list_function_function_signature(
         SpecializedValueShape::Tuple(item) => {
             CoreListFunctionReturn::Tuple(types.tuple_list_type(item))
         }
-        SpecializedValueShape::List(item) => match types.list_list_type(item) {
-            crate::plan::execution::lowering::value_type::NestedListTypeId::Parameter(
-                list_type,
-            ) => CoreListFunctionReturn::ParameterList(list_type),
-            crate::plan::execution::lowering::value_type::NestedListTypeId::Stored(list_type) => {
-                CoreListFunctionReturn::List(list_type)
-            }
-        },
+        SpecializedValueShape::List(item) => {
+            let list_type = types.list_list_type(item);
+            CoreListFunctionReturn::List(list_type)
+        }
         SpecializedValueShape::Function(item) => {
             CoreListFunctionReturn::Function(types.function_list_type(item))
         }
@@ -416,57 +400,52 @@ pub(in crate::plan::execution::lowering) fn list_function_id(
     index: usize,
     types: &mut crate::plan::execution::lowering::value_type::TypeInterner,
 ) -> RuntimeListFunctionId {
-    let function = match item {
-        SpecializedValueShape::Parameter(parameter) => ListFunctionId::Parameter(
-            ParameterListFunctionId::new(index, types.parameter_list_type(*parameter)),
-        ),
-        SpecializedValueShape::Int => {
-            ListFunctionId::Int(IntListFunctionId::new(index, types.int_list_type()))
-        }
-        SpecializedValueShape::String => {
-            ListFunctionId::String(StringListFunctionId::new(index, types.string_list_type()))
-        }
-        SpecializedValueShape::BitArray => ListFunctionId::BitArray(BitArrayListFunctionId::new(
-            index,
-            types.bit_array_list_type(),
-        )),
-        SpecializedValueShape::UtfCodepoint => ListFunctionId::UtfCodepoint(
-            UtfCodepointListFunctionId::new(index, types.utf_codepoint_list_type()),
-        ),
-        SpecializedValueShape::Custom(item) => ListFunctionId::Custom(CustomListFunctionId::new(
-            index,
-            types.custom_list_type(item),
-        )),
-        SpecializedValueShape::External(item) => {
-            return RuntimeListFunctionId::External(ExternalListFunctionId::new(
-                index,
-                types.external_list_type(item),
-            ));
-        }
-        SpecializedValueShape::Float => {
-            ListFunctionId::Float(FloatListFunctionId::new(index, types.float_list_type()))
-        }
-        SpecializedValueShape::Bool => {
-            ListFunctionId::Bool(BoolListFunctionId::new(index, types.bool_list_type()))
-        }
-        SpecializedValueShape::Nil => {
-            ListFunctionId::Nil(NilListFunctionId::new(index, types.nil_list_type()))
-        }
-        SpecializedValueShape::Tuple(item) => {
-            ListFunctionId::Tuple(TupleListFunctionId::new(index, types.tuple_list_type(item)))
-        }
-        SpecializedValueShape::List(item) => match types.list_list_type(item) {
-            crate::plan::execution::lowering::value_type::NestedListTypeId::Parameter(type_id) => {
-                ListFunctionId::ParameterList(ParameterListListFunctionId::new(index, type_id))
+    let function =
+        match item {
+            SpecializedValueShape::Parameter(parameter) => ListFunctionId::Parameter(
+                ParameterListFunctionId::new(index, types.parameter_list_type(*parameter)),
+            ),
+            SpecializedValueShape::Int => {
+                ListFunctionId::Int(IntListFunctionId::new(index, types.int_list_type()))
             }
-            crate::plan::execution::lowering::value_type::NestedListTypeId::Stored(type_id) => {
+            SpecializedValueShape::String => {
+                ListFunctionId::String(StringListFunctionId::new(index, types.string_list_type()))
+            }
+            SpecializedValueShape::BitArray => ListFunctionId::BitArray(
+                BitArrayListFunctionId::new(index, types.bit_array_list_type()),
+            ),
+            SpecializedValueShape::UtfCodepoint => ListFunctionId::UtfCodepoint(
+                UtfCodepointListFunctionId::new(index, types.utf_codepoint_list_type()),
+            ),
+            SpecializedValueShape::Custom(item) => ListFunctionId::Custom(
+                CustomListFunctionId::new(index, types.custom_list_type(item)),
+            ),
+            SpecializedValueShape::External(item) => {
+                return RuntimeListFunctionId::External(ExternalListFunctionId::new(
+                    index,
+                    types.external_list_type(item),
+                ));
+            }
+            SpecializedValueShape::Float => {
+                ListFunctionId::Float(FloatListFunctionId::new(index, types.float_list_type()))
+            }
+            SpecializedValueShape::Bool => {
+                ListFunctionId::Bool(BoolListFunctionId::new(index, types.bool_list_type()))
+            }
+            SpecializedValueShape::Nil => {
+                ListFunctionId::Nil(NilListFunctionId::new(index, types.nil_list_type()))
+            }
+            SpecializedValueShape::Tuple(item) => {
+                ListFunctionId::Tuple(TupleListFunctionId::new(index, types.tuple_list_type(item)))
+            }
+            SpecializedValueShape::List(item) => {
+                let type_id = types.list_list_type(item);
                 ListFunctionId::List(ListListFunctionId::new(index, type_id))
             }
-        },
-        SpecializedValueShape::Function(item) => ListFunctionId::Function(
-            FunctionListFunctionId::new(index, types.function_list_type(item)),
-        ),
-    };
+            SpecializedValueShape::Function(item) => ListFunctionId::Function(
+                FunctionListFunctionId::new(index, types.function_list_type(item)),
+            ),
+        };
     RuntimeListFunctionId::Core(function)
 }
 
@@ -498,23 +477,6 @@ fn runtime_function_function_id(
         FunctionRepresentation::Executable(shape) => ValueInhabitation::Inhabited(shape),
     };
     function_function_target(function, return_, index, types)
-}
-
-// The library binding boundary has already established inhabited arguments.
-// Keep that invocation permission in the target type rather than recreating a
-// symbolic function branch in embedding execution.
-pub(in crate::plan::execution::lowering) fn invocable_function_function_id(
-    function: &SpecializedFunctionShape,
-    index: usize,
-    types: &mut crate::plan::execution::lowering::value_type::TypeInterner,
-    representations: &crate::plan::execution::lowering::specialization::RepresentationContext,
-) -> RuntimeFunctionFunctionTarget<std::convert::Infallible> {
-    function_function_target(
-        function,
-        representations.inhabitation(function.return_()),
-        index,
-        types,
-    )
 }
 
 fn function_function_target<Symbolic>(
@@ -550,6 +512,9 @@ fn function_function_target<Symbolic>(
         ),
         StoredValueShape::UtfCodepoint => RuntimeFunctionFunctionTarget::Core(
             ProfiledFunctionFunctionId::UtfCodepoint(UtfCodepointFunctionFunctionId(index)),
+        ),
+        StoredValueShape::Parameter(_) => RuntimeFunctionFunctionTarget::Core(
+            ProfiledFunctionFunctionId::Parameter(ParameterFunctionFunctionId(index)),
         ),
         StoredValueShape::Custom(return_) => RuntimeFunctionFunctionTarget::Core(
             ProfiledFunctionFunctionId::Custom(execution::function::CustomFunctionFunctionId::new(
@@ -670,7 +635,11 @@ mod tests {
         let external = external_shape();
         let cases = [
             (
-                SpecializedValueShape::Parameter(TypeParameterId(0)),
+                SpecializedValueShape::Parameter(TypeParameterId::new(0)),
+                FunctionTableFamily::ParameterList,
+            ),
+            (
+                SpecializedValueShape::Parameter(TypeParameterId::scoped(2, 0)),
                 FunctionTableFamily::ParameterList,
             ),
             (SpecializedValueShape::Int, FunctionTableFamily::IntList),
@@ -703,9 +672,9 @@ mod tests {
             ),
             (
                 SpecializedValueShape::List(Box::new(SpecializedValueShape::Parameter(
-                    TypeParameterId(0),
+                    TypeParameterId::scoped(2, 0),
                 ))),
-                FunctionTableFamily::ParameterListList,
+                FunctionTableFamily::ListList,
             ),
             (
                 SpecializedValueShape::List(Box::new(SpecializedValueShape::Int)),
@@ -731,11 +700,11 @@ mod tests {
         let (representations, custom) = custom_representation();
         let external = external_shape();
         let symbolic = SpecializedFunctionShape::new(
-            vec![SpecializedValueShape::Parameter(TypeParameterId(0))],
+            vec![SpecializedValueShape::Parameter(TypeParameterId::new(0))],
             SpecializedValueShape::Int,
         );
         let never = function(SpecializedValueShape::Tuple(
-            vec![SpecializedValueShape::Parameter(TypeParameterId(0))].into_boxed_slice(),
+            vec![SpecializedValueShape::Parameter(TypeParameterId::new(0))].into_boxed_slice(),
         ));
         let cases = [
             (symbolic, FunctionTableFamily::GenericFunction),
@@ -783,14 +752,14 @@ mod tests {
                 FunctionTableFamily::TupleFunction,
             ),
             (
-                list_function(SpecializedValueShape::Parameter(TypeParameterId(0))),
+                list_function(SpecializedValueShape::Parameter(TypeParameterId::new(0))),
                 FunctionTableFamily::ParameterListFunction,
             ),
             (
                 list_function(SpecializedValueShape::List(Box::new(
-                    SpecializedValueShape::Parameter(TypeParameterId(0)),
+                    SpecializedValueShape::Parameter(TypeParameterId::scoped(2, 0)),
                 ))),
-                FunctionTableFamily::ParameterListListFunction,
+                FunctionTableFamily::ListListFunction,
             ),
             (
                 list_function(SpecializedValueShape::Int),

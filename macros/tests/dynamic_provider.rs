@@ -6,15 +6,17 @@ use geam_builtin::embedding::FutureType;
 use geam_core::StringValue;
 use geam_core::embedding::{BigInt as EmbeddingInt, FunctionDeclaration, HostedModuleBuilder};
 use geam_core::host::HostFutureStore;
+use geam_core::host::native::{NativeCall, NativeRules};
 use geam_core::provider::advanced::{
     DynamicKind, Equality, Hashing, Index0, Inspection, Retained, RetainedExternalPayload,
     StoredDynamic,
 };
 use geam_core::provider::{Call, HostResult, List, Stored, Value};
 use geam_core::{
-    EchoOutput, EchoSink, HostComponentProfile, HostModule, HostProfile, HostProviderComponent,
-    HostProviderComponentRegistration, HostProviderSet, HostedExecution, ModuleSource,
-    PackageSource, compile_typed_host_program, plan_host_program,
+    EchoOutput, EchoSink, HostCallCompletion, HostCallError, HostComponentProfile, HostModule,
+    HostProfile, HostProviderComponent, HostProviderComponentRegistration, HostProviderModule,
+    HostProviderSet, HostTypeIndex0, HostTypeList, HostTypeListEnd, HostTypeParameter, HostValue,
+    HostedExecution, ModuleSource, PackageSource, compile_typed_host_program, plan_host_program,
 };
 use num_bigint::BigInt;
 
@@ -231,6 +233,7 @@ mod dynamic_provider {
             DynamicKind::String => "String",
             DynamicKind::BitArray => "BitArray",
             DynamicKind::UtfCodepoint => "UtfCodepoint",
+            DynamicKind::Parameter => "Parameter",
             DynamicKind::Bool => "Bool",
             DynamicKind::Nil => "Nil",
             DynamicKind::List => "List",
@@ -240,6 +243,27 @@ mod dynamic_provider {
             DynamicKind::Function => "Function",
         }
         .into()
+    }
+
+    #[test]
+    fn dynamic_kind_names_preserve_every_source_family() {
+        for (kind, expected) in [
+            (DynamicKind::Int, "Int"),
+            (DynamicKind::Float, "Float"),
+            (DynamicKind::String, "String"),
+            (DynamicKind::BitArray, "BitArray"),
+            (DynamicKind::UtfCodepoint, "UtfCodepoint"),
+            (DynamicKind::Parameter, "Parameter"),
+            (DynamicKind::Bool, "Bool"),
+            (DynamicKind::Nil, "Nil"),
+            (DynamicKind::List, "List"),
+            (DynamicKind::Tuple, "Tuple"),
+            (DynamicKind::Custom, "Custom"),
+            (DynamicKind::External, "External"),
+            (DynamicKind::Function, "Function"),
+        ] {
+            assert_eq!(kind_name(kind), StringValue::from(expected));
+        }
     }
 
     #[geam_macros::function]
@@ -522,6 +546,28 @@ pub fn first_token_async(values: List(Token)) -> future.Future(Token)
 "#,
 );
 
+fn native_parameter_provider<Profile>() -> HostProviderModule<Profile>
+where
+    Profile: HostProfile + HostComponentProfile<FutureComponent>,
+{
+    type Input = HostTypeParameter<1>;
+    type Output = HostTypeParameter<0>;
+    type Targets = HostTypeList<Output, HostTypeListEnd>;
+    HostProviderModule::new("dynamic_provider", "native_parameter")
+        .unwrap()
+        .with_native_function::<FutureComponent, (Input,), Output, Targets, _>(
+            "coerce",
+            NativeRules::default(),
+            |mut call: NativeCall<'_, Profile, FutureComponent, Output, Targets>,
+             value: HostValue<'_, Input>| {
+                let source = call.source::<Input>(value);
+                let returned = call.convert::<HostTypeIndex0>(&source).unwrap();
+                Ok::<HostCallCompletion<'_, Output>, HostCallError>(call.finish(returned))
+            },
+        )
+        .unwrap()
+}
+
 #[test]
 fn existential_values_restore_exact_types_and_preserve_source_semantics() {
     let mut providers = FutureComponent::providers().expect("Future component");
@@ -529,6 +575,7 @@ fn existential_values_restore_exact_types_and_preserve_source_semantics() {
         <Component as HostProviderComponentRegistration<Profile>>::providers()
             .expect("dynamic provider should register"),
     );
+    providers.push(native_parameter_provider());
     let hosts = HostProviderSet::with_providers(Vec::<HostModule<Profile>>::new(), providers)
         .expect("dynamic provider module should be unique");
     let typed = compile_typed_host_program(
@@ -548,6 +595,11 @@ fn existential_values_restore_exact_types_and_preserve_source_semantics() {
                 "dynamic_provider",
                 ["geam"],
                 [
+                    ModuleSource::new(
+                        "native_parameter",
+                        "src/native_parameter.gleam",
+                        include_str!("fixtures/future_dynamic/native_parameter.gleam"),
+                    ),
                     ModuleSource::new(
                         "dynamic_provider/declarations",
                         "src/dynamic_provider/declarations.gleam",
@@ -611,6 +663,7 @@ pub fn direct() { dynamic_provider.transfer_flow() }
         <Component as HostProviderComponentRegistration<AsyncProfile>>::providers()
             .expect("dynamic provider should register for transferable execution"),
     );
+    providers.push(native_parameter_provider());
     let hosts = HostProviderSet::from_providers(providers)
         .expect("dynamic provider module should be unique");
     let typed = compile_typed_host_program(
@@ -630,6 +683,11 @@ pub fn direct() { dynamic_provider.transfer_flow() }
                 "dynamic_provider",
                 ["geam"],
                 [
+                    ModuleSource::new(
+                        "native_parameter",
+                        "src/native_parameter.gleam",
+                        include_str!("fixtures/future_dynamic/native_parameter.gleam"),
+                    ),
                     ModuleSource::new(
                         "dynamic_provider/declarations",
                         "src/dynamic_provider/declarations.gleam",

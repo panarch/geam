@@ -16,6 +16,7 @@ pub(super) struct SpecializationKey {
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub(super) struct SpecializedTypeSubstitution {
     arguments: Box<[SpecializedValueShape]>,
+    scope: Option<usize>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -69,6 +70,7 @@ pub(super) enum SpecializedValueShape {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub(super) enum StoredValueShape {
+    Parameter(crate::plan::TypeParameterId),
     Int,
     Float,
     String,
@@ -142,12 +144,6 @@ pub(super) enum ValueInhabitation {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(super) enum StorageRepresentation {
-    Parameter(crate::plan::TypeParameterId),
-    Stored(StoredValueShape),
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) enum FunctionRepresentation {
     Symbolic,
     Never(UninhabitedValueShape),
@@ -182,15 +178,6 @@ impl ValueInhabitation {
     pub(super) fn into_representability(self) -> Representability<StoredValueShape> {
         match self {
             Self::Inhabited(shape) => Representability::Inhabited(shape),
-            Self::Uninhabited(_) => Representability::Uninhabited,
-        }
-    }
-}
-
-impl ValueRepresentation {
-    pub(super) fn into_representability(self) -> Representability<StoredValueShape> {
-        match self {
-            Self::Stored(shape) => Representability::Inhabited(shape),
             Self::Uninhabited(_) => Representability::Uninhabited,
         }
     }
@@ -273,6 +260,7 @@ impl SpecializedTypeSubstitution {
     pub(super) fn empty() -> Self {
         Self {
             arguments: Box::new([]),
+            scope: None,
         }
     }
 
@@ -287,13 +275,25 @@ impl SpecializedTypeSubstitution {
                 .map(|shape| SpecializedValueShape::instantiate(shape, outer))
                 .collect::<Vec<_>>()
                 .into_boxed_slice(),
+            scope: None,
         }
     }
 
+    pub(super) fn with_scope(mut self, scope: usize) -> Self {
+        self.scope = Some(scope);
+        self
+    }
+
     fn resolve(&self, parameter: crate::plan::TypeParameterId) -> SpecializedValueShape {
+        if parameter.scope().is_some() {
+            return SpecializedValueShape::Parameter(parameter);
+        }
         match self.arguments.get(parameter.index()) {
             Some(shape) => shape.clone(),
-            None => SpecializedValueShape::Parameter(parameter),
+            None => SpecializedValueShape::Parameter(match self.scope {
+                Some(scope) => crate::plan::TypeParameterId::scoped(scope, parameter.index()),
+                None => parameter,
+            }),
         }
     }
 
@@ -308,6 +308,7 @@ impl SpecializedTypeSubstitution {
                 .map(SpecializedValueShape::to_module_shape)
                 .collect(),
         )
+        .with_scope(self.scope)
     }
 }
 
@@ -611,29 +612,21 @@ impl SpecializedValueShape {
         }
     }
 
-    pub(super) fn storage_representation(&self) -> StorageRepresentation {
+    pub(super) fn storage_shape(&self) -> StoredValueShape {
         match self {
-            Self::Parameter(parameter) => StorageRepresentation::Parameter(*parameter),
-            Self::Int => StorageRepresentation::Stored(StoredValueShape::Int),
-            Self::Float => StorageRepresentation::Stored(StoredValueShape::Float),
-            Self::String => StorageRepresentation::Stored(StoredValueShape::String),
-            Self::BitArray => StorageRepresentation::Stored(StoredValueShape::BitArray),
-            Self::UtfCodepoint => StorageRepresentation::Stored(StoredValueShape::UtfCodepoint),
-            Self::Bool => StorageRepresentation::Stored(StoredValueShape::Bool),
-            Self::Nil => StorageRepresentation::Stored(StoredValueShape::Nil),
-            Self::Tuple(elements) => {
-                StorageRepresentation::Stored(StoredValueShape::Tuple(elements.clone()))
-            }
-            Self::List(item) => StorageRepresentation::Stored(StoredValueShape::List(item.clone())),
-            Self::Function(function) => {
-                StorageRepresentation::Stored(StoredValueShape::Function(function.clone()))
-            }
-            Self::Custom(custom) => {
-                StorageRepresentation::Stored(StoredValueShape::Custom(custom.clone()))
-            }
-            Self::External(external) => {
-                StorageRepresentation::Stored(StoredValueShape::External(external.clone()))
-            }
+            Self::Parameter(parameter) => StoredValueShape::Parameter(*parameter),
+            Self::Int => StoredValueShape::Int,
+            Self::Float => StoredValueShape::Float,
+            Self::String => StoredValueShape::String,
+            Self::BitArray => StoredValueShape::BitArray,
+            Self::UtfCodepoint => StoredValueShape::UtfCodepoint,
+            Self::Bool => StoredValueShape::Bool,
+            Self::Nil => StoredValueShape::Nil,
+            Self::Tuple(elements) => StoredValueShape::Tuple(elements.clone()),
+            Self::List(item) => StoredValueShape::List(item.clone()),
+            Self::Function(function) => StoredValueShape::Function(function.clone()),
+            Self::Custom(custom) => StoredValueShape::Custom(custom.clone()),
+            Self::External(external) => StoredValueShape::External(external.clone()),
         }
     }
 }
@@ -783,9 +776,10 @@ impl RepresentationContext {
 
     fn representation_with(&self, shape: &SpecializedValueShape) -> ValueRepresentation {
         match shape {
-            SpecializedValueShape::Parameter(parameter) => {
-                ValueRepresentation::Uninhabited(*parameter)
-            }
+            SpecializedValueShape::Parameter(parameter) => match parameter.scope() {
+                Some(_) => ValueRepresentation::Stored(StoredValueShape::Parameter(*parameter)),
+                None => ValueRepresentation::Uninhabited(*parameter),
+            },
             SpecializedValueShape::Int => ValueRepresentation::Stored(StoredValueShape::Int),
             SpecializedValueShape::Float => ValueRepresentation::Stored(StoredValueShape::Float),
             SpecializedValueShape::String => ValueRepresentation::Stored(StoredValueShape::String),
@@ -822,9 +816,12 @@ impl RepresentationContext {
         known_inhabited: &mut HashSet<CustomRepresentationKey>,
     ) -> ValueInhabitation {
         match shape {
-            SpecializedValueShape::Parameter(parameter) => {
-                ValueInhabitation::Uninhabited(UninhabitedValueShape::Parameter(*parameter))
-            }
+            SpecializedValueShape::Parameter(parameter) => match parameter.scope() {
+                Some(_) => ValueInhabitation::Inhabited(StoredValueShape::Parameter(*parameter)),
+                None => {
+                    ValueInhabitation::Uninhabited(UninhabitedValueShape::Parameter(*parameter))
+                }
+            },
             SpecializedValueShape::Int => ValueInhabitation::Inhabited(StoredValueShape::Int),
             SpecializedValueShape::Float => ValueInhabitation::Inhabited(StoredValueShape::Float),
             SpecializedValueShape::String => ValueInhabitation::Inhabited(StoredValueShape::String),
@@ -992,7 +989,7 @@ impl RepresentationContext {
         known_inhabited: &mut HashSet<CustomRepresentationKey>,
     ) -> bool {
         match shape {
-            SpecializedValueShape::Parameter(_) => false,
+            SpecializedValueShape::Parameter(parameter) => parameter.scope().is_some(),
             SpecializedValueShape::Int
             | SpecializedValueShape::Float
             | SpecializedValueShape::String
@@ -1185,6 +1182,7 @@ impl StoredValueShape {
 
     pub(super) fn to_specialized(&self) -> SpecializedValueShape {
         match self {
+            Self::Parameter(parameter) => SpecializedValueShape::Parameter(*parameter),
             Self::Int => SpecializedValueShape::Int,
             Self::Float => SpecializedValueShape::Float,
             Self::String => SpecializedValueShape::String,
@@ -1223,10 +1221,47 @@ mod tests {
     ) -> SpecializedCustomValueShape {
         SpecializedCustomValueShape {
             name,
-            arguments: vec![SpecializedValueShape::Parameter(TypeParameterId(0))]
+            arguments: vec![SpecializedValueShape::Parameter(TypeParameterId::new(0))]
                 .into_boxed_slice(),
             constructor,
         }
+    }
+
+    #[test]
+    fn specialization_binds_local_parameters_and_carries_outer_bindings_unchanged() {
+        let source = ValueShape::Parameter(TypeParameterId::new(0));
+        let outer = SpecializedTypeSubstitution::empty().with_scope(8);
+        let expected = SpecializedValueShape::Parameter(TypeParameterId::scoped(8, 0));
+        assert_eq!(
+            SpecializedValueShape::instantiate(&source, &outer),
+            expected
+        );
+        let another = SpecializedTypeSubstitution::empty().with_scope(9);
+        assert_ne!(
+            SpecializedValueShape::instantiate(&source, &another),
+            expected
+        );
+
+        let scheme = TypeScheme::new(1).try_substitution(vec![source]).unwrap();
+        let callee = SpecializedTypeSubstitution::instantiate(&scheme, &outer).with_scope(10);
+        assert_eq!(
+            SpecializedValueShape::instantiate(
+                &ValueShape::Parameter(TypeParameterId::new(0)),
+                &callee
+            ),
+            expected
+        );
+        assert_eq!(
+            SpecializedValueShape::instantiate(&expected.to_module_shape(), &callee),
+            expected
+        );
+        assert_eq!(
+            SpecializedValueShape::instantiate(
+                &ValueShape::Parameter(TypeParameterId::new(1)),
+                &callee
+            ),
+            SpecializedValueShape::Parameter(TypeParameterId::scoped(10, 1))
+        );
     }
 
     fn representation_context() -> (RepresentationContext, CustomTypeName, CustomTypeName) {
@@ -1275,15 +1310,15 @@ mod tests {
         );
         let shape = ValueShape::Tuple(
             vec![
-                ValueShape::Parameter(TypeParameterId(0)),
-                ValueShape::List(Box::new(ValueShape::Parameter(TypeParameterId(1)))),
+                ValueShape::Parameter(TypeParameterId::new(0)),
+                ValueShape::List(Box::new(ValueShape::Parameter(TypeParameterId::new(1)))),
                 ValueShape::Function(Box::new(FunctionShape::new(
-                    vec![ValueShape::Parameter(TypeParameterId(1))],
-                    ValueShape::Parameter(TypeParameterId(0)),
+                    vec![ValueShape::Parameter(TypeParameterId::new(1))],
+                    ValueShape::Parameter(TypeParameterId::new(0)),
                 ))),
                 ValueShape::Custom(CustomValueShape::new(
                     CustomTypeName::new("geam".into(), "main".into(), "Boxed".into()),
-                    vec![ValueShape::Parameter(TypeParameterId(0))],
+                    vec![ValueShape::Parameter(TypeParameterId::new(0))],
                     CustomConstructorRefinement::Exact(1),
                 )),
             ]
@@ -1324,31 +1359,31 @@ mod tests {
 
         assert_eq!(
             SpecializedValueShape::instantiate(
-                &ValueShape::Parameter(TypeParameterId(0)),
+                &ValueShape::Parameter(TypeParameterId::new(0)),
                 &substitution,
             ),
             SpecializedValueShape::Int,
         );
         assert_eq!(
             SpecializedValueShape::instantiate(
-                &ValueShape::Parameter(TypeParameterId(1)),
+                &ValueShape::Parameter(TypeParameterId::new(1)),
                 &substitution,
             ),
-            SpecializedValueShape::Parameter(TypeParameterId(1)),
+            SpecializedValueShape::Parameter(TypeParameterId::new(1)),
         );
     }
 
     #[test]
     fn representation_preserves_empty_only_and_phantom_storage() {
         let (context, phantom, choice) = representation_context();
-        let parameter = SpecializedValueShape::Parameter(TypeParameterId(0));
+        let parameter = SpecializedValueShape::Parameter(TypeParameterId::new(0));
         let parameter_list = SpecializedValueShape::List(Box::new(parameter.clone()));
         let phantom = custom_shape(phantom, CustomConstructorRefinement::Exact(0));
         let choice = custom_shape(choice, CustomConstructorRefinement::Any);
         let result = SpecializedCustomValueShape {
             name: CustomTypeName::new("".into(), "gleam".into(), "Result".into()),
             arguments: vec![
-                SpecializedValueShape::Parameter(TypeParameterId(0)),
+                SpecializedValueShape::Parameter(TypeParameterId::new(0)),
                 SpecializedValueShape::Int,
             ]
             .into_boxed_slice(),
@@ -1357,8 +1392,14 @@ mod tests {
 
         assert_eq!(
             context.representation(&parameter),
-            ValueRepresentation::Uninhabited(TypeParameterId(0))
+            ValueRepresentation::Uninhabited(TypeParameterId::new(0))
         );
+        assert_eq!(context.stored_shape(&parameter), None);
+        assert_eq!(
+            context.stored_shape(&SpecializedValueShape::Int),
+            Some(StoredValueShape::Int)
+        );
+
         assert_eq!(
             context.representation(&SpecializedValueShape::Tuple(
                 vec![parameter.clone()].into_boxed_slice()
@@ -1438,7 +1479,7 @@ mod tests {
     #[test]
     fn uninhabited_function_representation_preserves_exact_proofs() {
         let (context, _, choice) = representation_context();
-        let parameter = SpecializedValueShape::Parameter(TypeParameterId(0));
+        let parameter = SpecializedValueShape::Parameter(TypeParameterId::new(0));
 
         assert_eq!(
             SpecializedFunctionShape::new(
@@ -1491,7 +1532,7 @@ mod tests {
             name: result.clone(),
             arguments: vec![
                 SpecializedValueShape::Int,
-                SpecializedValueShape::Parameter(TypeParameterId(1)),
+                SpecializedValueShape::Parameter(TypeParameterId::new(1)),
             ]
             .into_boxed_slice(),
             constructor: CustomConstructorRefinement::Exact(0),
@@ -1500,7 +1541,7 @@ mod tests {
             name: result,
             arguments: vec![
                 SpecializedValueShape::Int,
-                SpecializedValueShape::Parameter(TypeParameterId(1)),
+                SpecializedValueShape::Parameter(TypeParameterId::new(1)),
             ]
             .into_boxed_slice(),
             constructor: CustomConstructorRefinement::Exact(1),
@@ -1524,8 +1565,8 @@ mod tests {
         let unresolved = SpecializedCustomValueShape {
             name: result.clone(),
             arguments: vec![
-                SpecializedValueShape::Parameter(TypeParameterId(0)),
-                SpecializedValueShape::Parameter(TypeParameterId(1)),
+                SpecializedValueShape::Parameter(TypeParameterId::new(0)),
+                SpecializedValueShape::Parameter(TypeParameterId::new(1)),
             ]
             .into_boxed_slice(),
             constructor: CustomConstructorRefinement::Any,
@@ -1553,7 +1594,7 @@ mod tests {
             name: result.clone(),
             arguments: vec![
                 SpecializedValueShape::Int,
-                SpecializedValueShape::Parameter(TypeParameterId(1)),
+                SpecializedValueShape::Parameter(TypeParameterId::new(1)),
             ]
             .into_boxed_slice(),
             constructor: CustomConstructorRefinement::Any,
@@ -1577,7 +1618,7 @@ mod tests {
             name: result,
             arguments: vec![
                 SpecializedValueShape::Int,
-                SpecializedValueShape::Parameter(TypeParameterId(1)),
+                SpecializedValueShape::Parameter(TypeParameterId::new(1)),
             ]
             .into_boxed_slice(),
             constructor: CustomConstructorRefinement::Exact(0),
@@ -1593,7 +1634,7 @@ mod tests {
             name: result.clone(),
             arguments: vec![
                 SpecializedValueShape::Int,
-                SpecializedValueShape::Parameter(TypeParameterId(0)),
+                SpecializedValueShape::Parameter(TypeParameterId::new(0)),
             ]
             .into_boxed_slice(),
             constructor: CustomConstructorRefinement::Any,
@@ -1640,7 +1681,7 @@ mod tests {
     #[test]
     fn function_representation_requires_inhabited_arguments_and_return() {
         let (context, phantom, choice) = representation_context();
-        let parameter = SpecializedValueShape::Parameter(TypeParameterId(0));
+        let parameter = SpecializedValueShape::Parameter(TypeParameterId::new(0));
 
         assert_eq!(
             SpecializedFunctionShape::new(Vec::new(), SpecializedValueShape::Int)
@@ -1654,7 +1695,9 @@ mod tests {
         );
         assert_eq!(
             SpecializedFunctionShape::new(Vec::new(), parameter.clone()).representation(&context),
-            FunctionRepresentation::Never(UninhabitedValueShape::Parameter(TypeParameterId(0))),
+            FunctionRepresentation::Never(UninhabitedValueShape::Parameter(TypeParameterId::new(
+                0
+            ))),
         );
         assert_eq!(
             SpecializedFunctionShape::new(

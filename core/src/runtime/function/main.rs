@@ -44,6 +44,7 @@ pub(in crate::runtime) fn prepare_main<Profile: HostProfile>(
             Core::String(id) => call!(id, EvaluatedValue::String),
             Core::BitArray(id) => call!(id, EvaluatedValue::BitArray),
             Core::UtfCodepoint(id) => call!(id, EvaluatedValue::UtfCodepoint),
+            Core::Parameter(id) => call!(id, EvaluatedValue::Parameter),
             Core::Custom(id) => call!(id, EvaluatedValue::Custom),
             Core::Bool(id) => call!(id, EvaluatedValue::Bool),
             Core::Nil(id) => call!(id, |()| EvaluatedValue::Nil),
@@ -52,7 +53,7 @@ pub(in crate::runtime) fn prepare_main<Profile: HostProfile>(
                 RuntimeListFunctionId::External(id) => list!(id, External),
                 RuntimeListFunctionId::Core(id) => match id {
                     List::Parameter(id) => list!(id, Parameter),
-                    List::ParameterList(id) => list!(id, ParameterList),
+
                     List::Int(id) => list!(id, Int),
                     List::Float(id) => list!(id, Float),
                     List::String(id) => list!(id, String),
@@ -75,6 +76,7 @@ pub(in crate::runtime) fn prepare_main<Profile: HostProfile>(
                     Function::String(id) => function!(id),
                     Function::BitArray(id) => function!(id),
                     Function::UtfCodepoint(id) => function!(id),
+                    Function::Parameter(id) => function!(id),
                     Function::Custom(id) => function!(id),
                     Function::Bool(id) => function!(id),
                     Function::Nil(id) => function!(id),
@@ -150,6 +152,10 @@ mod tests {
             "pub fn main() { panic as \"entry failed\" }",
             Err("panic: entry failed"),
         );
+        assert_main(
+            "pub type Empty pub fn main() -> Empty { panic as \"entry failed\" }",
+            Err("panic: entry failed"),
+        );
     }
 
     #[test]
@@ -180,13 +186,28 @@ mod tests {
     }
 
     #[test]
+    fn hosted_main_retains_callable_bindings_without_concretizing_their_parameters() {
+        for source in [
+            "fn identity(value: a) -> a { value } pub fn main() { identity }",
+            "fn factory() { fn(value: a) -> a { value } } pub fn main() { factory() }",
+        ] {
+            assert_main(source, Ok("//fn(a) { ... }"));
+        }
+    }
+
+    #[test]
     fn hosted_main_returns_functions_without_invoking_them() {
         assert_main(
             "pub fn main() { fn(value) { value } }",
             Ok("//fn(a) { ... }"),
         );
+        assert_main(
+            "pub type Empty pub fn main() -> fn(Empty) -> Int { fn(_) { 42 } }",
+            Ok("//fn(a) { ... }"),
+        );
         for source in [
             "pub fn main() { fn() { panic } }",
+            "pub type Empty pub fn main() -> fn() -> Empty { fn() { panic } }",
             "pub fn main() { fn() { 42 } }",
             "pub fn main() { fn() { 1.5 } }",
             "pub fn main() { fn() { \"text\" } }",

@@ -980,7 +980,7 @@ pub fn main() {
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::CaseShape {
                     reason: InvalidCaseShapeReason::BranchAnnotatedTypeMismatch {
-                        expected: ValueType::Parameter(crate::plan::TypeParameterId(0)),
+                        expected: ValueType::Parameter(crate::plan::TypeParameterId::new(0)),
                         actual: ValueType::Int,
                     },
                 },
@@ -1448,7 +1448,7 @@ pub fn main() {
             Err(super::super::pattern_type_mismatch(
                 list_type.clone(),
                 ValueType::List(Box::new(ValueType::Parameter(
-                    crate::plan::TypeParameterId(0),
+                    crate::plan::TypeParameterId::new(0),
                 ))),
             )),
         );

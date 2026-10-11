@@ -219,9 +219,10 @@ impl NativeSealing<'_> {
                 }
             }
             SpecializedValueShape::Function(shape) => self.function_views(*shape),
-            SpecializedValueShape::Parameter(_) | SpecializedValueShape::External(_) => {
-                NativeConversionKind::Exact
+            SpecializedValueShape::Parameter(parameter) => {
+                NativeConversionKind::Parameter(parameter)
             }
+            SpecializedValueShape::External(_) => NativeConversionKind::Exact,
         }
     }
 

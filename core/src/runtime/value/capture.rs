@@ -5,7 +5,8 @@ use super::{
     BitArrayFunctionValue, BitArrayValue, BoolFunctionValue, CustomFunctionValue, CustomValue,
     ExternalFunctionValue, ExternalValue, FloatFunctionValue, FunctionFunctionValue,
     GenericFunctionValue, IntFunctionValue, ListFunctionValue, ListValue, NeverFunctionValue,
-    NilFunctionValue, StringFunctionValue, TupleFunctionValue, UtfCodepointFunctionValue, Value,
+    NilFunctionValue, ParameterFunctionValue, StringFunctionValue, TupleFunctionValue,
+    UtfCodepointFunctionValue, Value,
 };
 use crate::plan::execution::graph::{
     BitArrayFunctionLocalId, BitArrayListLocalId, BitArrayLocalId, BoolFunctionLocalId,
@@ -14,8 +15,8 @@ use crate::plan::execution::graph::{
     FloatListLocalId, FloatLocalId, FunctionFunctionLocal, FunctionListLocalId,
     GenericFunctionLocalId, IntFunctionLocalId, IntListLocalId, IntLocalId, ListFunctionLocal,
     ListListLocalId, NeverFunctionLocalId, NilFunctionLocalId, NilListLocalId, NilLocalId,
-    ParameterListListLocalId, ParameterListLocalId, StringFunctionLocalId, StringListLocalId,
-    StringLocalId, TupleFunctionLocalId, TupleListLocalId, TupleLocalId,
+    ParameterFunctionLocalId, ParameterListLocalId, ParameterLocalId, StringFunctionLocalId,
+    StringListLocalId, StringLocalId, TupleFunctionLocalId, TupleListLocalId, TupleLocalId,
     UtfCodepointFunctionLocalId, UtfCodepointListLocalId, UtfCodepointLocalId,
 };
 use crate::plan::{FunctionType, ValueType};
@@ -46,6 +47,10 @@ pub(crate) enum CaptureValueKind {
     UtfCodepoint {
         local: UtfCodepointLocalId,
         value: char,
+    },
+    Parameter {
+        local: ParameterLocalId,
+        value: crate::ParameterValue,
     },
     Custom {
         local: CustomLocal,
@@ -86,6 +91,10 @@ pub(crate) enum CaptureValueKind {
     UtfCodepointFunction {
         local: UtfCodepointFunctionLocalId,
         value: UtfCodepointFunctionValue,
+    },
+    ParameterFunction {
+        local: ParameterFunctionLocalId,
+        value: ParameterFunctionValue,
     },
     CustomFunction {
         local: CustomFunctionLocalId,
@@ -130,11 +139,6 @@ pub(crate) enum CaptureListValue {
     Parameter {
         local: ParameterListLocalId,
         item_type: crate::plan::TypeParameterId,
-    },
-    ParameterList {
-        local: ParameterListListLocalId,
-        item_type: crate::plan::TypeParameterId,
-        len: usize,
     },
     Int {
         local: IntListLocalId,
@@ -222,6 +226,12 @@ impl CaptureValue {
         }
     }
 
+    pub(crate) fn parameter(local: ParameterLocalId, value: crate::ParameterValue) -> Self {
+        Self {
+            kind: CaptureValueKind::Parameter { local, value },
+        }
+    }
+
     pub(crate) fn custom(local: CustomLocal, value: CustomValue) -> Self {
         Self {
             kind: CaptureValueKind::Custom { local, value },
@@ -294,6 +304,15 @@ impl CaptureValue {
     ) -> Self {
         Self {
             kind: CaptureValueKind::UtfCodepointFunction { local, value },
+        }
+    }
+
+    pub(crate) fn parameter_function(
+        local: ParameterFunctionLocalId,
+        value: ParameterFunctionValue,
+    ) -> Self {
+        Self {
+            kind: CaptureValueKind::ParameterFunction { local, value },
         }
     }
 

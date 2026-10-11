@@ -8,8 +8,8 @@ use crate::plan::execution::graph::{
     FloatListLocalId, FloatLocalId, FunctionFunctionLocal, FunctionListLocalId, FunctionLocal,
     GenericFunctionLocal, IntFunctionLocalId, IntListLocalId, IntLocalId, ListFunctionLocal,
     ListListLocalId, NeverFunctionLocal, NilFunctionLocalId, NilListLocalId, NilLocalId,
-    ParameterListListLocalId, ParameterListLocalId, StringFunctionLocalId, StringListLocalId,
-    StringLocalId, TupleFunctionLocalId, TupleListLocalId, TupleLocalId,
+    ParameterFunctionLocalId, ParameterListLocalId, ParameterLocalId, StringFunctionLocalId,
+    StringListLocalId, StringLocalId, TupleFunctionLocalId, TupleListLocalId, TupleLocalId,
     UtfCodepointFunctionLocalId, UtfCodepointListLocalId, UtfCodepointLocalId,
 };
 use crate::runtime::compiled::calls::{
@@ -24,15 +24,15 @@ use crate::runtime::evaluated::{
 use crate::runtime::integer::IntegerValue;
 use crate::runtime::state::list::{
     BitArrayListValueId, BoolListValueId, CustomListValueId, ExternalListValueId, FloatListValueId,
-    FunctionListValueId, IntListValueId, ListListValueId, NilListValueId, ParameterListListValueId,
-    ParameterListValueId, StringListValueId, TupleListValueId, UtfCodepointListValueId,
+    FunctionListValueId, IntListValueId, ListListValueId, NilListValueId, ParameterListValueId,
+    StringListValueId, TupleListValueId, UtfCodepointListValueId,
 };
 use crate::runtime::{
     EvaluatedBitArrayFunction, EvaluatedBoolFunction, EvaluatedCustomFunction,
     EvaluatedExternalFunction, EvaluatedFloatFunction, EvaluatedFunctionFunction,
     EvaluatedGenericFunction, EvaluatedIntFunction, EvaluatedListFunction, EvaluatedNeverFunction,
-    EvaluatedNilFunction, EvaluatedStringFunction, EvaluatedTupleFunction,
-    EvaluatedUtfCodepointFunction,
+    EvaluatedNilFunction, EvaluatedParameterFunction, EvaluatedStringFunction,
+    EvaluatedTupleFunction, EvaluatedUtfCodepointFunction,
 };
 use std::convert::Infallible;
 
@@ -142,6 +142,12 @@ call_return!(
     BitArray,
     |value: CallBitArray| value.0
 );
+local_value!(
+    ParameterLocalId,
+    crate::ParameterValue,
+    parameters,
+    Parameter
+);
 call_return!(
     UtfCodepointLocalId,
     char,
@@ -165,12 +171,7 @@ local_value!(
     parameter_lists,
     List
 );
-local_value!(
-    ParameterListListLocalId,
-    ParameterListListValueId,
-    parameter_list_lists,
-    List
-);
+
 local_value!(IntListLocalId, IntListValueId, int_lists, List);
 local_value!(StringListLocalId, StringListValueId, string_lists, List);
 local_value!(
@@ -234,6 +235,12 @@ call_return!(
     Function,
     BitArrayFunction,
     |value: BitArrayCallable| value.0
+);
+local_value!(
+    ParameterFunctionLocalId,
+    EvaluatedParameterFunction,
+    parameter_functions,
+    Function
 );
 call_return!(
     UtfCodepointFunctionLocalId,
@@ -346,10 +353,7 @@ impl GraphValue for ListFunctionLocal {
                 .values
                 .parameter_list_functions
                 .swap_remove(local.0),
-            Self::ParameterList { local, .. } => environment
-                .values
-                .parameter_list_list_functions
-                .swap_remove(local.0),
+
             Self::Int { local, .. } => environment.values.int_list_functions.swap_remove(local.0),
             Self::String { local, .. } => environment
                 .values
@@ -424,6 +428,7 @@ impl GraphValue for FunctionLocal {
             Self::String(local) => local.take(environment).into(),
             Self::BitArray(local) => local.take(environment).into(),
             Self::UtfCodepoint(local) => local.take(environment).into(),
+            Self::Parameter(local) => local.take(environment).into(),
             Self::Custom(local) => local.take(environment).into(),
             Self::External(local) => local.take(environment).into(),
             Self::Bool(local) => local.take(environment).into(),

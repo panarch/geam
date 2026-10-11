@@ -179,6 +179,14 @@ entry_target!(
     UtfCodepoint
 );
 entry_target!(
+    function::ParameterFunctionId,
+    ExecutionParameterFunctionBody,
+    parameter_function,
+    |id| *id,
+    |_, target| *target.function()
+);
+
+entry_target!(
     function::CustomFunctionId,
     ExecutionCustomFunctionBody,
     custom_function,
@@ -229,13 +237,7 @@ entry_target!(
     |id| *id,
     |_, target| *target.function()
 );
-entry_target!(
-    function::ParameterListListFunctionId,
-    ExecutionParameterListListFunctionBody,
-    parameter_list_list_function,
-    |id| *id,
-    |_, target| *target.function()
-);
+
 entry_target!(
     function::IntListFunctionId,
     ExecutionIntListFunctionBody,
@@ -381,6 +383,14 @@ entry_target!(
     compiled_utf_codepoint_function_function,
     UtfCodepointFunction
 );
+entry_target!(
+    function::ParameterFunctionFunctionId,
+    ExecutionParameterFunctionFunctionBody,
+    parameter_function_function,
+    |id| *id,
+    |_, target| *target.function()
+);
+
 entry_target!(
     function::CustomFunctionFunctionId,
     ExecutionCustomFunctionFunctionBody,

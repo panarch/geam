@@ -3,8 +3,8 @@ use crate::plan::execution::prepared::rust::{Emit, Rust};
 use crate::plan::execution::type_::ListTypeId;
 use crate::plan::execution::type_::{
     BitArrayListTypeId, BoolListTypeId, CustomListTypeId, ExternalListTypeId, FloatListTypeId,
-    FunctionListTypeId, IntListTypeId, ListListTypeId, NilListTypeId, ParameterListListTypeId,
-    ParameterListTypeId, StringListTypeId, TupleListTypeId, UtfCodepointListTypeId,
+    FunctionListTypeId, IntListTypeId, ListListTypeId, NilListTypeId, ParameterListTypeId,
+    StringListTypeId, TupleListTypeId, UtfCodepointListTypeId,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -44,9 +44,6 @@ pub struct TupleListLocalId(pub usize);
 pub struct ListListLocalId(pub usize);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct ParameterListListLocalId(pub usize);
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct FunctionListLocalId(pub usize);
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -54,10 +51,6 @@ pub enum ListLocal {
     Parameter {
         local: ParameterListLocalId,
         type_id: ParameterListTypeId,
-    },
-    ParameterList {
-        local: ParameterListListLocalId,
-        type_id: ParameterListListTypeId,
     },
     Int {
         local: IntListLocalId,
@@ -109,9 +102,9 @@ pub enum ListLocal {
     },
 }
 
-#[derive(Clone)]
+#[derive(Clone, Copy)]
 pub enum StoredListLocal {
-    ParameterList(ParameterListListLocalId),
+    Parameter(ParameterListLocalId),
     Int(IntListLocalId),
     String(StringListLocalId),
     BitArray(BitArrayListLocalId),
@@ -131,7 +124,7 @@ impl ListLocal {
     pub(crate) fn list_type(&self) -> ListTypeId {
         match self {
             Self::Parameter { type_id, .. } => type_id.list_type(),
-            Self::ParameterList { type_id, .. } => type_id.list_type(),
+
             Self::Int { type_id, .. } => type_id.list_type(),
             Self::String { type_id, .. } => type_id.list_type(),
             Self::BitArray { type_id, .. } => type_id.list_type(),
@@ -232,13 +225,6 @@ impl Emit for ListListLocalId {
     }
 }
 
-impl Emit for ParameterListListLocalId {
-    fn emit(&self, output: &mut Rust) {
-        let Self(field_0) = self;
-        output.call("graph::ParameterListListLocalId", &[field_0]);
-    }
-}
-
 impl Emit for FunctionListLocalId {
     fn emit(&self, output: &mut Rust) {
         let Self(field_0) = self;
@@ -253,10 +239,7 @@ impl Emit for ListLocal {
                 "graph::ListLocal::Parameter",
                 &[("local", local), ("type_id", type_id)],
             ),
-            Self::ParameterList { local, type_id } => output.structure(
-                "graph::ListLocal::ParameterList",
-                &[("local", local), ("type_id", type_id)],
-            ),
+
             Self::Int { local, type_id } => output.structure(
                 "graph::ListLocal::Int",
                 &[("local", local), ("type_id", type_id)],
@@ -312,14 +295,14 @@ impl Emit for ListLocal {
 impl Emit for StoredListLocal {
     fn emit(&self, output: &mut Rust) {
         match self {
-            Self::ParameterList(field_0) => {
-                output.call("graph::StoredListLocal::ParameterList", &[field_0])
-            }
             Self::Int(field_0) => output.call("graph::StoredListLocal::Int", &[field_0]),
             Self::String(field_0) => output.call("graph::StoredListLocal::String", &[field_0]),
             Self::BitArray(field_0) => output.call("graph::StoredListLocal::BitArray", &[field_0]),
             Self::UtfCodepoint(field_0) => {
                 output.call("graph::StoredListLocal::UtfCodepoint", &[field_0])
+            }
+            Self::Parameter(field_0) => {
+                output.call("graph::StoredListLocal::Parameter", &[field_0])
             }
             Self::Custom(field_0) => output.call("graph::StoredListLocal::Custom", &[field_0]),
             Self::External(field_0) => output.call("graph::StoredListLocal::External", &[field_0]),
@@ -338,16 +321,16 @@ mod emission_tests {
     use super::{
         BitArrayListLocalId, BoolListLocalId, CustomListLocalId, ExternalListLocalId,
         FloatListLocalId, FunctionListLocalId, IntListLocalId, ListListLocalId, ListLocal,
-        NilListLocalId, ParameterListListLocalId, ParameterListLocalId, StoredListLocal,
-        StringListLocalId, TupleListLocalId, UtfCodepointListLocalId,
+        NilListLocalId, ParameterListLocalId, StoredListLocal, StringListLocalId, TupleListLocalId,
+        UtfCodepointListLocalId,
     };
     use crate::plan::execution::prepared::rust::Rust;
     use crate::plan::execution::type_::list::{FunctionItemTypeId, TupleItemTypeId};
     use crate::plan::execution::type_::{
         BitArrayListTypeId, BoolListTypeId, CustomListTypeId, CustomTypeId, ExternalListTypeId,
         ExternalTypeId, FloatListTypeId, FunctionListTypeId, IntListTypeId, ListListTypeId,
-        ListTypeId, NilListTypeId, ParameterListListTypeId, ParameterListTypeId, StringListTypeId,
-        TupleListTypeId, UtfCodepointListTypeId,
+        ListTypeId, NilListTypeId, ParameterListTypeId, StringListTypeId, TupleListTypeId,
+        UtfCodepointListTypeId,
     };
 
     #[test]
@@ -456,7 +439,7 @@ data::graph::ListLocal::Nil {
                     local: ParameterListLocalId(2),
                     type_id: ParameterListTypeId::new(
                         ListTypeId(3),
-                        crate::plan::TypeParameterId(4),
+                        crate::plan::TypeParameterId::new(4),
                     ),
                 },
                 r#"
@@ -465,27 +448,6 @@ data::graph::ListLocal::Parameter {
     type_id: data::type_::ParameterListTypeId {
         list_type: data::type_::ListTypeId(3),
         item: data::type_::parameter_id(4),
-    },
-}"#
-                .trim_start_matches('\n'),
-            ),
-            (
-                ListLocal::ParameterList {
-                    local: ParameterListListLocalId(2),
-                    type_id: ParameterListListTypeId::new(
-                        ListTypeId(3),
-                        ParameterListTypeId::new(ListTypeId(4), crate::plan::TypeParameterId(5)),
-                    ),
-                },
-                r#"
-data::graph::ListLocal::ParameterList {
-    local: data::graph::ParameterListListLocalId(2),
-    type_id: data::type_::ParameterListListTypeId {
-        list_type: data::type_::ListTypeId(3),
-        item_type: data::type_::ParameterListTypeId {
-            list_type: data::type_::ListTypeId(4),
-            item: data::type_::parameter_id(5),
-        },
     },
 }"#
                 .trim_start_matches('\n'),
@@ -577,6 +539,10 @@ data::graph::ListLocal::Function {
         }
         let stored = [
             (
+                StoredListLocal::Parameter(ParameterListLocalId(2)),
+                "data::graph::StoredListLocal::Parameter(data::graph::ParameterListLocalId(2))",
+            ),
+            (
                 StoredListLocal::Int(IntListLocalId(2)),
                 "data::graph::StoredListLocal::Int(data::graph::IntListLocalId(2))",
             ),
@@ -603,10 +569,6 @@ data::graph::ListLocal::Function {
             (
                 StoredListLocal::Nil(NilListLocalId(2)),
                 "data::graph::StoredListLocal::Nil(data::graph::NilListLocalId(2))",
-            ),
-            (
-                StoredListLocal::ParameterList(ParameterListListLocalId(2)),
-                "data::graph::StoredListLocal::ParameterList(data::graph::ParameterListListLocalId(2))",
             ),
             (
                 StoredListLocal::Custom(CustomListLocalId(2)),
@@ -640,8 +602,8 @@ mod tests {
     use crate::plan::execution::graph::{
         BitArrayListLocalId, BoolListLocalId, CustomListLocalId, ExternalListLocalId,
         FloatListLocalId, FunctionListLocalId, IntListLocalId, ListListLocalId, ListLocal,
-        NilListLocalId, ParameterListListLocalId, ParameterListLocalId, StringListLocalId,
-        TupleListLocalId, UtfCodepointListLocalId,
+        NilListLocalId, ParameterListLocalId, StringListLocalId, TupleListLocalId,
+        UtfCodepointListLocalId,
     };
     use crate::plan::execution::type_::{ExternalListTypeId, ExternalTypeId, ListTypeId};
     use crate::plan::{TypeParameterId, ValueType};
@@ -651,25 +613,27 @@ mod tests {
         let parameter_plan = execution_plan("pub fn main() -> List(value) { [] }");
         let parameter = parameter_plan.parameter_list_function_id(0).type_id();
         let nested_plan = execution_plan("pub fn main() -> List(List(value)) { [] }");
-        let nested = nested_plan.parameter_list_list_function_id(0).type_id();
+        let nested = nested_plan.list_list_function_id(0).type_id();
         let locals = [
             ListLocal::Parameter {
                 local: ParameterListLocalId(0),
                 type_id: parameter,
             },
-            ListLocal::ParameterList {
-                local: ParameterListListLocalId(0),
+            ListLocal::List {
+                local: ListListLocalId(0),
                 type_id: nested,
             },
         ];
         assert_eq!(
             parameter_plan.list_value_type(locals[0].list_type()),
-            ValueType::List(Box::new(ValueType::Parameter(TypeParameterId(0)))),
+            ValueType::List(Box::new(ValueType::Parameter(TypeParameterId::scoped(
+                0, 0
+            )))),
         );
         assert_eq!(
             nested_plan.list_value_type(locals[1].list_type()),
             ValueType::List(Box::new(ValueType::List(Box::new(ValueType::Parameter(
-                TypeParameterId(0)
+                TypeParameterId::scoped(0, 0)
             ),)))),
         );
     }

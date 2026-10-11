@@ -1103,13 +1103,20 @@ pub fn wrap(callback: fn(Int) -> Int) { fn(value) { callback(value) } }
                         .unwrap()
                         .try_into_value()
                         .unwrap();
-                    assert!(scope.call(&later, ()).await.unwrap());
+                    if concrete {
+                        assert!(scope.call(&later, ()).await.unwrap());
+                    } else {
+                        assert_eq!(
+                            scope.call(&later, ()).await.unwrap_err().to_string(),
+                            "host function application::library.restore_polymorphic failed: callback does not match the requested source type"
+                        );
+                    }
                 }),
             )
             .unwrap()
             .try_into_value()
             .unwrap();
-            assert_eq!(
+            assert!(
                 state
                     .polymorphic
                     .lock()
@@ -1117,8 +1124,7 @@ pub fn wrap(callback: fn(Int) -> Int) { fn(value) { callback(value) } }
                     .as_ref()
                     .unwrap()
                     .callable()
-                    .is_some(),
-                concrete
+                    .is_some()
             );
             host.block_on(
                 module.with_execution(&host, &mut state, &mut echoes, async |scope| {
@@ -1230,9 +1236,20 @@ pub fn wrap(callback: fn(Int) -> Int) { fn(value) { callback(value) } }
 "#,
                     Some("restore_unused"),
                 ),
-            ] {
+            ]
+            .into_iter()
+            .chain((!callable).then_some((
+                r#"
+  let original = fn(_: Empty) { "retained" }
+  save(original)
+  let restored: fn(Empty) -> String = restore()
+  original == restored
+"#,
+                None,
+            ))) {
                 let source = format!(
                     r#"
+pub type Empty
 @external(erlang, "native", "save") fn save(function: fn(a) -> b) -> Nil
 @external(erlang, "native", "restore") fn restore() -> fn(a) -> b
 @external(erlang, "native", "restore_unused") fn restore_unused() -> Nil

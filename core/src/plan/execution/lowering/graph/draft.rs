@@ -28,6 +28,7 @@ pub(in crate::plan::execution::lowering) enum DraftFloatFamily {}
 pub(in crate::plan::execution::lowering) enum DraftStringFamily {}
 pub(in crate::plan::execution::lowering) enum DraftBitArrayFamily {}
 pub(in crate::plan::execution::lowering) enum DraftUtfCodepointFamily {}
+pub(in crate::plan::execution::lowering) enum DraftParameterFamily {}
 pub(in crate::plan::execution::lowering) enum DraftCustomFamily {}
 pub(in crate::plan::execution::lowering) enum DraftExternalFamily {}
 pub(in crate::plan::execution::lowering) enum DraftBoolFamily {}
@@ -37,7 +38,7 @@ pub(in crate::plan::execution::lowering) enum DraftListFamily {}
 pub(in crate::plan::execution::lowering) enum DraftFunctionFamily {}
 
 pub(in crate::plan::execution::lowering) enum ParameterListFamily {}
-pub(in crate::plan::execution::lowering) enum ParameterListListFamily {}
+
 pub(in crate::plan::execution::lowering) enum IntListFamily {}
 pub(in crate::plan::execution::lowering) enum StringListFamily {}
 pub(in crate::plan::execution::lowering) enum BitArrayListFamily {}
@@ -58,6 +59,7 @@ pub(in crate::plan::execution::lowering) enum FloatFunctionFamily {}
 pub(in crate::plan::execution::lowering) enum StringFunctionFamily {}
 pub(in crate::plan::execution::lowering) enum BitArrayFunctionFamily {}
 pub(in crate::plan::execution::lowering) enum UtfCodepointFunctionFamily {}
+pub(in crate::plan::execution::lowering) enum ParameterFunctionFamily {}
 pub(in crate::plan::execution::lowering) enum CustomFunctionFamily {}
 pub(in crate::plan::execution::lowering) enum ExternalFunctionFamily {}
 pub(in crate::plan::execution::lowering) enum BoolFunctionFamily {}
@@ -85,6 +87,7 @@ pub(in crate::plan::execution::lowering) type DraftString = DraftValue<DraftStri
 pub(in crate::plan::execution::lowering) type DraftBitArray = DraftValue<DraftBitArrayFamily>;
 pub(in crate::plan::execution::lowering) type DraftUtfCodepoint =
     DraftValue<DraftUtfCodepointFamily>;
+pub(in crate::plan::execution::lowering) type DraftParameter = DraftValue<DraftParameterFamily>;
 pub(in crate::plan::execution::lowering) type DraftCustom = DraftValue<DraftCustomFamily>;
 pub(in crate::plan::execution::lowering) type DraftExternal = DraftValue<DraftExternalFamily>;
 pub(in crate::plan::execution::lowering) type DraftBool = DraftValue<DraftBoolFamily>;
@@ -94,7 +97,7 @@ pub(in crate::plan::execution::lowering) type DraftList = DraftValue<DraftListFa
 pub(in crate::plan::execution::lowering) type DraftFunction = DraftValue<DraftFunctionFamily>;
 
 pub(in crate::plan::execution::lowering) enum DraftStoredList {
-    ParameterList(DraftList),
+    Parameter(DraftList),
     Int(DraftList),
     String(DraftList),
     BitArray(DraftList),
@@ -112,7 +115,7 @@ pub(in crate::plan::execution::lowering) enum DraftStoredList {
 impl DraftStoredList {
     pub(in crate::plan::execution::lowering) fn into_list(self) -> DraftList {
         match self {
-            Self::ParameterList(value)
+            Self::Parameter(value)
             | Self::Int(value)
             | Self::String(value)
             | Self::BitArray(value)
@@ -141,8 +144,7 @@ pub(in crate::plan::execution::lowering) struct DraftTypedFunction<Family> {
 
 pub(in crate::plan::execution::lowering) type DraftParameterList =
     DraftTypedList<ParameterListFamily>;
-pub(in crate::plan::execution::lowering) type DraftParameterListList =
-    DraftTypedList<ParameterListListFamily>;
+
 pub(in crate::plan::execution::lowering) type DraftIntList = DraftTypedList<IntListFamily>;
 pub(in crate::plan::execution::lowering) type DraftStringList = DraftTypedList<StringListFamily>;
 pub(in crate::plan::execution::lowering) type DraftBitArrayList =
@@ -174,6 +176,8 @@ pub(in crate::plan::execution::lowering) type DraftBitArrayFunction =
     DraftTypedFunction<BitArrayFunctionFamily>;
 pub(in crate::plan::execution::lowering) type DraftUtfCodepointFunction =
     DraftTypedFunction<UtfCodepointFunctionFamily>;
+pub(in crate::plan::execution::lowering) type DraftParameterFunction =
+    DraftTypedFunction<ParameterFunctionFamily>;
 pub(in crate::plan::execution::lowering) type DraftCustomFunction =
     DraftTypedFunction<CustomFunctionFamily>;
 pub(in crate::plan::execution::lowering) type DraftExternalFunction =
@@ -267,6 +271,10 @@ pub(in crate::plan::execution::lowering) enum DraftInstruction {
     UtfCodepoint {
         output: DraftUtfCodepoint,
         kind: instruction::DraftUtfCodepointInstruction,
+    },
+    Parameter {
+        output: DraftParameter,
+        kind: instruction::DraftParameterInstruction,
     },
     Custom {
         output: DraftCustom,
@@ -453,10 +461,6 @@ impl<Family> Clone for DraftTypedFunction<Family> {
 }
 
 impl<Family> DraftValue<Family> {
-    pub(in crate::plan::execution::lowering) fn shape(&self) -> &StoredValueShape {
-        &self.shape
-    }
-
     pub(in crate::plan::execution::lowering) fn erase(&self) -> DraftValueRef {
         DraftValueRef {
             key: self.key,
@@ -584,7 +588,7 @@ impl DraftGraphValue for DraftValueRef {
 impl DraftGraphValue for DraftStoredList {
     fn key(&self) -> DraftValueKey {
         match self {
-            Self::ParameterList(value)
+            Self::Parameter(value)
             | Self::Int(value)
             | Self::String(value)
             | Self::BitArray(value)
@@ -602,7 +606,7 @@ impl DraftGraphValue for DraftStoredList {
 
     fn erase(&self) -> DraftValueRef {
         match self {
-            Self::ParameterList(value)
+            Self::Parameter(value)
             | Self::Int(value)
             | Self::String(value)
             | Self::BitArray(value)
@@ -924,6 +928,19 @@ impl DraftGraph {
             cursor,
             StoredValueShape::UtfCodepoint,
             DraftInstructionKind::UtfCodepoint(kind),
+        )
+    }
+
+    pub(in crate::plan::execution::lowering) fn parameter_instruction(
+        &mut self,
+        cursor: &mut DraftCursor,
+        parameter: crate::plan::TypeParameterId,
+        kind: instruction::DraftParameterInstruction,
+    ) -> DraftParameter {
+        self.instruction(
+            cursor,
+            StoredValueShape::Parameter(parameter),
+            DraftInstructionKind::Parameter(kind),
         )
     }
 
@@ -1324,6 +1341,10 @@ impl DraftInstruction {
                 output: DraftUtfCodepoint::from_ref(&output),
                 kind,
             },
+            DraftInstructionKind::Parameter(kind) => Self::Parameter {
+                output: DraftParameter::from_ref(&output),
+                kind,
+            },
             DraftInstructionKind::Custom(kind) => Self::Custom {
                 output: DraftCustom::from_ref(&output),
                 kind,
@@ -1366,6 +1387,7 @@ impl DraftInstruction {
             Self::String { output, .. } => Some(output.erase()),
             Self::BitArray { output, .. } => Some(output.erase()),
             Self::UtfCodepoint { output, .. } => Some(output.erase()),
+            Self::Parameter { output, .. } => Some(output.erase()),
             Self::Custom { output, .. } => Some(output.erase()),
             Self::External { output, .. } => Some(output.erase()),
             Self::Bool { output, .. } => Some(output.erase()),
@@ -1398,6 +1420,7 @@ impl DraftInstruction {
             Self::String { kind, .. } => kind.uses(values),
             Self::BitArray { kind, .. } => kind.uses(values),
             Self::UtfCodepoint { kind, .. } => kind.uses(values),
+            Self::Parameter { kind, .. } => kind.uses(values),
             Self::Custom { kind, .. } => kind.uses(values),
             Self::External { kind, .. } => kind.uses(values),
             Self::Bool { kind, .. } => kind.uses(values),
@@ -1758,7 +1781,7 @@ mod tests {
         let expected = list.erase();
 
         for stored in [
-            DraftStoredList::ParameterList(list.clone()),
+            DraftStoredList::Parameter(list.clone()),
             DraftStoredList::Int(list.clone()),
             DraftStoredList::String(list.clone()),
             DraftStoredList::BitArray(list.clone()),

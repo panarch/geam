@@ -24,7 +24,7 @@ use crate::plan::ModuleId;
 use rust::{Emit, Rust};
 use std::convert::Infallible;
 
-const FORMAT_VERSION: u32 = 30;
+const FORMAT_VERSION: u32 = 31;
 
 /// A prepared plain program which can be emitted as compiler-visible Rust data.
 pub struct PreparedModule {
@@ -213,6 +213,7 @@ impl<Profile: ExecutionProfile> ProgramTables<Profile> {
                     parameters: Table::Static(&self.function_parameters.parameters),
                 }),
                 list_types: Arc::new(ListTypeTable {
+                    parameter_lifetimes: Table::Static(&self.list_types.parameter_lifetimes),
                     types: Table::Static(&self.list_types.types),
                     tuple_items: Table::Static(&self.list_types.tuple_items),
                     function_items: Table::Static(&self.list_types.function_items),

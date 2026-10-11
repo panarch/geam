@@ -100,6 +100,7 @@ mod tests {
         let type_id = CustomTypeId(0);
         let mut custom_types = CustomTypeTable {
             types: vec![CustomTypeDescriptor {
+                parameter_lifetime: false,
                 type_: NominalTypeMetadata {
                     package: Text::Static("application"),
                     module: Text::Static("direction"),

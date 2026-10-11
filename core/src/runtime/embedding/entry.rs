@@ -136,11 +136,12 @@ impl crate::plan::execution::LibraryCallableEntry {
                 ProfiledFunctionFunctionId::String(id) => call!(*id),
                 ProfiledFunctionFunctionId::BitArray(id) => call!(*id),
                 ProfiledFunctionFunctionId::UtfCodepoint(id) => call!(*id),
+                ProfiledFunctionFunctionId::Parameter(id) => match *id {},
                 ProfiledFunctionFunctionId::Custom(id) => call!(id.clone()),
                 ProfiledFunctionFunctionId::Bool(id) => call!(*id),
                 ProfiledFunctionFunctionId::Nil(id) => call!(*id),
                 ProfiledFunctionFunctionId::Tuple(id) => call!(*id),
-                ProfiledFunctionFunctionId::List(id) => call!(id.clone()),
+                ProfiledFunctionFunctionId::List(id) => call!(id.value_target()),
                 ProfiledFunctionFunctionId::Function(id) => call!(id.clone()),
             },
             RuntimeFunctionFunctionTarget::External(id) => match id {
@@ -236,6 +237,17 @@ pub fn tuples() { fn(value: #(Int, String)) { value } }
 pub fn choices() { fn(value: Result(Int, Bool)) { value } }
 pub fn lists() { fn(value: List(Int)) { value } }
 pub fn functions() { fn() { fn(value: Int) { value + 3 } } }
+pub fn float_lists() { fn(value: Float) { [value] } }
+pub fn string_lists() { fn(value: String) { [value] } }
+pub fn bit_lists() { fn(value: BitArray) { [value] } }
+pub fn codepoint_lists() { fn(value: UtfCodepoint) { [value] } }
+pub fn bool_lists() { fn(value: Bool) { [value] } }
+pub fn nil_lists() { fn(value: Nil) { [value] } }
+pub fn tuple_lists() { fn(value: #(Int, String)) { [value] } }
+pub fn choice_lists() { fn(value: Result(Int, Bool)) { [value] } }
+pub fn nested_lists() { fn(value: List(Int)) { [value] } }
+pub fn zero_args() { fn() { 42 } }
+pub fn function_lists() { fn(value: fn() -> Int) { [value] } }
 "#,
                     )],
                 ),
@@ -268,6 +280,32 @@ pub fn functions() { fn() { fn(value: Int) { value + 3 } } }
         bind!(tuples, (BigInt, StringValue));
         bind!(choices, Result<BigInt, bool>);
         bind!(lists, List<BigInt>);
+        macro_rules! bind_list {
+            ($name:ident, $type:ty) => {
+                let $name = bindings
+                    .function(
+                        FunctionDeclaration::<(), CallableType<($type,), List<$type>>>::new(
+                            stringify!($name),
+                        ),
+                    )
+                    .unwrap();
+            };
+        }
+        bind_list!(float_lists, f64);
+        bind_list!(string_lists, StringValue);
+        bind_list!(bit_lists, BitArrayValue);
+        bind_list!(codepoint_lists, char);
+        bind_list!(bool_lists, bool);
+        bind_list!(nil_lists, ());
+        bind_list!(tuple_lists, (BigInt, StringValue));
+        bind_list!(choice_lists, Result<BigInt, bool>);
+        bind_list!(nested_lists, List<BigInt>);
+        bind_list!(function_lists, CallableType<(), BigInt>);
+        let zero_args = bindings
+            .function(FunctionDeclaration::<(), CallableType<(), BigInt>>::new(
+                "zero_args",
+            ))
+            .unwrap();
         let functions = bindings
             .function(FunctionDeclaration::<
                 (),
@@ -355,12 +393,60 @@ pub fn functions() { fn() { fn(value: Int) { value + 3 } } }
                 assert_eq!(values.len(), 2);
                 assert_eq!(values.read_item(0, Clone::clone), Some(BigInt::from(40)));
                 assert_eq!(values.read_item(1, Clone::clone), Some(BigInt::from(42)));
+                macro_rules! invoke_list {
+                    ($entry:ident, $input:expr, $read:expr, $expected:expr) => {
+                        let callback = scope.call(&$entry, ()).await.unwrap();
+                        let values = scope.invoke(&callback, ($input,)).await.unwrap();
+                        assert_eq!(values.len(), 1);
+                        assert_eq!(values.read_item(0, $read), Some($expected));
+                    };
+                }
+                invoke_list!(float_lists, 3.5, std::convert::identity, 3.5);
+                invoke_list!(
+                    string_lists,
+                    StringValue::from("list"),
+                    Clone::clone,
+                    StringValue::from("list")
+                );
+                invoke_list!(
+                    bit_lists,
+                    BitArrayValue::from_bytes(vec![0x42]),
+                    Clone::clone,
+                    BitArrayValue::from_bytes(vec![0x42])
+                );
+                invoke_list!(codepoint_lists, '한', std::convert::identity, '한');
+                invoke_list!(bool_lists, true, std::convert::identity, true);
+                invoke_list!(nil_lists, (), std::convert::identity, ());
+                invoke_list!(
+                    tuple_lists,
+                    (BigInt::from(42), StringValue::from("tuple")),
+                    |(int, string)| (int.clone(), string.clone()),
+                    (BigInt::from(42), StringValue::from("tuple"))
+                );
+                invoke_list!(
+                    choice_lists,
+                    Err::<BigInt, bool>(false),
+                    |value| value.cloned(),
+                    Err::<BigInt, bool>(false)
+                );
+                invoke_list!(
+                    nested_lists,
+                    vec![BigInt::from(42)],
+                    |list| list.read_item(0, Clone::clone),
+                    Some(BigInt::from(42))
+                );
                 let factory = scope.call(&functions, ()).await.unwrap();
                 let callback = scope.invoke(&factory, ()).await.unwrap();
                 assert_eq!(
                     scope.invoke(&callback, (BigInt::from(39),)).await.unwrap(),
                     BigInt::from(42)
                 );
+                let list_factory = scope.call(&function_lists, ()).await.unwrap();
+                let zero_args = scope.call(&zero_args, ()).await.unwrap();
+                let functions = scope.invoke(&list_factory, (zero_args,)).await.unwrap();
+                let retained = functions.read_item(0, std::convert::identity).unwrap();
+                drop(functions);
+                assert_eq!(scope.invoke(&retained, ()).await.unwrap(), BigInt::from(42));
             }),
         )
         .unwrap()

@@ -5,8 +5,8 @@ use super::{
     ExecutionFloatFunctionFunctionBody, ExecutionFunctionFunctionFunctionBody,
     ExecutionGenericFunctionFunctionBody, ExecutionIntFunctionFunctionBody,
     ExecutionNeverFunctionFunctionBody, ExecutionNilFunctionFunctionBody,
-    ExecutionStringFunctionFunctionBody, ExecutionTupleFunctionFunctionBody,
-    ExecutionUtfCodepointFunctionFunctionBody,
+    ExecutionParameterFunctionFunctionBody, ExecutionStringFunctionFunctionBody,
+    ExecutionTupleFunctionFunctionBody, ExecutionUtfCodepointFunctionFunctionBody,
 };
 use crate::plan::execution::explain::{Explain, ExplainContext};
 use crate::plan::execution::function::{ExecutionFunction, ExecutionProfile, write_table};
@@ -25,6 +25,8 @@ pub struct FunctionFunctionTables<Profile: ExecutionProfile> {
         Table<ExecutionFunction<Profile, ExecutionBitArrayFunctionFunctionBody<Profile>>>,
     pub utf_codepoint_function_functions:
         Table<ExecutionFunction<Profile, ExecutionUtfCodepointFunctionFunctionBody<Profile>>>,
+    pub parameter_function_functions:
+        Table<ExecutionFunction<Profile, ExecutionParameterFunctionFunctionBody<Profile>>>,
     pub custom_function_functions:
         Table<ExecutionFunction<Profile, ExecutionCustomFunctionFunctionBody<Profile>>>,
     pub external_function_functions:
@@ -40,8 +42,6 @@ pub struct FunctionFunctionTables<Profile: ExecutionProfile> {
     pub never_function_functions:
         Table<ExecutionFunction<Profile, ExecutionNeverFunctionFunctionBody<Profile>>>,
     pub parameter_list_function_functions:
-        Table<ExecutionFunction<Profile, ExecutionCoreListFunctionFunctionBody<Profile>>>,
-    pub parameter_list_list_function_functions:
         Table<ExecutionFunction<Profile, ExecutionCoreListFunctionFunctionBody<Profile>>>,
     pub int_list_function_functions:
         Table<ExecutionFunction<Profile, ExecutionCoreListFunctionFunctionBody<Profile>>>,
@@ -86,6 +86,11 @@ impl Explain for FunctionFunctionTables<Infallible> {
             "function.utf_codepoint",
             &self.utf_codepoint_function_functions,
         );
+        write_table(
+            context,
+            "function.parameter",
+            &self.parameter_function_functions,
+        );
         write_table(context, "function.custom", &self.custom_function_functions);
         write_table(
             context,
@@ -106,11 +111,7 @@ impl Explain for FunctionFunctionTables<Infallible> {
             "function.list.parameter",
             &self.parameter_list_function_functions,
         );
-        write_table(
-            context,
-            "function.list.parameter_list",
-            &self.parameter_list_list_function_functions,
-        );
+
         write_table(
             context,
             "function.list.int",
@@ -186,6 +187,7 @@ where
     Table<ExecutionFunction<Profile, ExecutionStringFunctionFunctionBody<Profile>>>: Emit,
     Table<ExecutionFunction<Profile, ExecutionBitArrayFunctionFunctionBody<Profile>>>: Emit,
     Table<ExecutionFunction<Profile, ExecutionUtfCodepointFunctionFunctionBody<Profile>>>: Emit,
+    Table<ExecutionFunction<Profile, ExecutionParameterFunctionFunctionBody<Profile>>>: Emit,
     Table<ExecutionFunction<Profile, ExecutionCustomFunctionFunctionBody<Profile>>>: Emit,
     Table<ExecutionFunction<Profile, ExecutionExternalFunctionFunctionBody<Profile>>>: Emit,
     Table<ExecutionFunction<Profile, ExecutionBoolFunctionFunctionBody<Profile>>>: Emit,
@@ -204,6 +206,7 @@ where
             string_function_functions,
             bit_array_function_functions,
             utf_codepoint_function_functions,
+            parameter_function_functions,
             custom_function_functions,
             external_function_functions,
             bool_function_functions,
@@ -212,7 +215,6 @@ where
             generic_function_functions,
             never_function_functions,
             parameter_list_function_functions,
-            parameter_list_list_function_functions,
             int_list_function_functions,
             string_list_function_functions,
             bit_array_list_function_functions,
@@ -238,6 +240,7 @@ where
                     "utf_codepoint_function_functions",
                     utf_codepoint_function_functions,
                 ),
+                ("parameter_function_functions", parameter_function_functions),
                 ("custom_function_functions", custom_function_functions),
                 ("external_function_functions", external_function_functions),
                 ("bool_function_functions", bool_function_functions),
@@ -248,10 +251,6 @@ where
                 (
                     "parameter_list_function_functions",
                     parameter_list_function_functions,
-                ),
-                (
-                    "parameter_list_list_function_functions",
-                    parameter_list_list_function_functions,
                 ),
                 ("int_list_function_functions", int_list_function_functions),
                 (

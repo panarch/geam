@@ -1467,7 +1467,7 @@ mod tests {
 
     #[test]
     fn spread_constructor_preserves_typed_tail_family() {
-        let parameter = TypeParameterId(0);
+        let parameter = TypeParameterId::new(0);
         let generic_value = GenericExpr::local_get(
             GenericLocal::new(GenericLocalId(0), parameter),
             "value".into(),
@@ -1655,9 +1655,12 @@ mod tests {
         );
 
         assert_eq!(
-            ListExpr::custom_field(access.clone(), ValueType::Parameter(TypeParameterId(0)),),
+            ListExpr::custom_field(
+                access.clone(),
+                ValueType::Parameter(TypeParameterId::new(0)),
+            ),
             ListExpr::Generic(GenericListExpr::custom_field(
-                GenericListItem::new(TypeParameterId(0)),
+                GenericListItem::new(TypeParameterId::new(0)),
                 access.clone(),
             )),
         );
@@ -1730,7 +1733,7 @@ mod tests {
                 access.clone(),
             )),
         );
-        let parameter = TypeParameterId(1);
+        let parameter = TypeParameterId::new(1);
         assert_eq!(
             ListExpr::custom_field(
                 access.clone(),
@@ -1758,7 +1761,7 @@ mod tests {
     #[test]
     fn case_and_block_constructors_preserve_typed_family() {
         let subject = BoolExpr::value(true);
-        let parameter = TypeParameterId(0);
+        let parameter = TypeParameterId::new(0);
         let generic_true = ListExpr::value(Vec::new(), ValueType::Parameter(parameter))
             .into_generic()
             .expect("generic list");
@@ -1845,7 +1848,7 @@ mod tests {
     fn facade_dispatch_preserves_every_item_type() {
         let function_type = FunctionType::new(Vec::new(), ValueType::Int);
         let item_types = vec![
-            ValueType::Parameter(crate::plan::TypeParameterId(0)),
+            ValueType::Parameter(crate::plan::TypeParameterId::new(0)),
             ValueType::Int,
             ValueType::String,
             ValueType::BitArray,
@@ -1858,7 +1861,7 @@ mod tests {
             ValueType::Bool,
             ValueType::Nil,
             ValueType::Tuple(vec![ValueType::Int]),
-            ValueType::List(Box::new(ValueType::Parameter(TypeParameterId(1)))),
+            ValueType::List(Box::new(ValueType::Parameter(TypeParameterId::new(1)))),
             ValueType::List(Box::new(ValueType::String)),
             ValueType::Function(Box::new(function_type.clone())),
         ];
@@ -1962,7 +1965,7 @@ mod tests {
 
     #[test]
     fn nested_list_index_dispatch_preserves_every_item_type() {
-        let parameter = crate::plan::TypeParameterId(0);
+        let parameter = crate::plan::TypeParameterId::new(0);
         let parameter_source = ListExpr::value(
             vec![Expr::list(ListExpr::value(
                 Vec::new(),
@@ -2099,7 +2102,7 @@ mod tests {
         assert_eq!(
             StoredListExpr::try_from_facade(ListExpr::value(
                 Vec::new(),
-                ValueType::Parameter(TypeParameterId(0)),
+                ValueType::Parameter(TypeParameterId::new(0)),
             )),
             None,
         );

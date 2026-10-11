@@ -56,10 +56,10 @@ pub fn main() -> List(Int) {
 //     %function.list.bool#0:shape#20(fn() -> list_type#7) = function[List] reference list.bool#0
 //     %function.list.nil#0:shape#23(fn() -> list_type#8) = function[List] reference list.nil#0
 //     %function.list.tuple#0:shape#27(fn() -> list_type#9) = function[List] reference list.tuple#0
-//     %function.list.parameter_list#0:shape#31(fn() -> list_type#11) = function[List] reference list.parameter_list#0
-//     %function.list.list#0:shape#34(fn() -> list_type#12) = function[List] reference list.list#0
+//     %function.list.list#0:shape#31(fn() -> list_type#11) = function[List] reference list.list#0
+//     %function.list.list#1:shape#34(fn() -> list_type#12) = function[List] reference list.list#1
 //     %function.list.function#0:shape#37(fn() -> list_type#13) = function[List] reference list.function#0
-//     %tuple#0:shape#38(#(fn() -> list_type#1, fn() -> list_type#2, fn() -> list_type#3, fn() -> list_type#4, fn() -> list_type#5, fn() -> list_type#6, fn() -> list_type#7, fn() -> list_type#8, fn() -> list_type#9, fn() -> list_type#11, fn() -> list_type#12, fn() -> list_type#13)) = tuple.value elements=[%function.list.parameter#0, %function.list.string#0, %function.list.bit_array#0, %function.list.utf_codepoint#0, %function.list.custom#0, %function.list.float#0, %function.list.bool#0, %function.list.nil#0, %function.list.tuple#0, %function.list.parameter_list#0, %function.list.list#0, %function.list.function#0]
+//     %tuple#0:shape#38(#(fn() -> list_type#1, fn() -> list_type#2, fn() -> list_type#3, fn() -> list_type#4, fn() -> list_type#5, fn() -> list_type#6, fn() -> list_type#7, fn() -> list_type#8, fn() -> list_type#9, fn() -> list_type#11, fn() -> list_type#12, fn() -> list_type#13)) = tuple.value elements=[%function.list.parameter#0, %function.list.string#0, %function.list.bit_array#0, %function.list.utf_codepoint#0, %function.list.custom#0, %function.list.float#0, %function.list.bool#0, %function.list.nil#0, %function.list.tuple#0, %function.list.list#0, %function.list.list#1, %function.list.function#0]
 //     tail list.int#1 args=[]
 //
 // function list.int#1
@@ -107,12 +107,12 @@ pub fn main() -> List(Int) {
 //   block b0 params=[]
 //     jump b0()
 //
-// function list.parameter_list#0
+// function list.list#0
 //   entry b0 params=[] captures=[]
 //   block b0 params=[]
 //     jump b0()
 //
-// function list.list#0
+// function list.list#1
 //   entry b0 params=[] captures=[]
 //   block b0 params=[]
 //     jump b0()

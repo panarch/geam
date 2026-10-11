@@ -122,7 +122,7 @@ mod tests {
                     name: "Generic".into(),
                     reason: Box::new(InvalidCustomTypeReason::FieldType {
                         index: 0,
-                        expected: ValueType::Parameter(crate::plan::TypeParameterId(0)),
+                        expected: ValueType::Parameter(crate::plan::TypeParameterId::new(0)),
                         actual: ValueType::Int,
                     }),
                 },

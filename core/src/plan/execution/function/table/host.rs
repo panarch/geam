@@ -68,6 +68,12 @@ impl<Profile: HostProfile> Explain for HostedFunctionTablesExplanation<'_, Profi
         );
         write_hosted_table(
             context,
+            "parameter",
+            &self.tables.value_returns.parameter_functions,
+            self.host_functions,
+        );
+        write_hosted_table(
+            context,
             "custom",
             &self.tables.value_returns.custom_functions,
             self.host_functions,
@@ -206,16 +212,7 @@ impl<Profile: HostProfile> Explain for HostedFunctionTablesExplanation<'_, Profi
                 .map(|(_, function)| function),
             self.host_functions,
         );
-        write_hosted_table(
-            context,
-            "list.parameter_list",
-            self.tables
-                .list_returns
-                .parameter_list_list_functions
-                .iter()
-                .map(|(_, function)| function),
-            self.host_functions,
-        );
+
         write_hosted_table(
             context,
             "list.list",
@@ -271,6 +268,12 @@ impl<Profile: HostProfile> Explain for HostedFunctionTablesExplanation<'_, Profi
         );
         write_hosted_table(
             context,
+            "function.parameter",
+            &self.tables.function_returns.parameter_function_functions,
+            self.host_functions,
+        );
+        write_hosted_table(
+            context,
             "function.custom",
             &self.tables.function_returns.custom_function_functions,
             self.host_functions,
@@ -320,15 +323,7 @@ impl<Profile: HostProfile> Explain for HostedFunctionTablesExplanation<'_, Profi
                 .parameter_list_function_functions,
             self.host_functions,
         );
-        write_hosted_table(
-            context,
-            "function.list.parameter_list",
-            &self
-                .tables
-                .function_returns
-                .parameter_list_list_function_functions,
-            self.host_functions,
-        );
+
         write_hosted_table(
             context,
             "function.list.int",
@@ -598,6 +593,58 @@ mod tests {
     }
 
     #[test]
+    fn writes_actual_never_graph_and_host_entries_without_parameter_storage() {
+        use crate::HostFailure;
+        use std::convert::Infallible;
+
+        let hosts = HostProviderSet::new([HostModule::new("host_support", "host/control")
+            .unwrap()
+            .with_fallible_function("stop", || -> Result<Infallible, HostFailure> {
+                Err(HostFailure::new("stopped"))
+            })
+            .unwrap()])
+        .unwrap();
+        let source = "import host/control pub type Empty pub fn main() -> Empty { control.stop() }";
+        let typed = compile_typed_host_program(
+            "application",
+            "main",
+            [PackageSource::new(
+                "application",
+                ["host_support"],
+                [ModuleSource::new("main", "main.gleam", source)],
+            )],
+            hosts,
+        )
+        .unwrap();
+        let mut execution =
+            HostedExecution::try_from_module_plan(plan_host_program(typed).unwrap()).unwrap();
+        let mut actual = String::new();
+        let mut context = explain::ExplainContext::new_hosted(execution.execution(), &mut actual);
+        context.write(&HostedFunctionTablesExplanation::new(
+            &execution.execution.program.functions,
+            &execution.execution.host_functions,
+        ));
+        assert_eq!(
+            actual,
+            r#"
+function never#0
+  entry b0 params=[] captures=[]
+  block b0 params=[]
+    tail never#1 args=[]
+
+function never#1
+  host host_support::host/control.stop signature=fn() -> custom_type#0
+"#
+        );
+        assert_eq!(
+            crate::execution_fixture::run(&mut execution, &mut (), &mut Vec::new())
+                .unwrap_err()
+                .to_string(),
+            "host function host_support::host/control.stop failed: stopped"
+        );
+    }
+
+    #[test]
     fn writes_every_scalar_host_target_in_family_order() {
         let scalars = HostModule::new("host_support", "host/scalars")
             .expect("host module should be valid")
@@ -689,6 +736,79 @@ function tuple#0
         ));
 
         assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn writes_parameter_value_and_function_host_tables_in_storage_order() {
+        use crate::StatelessHostProfile;
+        use crate::host::{HostCallable, HostFunctionType, HostTypeList, HostTypeListEnd};
+
+        type Arguments = HostTypeList<TestTypeParameter, HostTypeListEnd>;
+        type Callback = HostFunctionType<Arguments, TestTypeParameter>;
+
+        fn forward<'call>(
+            call: HostCall<'call, StatelessHostProfile, StatelessTestProvider, Callback>,
+            function: HostCallable<'call, Arguments, TestTypeParameter>,
+        ) -> Result<HostCallCompletion<'call, Callback>, HostCallError> {
+            Ok(call.return_value(function))
+        }
+
+        let generic = HostModule::new("host_support", "host/generic")
+            .expect("host module should be valid")
+            .with_scoped_function::<StatelessTestProvider, (TestTypeParameter,), TestTypeParameter, _>(
+                "identity",
+                stateless_identity,
+            )
+            .expect("parameter identity should register")
+            .with_scoped_function::<StatelessTestProvider, (Callback,), Callback, _>(
+                "forward", forward,
+            )
+            .expect("parameter callback should register");
+        let source = r#"
+import host/generic
+
+pub fn main() {
+  generic.forward(generic.identity)
+}
+"#;
+        let typed = compile_typed_host_program(
+            "application",
+            "main",
+            [PackageSource::new(
+                "application",
+                ["host_support"],
+                [ModuleSource::new("main", "main.gleam", source)],
+            )],
+            HostProviderSet::new([generic]).expect("host modules should be unique"),
+        )
+        .expect("parameter host source should compile");
+        let plan = plan_host_program(typed).expect("parameter host source should plan");
+        let mut execution = HostedExecution::try_from_module_plan(plan)
+            .expect("parameter host execution should seal");
+        let expected = r#"
+function parameter#0
+  host host_support::host/generic.identity signature=fn(param#0) -> param#0
+
+function function.parameter#0
+  entry b0 params=[] captures=[]
+  block b0 params=[]
+    %function.parameter#0:shape#1(fn(param#0) -> param#0) = function[Parameter] reference parameter#0
+    tail function.parameter#1 args=[%function.parameter#0]
+
+function function.parameter#1
+  host host_support::host/generic.forward signature=fn(fn(param#0) -> param#0) -> fn(param#0) -> param#0
+"#;
+        let mut actual = String::new();
+        let mut context = explain::ExplainContext::new_hosted(execution.execution(), &mut actual);
+        context.write(&HostedFunctionTablesExplanation::new(
+            &execution.execution.program.functions,
+            &execution.execution.host_functions,
+        ));
+
+        assert_eq!(actual.trim(), expected.trim());
+        let returned = crate::execution_fixture::run(&mut execution, &mut (), &mut Vec::new())
+            .expect("the registered parameter callback should be forwarded");
+        assert_eq!(returned.inspect().to_string(), "//fn(a) { ... }");
     }
 
     #[test]

@@ -4,8 +4,8 @@ use super::evaluated::{
     EvaluatedExternalValue, EvaluatedFloatFunction, EvaluatedFunctionFunction,
     EvaluatedFunctionValue, EvaluatedFunctionValueKind, EvaluatedGenericFunction,
     EvaluatedIntFunction, EvaluatedListCapture, EvaluatedListFunction, EvaluatedNeverFunction,
-    EvaluatedNilFunction, EvaluatedStringFunction, EvaluatedTupleFunction,
-    EvaluatedUtfCodepointFunction, EvaluatedValue,
+    EvaluatedNilFunction, EvaluatedParameterFunction, EvaluatedStringFunction,
+    EvaluatedTupleFunction, EvaluatedUtfCodepointFunction, EvaluatedValue,
 };
 use super::state::list::{ParameterListValueId, StoredListValueId};
 use super::{
@@ -13,7 +13,8 @@ use super::{
     CustomFunctionValue, CustomFunctionValueTarget, CustomValue, ExternalFunctionValue,
     ExternalValue, FloatFunctionValue, FunctionFunctionValue, FunctionValue, FunctionValueKind,
     GenericFunctionValue, IntFunctionValue, ListFunctionValue, ListValue, NeverFunctionValue,
-    NilFunctionValue, StringFunctionValue, TupleFunctionValue, UtfCodepointFunctionValue, Value,
+    NilFunctionValue, ParameterFunctionValue, StringFunctionValue, TupleFunctionValue,
+    UtfCodepointFunctionValue, Value,
 };
 use crate::plan::execution::function::{ExecutionGraphProfile, RuntimeListFunctionId};
 use crate::plan::execution::graph::{
@@ -28,6 +29,7 @@ pub(super) fn value(
     value: EvaluatedValue,
 ) -> Value {
     match value {
+        EvaluatedValue::Parameter(value) => Value::Parameter(value),
         EvaluatedValue::Int(value) => Value::Int(value.into_bigint()),
         EvaluatedValue::Float(value) => Value::Float(value),
         EvaluatedValue::String(value) => Value::String(value),
@@ -93,7 +95,10 @@ fn external(
 }
 
 fn parameter_list(value: ParameterListValueId) -> ListValue {
-    ListValue::empty(crate::plan::ValueType::Parameter(value.type_id().item()))
+    ListValue::from_evaluated_parameter(
+        value.type_id().item(),
+        value.values().iter().cloned().collect(),
+    )
 }
 
 fn list(
@@ -102,6 +107,7 @@ fn list(
     value: &StoredListValueId,
 ) -> ListValue {
     match value {
+        StoredListValueId::Parameter(value) => parameter_list(value.clone()),
         StoredListValueId::Int(value) => ListValue::int(
             state
                 .int_values(value)
@@ -161,13 +167,7 @@ fn list(
                 })
                 .collect(),
         ),
-        StoredListValueId::ParameterList(value) => {
-            let item_type = crate::plan::ValueType::Parameter(value.type_id().item_type().item());
-            ListValue::from_evaluated_list(
-                item_type.clone(),
-                vec![ListValue::empty(item_type); state.parameter_list_list_len(value)],
-            )
-        }
+
         StoredListValueId::List(value) => ListValue::from_evaluated_list(
             plan.nested_list_item_type(value.type_id()),
             state
@@ -214,6 +214,9 @@ fn function(
         }
         EvaluatedFunctionValueKind::UtfCodepoint(value) => {
             FunctionValueKind::UtfCodepoint(utf_codepoint_function(plan, state, value))
+        }
+        EvaluatedFunctionValueKind::Parameter(value) => {
+            FunctionValueKind::Parameter(parameter_function(plan, state, value))
         }
         EvaluatedFunctionValueKind::Custom(value) => {
             FunctionValueKind::Custom(custom_function(plan, state, value))
@@ -337,6 +340,21 @@ fn utf_codepoint_function(
         value.runtime_id(),
         plan.function_parameters()
             .function(&FunctionTarget::UtfCodepoint(value.runtime_id()))
+            .to_vec(),
+        captures(plan, state, value.captures()),
+        plan.function_type(value.type_()),
+    )
+}
+
+fn parameter_function(
+    plan: RuntimeValueMetadata<'_>,
+    state: &crate::runtime::RuntimeListStorage,
+    value: &EvaluatedParameterFunction,
+) -> ParameterFunctionValue {
+    ParameterFunctionValue::new_with_captures(
+        value.runtime_id(),
+        plan.function_parameters()
+            .function(&FunctionTarget::Parameter(value.runtime_id()))
             .to_vec(),
         captures(plan, state, value.captures()),
         plan.function_type(value.type_()),
@@ -526,6 +544,9 @@ fn capture(
         EvaluatedCaptureKind::UtfCodepoint { local, value } => {
             CaptureValue::utf_codepoint(*local, *value)
         }
+        EvaluatedCaptureKind::Parameter { local, value } => {
+            CaptureValue::parameter(*local, value.clone())
+        }
         EvaluatedCaptureKind::Custom { local, value } => {
             CaptureValue::custom(*local, custom(plan, state, value.clone()))
         }
@@ -557,6 +578,9 @@ fn capture(
         }
         EvaluatedCaptureKind::UtfCodepointFunction { local, value } => {
             CaptureValue::utf_codepoint_function(*local, utf_codepoint_function(plan, state, value))
+        }
+        EvaluatedCaptureKind::ParameterFunction { local, value } => {
+            CaptureValue::parameter_function(*local, parameter_function(plan, state, value))
         }
         EvaluatedCaptureKind::CustomFunction { local, value } => {
             CaptureValue::custom_function(local.id(), custom_function(plan, state, value))
@@ -598,11 +622,7 @@ fn list_capture(
             local: *local,
             item_type: value.type_id().item(),
         },
-        EvaluatedListCapture::ParameterList { local, value } => CaptureListValue::ParameterList {
-            local: *local,
-            item_type: value.type_id().item_type().item(),
-            len: state.parameter_list_list_len(value),
-        },
+
         EvaluatedListCapture::Int { local, value } => CaptureListValue::Int {
             local: *local,
             value: state
@@ -1775,18 +1795,20 @@ pub fn main() {
             ValueType::Function(Box::new(FunctionType::new(
                 Vec::new(),
                 ValueType::Tuple(vec![
-                    ValueType::List(Box::new(ValueType::Parameter(TypeParameterId(0)))),
+                    ValueType::List(Box::new(ValueType::Parameter(TypeParameterId::scoped(
+                        0, 0
+                    )))),
                     ValueType::List(Box::new(ValueType::List(Box::new(ValueType::Parameter(
-                        TypeParameterId(1),
+                        TypeParameterId::scoped(0, 1),
                     ))))),
                     ValueType::List(Box::new(ValueType::List(Box::new(ValueType::Int)))),
                     ValueType::Function(Box::new(FunctionType::new(
-                        vec![ValueType::Parameter(TypeParameterId(2))],
-                        ValueType::Parameter(TypeParameterId(2)),
+                        vec![ValueType::Parameter(TypeParameterId::scoped(0, 2))],
+                        ValueType::Parameter(TypeParameterId::scoped(0, 2)),
                     ))),
                     ValueType::Function(Box::new(FunctionType::new(
                         vec![ValueType::Int],
-                        ValueType::Parameter(TypeParameterId(3)),
+                        ValueType::Parameter(TypeParameterId::scoped(0, 3)),
                     ))),
                 ]),
             ))),
@@ -1821,16 +1843,16 @@ pub fn main() {
             generic.value_type(),
             ValueType::Tuple(vec![
                 ValueType::Function(Box::new(FunctionType::new(
-                    vec![ValueType::Parameter(TypeParameterId(0))],
-                    ValueType::Parameter(TypeParameterId(0)),
+                    vec![ValueType::Parameter(TypeParameterId::scoped(0, 0))],
+                    ValueType::Parameter(TypeParameterId::scoped(0, 0)),
                 ))),
                 ValueType::Function(Box::new(FunctionType::new(
-                    vec![ValueType::Parameter(TypeParameterId(1))],
-                    ValueType::Parameter(TypeParameterId(1)),
+                    vec![ValueType::Parameter(TypeParameterId::scoped(0, 1))],
+                    ValueType::Parameter(TypeParameterId::scoped(0, 1)),
                 ))),
                 ValueType::Function(Box::new(FunctionType::new(
-                    vec![ValueType::Parameter(TypeParameterId(2))],
-                    ValueType::Parameter(TypeParameterId(2)),
+                    vec![ValueType::Parameter(TypeParameterId::scoped(0, 2))],
+                    ValueType::Parameter(TypeParameterId::scoped(0, 2)),
                 ))),
             ]),
         );
@@ -1857,16 +1879,62 @@ pub fn main() {
             ValueType::Tuple(vec![
                 ValueType::Function(Box::new(FunctionType::new(
                     vec![ValueType::Int],
-                    ValueType::Parameter(TypeParameterId(0)),
+                    ValueType::Parameter(TypeParameterId::scoped(0, 0)),
                 ))),
                 ValueType::Function(Box::new(FunctionType::new(
                     Vec::new(),
                     ValueType::Function(Box::new(FunctionType::new(
                         vec![ValueType::Int],
-                        ValueType::Parameter(TypeParameterId(1)),
+                        ValueType::Parameter(TypeParameterId::scoped(0, 1)),
                     ))),
                 ))),
             ]),
+        );
+    }
+
+    #[test]
+    fn actual_empty_functions_keep_symbolic_and_never_captures_through_returning_calls() {
+        use crate::plan::{CustomType, CustomTypeName};
+
+        let actual = crate::runtime::run_src(
+            r#"
+pub type Empty
+fn identity(value: Empty) -> Empty { value }
+fn stop(_value: Int) -> Empty { panic as "not invoked" }
+fn provide() { stop }
+fn forward() { provide() }
+fn from_callback(read: fn() -> fn(Int) -> Empty) { read() }
+pub fn main() {
+  let symbolic = identity
+  let never = stop
+  let captured = fn() { #(symbolic, never) }
+  #(captured, forward(), from_callback(fn() { provide() }))
+}
+"#,
+        );
+        let empty = ValueType::Custom(CustomType::new(
+            CustomTypeName::new("geam".into(), "main".into(), "Empty".into()),
+            Vec::new(),
+        ));
+        let symbolic = ValueType::Function(Box::new(FunctionType::new(
+            vec![empty.clone()],
+            empty.clone(),
+        )));
+        let never = ValueType::Function(Box::new(FunctionType::new(vec![ValueType::Int], empty)));
+        assert_eq!(
+            actual.value_type(),
+            ValueType::Tuple(vec![
+                ValueType::Function(Box::new(FunctionType::new(
+                    Vec::new(),
+                    ValueType::Tuple(vec![symbolic, never.clone()])
+                ))),
+                never.clone(),
+                never,
+            ])
+        );
+        assert_eq!(
+            actual.inspect().to_string(),
+            "#(//fn() { ... }, //fn(a) { ... }, //fn(a) { ... })"
         );
     }
 

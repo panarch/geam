@@ -31,9 +31,10 @@ use crate::plan::execution::graph::{
     FloatListLocalId, FloatLocalId, FunctionFunctionLocal, FunctionListLocalId,
     GenericFunctionLocal, IntFunctionLocalId, IntListLocalId, IntLocalId, ListFunctionLocal,
     ListListLocalId, ListLocal, NeverFunctionLocal, NilFunctionLocalId, NilListLocalId, NilLocalId,
-    ParamLocal, ParameterListListLocalId, ParameterListLocalId, StringFunctionLocalId,
-    StringListLocalId, StringLocalId, TupleFunctionLocalId, TupleListLocalId, TupleLocalId,
-    UtfCodepointFunctionLocalId, UtfCodepointListLocalId, UtfCodepointLocalId,
+    ParamLocal, ParameterFunctionLocalId, ParameterListLocalId, ParameterLocalId,
+    StringFunctionLocalId, StringListLocalId, StringLocalId, TupleFunctionLocalId,
+    TupleListLocalId, TupleLocalId, UtfCodepointFunctionLocalId, UtfCodepointListLocalId,
+    UtfCodepointLocalId,
 };
 use crate::runtime::captures::Captures;
 use crate::runtime::evaluated::{
@@ -42,15 +43,16 @@ use crate::runtime::evaluated::{
     EvaluatedExternalFunction, EvaluatedExternalFunctionFunction, EvaluatedExternalListFunction,
     EvaluatedExternalValue, EvaluatedFloatFunction, EvaluatedFunctionFunction,
     EvaluatedFunctionValue, EvaluatedGenericFunction, EvaluatedIntFunction, EvaluatedListCapture,
-    EvaluatedListFunction, EvaluatedNeverFunction, EvaluatedNilFunction, EvaluatedStringFunction,
-    EvaluatedTupleFunction, EvaluatedUtfCodepointFunction, EvaluatedValue,
+    EvaluatedListFunction, EvaluatedNeverFunction, EvaluatedNilFunction,
+    EvaluatedParameterFunction, EvaluatedStringFunction, EvaluatedTupleFunction,
+    EvaluatedUtfCodepointFunction, EvaluatedValue,
 };
 use crate::runtime::integer::IntegerValue;
 use crate::runtime::state::list::{
     BitArrayListValueId, BoolListValueId, CustomListValueId, ExternalListValueId, FloatListValueId,
     FunctionListValueId, IntListValueId, ListListValueId, ListValueId, NilListValueId,
-    ParameterListListValueId, ParameterListValueId, StoredListValueId, StringListValueId,
-    TupleListValueId, UtfCodepointListValueId,
+    ParameterListValueId, StoredListValueId, StringListValueId, TupleListValueId,
+    UtfCodepointListValueId,
 };
 use num_bigint::BigInt;
 
@@ -61,6 +63,7 @@ struct BlockValues {
     strings: Vec<StringValue>,
     bit_arrays: Vec<EvaluatedBitArray>,
     utf_codepoints: Vec<char>,
+    parameters: Vec<crate::ParameterValue>,
     customs: Vec<EvaluatedCustomValue>,
     externals: Vec<EvaluatedExternalValue>,
     bools: Vec<bool>,
@@ -76,7 +79,6 @@ struct BlockValues {
     bool_lists: Vec<BoolListValueId>,
     nil_lists: Vec<NilListValueId>,
     tuple_lists: Vec<TupleListValueId>,
-    parameter_list_lists: Vec<ParameterListListValueId>,
     list_lists: Vec<ListListValueId>,
     function_lists: Vec<FunctionListValueId>,
     int_functions: Vec<EvaluatedIntFunction>,
@@ -84,13 +86,13 @@ struct BlockValues {
     string_functions: Vec<EvaluatedStringFunction>,
     bit_array_functions: Vec<EvaluatedBitArrayFunction>,
     utf_codepoint_functions: Vec<EvaluatedUtfCodepointFunction>,
+    parameter_functions: Vec<EvaluatedParameterFunction>,
     custom_functions: Vec<EvaluatedCustomFunction>,
     external_functions: Vec<EvaluatedExternalFunction>,
     bool_functions: Vec<EvaluatedBoolFunction>,
     nil_functions: Vec<EvaluatedNilFunction>,
     tuple_functions: Vec<EvaluatedTupleFunction>,
     parameter_list_functions: Vec<EvaluatedListFunction>,
-    parameter_list_list_functions: Vec<EvaluatedListFunction>,
     int_list_functions: Vec<EvaluatedListFunction>,
     string_list_functions: Vec<EvaluatedListFunction>,
     bit_array_list_functions: Vec<EvaluatedListFunction>,
@@ -134,6 +136,9 @@ impl BlockEnvironment {
             ParamLocal::UtfCodepoint(local) => {
                 EvaluatedValue::UtfCodepoint(self.utf_codepoint(*local))
             }
+            ParamLocal::Parameter { local, .. } => {
+                EvaluatedValue::Parameter(self.parameter(*local))
+            }
             ParamLocal::Custom(local) => EvaluatedValue::Custom(self.custom(*local)),
             ParamLocal::External(local) => EvaluatedValue::External(self.external(*local)),
             ParamLocal::Bool(local) => EvaluatedValue::Bool(self.bool(*local)),
@@ -157,6 +162,9 @@ impl BlockEnvironment {
             }
             ParamLocal::UtfCodepointFunction { local, .. } => {
                 EvaluatedValue::Function(self.utf_codepoint_function(*local).clone().into())
+            }
+            ParamLocal::ParameterFunction { local, .. } => {
+                EvaluatedValue::Function(self.parameter_function(*local).clone().into())
             }
             ParamLocal::GenericFunction(local) => {
                 EvaluatedValue::Function(self.generic_function(local).into())
@@ -236,8 +244,16 @@ impl BlockEnvironment {
         self.values.utf_codepoints.push(value);
     }
 
+    pub(super) fn push_parameter(&mut self, value: crate::ParameterValue) {
+        self.values.parameters.push(value);
+    }
+
     pub(super) fn utf_codepoint(&self, local: UtfCodepointLocalId) -> char {
         self.values.utf_codepoints[local.0]
+    }
+
+    pub(super) fn parameter(&self, local: ParameterLocalId) -> crate::ParameterValue {
+        self.values.parameters[local.0].clone()
     }
 
     pub(super) fn push_custom(&mut self, value: EvaluatedCustomValue) {
@@ -281,7 +297,7 @@ impl BlockEnvironment {
     }
 
     pub(super) fn parameter_list(&self, local: ParameterListLocalId) -> ParameterListValueId {
-        self.values.parameter_lists[local.0]
+        self.values.parameter_lists[local.0].clone()
     }
 
     pub(super) fn push_stored_list(&mut self, value: StoredListValueId) {
@@ -290,16 +306,21 @@ impl BlockEnvironment {
             StoredListValueId::String(value) => self.push_string_list(value),
             StoredListValueId::BitArray(value) => self.push_bit_array_list(value),
             StoredListValueId::UtfCodepoint(value) => self.push_utf_codepoint_list(value),
+            StoredListValueId::Parameter(value) => self.push_parameter_list(value),
             StoredListValueId::Custom(value) => self.push_custom_list(value),
             StoredListValueId::External(value) => self.push_external_list(value),
             StoredListValueId::Float(value) => self.push_float_list(value),
             StoredListValueId::Bool(value) => self.push_bool_list(value),
             StoredListValueId::Nil(value) => self.push_nil_list(value),
             StoredListValueId::Tuple(value) => self.push_tuple_list(value),
-            StoredListValueId::ParameterList(value) => self.push_parameter_list_list(value),
+
             StoredListValueId::List(value) => self.push_list_list(value),
             StoredListValueId::Function(value) => self.push_function_list(value),
         }
+    }
+
+    pub(super) fn parameter_list_ref(&self, local: ParameterListLocalId) -> &ParameterListValueId {
+        &self.values.parameter_lists[local.0]
     }
 
     pub(super) fn push_int_list(&mut self, value: IntListValueId) {
@@ -428,24 +449,6 @@ impl BlockEnvironment {
         &self.values.tuple_lists[local.0]
     }
 
-    pub(super) fn push_parameter_list_list(&mut self, value: ParameterListListValueId) {
-        self.values.parameter_list_lists.push(value);
-    }
-
-    pub(super) fn parameter_list_list(
-        &self,
-        local: ParameterListListLocalId,
-    ) -> ParameterListListValueId {
-        self.parameter_list_list_ref(local).clone()
-    }
-
-    pub(super) fn parameter_list_list_ref(
-        &self,
-        local: ParameterListListLocalId,
-    ) -> &ParameterListListValueId {
-        &self.values.parameter_list_lists[local.0]
-    }
-
     pub(super) fn push_list_list(&mut self, value: ListListValueId) {
         self.values.list_lists.push(value);
     }
@@ -473,7 +476,7 @@ impl BlockEnvironment {
     pub(in crate::runtime) fn list(&self, local: &ListLocal) -> ListValueId {
         match local {
             ListLocal::Parameter { local, .. } => self.parameter_list(*local).into(),
-            ListLocal::ParameterList { local, .. } => self.parameter_list_list(*local).into(),
+
             ListLocal::Int { local, .. } => self.int_list(*local).into(),
             ListLocal::String { local, .. } => self.string_list(*local).into(),
             ListLocal::BitArray { local, .. } => self.bit_array_list(*local).into(),
@@ -496,11 +499,11 @@ impl BlockEnvironment {
         use crate::plan::execution::graph::StoredListLocal as L;
 
         match local {
-            L::ParameterList(local) => self.parameter_list_list(*local).into(),
             L::Int(local) => self.int_list(*local).into(),
             L::String(local) => self.string_list(*local).into(),
             L::BitArray(local) => self.bit_array_list(*local).into(),
             L::UtfCodepoint(local) => self.utf_codepoint_list(*local).into(),
+            L::Parameter(local) => self.parameter_list(*local).into(),
             L::Custom(local) => self.custom_list(*local).into(),
             L::External(local) => self.external_list(*local).into(),
             L::Float(local) => self.float_list(*local).into(),
@@ -551,11 +554,22 @@ impl BlockEnvironment {
         self.values.utf_codepoint_functions.push(value);
     }
 
+    pub(super) fn push_parameter_function(&mut self, value: EvaluatedParameterFunction) {
+        self.values.parameter_functions.push(value);
+    }
+
     pub(super) fn utf_codepoint_function(
         &self,
         local: UtfCodepointFunctionLocalId,
     ) -> &EvaluatedUtfCodepointFunction {
         &self.values.utf_codepoint_functions[local.0]
+    }
+
+    pub(super) fn parameter_function(
+        &self,
+        local: ParameterFunctionLocalId,
+    ) -> &EvaluatedParameterFunction {
+        &self.values.parameter_functions[local.0]
     }
 
     pub(super) fn push_custom_function(&mut self, value: EvaluatedCustomFunction) {
@@ -606,9 +620,7 @@ impl BlockEnvironment {
             ListFunctionLocal::Parameter { local, .. } => {
                 self.values.parameter_list_functions[local.0].clone()
             }
-            ListFunctionLocal::ParameterList { local, .. } => {
-                self.values.parameter_list_list_functions[local.0].clone()
-            }
+
             ListFunctionLocal::Int { local, .. } => self.values.int_list_functions[local.0].clone(),
             ListFunctionLocal::String { local, .. } => {
                 self.values.string_list_functions[local.0].clone()
@@ -653,9 +665,7 @@ impl BlockEnvironment {
             ListFunctionLocal::Parameter { local, .. } => {
                 &self.values.parameter_list_functions[local.0]
             }
-            ListFunctionLocal::ParameterList { local, .. } => {
-                &self.values.parameter_list_list_functions[local.0]
-            }
+
             ListFunctionLocal::Int { local, .. } => &self.values.int_list_functions[local.0],
             ListFunctionLocal::String { local, .. } => &self.values.string_list_functions[local.0],
             ListFunctionLocal::BitArray { local, .. } => {
@@ -760,6 +770,7 @@ impl BlockEnvironment {
             F::String(value) => self.push_string_function(value),
             F::BitArray(value) => self.push_bit_array_function(value),
             F::UtfCodepoint(value) => self.push_utf_codepoint_function(value),
+            F::Parameter(value) => self.push_parameter_function(value),
             F::Custom(value) => self.push_custom_function(value),
             F::External(value) => self.push_external_function(value),
             F::Bool(value) => self.push_bool_function(value),
@@ -786,6 +797,7 @@ impl BlockEnvironment {
             L::String(local) => self.string_function(*local).clone().into(),
             L::BitArray(local) => self.bit_array_function(*local).clone().into(),
             L::UtfCodepoint(local) => self.utf_codepoint_function(*local).clone().into(),
+            L::Parameter(local) => self.parameter_function(*local).clone().into(),
             L::Custom(local) => self.custom_function(local).clone().into(),
             L::External(local) => self.external_function(local).clone().into(),
             L::Bool(local) => self.bool_function(*local).clone().into(),
@@ -842,6 +854,10 @@ impl RetainedValues {
         self.values.utf_codepoints.push(value);
     }
 
+    pub(in crate::runtime) fn push_parameter(&mut self, value: crate::ParameterValue) {
+        self.values.parameters.push(value);
+    }
+
     pub(in crate::runtime) fn push_custom(&mut self, value: EvaluatedCustomValue) {
         self.values.customs.push(value);
     }
@@ -878,6 +894,9 @@ impl RetainedValues {
                 EvaluatedCaptureKind::UtfCodepoint { value, .. } => {
                     self.values.utf_codepoints.push(*value)
                 }
+                EvaluatedCaptureKind::Parameter { value, .. } => {
+                    self.values.parameters.push(value.clone())
+                }
                 EvaluatedCaptureKind::Custom { value, .. } => {
                     self.values.customs.push(value.clone())
                 }
@@ -902,6 +921,9 @@ impl RetainedValues {
                 }
                 EvaluatedCaptureKind::UtfCodepointFunction { value, .. } => {
                     self.values.utf_codepoint_functions.push(value.clone())
+                }
+                EvaluatedCaptureKind::ParameterFunction { value, .. } => {
+                    self.values.parameter_functions.push(value.clone())
                 }
                 EvaluatedCaptureKind::CustomFunction { value, .. } => {
                     self.values.custom_functions.push(value.clone())
@@ -957,6 +979,9 @@ impl RetainedValues {
                 .values
                 .utf_codepoints
                 .push(environment.utf_codepoint(*local)),
+            ParamLocal::Parameter { local, .. } => {
+                self.values.parameters.push(environment.parameter(*local))
+            }
             ParamLocal::Custom(local) => self.values.customs.push(environment.custom(*local)),
             ParamLocal::External(local) => self.values.externals.push(environment.external(*local)),
             ParamLocal::Bool(local) => self.values.bools.push(environment.bool(*local)),
@@ -983,6 +1008,10 @@ impl RetainedValues {
                 .values
                 .utf_codepoint_functions
                 .push(environment.utf_codepoint_function(*local).clone()),
+            ParamLocal::ParameterFunction { local, .. } => self
+                .values
+                .parameter_functions
+                .push(environment.parameter_function(*local).clone()),
             ParamLocal::GenericFunction(local) => self
                 .values
                 .generic_functions
@@ -1039,11 +1068,9 @@ impl RetainedValues {
     fn push_list_capture(&mut self, value: &EvaluatedListCapture) {
         match value {
             EvaluatedListCapture::Parameter { value, .. } => {
-                self.values.parameter_lists.push(*value)
+                self.values.parameter_lists.push(value.clone())
             }
-            EvaluatedListCapture::ParameterList { value, .. } => {
-                self.values.parameter_list_lists.push(value.clone())
-            }
+
             EvaluatedListCapture::Int { value, .. } => self.values.int_lists.push(value.clone()),
             EvaluatedListCapture::String { value, .. } => {
                 self.values.string_lists.push(value.clone())
@@ -1159,10 +1186,7 @@ pub fn main() {
             ($column:ident, $value:expr) => {{
                 let original = $value;
                 environment.push_stored_list(original.clone().into());
-                assert_eq!(
-                    environment.values.$column.as_slice(),
-                    slice::from_ref(&original)
-                );
+                assert_eq!(environment.values.$column.last(), Some(&original));
             }};
         }
         project!(
@@ -1219,9 +1243,25 @@ pub fn main() {
             storage.function(plan.function_list_function_id(0).type_id(), Vec::new())
         );
         project!(
-            parameter_list_lists,
-            storage.parameter_list_list(plan.parameter_list_list_function_id(0).type_id(), 1)
+            list_lists,
+            storage.list(plan.list_list_function_id(1).type_id(), Vec::new())
         );
+    }
+
+    #[test]
+    fn projected_parameter_list_retains_its_binding_and_shared_sequence() {
+        use crate::plan::execution::runtime::RuntimeExecutionPlan;
+        use crate::runtime::NativeValues;
+
+        let plan = plan_src("pub fn main() -> List(a) { [] }");
+        let storage = RuntimeListStorage::default();
+        let type_id = plan.parameter_list_function_id(0).type_id();
+        let native = NativeValues::new(&storage, plan.value_metadata());
+        let payload = native.parameter(type_id.item, &native.string("detail".into()), false);
+        let list = storage.parameter(type_id, vec![payload]);
+        let mut environment = BlockEnvironment::from_retained(RetainedValues::empty());
+        environment.push_stored_list(list.clone().into());
+        assert_eq!(environment.values.parameter_lists, vec![list]);
     }
 
     #[test]

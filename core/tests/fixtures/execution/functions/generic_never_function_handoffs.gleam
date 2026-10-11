@@ -1,3 +1,5 @@
+pub type Empty
+
 pub type FunctionBox(value) {
   FunctionBox(function: fn(Int) -> value)
 }
@@ -6,7 +8,7 @@ pub type ValueBox(value) {
   ValueBox(value: value)
 }
 
-fn diverge(_value: Int) -> value {
+fn diverge(_value: Int) -> Empty {
   panic as "diverging function"
 }
 
@@ -16,7 +18,7 @@ fn provide_reference() {
   diverge
 }
 
-fn provide_closure() {
+fn provide_closure() -> fn(Int) -> Empty {
   fn(_value: Int) { panic as "diverging closure" }
 }
 
@@ -75,7 +77,7 @@ fn provide_from_block() {
 }
 
 fn transform_function(
-  function: fn(Int) -> value,
+  function: fn(Int) -> Empty,
   selector: Int,
   bool_selector: Bool,
   string_selector: String,
@@ -128,7 +130,7 @@ fn retain_value(value, count: Int) {
   }
 }
 
-fn generic_identity(value) {
+fn generic_identity(value: Empty) {
   value
 }
 

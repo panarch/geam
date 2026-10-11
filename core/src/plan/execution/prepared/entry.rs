@@ -96,7 +96,7 @@ mod tests {
 
     #[test]
     fn preparation_keeps_source_without_running_main_or_initializing_stores() {
-        let source = "pub fn main() { panic as \"not executed during preparation\" }";
+        let source = "pub type Never pub fn main() -> Never { panic as \"not executed during preparation\" }";
         let typed = crate::compile_typed_host_program(
             "app",
             "main",
@@ -188,7 +188,8 @@ mod tests {
         };
         let symbolic = r#"
 import host/function
-fn generic(_value) { 1 }
+pub type Never
+fn generic(_value: Never) { 1 }
 pub fn main() { function.accept(generic) }
 "#;
         let error = PreparedHostedEntry::try_from_module_plan(plan(symbolic))
@@ -201,7 +202,10 @@ pub fn main() { function.accept(generic) }
             error.reason(),
             &crate::HostSpecializationErrorReason::UninhabitedCallbackArguments {
                 callback: crate::FunctionType::new(
-                    vec![crate::ValueType::Parameter(crate::plan::TypeParameterId(0))],
+                    vec![crate::ValueType::Custom(crate::CustomType::new(
+                        crate::CustomTypeName::new("app".into(), "main".into(), "Never".into()),
+                        Vec::new(),
+                    ))],
                     crate::ValueType::Int,
                 ),
             }
@@ -243,7 +247,7 @@ pub fn main() { function.accept(fn(value: Int) { value + 1 }) }
                 .unwrap();
         assert_eq!(prepared.emit_rust(), r#"
 data::HostedEntryArtifact {
-    format: 30,
+    format: 31,
     program: data::ProgramTables {
         root: data::source::module_id(0),
         modules: data::Storage::Static(&[
@@ -261,6 +265,7 @@ data::HostedEntryArtifact {
                 string_functions: data::Storage::Static(&[]),
                 bit_array_functions: data::Storage::Static(&[]),
                 utf_codepoint_functions: data::Storage::Static(&[]),
+                parameter_functions: data::Storage::Static(&[]),
                 custom_functions: data::Storage::Static(&[]),
                 external_functions: data::Storage::Static(&[]),
                 bool_functions: data::Storage::Static(&[]),
@@ -310,7 +315,6 @@ data::HostedEntryArtifact {
                 bool_list_functions: data::Storage::Static(&[]),
                 nil_list_functions: data::Storage::Static(&[]),
                 tuple_list_functions: data::Storage::Static(&[]),
-                parameter_list_list_functions: data::Storage::Static(&[]),
                 list_list_functions: data::Storage::Static(&[]),
                 function_list_functions: data::Storage::Static(&[]),
             },
@@ -320,6 +324,7 @@ data::HostedEntryArtifact {
                 string_function_functions: data::Storage::Static(&[]),
                 bit_array_function_functions: data::Storage::Static(&[]),
                 utf_codepoint_function_functions: data::Storage::Static(&[]),
+                parameter_function_functions: data::Storage::Static(&[]),
                 custom_function_functions: data::Storage::Static(&[]),
                 external_function_functions: data::Storage::Static(&[]),
                 bool_function_functions: data::Storage::Static(&[]),
@@ -328,7 +333,6 @@ data::HostedEntryArtifact {
                 generic_function_functions: data::Storage::Static(&[]),
                 never_function_functions: data::Storage::Static(&[]),
                 parameter_list_function_functions: data::Storage::Static(&[]),
-                parameter_list_list_function_functions: data::Storage::Static(&[]),
                 int_list_function_functions: data::Storage::Static(&[]),
                 string_list_function_functions: data::Storage::Static(&[]),
                 bit_array_list_function_functions: data::Storage::Static(&[]),
@@ -355,7 +359,6 @@ data::HostedEntryArtifact {
             nils: data::Storage::Static(&[]),
             tuples: data::Storage::Static(&[]),
             parameter_lists: data::Storage::Static(&[]),
-            parameter_list_lists: data::Storage::Static(&[]),
             int_lists: data::Storage::Static(&[]),
             string_lists: data::Storage::Static(&[]),
             bit_array_lists: data::Storage::Static(&[]),
@@ -381,8 +384,8 @@ data::HostedEntryArtifact {
                 0..0,
                 0..0,
                 0..0,
-                0..1,
                 0..0,
+                0..1,
                 0..0,
                 0..0,
                 0..0,
@@ -440,6 +443,7 @@ data::HostedEntryArtifact {
             tuple_items: data::Storage::Static(&[]),
             function_items: data::Storage::Static(&[]),
             lifetimes: data::Storage::Static(&[]),
+            parameter_lifetimes: data::Storage::Static(&[]),
         },
         custom_types: data::type_::CustomTypeTable {
             types: data::Storage::Static(&[]),

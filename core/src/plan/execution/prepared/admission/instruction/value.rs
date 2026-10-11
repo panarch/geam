@@ -3,7 +3,7 @@ use super::{InstructionError, Instructions, bool_test, integer_pair, local_flow,
 use crate::plan::execution::function::ExecutionGraphProfile;
 use crate::plan::execution::graph::{
     BoolInstruction, FloatInstruction, IntInstruction, NilInstruction, ParamSlot,
-    StringInstruction, TupleInstruction, UtfCodepointInstruction,
+    ParameterInstruction, StringInstruction, TupleInstruction, UtfCodepointInstruction,
 };
 use crate::plan::execution::type_::{ValueShapeDescriptor, ValueType};
 
@@ -200,6 +200,39 @@ impl<'data, Graph: ExecutionGraphProfile> Instructions<'_, 'data, Graph> {
                 self.custom_field(source, *index, output, locals)
             }
             UtfCodepointInstruction::ListIndex { list, index: _ } => {
+                self.list_index(list, output, locals)
+            }
+        }
+    }
+
+    pub(super) fn parameter(
+        &self,
+        instruction: &ParameterInstruction,
+        output: &ParamSlot,
+        locals: &Locals<'data>,
+    ) -> Result<(), InstructionError> {
+        if !matches!(self.types.slot(output).map_err(InstructionError::Type)?.type_, ValueType::Parameter(p) if p.scope().is_some())
+        {
+            return Err(InstructionError::OutputType);
+        }
+        match instruction {
+            ParameterInstruction::Call {
+                function,
+                args,
+                site,
+            } => self.call(function, args, site, output, locals),
+            ParameterInstruction::FunctionCall {
+                function,
+                args,
+                site,
+            } => self.indirect(function, args, site, output, locals),
+            ParameterInstruction::TupleIndex { tuple, index } => {
+                self.tuple_index(tuple, *index, output, locals)
+            }
+            ParameterInstruction::CustomField { source, index } => {
+                self.custom_field(source, *index, output, locals)
+            }
+            ParameterInstruction::ListIndex { list, index: _ } => {
                 self.list_index(list, output, locals)
             }
         }
@@ -603,8 +636,8 @@ pub fn main() {
         let int_output = block.instructions()[0].value().unwrap().output();
         assert_eq!(int_output.local, ParamLocal::Int(IntLocalId(0)));
         use crate::plan::execution::graph::{
-            BoolInstruction, FloatInstruction, NilInstruction, StringInstruction, TupleInstruction,
-            TupleLocalId, UtfCodepointInstruction,
+            BoolInstruction, FloatInstruction, NilInstruction, ParameterInstruction,
+            StringInstruction, TupleInstruction, TupleLocalId, UtfCodepointInstruction,
         };
         for result in [
             context.float(&FloatInstruction::Value(0.0), int_output, &locals),
@@ -615,6 +648,14 @@ pub fn main() {
             ),
             context.bool(&BoolInstruction::Value(false), int_output, &locals),
             context.nil(&NilInstruction::Value, int_output, &locals),
+            context.parameter(
+                &ParameterInstruction::TupleIndex {
+                    tuple: TupleLocalId(0),
+                    index: 0,
+                },
+                int_output,
+                &locals,
+            ),
             context.utf_codepoint(
                 &UtfCodepointInstruction::TupleIndex {
                     tuple: TupleLocalId(0),

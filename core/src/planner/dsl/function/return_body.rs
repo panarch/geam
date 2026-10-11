@@ -271,15 +271,15 @@ mod tests {
         assert_eq!(
             FunctionReturn::from(list(
                 Vec::<Expr>::new(),
-                ValueType::Parameter(TypeParameterId(0)),
+                ValueType::Parameter(TypeParameterId::new(0)),
             ))
             .build(),
             ReturnExpr::generic_list_body(
-                TypeParameterId(0),
+                TypeParameterId::new(0),
                 GenericListReturn::expr(
                     crate::plan::ListExpr::from(list(
                         Vec::<Expr>::new(),
-                        ValueType::Parameter(TypeParameterId(0)),
+                        ValueType::Parameter(TypeParameterId::new(0)),
                     ))
                     .into_generic()
                     .expect("expression should be List(parameter)"),
@@ -380,7 +380,7 @@ mod tests {
             ),
         );
 
-        let parameter = TypeParameterId(0);
+        let parameter = TypeParameterId::new(0);
         let parameter_list_item = Box::new(ValueType::Parameter(parameter));
         assert_eq!(
             FunctionReturn::from(list(
@@ -528,7 +528,7 @@ mod tests {
             ),
         );
 
-        let generic_type = GenericFunctionType::new(Vec::new(), TypeParameterId(0));
+        let generic_type = GenericFunctionType::new(Vec::new(), TypeParameterId::new(0));
         let generic_shape = generic_type.shape();
         let generic_function = GenericFunctionExpr::reference(
             GenericFunctionReference::new(crate::plan::monomorphic_function_instantiation(

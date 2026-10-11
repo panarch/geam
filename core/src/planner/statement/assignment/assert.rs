@@ -352,8 +352,8 @@ pub fn main() {
 "#,
         ))
         .expect("the generic pattern must plan before its source panic executes");
-        let first = TypeParameterId(0);
-        let second = TypeParameterId(1);
+        let first = TypeParameterId::new(0);
+        let second = TypeParameterId::new(1);
         let fields = [
             AssertBinding::new(
                 ParamLocal::generic(GenericLocal::new(GenericLocalId(0), first)),
@@ -455,10 +455,10 @@ pub fn main() {
         assert_eq!(
             binding_types,
             vec![vec![
-                ValueType::Parameter(TypeParameterId(1)),
+                ValueType::Parameter(TypeParameterId::new(1)),
                 ValueType::List(Box::new(ValueType::Tuple(vec![
-                    ValueType::Parameter(TypeParameterId(0)),
-                    ValueType::Parameter(TypeParameterId(1)),
+                    ValueType::Parameter(TypeParameterId::new(0)),
+                    ValueType::Parameter(TypeParameterId::new(1)),
                 ]))),
             ]]
         );
@@ -1674,7 +1674,7 @@ pub fn main() {
                     reason: crate::planner::InvalidPatternShapeReason::TypeMismatch {
                         expected: ValueType::Int,
                         actual: ValueType::Tuple(vec![ValueType::List(Box::new(
-                            ValueType::Parameter(TypeParameterId(0)),
+                            ValueType::Parameter(TypeParameterId::new(0)),
                         ))]),
                     },
                 },

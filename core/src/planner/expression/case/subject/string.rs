@@ -1341,7 +1341,7 @@ fn return_value(value: String) {
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::CaseShape {
                     reason: InvalidCaseShapeReason::BranchAnnotatedTypeMismatch {
-                        expected: ValueType::Parameter(crate::plan::TypeParameterId(0)),
+                        expected: ValueType::Parameter(crate::plan::TypeParameterId::new(0)),
                         actual: ValueType::Int,
                     },
                 },

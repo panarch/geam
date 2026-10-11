@@ -1102,8 +1102,8 @@ mod tests {
         let generic_error = PlanError::InvalidTypedAst {
             reason: InvalidTypedAstReason::CaseShape {
                 reason: InvalidCaseShapeReason::BranchFamilyAssemblyMismatch {
-                    expected: ValueType::Parameter(TypeParameterId(1)),
-                    actual: ValueType::Parameter(TypeParameterId(0)),
+                    expected: ValueType::Parameter(TypeParameterId::new(1)),
+                    actual: ValueType::Parameter(TypeParameterId::new(0)),
                 },
             },
         };
@@ -1600,7 +1600,7 @@ mod tests {
 
     fn generic(parameter: usize, local: usize) -> GenericExpr {
         GenericExpr::local_get(
-            GenericLocal::new(GenericLocalId(local), TypeParameterId(parameter)),
+            GenericLocal::new(GenericLocalId(local), TypeParameterId::new(parameter)),
             "generic".into(),
         )
     }
@@ -1609,14 +1609,14 @@ mod tests {
         GenericFunctionExpr::local_get(
             GenericFunctionLocal::new(
                 GenericFunctionLocalId(local),
-                GenericFunctionType::new(vec![ValueShape::Int], TypeParameterId(parameter)),
+                GenericFunctionType::new(vec![ValueShape::Int], TypeParameterId::new(parameter)),
             ),
             "generic_function".into(),
         )
     }
 
     fn case_result_families(local: usize) -> Vec<Expr> {
-        let parameter = TypeParameterId(0);
+        let parameter = TypeParameterId::new(0);
         let custom = custom_type("Result");
         let external_shape = external_shape();
         let scalar_function = |return_: ValueType| FunctionType::new(Vec::new(), return_);

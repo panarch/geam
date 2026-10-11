@@ -573,7 +573,8 @@ pub fn failing() {
     }
 
     #[test]
-    fn general_native_function_values_preserve_sources_and_reject_symbolic_input_after_admission() {
+    fn general_native_function_values_preserve_sources_and_bound_parameter_inputs_after_admission()
+    {
         use super::NativeFunctionValue;
         use crate::host::{
             HostExecutionContext, HostFunctionValue, HostFunctionValueType, HostOwnedFunctionValue,
@@ -646,14 +647,19 @@ pub fn failing() {
             );
             Ok(call.finish(()))
         }
-        for (function, invocable) in [
-            ("fn(_) { let label = \"symbolic\" label }", false),
-            ("fn(value: Int) { echo value \"called\" }", true),
+        for (function, expected, echoes) in [
+            ("fn(_) { let label = \"generic\" label }", Ok("generic"), 0),
+            ("fn(value: Int) { echo value \"called\" }", Ok("called"), 1),
+            (
+                "fn(_: Empty) { \"unreachable\" }",
+                Err("native value does not match the registered callback input"),
+                0,
+            ),
         ] {
             let providers = HostProviderSet::from_providers([HostProviderModule::new("app", "main").unwrap()
                 .with_native_function::<GeneralProvider, (HostFunctionValueType<Arguments, crate::StringValue>,), (), Arguments, _>("capture", NativeRules::default(), capture).unwrap()]).unwrap();
             let source = format!(
-                "@external(erlang, \"native\", \"capture\") fn capture(function: fn(item) -> String) -> Nil\npub fn main() {{ capture({function}) }}"
+                "pub type Empty\n@external(erlang, \"native\", \"capture\") fn capture(function: fn(item) -> String) -> Nil\npub fn main() {{ capture({function}) }}"
             );
             let typed = crate::compile_typed_host_program(
                 "app",
@@ -672,7 +678,8 @@ pub fn failing() {
                 .unwrap();
             let mut module = bindings.seal().unwrap();
             let mut previous = None;
-            for serviced in 0..=2 {
+            let completion_steps = if expected.is_ok() { 2 } else { 1 };
+            for serviced in 0..=completion_steps {
                 let host = TestHost::default();
                 let (sender, mut receiver) = oneshot::channel();
                 let (release, finished) = oneshot::channel();
@@ -689,7 +696,7 @@ pub fn failing() {
                     );
                 assert!(host.poll(driver.as_mut()).is_pending());
                 let record = receiver.try_recv().unwrap().unwrap();
-                assert_eq!(record.typed.clone().callable().is_some(), invocable);
+                assert_eq!(record.typed.clone().callable().is_some(), expected.is_ok());
                 if let Some((execution, codec, origin)) = previous {
                     let mut foreign_scope = crate::host::execution::NativeScope;
                     let foreign = HostExecutionContext::<
@@ -726,13 +733,11 @@ pub fn failing() {
                 let mut result = invocation.as_mut().poll(&mut cx);
                 assert!(result.is_pending());
                 for _ in 0..serviced {
-                    if result.is_ready() {
-                        break;
-                    }
+                    assert!(result.is_pending());
                     assert!(host.poll(driver.as_mut()).is_pending());
                     result = invocation.as_mut().poll(&mut cx);
                 }
-                if serviced == 0 || (invocable && serviced == 1) {
+                if serviced < completion_steps {
                     assert!(result.is_pending());
                     drop(driver);
                     assert_eq!(
@@ -744,23 +749,15 @@ pub fn failing() {
                     );
                     assert!(echo.is_empty());
                 } else {
-                    if invocable {
-                        assert_eq!(
-                            result.map(|value| value.unwrap().as_string().unwrap().to_string()),
-                            Poll::Ready("called".to_owned())
-                        );
-                    } else {
-                        assert_eq!(
-                            result.map(|value| value.err().unwrap().to_string()),
-                            Poll::Ready(
-                                "native value does not match the registered callback input"
-                                    .to_owned()
-                            )
-                        );
-                    }
+                    assert_eq!(
+                        result.map(|value| value
+                            .map(|native| native.as_string().unwrap().to_string())
+                            .map_err(|error| error.to_string())),
+                        Poll::Ready(expected.map(str::to_owned).map_err(str::to_owned))
+                    );
                     release.send(()).unwrap();
                     host.block_on(driver).unwrap().try_into_value().unwrap();
-                    assert_eq!(echo.len(), usize::from(invocable));
+                    assert_eq!(echo.len(), echoes);
                     let closed = host.block_on(record.native.invoke(&context, record.input));
                     assert_eq!(
                         closed.err().unwrap().to_string(),

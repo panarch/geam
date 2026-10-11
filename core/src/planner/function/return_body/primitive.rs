@@ -772,7 +772,7 @@ mod tests {
 
     #[test]
     fn list_return_preserves_every_item_family() {
-        let parameter = TypeParameterId(0);
+        let parameter = TypeParameterId::new(0);
         assert_eq!(
             list_return(ListExpr::value(Vec::new(), ValueType::Parameter(parameter),)),
             ListReturn::expr(ListExpr::value(Vec::new(), ValueType::Parameter(parameter),)),

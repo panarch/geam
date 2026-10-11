@@ -29,6 +29,7 @@ pub struct CustomTypeDescriptor {
     pub type_: NominalTypeMetadata,
     pub native_visible: bool,
     pub lifetime: crate::host::HostValueLifetime,
+    pub parameter_lifetime: bool,
     pub constructor_count: usize,
     pub constructors: Table<CustomConstructorDescriptor>,
 }
@@ -145,6 +146,7 @@ impl CustomTypeDescriptor {
             type_: NominalTypeMetadata::from_custom(&type_),
             native_visible,
             lifetime: crate::host::HostValueLifetime::LoadedOwner,
+            parameter_lifetime: false,
             constructor_count,
             constructors: constructors.into(),
         }
@@ -247,6 +249,7 @@ impl Emit for CustomTypeDescriptor {
             type_,
             native_visible,
             lifetime,
+            parameter_lifetime,
             constructor_count,
             constructors,
         } = self;
@@ -256,6 +259,7 @@ impl Emit for CustomTypeDescriptor {
                 ("type_", type_),
                 ("native_visible", native_visible),
                 ("lifetime", lifetime),
+                ("parameter_lifetime", parameter_lifetime),
                 ("constructor_count", constructor_count),
                 ("constructors", constructors),
             ],

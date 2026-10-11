@@ -12,9 +12,9 @@ pub(crate) use instruction::{
     ExternalInstruction, ExternalInstructionRef, ExternalInstructionView, ExternalListInstruction,
     ExternalListInstructionView, FloatInstruction, FunctionCapture, FunctionInstruction,
     FunctionInstructionKind, FunctionTarget, Instruction, InstructionKind, IntInstruction,
-    ListInstruction, NilInstruction, ParameterListInstruction, ProfiledInstruction,
-    ProfiledInstructionKind, StringInstruction, TupleInstruction, TypedListInstruction,
-    UtfCodepointInstruction,
+    ListInstruction, NilInstruction, ParameterInstruction, ParameterListInstruction,
+    ProfiledInstruction, ProfiledInstructionKind, StringInstruction, TupleInstruction,
+    TypedListInstruction, UtfCodepointInstruction,
 };
 pub(crate) use terminator::{
     BitArrayBindingPattern, BitArrayPattern, BitArrayPatternSegment, BitArrayPatternSize,
@@ -177,6 +177,36 @@ mod explain_tests {
         );
 
         assert_explanation(source, expected);
+    }
+
+    #[test]
+    fn writes_direct_comparison_branch_and_both_return_blocks() {
+        assert_explanation(
+            "pub fn main() { case 42 < 100 { True -> 1 False -> 0 } }",
+            concat!(
+                "  entry b0 params=[] captures=[]\n",
+                "  block b0 params=[]\n",
+                "    branch_test bool.lt_int 42 100 true=b1() false=b2()\n",
+                "  block b1 params=[]\n",
+                "    %int#0:shape#0(Int) = int.value 1\n",
+                "    return %int#0\n",
+                "  block b2 params=[]\n",
+                "    %int#0:shape#0(Int) = int.value 0\n",
+                "    return %int#0\n",
+            ),
+        );
+    }
+
+    #[test]
+    fn writes_a_never_call_without_a_return_instruction() {
+        assert_explanation(
+            "pub type Empty fn stop() -> Empty { panic as \"stop\" } pub fn main() -> Int { let _: Empty = stop() 42 }",
+            concat!(
+                "  entry b0 params=[] captures=[]\n",
+                "  block b0 params=[]\n",
+                "    never_call never#0 args=[]\n",
+            ),
+        );
     }
 
     fn assert_explanation(source: &str, expected: &str) {

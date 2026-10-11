@@ -6,7 +6,7 @@ use super::specialization::{
 };
 use super::{LoweringContext, SpecializationOutcome};
 use crate::plan::execution::function::{
-    BitArrayFunctionId, BitArrayListFunctionId, BoolFunctionId, BoolListFunctionId,
+    self, BitArrayFunctionId, BitArrayListFunctionId, BoolFunctionId, BoolListFunctionId,
     CustomFunctionId, CustomListFunctionId, ExternalFunctionId, ExternalListFunctionId,
     FloatFunctionId, FloatListFunctionId, IntFunctionId, IntListFunctionId, LibraryListFunctionId,
     ListListFunctionId, NilFunctionId, NilListFunctionId, ProfiledCoreRuntimeFunctionId,
@@ -190,7 +190,7 @@ pub(super) fn invalid_callback(
 ) -> Option<crate::plan::FunctionType> {
     let mut pending: Vec<_> = callables.iter().collect();
     while let Some(callable) = pending.pop() {
-        let shape = callable_shape(&callable.type_, key.substitution());
+        let shape = callable_shape(callable.type_.clone(), key.substitution());
         if shape
             .arguments()
             .iter()
@@ -328,18 +328,20 @@ impl LibraryExternal for crate::plan::ExternalType {
         context: &mut LoweringContext,
     ) -> specialization::Representability<crate::plan::execution::LibraryCallableEntry<Self::Graph>>
     {
-        let shape = callable_shape(value, key.substitution());
+        let shape = callable_shape(value.function_type(), key.substitution());
         let family =
             function_lowering::function_function_table_family(&shape, &context.representations);
+        let substitution = key.substitution().clone();
         context
             .provisional_specialization(key, family)
             .map(
                 |specialization| crate::plan::execution::LibraryCallableEntry {
-                    function: function_lowering::invocable_function_function_id(
+                    function: library_function_function_id(
+                        value,
                         &shape,
+                        &substitution,
                         specialization.index,
-                        &mut context.types,
-                        &context.representations,
+                        context,
                     ),
                     type_: context.lower_concrete_function_type(&shape),
                 },
@@ -603,6 +605,160 @@ impl<Graph: ExecutionGraphProfile> SealedEntry<Graph> {
     }
 }
 
+fn library_function_function_id(
+    callable: &crate::plan::LibraryCallableType,
+    shape: &specialization::SpecializedFunctionShape,
+    substitution: &SpecializedTypeSubstitution,
+    index: usize,
+    context: &mut LoweringContext,
+) -> function::LibraryFunctionFunctionTarget {
+    use function::{
+        LibraryFunctionFunctionTarget as Target, ProfiledFunctionFunctionId as Function,
+    };
+
+    if !context.representations.is_inhabited(shape.return_()) {
+        return Target::Core(Function::Never(function::NeverFunctionFunctionId::new(
+            index,
+            context.types.generic_function_type(shape),
+        )));
+    }
+    let types = &mut context.types;
+    match callable.return_() {
+        LibraryValueType::Int => {
+            Target::Core(Function::Int(function::IntFunctionFunctionId(index)))
+        }
+        LibraryValueType::Float => {
+            Target::Core(Function::Float(function::FloatFunctionFunctionId(index)))
+        }
+        LibraryValueType::String => {
+            Target::Core(Function::String(function::StringFunctionFunctionId(index)))
+        }
+        LibraryValueType::BitArray => Target::Core(Function::BitArray(
+            function::BitArrayFunctionFunctionId(index),
+        )),
+        LibraryValueType::UtfCodepoint => Target::Core(Function::UtfCodepoint(
+            function::UtfCodepointFunctionFunctionId(index),
+        )),
+        LibraryValueType::Bool => {
+            Target::Core(Function::Bool(function::BoolFunctionFunctionId(index)))
+        }
+        LibraryValueType::Nil => {
+            Target::Core(Function::Nil(function::NilFunctionFunctionId(index)))
+        }
+        LibraryValueType::Tuple(_) => {
+            Target::Core(Function::Tuple(function::TupleFunctionFunctionId(index)))
+        }
+        LibraryValueType::Custom(type_) => {
+            let return_ = SpecializedCustomValueShape::instantiate(
+                &CustomValueShape::any(type_.clone()),
+                substitution,
+            );
+            Target::Core(Function::Custom(function::CustomFunctionFunctionId::new(
+                index,
+                types.custom_function_type(shape.arguments(), &return_),
+            )))
+        }
+        LibraryValueType::External(type_) => Target::External(
+            crate::plan::execution::graph::ExternalFunctionCallTarget::Function(
+                function::ExternalFunctionFunctionId::new(
+                    index,
+                    types
+                        .external_function_type(shape.arguments(), &type_.specialize(substitution)),
+                ),
+            ),
+        ),
+        LibraryValueType::Function(type_) => {
+            let return_ = callable_shape(type_.function_type(), substitution);
+            Target::Core(Function::Function(
+                function::FunctionFunctionFunctionId::new(
+                    index,
+                    types.function_function_type(shape.arguments(), &return_),
+                ),
+            ))
+        }
+        LibraryValueType::List(item) => library_list_function_function_id(
+            library_list_function_id(&**item, substitution, index, types),
+            types.function_type(shape),
+        ),
+    }
+}
+
+fn library_list_function_function_id(
+    list: LibraryListFunctionId,
+    type_: crate::plan::execution::type_::FunctionType,
+) -> function::LibraryFunctionFunctionTarget {
+    use function::{
+        LibraryFunctionFunctionTarget as Target, ProfiledFunctionFunctionId as Function,
+        ProfiledListFunctionFunctionId as List,
+    };
+    match list {
+        LibraryListFunctionId::Int(id) => Target::Core(Function::List(List::Int {
+            id: function::IntListFunctionFunctionId(id.index()),
+            type_,
+            list_type: id.type_id(),
+        })),
+        LibraryListFunctionId::String(id) => Target::Core(Function::List(List::String {
+            id: function::StringListFunctionFunctionId(id.index()),
+            type_,
+            list_type: id.type_id(),
+        })),
+        LibraryListFunctionId::BitArray(id) => Target::Core(Function::List(List::BitArray {
+            id: function::BitArrayListFunctionFunctionId(id.index()),
+            type_,
+            list_type: id.type_id(),
+        })),
+        LibraryListFunctionId::UtfCodepoint(id) => {
+            Target::Core(Function::List(List::UtfCodepoint {
+                id: function::UtfCodepointListFunctionFunctionId(id.index()),
+                type_,
+                list_type: id.type_id(),
+            }))
+        }
+        LibraryListFunctionId::Custom(id) => Target::Core(Function::List(List::Custom {
+            id: function::CustomListFunctionFunctionId(id.index()),
+            type_,
+            list_type: id.type_id(),
+        })),
+        LibraryListFunctionId::Float(id) => Target::Core(Function::List(List::Float {
+            id: function::FloatListFunctionFunctionId(id.index()),
+            type_,
+            list_type: id.type_id(),
+        })),
+        LibraryListFunctionId::Bool(id) => Target::Core(Function::List(List::Bool {
+            id: function::BoolListFunctionFunctionId(id.index()),
+            type_,
+            list_type: id.type_id(),
+        })),
+        LibraryListFunctionId::Nil(id) => Target::Core(Function::List(List::Nil {
+            id: function::NilListFunctionFunctionId(id.index()),
+            type_,
+            list_type: id.type_id(),
+        })),
+        LibraryListFunctionId::Tuple(id) => Target::Core(Function::List(List::Tuple {
+            id: function::TupleListFunctionFunctionId(id.index()),
+            type_,
+            list_type: id.type_id(),
+        })),
+        LibraryListFunctionId::List(id) => Target::Core(Function::List(List::List {
+            id: function::ListListFunctionFunctionId(id.index()),
+            type_,
+            list_type: id.type_id(),
+        })),
+        LibraryListFunctionId::Function(id) => Target::Core(Function::List(List::Function {
+            id: function::FunctionListFunctionFunctionId(id.index()),
+            type_,
+            list_type: id.type_id(),
+        })),
+        LibraryListFunctionId::External(id) => Target::External(
+            crate::plan::execution::graph::ExternalFunctionCallTarget::ListFunction {
+                id: function::ExternalListFunctionFunctionId(id.index()),
+                type_,
+                list_type: id.type_id(),
+            },
+        ),
+    }
+}
+
 fn library_list_function_id<External: LibraryExternal>(
     item: &LibraryValueType<External>,
     substitution: &SpecializedTypeSubstitution,
@@ -784,11 +940,11 @@ fn library_stored_shape<External: LibraryExternal>(
 }
 
 fn callable_shape(
-    type_: &crate::plan::FunctionType,
+    type_: crate::plan::FunctionType,
     substitution: &SpecializedTypeSubstitution,
 ) -> super::specialization::SpecializedFunctionShape {
     super::specialization::SpecializedFunctionShape::instantiate(
-        &crate::plan::FunctionShape::from_function_type(type_.clone()),
+        &crate::plan::FunctionShape::from_function_type(type_),
         substitution,
     )
 }
@@ -810,7 +966,7 @@ impl LoweringContext {
         key: &SpecializationKey,
         callable: &crate::plan::LibraryCallableSignature,
     ) -> crate::plan::execution::LibraryCallable {
-        let shape = callable_shape(&callable.type_, key.substitution());
+        let shape = callable_shape(callable.type_.clone(), key.substitution());
         crate::plan::execution::LibraryCallable {
             type_: self.lower_concrete_function_type(&shape),
             inputs: self.library_input_constructions(
@@ -852,7 +1008,7 @@ impl LoweringContext {
         match item {
             LibraryValueType::Function(type_) => lists.functions.push(
                 self.types
-                    .function_list_type(&callable_shape(type_, substitution)),
+                    .function_list_type(&callable_shape(type_.function_type(), substitution)),
             ),
             LibraryValueType::Int => lists.ints.push(self.types.int_list_type()),
             LibraryValueType::Float => lists.floats.push(self.types.float_list_type()),

@@ -1,3 +1,5 @@
+pub type Empty
+
 pub type CallableBox(input, output) {
   CallableBox(function: fn(input) -> output)
 }
@@ -18,20 +20,20 @@ fn identity(value: value) {
   value
 }
 
-fn int_function(_value) { 1 }
-fn float_function(_value) { 1.5 }
-fn string_function(_value) { "one" }
-fn bit_array_function(_value) { <<1>> }
-fn utf_codepoint_function(_value) -> UtfCodepoint {
+fn int_function(_value: Empty) { 1 }
+fn float_function(_value: Empty) { 1.5 }
+fn string_function(_value: Empty) { "one" }
+fn bit_array_function(_value: Empty) { <<1>> }
+fn utf_codepoint_function(_value: Empty) -> UtfCodepoint {
   let assert <<codepoint:utf8_codepoint>> = <<65>>
   codepoint
 }
-fn custom_function(_value) { ValueBox(value: Nil) }
-fn bool_function(_value) { True }
-fn nil_function(_value) { Nil }
-fn tuple_function(_value) { #(1, "one") }
-fn list_function(_value) { [1] }
-fn function_function(_value) { fn(value: Int) { value } }
+fn custom_function(_value: Empty) { ValueBox(value: Nil) }
+fn bool_function(_value: Empty) { True }
+fn nil_function(_value: Empty) { Nil }
+fn tuple_function(_value: Empty) { #(1, "one") }
+fn list_function(_value: Empty) { [1] }
+fn function_function(_value: Empty) { fn(value: Int) { value } }
 
 const int_function_constant = int_function
 const float_function_constant = float_function
@@ -46,12 +48,12 @@ const list_function_constant = list_function
 const function_function_constant = function_function
 
 fn exercise_int_function(
-  function: fn(input) -> Int,
+  function: fn(Empty) -> Int,
   bool_selector: Bool,
   int_selector: Int,
   string_selector: String,
   float_selector: Float,
-) -> fn(input) -> Int {
+) -> fn(Empty) -> Int {
   let local = function
   let from_list = case [local] {
     [first] -> first
@@ -91,12 +93,12 @@ fn exercise_int_function(
 }
 
 fn exercise_float_function(
-  function: fn(input) -> Float,
+  function: fn(Empty) -> Float,
   bool_selector: Bool,
   int_selector: Int,
   string_selector: String,
   float_selector: Float,
-) -> fn(input) -> Float {
+) -> fn(Empty) -> Float {
   let local = function
   let from_list = case [local] {
     [first] -> first
@@ -136,12 +138,12 @@ fn exercise_float_function(
 }
 
 fn exercise_string_function(
-  function: fn(input) -> String,
+  function: fn(Empty) -> String,
   bool_selector: Bool,
   int_selector: Int,
   string_selector: String,
   float_selector: Float,
-) -> fn(input) -> String {
+) -> fn(Empty) -> String {
   let local = function
   let from_list = case [local] {
     [first] -> first
@@ -181,12 +183,12 @@ fn exercise_string_function(
 }
 
 fn exercise_bit_array_function(
-  function: fn(input) -> BitArray,
+  function: fn(Empty) -> BitArray,
   bool_selector: Bool,
   int_selector: Int,
   string_selector: String,
   float_selector: Float,
-) -> fn(input) -> BitArray {
+) -> fn(Empty) -> BitArray {
   let local = function
   let from_list = case [local] {
     [first] -> first
@@ -226,12 +228,12 @@ fn exercise_bit_array_function(
 }
 
 fn exercise_utf_codepoint_function(
-  function: fn(input) -> UtfCodepoint,
+  function: fn(Empty) -> UtfCodepoint,
   bool_selector: Bool,
   int_selector: Int,
   string_selector: String,
   float_selector: Float,
-) -> fn(input) -> UtfCodepoint {
+) -> fn(Empty) -> UtfCodepoint {
   let local = function
   let from_list = case [local] {
     [first] -> first
@@ -271,12 +273,12 @@ fn exercise_utf_codepoint_function(
 }
 
 fn exercise_custom_function(
-  function: fn(input) -> ValueBox(Nil),
+  function: fn(Empty) -> ValueBox(Nil),
   bool_selector: Bool,
   int_selector: Int,
   string_selector: String,
   float_selector: Float,
-) -> fn(input) -> ValueBox(Nil) {
+) -> fn(Empty) -> ValueBox(Nil) {
   let local = function
   let from_list = case [local] {
     [first] -> first
@@ -316,12 +318,12 @@ fn exercise_custom_function(
 }
 
 fn exercise_bool_function(
-  function: fn(input) -> Bool,
+  function: fn(Empty) -> Bool,
   bool_selector: Bool,
   int_selector: Int,
   string_selector: String,
   float_selector: Float,
-) -> fn(input) -> Bool {
+) -> fn(Empty) -> Bool {
   let local = function
   let from_list = case [local] {
     [first] -> first
@@ -361,12 +363,12 @@ fn exercise_bool_function(
 }
 
 fn exercise_nil_function(
-  function: fn(input) -> Nil,
+  function: fn(Empty) -> Nil,
   bool_selector: Bool,
   int_selector: Int,
   string_selector: String,
   float_selector: Float,
-) -> fn(input) -> Nil {
+) -> fn(Empty) -> Nil {
   let local = function
   let from_list = case [local] {
     [first] -> first
@@ -406,12 +408,12 @@ fn exercise_nil_function(
 }
 
 fn exercise_tuple_function(
-  function: fn(input) -> #(Int, String),
+  function: fn(Empty) -> #(Int, String),
   bool_selector: Bool,
   int_selector: Int,
   string_selector: String,
   float_selector: Float,
-) -> fn(input) -> #(Int, String) {
+) -> fn(Empty) -> #(Int, String) {
   let local = function
   let from_list = case [local] {
     [first] -> first
@@ -451,12 +453,12 @@ fn exercise_tuple_function(
 }
 
 fn exercise_list_function(
-  function: fn(input) -> List(Int),
+  function: fn(Empty) -> List(Int),
   bool_selector: Bool,
   int_selector: Int,
   string_selector: String,
   float_selector: Float,
-) -> fn(input) -> List(Int) {
+) -> fn(Empty) -> List(Int) {
   let local = function
   let from_list = case [local] {
     [first] -> first
@@ -496,12 +498,12 @@ fn exercise_list_function(
 }
 
 fn exercise_function_function(
-  function: fn(input) -> fn(Int) -> Int,
+  function: fn(Empty) -> fn(Int) -> Int,
   bool_selector: Bool,
   int_selector: Int,
   string_selector: String,
   float_selector: Float,
-) -> fn(input) -> fn(Int) -> Int {
+) -> fn(Empty) -> fn(Int) -> Int {
   let local = function
   let from_list = case [local] {
     [first] -> first

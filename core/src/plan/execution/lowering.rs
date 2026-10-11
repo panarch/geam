@@ -8,7 +8,9 @@ mod plain;
 mod specialization;
 mod value_type;
 
-use super::type_::{CustomTypeTable, ExternalTypeTable, ListTypeTable, ValueShapeTable};
+use super::type_::{
+    CustomTypeTable, ExternalTypeTable, ListListTypeId, ListTypeTable, ValueShapeTable,
+};
 use crate::plan::ValueShape;
 use crate::plan::execution::function::ExecutionProfile;
 use specialization::{
@@ -180,6 +182,7 @@ struct LoweringContext {
     entry_templates: HashMap<crate::plan::FunctionTemplateId, local::FunctionEntryTemplate>,
     next_function_indices: HashMap<function::FunctionTableFamily, usize>,
     provisional_specializations: HashMap<SpecializationKey, ProvisionalSpecialization>,
+    parameter_scopes: HashMap<SpecializationKey, usize>,
     erased_specializations: HashSet<SpecializationKey>,
     pending: VecDeque<SpecializationKey>,
     substitution: SpecializedTypeSubstitution,
@@ -222,7 +225,8 @@ impl LoweringContext {
             provisional_specializations: HashMap::new(),
             erased_specializations,
             pending: VecDeque::new(),
-            substitution: SpecializedTypeSubstitution::empty(),
+            substitution: current_specialization.substitution().clone().with_scope(0),
+            parameter_scopes: HashMap::from([(current_specialization.clone(), 0)]),
             current_specialization,
             native_views: Vec::new(),
             native_view_shapes: Vec::new(),
@@ -237,10 +241,11 @@ impl LoweringContext {
     ) -> StoredTargetLocal {
         let (specialization, _) =
             SpecializationKey::from_instantiation(instantiation, &self.substitution);
+        let substitution = self.scoped_substitution(&specialization);
         let (index, shape) = self.entry_templates[&specialization.template()].capture_target(
             position,
             source_shape,
-            specialization.substitution(),
+            &substitution,
             &self.representations,
         );
         StoredTargetLocal { index, shape }
@@ -446,10 +451,7 @@ impl LoweringContext {
         self.types.tuple_list_type(item)
     }
 
-    fn specialized_list_list_type(
-        &mut self,
-        item: &SpecializedValueShape,
-    ) -> value_type::NestedListTypeId {
+    fn specialized_list_list_type(&mut self, item: &SpecializedValueShape) -> ListListTypeId {
         self.types.list_list_type(item)
     }
 
@@ -458,13 +460,6 @@ impl LoweringContext {
         parameter: crate::plan::TypeParameterId,
     ) -> super::type_::ParameterListTypeId {
         self.types.parameter_list_type(parameter)
-    }
-
-    fn parameter_list_list_type(
-        &mut self,
-        parameter: crate::plan::TypeParameterId,
-    ) -> super::type_::ParameterListListTypeId {
-        self.types.parameter_list_list_type(parameter)
     }
 
     fn stored_list_list_type(
@@ -541,8 +536,9 @@ impl LoweringContext {
         if self.erased_specializations.contains(&key) {
             specialization::Representability::Uninhabited
         } else {
+            let substitution = self.scoped_substitution(&key);
             let parameters = self.entry_templates[&key.template()]
-                .stored_parameters(key.substitution(), &self.representations);
+                .stored_parameters(&substitution, &self.representations);
             parameters
                 .map(|parameters| self.reserve_provisional_specialization(key, family, parameters))
         }
@@ -554,6 +550,7 @@ impl LoweringContext {
         family: function::FunctionTableFamily,
         parameters: Box<[specialization::StoredValueShape]>,
     ) -> ProvisionalSpecialization {
+        self.scoped_substitution(&key);
         match self.provisional_specializations.get(&key) {
             Some(specialization) => specialization.clone(),
             None => {
@@ -583,8 +580,12 @@ impl LoweringContext {
             .provisional_specializations
             .iter()
             .map(|(key, specialization)| {
+                let substitution = key
+                    .substitution()
+                    .clone()
+                    .with_scope(self.parameter_scopes[key]);
                 let (return_, captures) = self.entry_templates[&key.template()]
-                    .contract(key.substitution(), &self.representations);
+                    .contract(&substitution, &self.representations);
                 (
                     specialization.family,
                     specialization.index,
@@ -709,6 +710,17 @@ impl LoweringContext {
             function,
             function::FunctionTableFamily::UtfCodepoint,
             |index, _| super::function::UtfCodepointFunctionId(index),
+        )
+    }
+
+    fn parameter_function_id(
+        &mut self,
+        function: &crate::plan::FunctionInstantiation,
+    ) -> specialization::Representability<super::function::ParameterFunctionId> {
+        self.reserve_function_id(
+            function,
+            function::FunctionTableFamily::Parameter,
+            |index, _| super::function::ParameterFunctionId(index),
         )
     }
 
@@ -946,18 +958,6 @@ impl LoweringContext {
         )
     }
 
-    fn parameter_list_list_function_id(
-        &mut self,
-        function: &crate::plan::FunctionInstantiation,
-        type_id: super::type_::ParameterListListTypeId,
-    ) -> specialization::Representability<super::function::ParameterListListFunctionId> {
-        self.reserve_function_id(
-            function,
-            function::FunctionTableFamily::ParameterListList,
-            |index, _| super::function::ParameterListListFunctionId::new(index, type_id),
-        )
-    }
-
     fn function_list_function_id(
         &mut self,
         function: &crate::plan::FunctionInstantiation,
@@ -1041,6 +1041,17 @@ impl LoweringContext {
             function,
             function::FunctionTableFamily::UtfCodepointFunction,
             |index, _| super::function::UtfCodepointFunctionFunctionId(index),
+        )
+    }
+
+    fn parameter_function_function_id(
+        &mut self,
+        function: &crate::plan::FunctionInstantiation,
+    ) -> specialization::Representability<super::function::ParameterFunctionFunctionId> {
+        self.reserve_function_id(
+            function,
+            function::FunctionTableFamily::ParameterFunction,
+            |index, _| super::function::ParameterFunctionFunctionId(index),
         )
     }
 
@@ -1241,8 +1252,14 @@ impl LoweringContext {
     }
 
     fn begin(&mut self, key: &SpecializationKey) {
-        self.substitution = key.substitution().clone();
+        self.substitution = self.scoped_substitution(key);
         self.current_specialization = key.clone();
+    }
+
+    fn scoped_substitution(&mut self, key: &SpecializationKey) -> SpecializedTypeSubstitution {
+        let next = self.parameter_scopes.len();
+        let scope = *self.parameter_scopes.entry(key.clone()).or_insert(next);
+        key.substitution().clone().with_scope(scope)
     }
 
     fn specialization_index(&self, key: &SpecializationKey) -> usize {
@@ -1303,7 +1320,7 @@ pub(super) mod test_support {
                 crate::plan::IntExpr::value(0.into()),
             ),
         );
-        let parameter = TypeParameterId(0);
+        let parameter = TypeParameterId::new(0);
         let capture_local =
             crate::plan::GenericLocal::new(crate::plan::GenericLocalId(0), parameter);
         let captured_local =
@@ -1518,20 +1535,56 @@ mod tests {
     }
 
     #[test]
-    fn uninhabited_parameters_do_not_enter_the_specialization_queue() {
-        let mut context = super::test_support::lowering_context(Vec::new());
-        let generic = SpecializationKey::monomorphic(crate::plan::FunctionTemplateId::new(1));
-
+    fn bound_parameters_enter_the_queue_but_actual_never_arguments_do_not() {
+        use super::function::FunctionTableFamily;
+        use super::specialization::{SpecializedTypeSubstitution, StoredValueShape};
+        use crate::plan::{
+            CustomType, CustomTypeDefinition, CustomTypeName, CustomTypePublicity,
+            CustomValueShape, FunctionShape, FunctionTemplateId, FunctionTemplateSignature,
+            TypeParameterId, TypeScheme, ValueShape,
+        };
+        let never_name = CustomTypeName::new("geam".into(), "main".into(), "Never".into());
+        let mut context = super::test_support::lowering_context(vec![CustomTypeDefinition::new(
+            never_name.clone(),
+            CustomTypePublicity::Private,
+            false,
+            Vec::new(),
+            Vec::new(),
+        )]);
+        let generic = SpecializationKey::monomorphic(FunctionTemplateId::new(1));
         assert_eq!(
             context
-                .provisional_specialization(
-                    generic.clone(),
-                    super::function::FunctionTableFamily::Int,
-                )
-                .map(|_| ()),
-            Representability::Uninhabited,
+                .provisional_specialization(generic.clone(), FunctionTableFamily::Int)
+                .map(|entry| (entry.index, entry.parameters)),
+            Representability::Inhabited((
+                0,
+                vec![StoredValueShape::Parameter(TypeParameterId::scoped(1, 0))].into_boxed_slice()
+            )),
         );
-        assert!(!context.provisional_specializations.contains_key(&generic));
-        assert!(context.pending.is_empty());
+        assert!(context.provisional_specializations.contains_key(&generic));
+        assert_eq!(context.pending, VecDeque::from([generic]));
+        let signature = FunctionTemplateSignature::new(
+            FunctionTemplateId::new(1),
+            TypeScheme::new(1),
+            FunctionShape::new(
+                vec![ValueShape::Parameter(TypeParameterId::new(0))],
+                ValueShape::Int,
+            ),
+        );
+        let never = signature
+            .try_instantiate(vec![ValueShape::Custom(CustomValueShape::any(
+                CustomType::new(never_name, Vec::new()),
+            ))])
+            .unwrap();
+        let (never, _) =
+            SpecializationKey::from_instantiation(&never, &SpecializedTypeSubstitution::empty());
+        assert_eq!(
+            context
+                .provisional_specialization(never.clone(), FunctionTableFamily::Int)
+                .map(|_| ()),
+            Representability::Uninhabited
+        );
+        assert!(!context.provisional_specializations.contains_key(&never));
+        assert_eq!(context.pending.len(), 1);
     }
 }

@@ -52,6 +52,16 @@ fn decoder_sdk_runs_live_and_relocated_prepared() {
     );
 }
 
+#[test]
+fn native_generic_results_run_live_and_relocated_prepared() {
+    verify_consumer(
+        "tests/fixtures/native_generic_results",
+        "native-generic-results-embedding",
+        b"native generic results: payload, 42, InvalidPath\n",
+        2,
+    );
+}
+
 fn verify_consumer(fixture: &str, executable: &str, expected: &[u8], embedding_calls: usize) {
     let directory = tempfile::tempdir().unwrap();
     let root = fs::canonicalize(directory.path()).unwrap();

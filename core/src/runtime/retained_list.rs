@@ -2,9 +2,7 @@ use super::evaluated::{
     EvaluatedBitArray, EvaluatedCustomValue, EvaluatedExternalValue, EvaluatedFunctionValue,
     EvaluatedValue,
 };
-use super::state::list::{
-    ListSequence, ListSequenceIter, ListValueId, ParameterListValueId, StoredListValueId,
-};
+use super::state::list::{ListSequence, ListSequenceIter, ListValueId, StoredListValueId};
 use crate::StringValue;
 use crate::runtime::borrowed::{IntegerReadCell, SharedIntegerReads};
 use crate::runtime::integer::IntegerValue;
@@ -81,13 +79,12 @@ impl Iterator for RetainedListIter<'_> {
 }
 
 enum ListRead {
-    Empty,
     Nil(usize),
-    ParameterList(ParameterListValueId, usize),
     Int(ListSequence<IntegerValue, IntegerReadCell>),
     String(ListSequence<StringValue>),
     BitArray(ListSequence<EvaluatedBitArray>),
     UtfCodepoint(ListSequence<char>),
+    Parameter(ListSequence<crate::ParameterValue>),
     Custom(ListSequence<EvaluatedCustomValue>),
     External(ListSequence<EvaluatedExternalValue>),
     Float(ListSequence<f64>),
@@ -98,13 +95,12 @@ enum ListRead {
 }
 
 enum ListReadIter<'a> {
-    Empty,
     Nil(std::ops::Range<usize>),
-    ParameterList(ParameterListValueId, std::ops::Range<usize>),
     Int(ListSequenceIter<'a, IntegerValue, IntegerReadCell>),
     String(ListSequenceIter<'a, StringValue>),
     BitArray(ListSequenceIter<'a, EvaluatedBitArray>),
     UtfCodepoint(ListSequenceIter<'a, char>),
+    Parameter(ListSequenceIter<'a, crate::ParameterValue>),
     Custom(ListSequenceIter<'a, EvaluatedCustomValue>),
     External(ListSequenceIter<'a, EvaluatedExternalValue>),
     Float(ListSequenceIter<'a, f64>),
@@ -119,12 +115,9 @@ enum ListReadIter<'a> {
 impl ListRead {
     fn new(value: &ListValueId) -> Self {
         match value {
-            ListValueId::Parameter(_) => Self::Empty,
+            ListValueId::Parameter(value) => Self::Parameter(value.values().clone()),
             ListValueId::Nil(value) => Self::Nil(value.len()),
-            ListValueId::ParameterList(value) => Self::ParameterList(
-                ParameterListValueId::new(value.type_id().item_type()),
-                value.len(),
-            ),
+
             ListValueId::Int(value) => Self::Int(value.values().clone()),
             ListValueId::String(value) => Self::String(value.values().clone()),
             ListValueId::BitArray(value) => Self::BitArray(value.values().clone()),
@@ -141,12 +134,12 @@ impl ListRead {
 
     fn len(&self) -> usize {
         match self {
-            Self::Empty => 0,
-            Self::Nil(len) | Self::ParameterList(_, len) => *len,
+            Self::Nil(len) => *len,
             Self::Int(values) => values.len(),
             Self::String(values) => values.len(),
             Self::BitArray(values) => values.len(),
             Self::UtfCodepoint(values) => values.len(),
+            Self::Parameter(values) => values.len(),
             Self::Custom(values) => values.len(),
             Self::External(values) => values.len(),
             Self::Float(values) => values.len(),
@@ -159,17 +152,15 @@ impl ListRead {
 
     fn item(&self, index: usize) -> Option<EvaluatedValue> {
         match self {
-            Self::Empty => None,
             Self::Nil(len) => (index < *len).then_some(EvaluatedValue::Nil),
-            Self::ParameterList(value, len) => {
-                (index < *len).then_some(EvaluatedValue::ParameterList(*value))
-            }
+
             Self::Int(values) => values.get(index).cloned().map(EvaluatedValue::Int),
             Self::String(values) => values.get(index).cloned().map(EvaluatedValue::String),
             Self::BitArray(values) => values.get(index).cloned().map(EvaluatedValue::BitArray),
             Self::UtfCodepoint(values) => {
                 values.get(index).copied().map(EvaluatedValue::UtfCodepoint)
             }
+            Self::Parameter(values) => values.get(index).cloned().map(EvaluatedValue::Parameter),
             Self::Custom(values) => values.get(index).cloned().map(EvaluatedValue::Custom),
             Self::External(values) => values.get(index).cloned().map(EvaluatedValue::External),
             Self::Float(values) => values.get(index).copied().map(EvaluatedValue::Float),
@@ -182,15 +173,13 @@ impl ListRead {
 
     fn iter_prefix(&self, limit: usize) -> ListReadIter<'_> {
         match self {
-            Self::Empty => ListReadIter::Empty,
             Self::Nil(len) => ListReadIter::Nil(0..limit.min(*len)),
-            Self::ParameterList(value, len) => {
-                ListReadIter::ParameterList(*value, 0..limit.min(*len))
-            }
+
             Self::Int(values) => ListReadIter::Int(values.iter_prefix(limit)),
             Self::String(values) => ListReadIter::String(values.iter_prefix(limit)),
             Self::BitArray(values) => ListReadIter::BitArray(values.iter_prefix(limit)),
             Self::UtfCodepoint(values) => ListReadIter::UtfCodepoint(values.iter_prefix(limit)),
+            Self::Parameter(values) => ListReadIter::Parameter(values.iter_prefix(limit)),
             Self::Custom(values) => ListReadIter::Custom(values.iter_prefix(limit)),
             Self::External(values) => ListReadIter::External(values.iter_prefix(limit)),
             Self::Float(values) => ListReadIter::Float(values.iter_prefix(limit)),
@@ -207,15 +196,13 @@ impl Iterator for ListReadIter<'_> {
 
     fn next(&mut self) -> Option<Self::Item> {
         match self {
-            Self::Empty => None,
             Self::Nil(indices) => indices.next().map(|_| EvaluatedValue::Nil),
-            Self::ParameterList(value, indices) => indices
-                .next()
-                .map(|_| EvaluatedValue::ParameterList(*value)),
+
             Self::Int(values) => values.next().cloned().map(EvaluatedValue::Int),
             Self::String(values) => values.next().cloned().map(EvaluatedValue::String),
             Self::BitArray(values) => values.next().cloned().map(EvaluatedValue::BitArray),
             Self::UtfCodepoint(values) => values.next().copied().map(EvaluatedValue::UtfCodepoint),
+            Self::Parameter(values) => values.next().cloned().map(EvaluatedValue::Parameter),
             Self::Custom(values) => values.next().cloned().map(EvaluatedValue::Custom),
             Self::External(values) => values.next().cloned().map(EvaluatedValue::External),
             Self::Float(values) => values.next().copied().map(EvaluatedValue::Float),
@@ -316,7 +303,8 @@ pub fn run() {
   let callback = fn(value: Int) { value + 1 }
   check([callback, callback, callback], callback)
   check([], callback)
-  check([[], [], []], [])
+  let empty = []
+  check([empty, empty, empty], empty)
   check([], [])
   check_empty([])
 }

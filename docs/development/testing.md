@@ -894,6 +894,35 @@ relocated source-free binaries. Coverage adds `decoder_service` to its existing
 independent consumer matrix. Its fresh 100% line/full-region denominator is the
 fixture provider package, independently of production dependencies.
 
+## Native Generic Result Consumer
+
+The independent [native generic result fixture](../../tests/fixtures/native_generic_results)
+uses the public provider SDK to return new native payloads through unresolved
+source parameters. It covers ordinary generic retention, root and nested results,
+nonempty Lists, captures, tail calls, sync/resumable completion, and known concrete
+type mismatch. Its Mist 6.0.3 example retains the original `get_path_and_query`
+declaration and `result.replace_error(InvalidPath)` call; it is a small parser
+boundary example, not a complete Mist server.
+
+```sh
+cargo test --manifest-path tests/fixtures/native_generic_results/provider/Cargo.toml --locked
+cargo fmt --manifest-path tests/fixtures/native_generic_results/provider/Cargo.toml --all --check
+cargo clippy --manifest-path tests/fixtures/native_generic_results/provider/Cargo.toml --all-targets --locked -- -D warnings
+gleam format --check tests/fixtures/native_generic_results/project/src
+gleam format --check tests/fixtures/native_generic_results/embedding/gleam/src
+cargo test --package geam --test prepared_embedding --locked -- native_generic_results
+cargo llvm-cov clean --manifest-path tests/fixtures/native_generic_results/provider/Cargo.toml --workspace
+cargo llvm-cov --manifest-path tests/fixtures/native_generic_results/provider/Cargo.toml --no-report --locked
+cargo llvm-cov report --manifest-path tests/fixtures/native_generic_results/provider/Cargo.toml --package geam-native-generic-results-fixture --summary-only --fail-under-lines 100 --fail-under-regions 100
+```
+
+Workspace owns provider formatting/Clippy. Acceptance runs provider execution,
+Gleam formatting, and the live/prepared/standalone consumer, including repeatable
+generation and relocated binaries without source or tool access. Coverage's
+`native_generic_results` target requires fresh 100% line/full-region coverage of
+the independent fixture provider package; core owns the representation,
+restoration, capability, and lifetime tests and coverage.
+
 ## Benchmark Tooling
 
 The independently locked [`benchmarks/`](https://github.com/panarch/geam/tree/main/benchmarks) workspace

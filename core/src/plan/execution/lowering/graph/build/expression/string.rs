@@ -264,7 +264,7 @@ mod tests {
 
     #[test]
     fn string_lowering_preserves_each_terminal_source_outcome() {
-        let parameter = TypeParameterId(0);
+        let parameter = TypeParameterId::new(0);
         let expressions = [
             (StringExpr::value("value".into()), FlowOutcome::Value),
             (
@@ -285,8 +285,24 @@ mod tests {
                 FlowOutcome::Uninhabited,
             ),
         ];
-        let mut context =
-            crate::plan::execution::lowering::test_support::lowering_context(Vec::new());
+        let never_name =
+            crate::plan::CustomTypeName::new("geam".into(), "main".into(), "Never".into());
+        let mut context = crate::plan::execution::lowering::test_support::lowering_context({
+            let definitions = vec![crate::plan::CustomTypeDefinition::new(
+                never_name.clone(),
+                crate::plan::CustomTypePublicity::Private,
+                false,
+                Vec::new(),
+                Vec::new(),
+            )];
+            definitions
+        });
+        context.substitution = crate::plan::execution::lowering::specialization::SpecializedTypeSubstitution::instantiate(
+            &crate::plan::module::TypeSubstitution::from_arguments(vec![crate::plan::ValueShape::Custom(
+                crate::plan::CustomValueShape::new(never_name, Vec::new(), crate::plan::CustomConstructorRefinement::Any),
+            )]),
+            &crate::plan::execution::lowering::specialization::SpecializedTypeSubstitution::empty(),
+        ).with_scope(0);
         let (mut graph, cursor) =
             DraftGraphBuilder::<DraftValueRef, ()>::new(Vec::new(), Vec::new());
 

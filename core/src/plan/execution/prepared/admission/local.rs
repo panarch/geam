@@ -24,6 +24,7 @@ enum Family {
     StringFunction,
     BitArrayFunction,
     UtfCodepointFunction,
+    ParameterFunction,
     GenericFunction,
     NeverFunction,
     CustomFunction,
@@ -36,7 +37,6 @@ enum Family {
     BitArrayListFunction,
     UtfCodepointListFunction,
     ParameterListFunction,
-    ParameterListListFunction,
     CustomListFunction,
     ExternalListFunction,
     FloatListFunction,
@@ -59,13 +59,13 @@ enum Family {
     NilList,
     TupleList,
     ListList,
-    ParameterListList,
     FunctionList,
     Int,
     Float,
     String,
     BitArray,
     UtfCodepoint,
+    Parameter,
     Custom,
     External,
     Bool,
@@ -203,7 +203,6 @@ impl<'data> Locals<'data> {
                 | Family::NilList
                 | Family::TupleList
                 | Family::ListList
-                | Family::ParameterListList
                 | Family::FunctionList
         ) {
             return self.list(address).map(|list| list.slot);
@@ -253,6 +252,7 @@ impl Address {
             ParamLocal::String(id) => (*id).into(),
             ParamLocal::BitArray(id) => (*id).into(),
             ParamLocal::UtfCodepoint(id) => (*id).into(),
+            ParamLocal::Parameter { local: id, .. } => (*id).into(),
             ParamLocal::Bool(id) => (*id).into(),
             ParamLocal::Nil(id) => (*id).into(),
             ParamLocal::Custom(local) => local.id.into(),
@@ -260,7 +260,7 @@ impl Address {
             ParamLocal::Tuple { local, .. } => (*local).into(),
             ParamLocal::List(local) => match local {
                 graph::ListLocal::Parameter { local, .. } => (*local).into(),
-                graph::ListLocal::ParameterList { local, .. } => (*local).into(),
+
                 graph::ListLocal::Int { local, .. } => (*local).into(),
                 graph::ListLocal::String { local, .. } => (*local).into(),
                 graph::ListLocal::BitArray { local, .. } => (*local).into(),
@@ -279,6 +279,7 @@ impl Address {
             ParamLocal::StringFunction { local, .. } => (*local).into(),
             ParamLocal::BitArrayFunction { local, .. } => (*local).into(),
             ParamLocal::UtfCodepointFunction { local, .. } => (*local).into(),
+            ParamLocal::ParameterFunction { local, .. } => (*local).into(),
             ParamLocal::BoolFunction { local, .. } => (*local).into(),
             ParamLocal::NilFunction { local, .. } => (*local).into(),
             ParamLocal::TupleFunction { local, .. } => (*local).into(),
@@ -288,7 +289,7 @@ impl Address {
             ParamLocal::NeverFunction(local) => local.id.into(),
             ParamLocal::ListFunction(local) => match local {
                 graph::ListFunctionLocal::Parameter { local, .. } => (*local).into(),
-                graph::ListFunctionLocal::ParameterList { local, .. } => (*local).into(),
+
                 graph::ListFunctionLocal::Int { local, .. } => (*local).into(),
                 graph::ListFunctionLocal::String { local, .. } => (*local).into(),
                 graph::ListFunctionLocal::BitArray { local, .. } => (*local).into(),
@@ -350,6 +351,15 @@ impl From<graph::UtfCodepointFunctionLocalId> for Address {
     fn from(id: graph::UtfCodepointFunctionLocalId) -> Self {
         Self {
             family: Family::UtfCodepointFunction,
+            index: id.0,
+        }
+    }
+}
+
+impl From<graph::ParameterFunctionLocalId> for Address {
+    fn from(id: graph::ParameterFunctionLocalId) -> Self {
+        Self {
+            family: Family::ParameterFunction,
             index: id.0,
         }
     }
@@ -458,15 +468,6 @@ impl From<graph::ParameterListFunctionLocalId> for Address {
     fn from(id: graph::ParameterListFunctionLocalId) -> Self {
         Self {
             family: Family::ParameterListFunction,
-            index: id.0,
-        }
-    }
-}
-
-impl From<graph::ParameterListListFunctionLocalId> for Address {
-    fn from(id: graph::ParameterListListFunctionLocalId) -> Self {
-        Self {
-            family: Family::ParameterListListFunction,
             index: id.0,
         }
     }
@@ -670,15 +671,6 @@ impl From<graph::ListListLocalId> for Address {
     }
 }
 
-impl From<graph::ParameterListListLocalId> for Address {
-    fn from(id: graph::ParameterListListLocalId) -> Self {
-        Self {
-            family: Family::ParameterListList,
-            index: id.0,
-        }
-    }
-}
-
 impl From<graph::FunctionListLocalId> for Address {
     fn from(id: graph::FunctionListLocalId) -> Self {
         Self {
@@ -733,6 +725,15 @@ impl From<graph::UtfCodepointLocalId> for Address {
     }
 }
 
+impl From<graph::ParameterLocalId> for Address {
+    fn from(id: graph::ParameterLocalId) -> Self {
+        Self {
+            family: Family::Parameter,
+            index: id.0,
+        }
+    }
+}
+
 impl From<graph::CustomLocalId> for Address {
     fn from(id: graph::CustomLocalId) -> Self {
         Self {
@@ -778,6 +779,27 @@ impl From<graph::TupleLocalId> for Address {
     }
 }
 
+impl From<graph::StoredListLocal> for Address {
+    fn from(value: graph::StoredListLocal) -> Self {
+        match value {
+            graph::StoredListLocal::Parameter(id) => id.into(),
+
+            graph::StoredListLocal::Int(id) => id.into(),
+            graph::StoredListLocal::String(id) => id.into(),
+            graph::StoredListLocal::BitArray(id) => id.into(),
+            graph::StoredListLocal::UtfCodepoint(id) => id.into(),
+            graph::StoredListLocal::Custom(id) => id.into(),
+            graph::StoredListLocal::External(id) => id.into(),
+            graph::StoredListLocal::Float(id) => id.into(),
+            graph::StoredListLocal::Bool(id) => id.into(),
+            graph::StoredListLocal::Nil(id) => id.into(),
+            graph::StoredListLocal::Tuple(id) => id.into(),
+            graph::StoredListLocal::List(id) => id.into(),
+            graph::StoredListLocal::Function(id) => id.into(),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::{Address, LocalError, Locals, ParamLocal, ParamSlot, TypeError, Types, graph};
@@ -807,7 +829,6 @@ mod tests {
             graph::BitArrayListFunctionLocalId(0).into(),
             graph::UtfCodepointListFunctionLocalId(0).into(),
             graph::ParameterListFunctionLocalId(0).into(),
-            graph::ParameterListListFunctionLocalId(0).into(),
             graph::CustomListFunctionLocalId(0).into(),
             graph::ExternalListFunctionLocalId(0).into(),
             graph::FloatListFunctionLocalId(0).into(),
@@ -830,7 +851,6 @@ mod tests {
             graph::NilListLocalId(0).into(),
             graph::TupleListLocalId(0).into(),
             graph::ListListLocalId(0).into(),
-            graph::ParameterListListLocalId(0).into(),
             graph::FunctionListLocalId(0).into(),
             graph::IntLocalId(0).into(),
             graph::FloatLocalId(0).into(),
@@ -852,6 +872,7 @@ mod tests {
     #[test]
     fn checks_definition_order_operand_ownership_and_descriptor_agreement() {
         let lists = ListTypeTable {
+            parameter_lifetimes: crate::plan::execution::storage::Table::Static(&[false; 0]),
             lifetimes: Table::Static(&[]),
             types: Table::Static(&[]),
             tuple_items: Table::Static(&[]),

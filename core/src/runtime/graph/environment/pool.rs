@@ -63,6 +63,7 @@ impl BlockValues {
             strings,
             bit_arrays,
             utf_codepoints,
+            parameters,
             customs,
             externals,
             bools,
@@ -78,7 +79,6 @@ impl BlockValues {
             bool_lists,
             nil_lists,
             tuple_lists,
-            parameter_list_lists,
             list_lists,
             function_lists,
             int_functions,
@@ -86,13 +86,13 @@ impl BlockValues {
             string_functions,
             bit_array_functions,
             utf_codepoint_functions,
+            parameter_functions,
             custom_functions,
             external_functions,
             bool_functions,
             nil_functions,
             tuple_functions,
             parameter_list_functions,
-            parameter_list_list_functions,
             int_list_functions,
             string_list_functions,
             bit_array_list_functions,
@@ -285,7 +285,6 @@ mod tests {
             bool_lists,
             nil_lists,
             tuple_lists,
-            parameter_list_lists,
             list_lists,
             function_lists,
             int_functions,
@@ -299,7 +298,6 @@ mod tests {
             nil_functions,
             tuple_functions,
             parameter_list_functions,
-            parameter_list_list_functions,
             int_list_functions,
             string_list_functions,
             bit_array_list_functions,
@@ -576,8 +574,10 @@ pub fn main() {
     fn source_values_and_callables_are_cleared_from_every_plain_column() {
         let declarations = r#"
 pub type Box { Box(Int) }
-fn identity(value) { value }
-fn stop(_value: Int) -> a { panic }
+pub type Never
+fn identity(value: Never) { value }
+fn stop(_value: Int) -> Never { panic }
+fn parameter(_value: Int) -> a { panic }
 fn empty() -> List(a) { [] }
 fn nested_empty() -> List(List(a)) { [[]] }
 fn codepoint() {
@@ -619,12 +619,6 @@ fn callback() { integer }
             ("#(42, True)", |v| (v.tuples.len(), v.tuples.capacity())),
             ("empty()", |v| {
                 (v.parameter_lists.len(), v.parameter_lists.capacity())
-            }),
-            ("nested_empty()", |v| {
-                (
-                    v.parameter_list_lists.len(),
-                    v.parameter_list_lists.capacity(),
-                )
             }),
             ("[42]", |v| (v.int_lists.len(), v.int_lists.capacity())),
             ("[1.5]", |v| (v.float_lists.len(), v.float_lists.capacity())),
@@ -689,12 +683,6 @@ fn callback() { integer }
                 (
                     v.parameter_list_functions.len(),
                     v.parameter_list_functions.capacity(),
-                )
-            }),
-            ("nested_empty", |v| {
-                (
-                    v.parameter_list_list_functions.len(),
-                    v.parameter_list_list_functions.capacity(),
                 )
             }),
             ("integers", |v| {
@@ -763,6 +751,12 @@ fn callback() { integer }
                     v.core_function_functions.capacity(),
                 )
             }),
+            ("parameter", |v| {
+                (
+                    v.parameter_functions.len(),
+                    v.parameter_functions.capacity(),
+                )
+            }),
             ("identity", |v| {
                 (v.generic_functions.len(), v.generic_functions.capacity())
             }),
@@ -770,7 +764,7 @@ fn callback() { integer }
                 (v.never_functions.len(), v.never_functions.capacity())
             }),
         ];
-        assert_eq!(cases.len(), 46);
+        assert_eq!(cases.len(), 45);
         for (expression, column) in cases {
             let source = format!(
                 "{declarations}\npub fn main() {{ let value = {expression} let pair = #(value, 42) pair.1 }}"

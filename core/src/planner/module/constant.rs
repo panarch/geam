@@ -873,7 +873,7 @@ mod tests {
     fn reject_margin_constant_declared_shape_and_uninhabited_storage() {
         assert_eq!(
             ConstantStorageShape::try_from_shape(ValueShape::Parameter(
-                crate::plan::TypeParameterId(0),
+                crate::plan::TypeParameterId::new(0),
             )),
             None,
         );
@@ -912,7 +912,7 @@ mod tests {
 
     #[test]
     fn constant_storage_families_preserve_exact_list_item_partitions() {
-        let parameter = TypeParameterId(0);
+        let parameter = TypeParameterId::new(0);
         let custom = CustomValueShape::any(CustomType::new(
             CustomTypeName::new("geam".into(), "main".into(), "Boxed".into()),
             Vec::new(),
@@ -960,7 +960,7 @@ mod tests {
 
     #[test]
     fn constant_storage_families_preserve_function_return_partitions() {
-        let parameter = TypeParameterId(0);
+        let parameter = TypeParameterId::new(0);
         let custom = CustomValueShape::any(CustomType::new(
             CustomTypeName::new("geam".into(), "main".into(), "Boxed".into()),
             Vec::new(),

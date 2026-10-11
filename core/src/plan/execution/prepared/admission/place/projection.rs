@@ -4,8 +4,8 @@ use crate::plan::execution::graph::{
     BitArrayInstruction, BoolInstruction, CustomInstruction, ExternalInstructionRef,
     ExternalInstructionView, ExternalListInstructionView, FloatInstruction,
     FunctionInstructionKind, IntInstruction, ListInstruction, NilInstruction, ParamLocal,
-    ParameterListInstruction, ProfiledInstructionKind, StringInstruction, TupleInstruction,
-    TypedListInstruction, UtfCodepointInstruction,
+    ParameterInstruction, ParameterListInstruction, ProfiledInstructionKind, StringInstruction,
+    TupleInstruction, TypedListInstruction, UtfCodepointInstruction,
 };
 
 pub(in crate::plan::execution::prepared::admission) fn instruction<Graph: ExecutionGraphProfile>(
@@ -17,6 +17,7 @@ pub(in crate::plan::execution::prepared::admission) fn instruction<Graph: Execut
         ProfiledInstructionKind::String(value) => string(value),
         ProfiledInstructionKind::BitArray(value) => bit_array(value),
         ProfiledInstructionKind::UtfCodepoint(value) => utf_codepoint(value),
+        ProfiledInstructionKind::Parameter(value) => parameter(value),
         ProfiledInstructionKind::Custom(value) => custom(value),
         ProfiledInstructionKind::Bool(value) => bool(value),
         ProfiledInstructionKind::Nil(value) => nil(value),
@@ -133,6 +134,22 @@ fn utf_codepoint(value: &UtfCodepointInstruction) -> Option<(Address, Projection
     }
 }
 
+fn parameter(value: &ParameterInstruction) -> Option<(Address, Projection)> {
+    match value {
+        ParameterInstruction::TupleIndex { tuple, index } => {
+            Some(((*tuple).into(), Projection::Tuple(*index)))
+        }
+        ParameterInstruction::CustomField { source, index } => Some((
+            Address::of(&ParamLocal::Custom(*source)),
+            Projection::Custom(*index),
+        )),
+        ParameterInstruction::ListIndex { list, index } => {
+            Some(((*list).into(), Projection::List(*index)))
+        }
+        ParameterInstruction::Call { .. } | ParameterInstruction::FunctionCall { .. } => None,
+    }
+}
+
 fn custom(value: &CustomInstruction) -> Option<(Address, Projection)> {
     match value {
         CustomInstruction::TupleIndex { tuple, index } => {
@@ -234,7 +251,7 @@ fn function(value: &FunctionInstructionKind) -> Option<(Address, Projection)> {
 fn list(value: &ListInstruction) -> Option<(Address, Projection)> {
     match value {
         ListInstruction::Parameter(_, value) => parameter_list(value),
-        ListInstruction::ParameterList(_, value) => typed_list(value),
+
         ListInstruction::Int(_, value) => typed_list(value),
         ListInstruction::String(_, value) => typed_list(value),
         ListInstruction::BitArray(_, value) => typed_list(value),
@@ -261,7 +278,9 @@ fn parameter_list(value: &ParameterListInstruction) -> Option<(Address, Projecti
         ParameterListInstruction::ListIndex { list, index } => {
             Some(((*list).into(), Projection::List(*index)))
         }
-        ParameterListInstruction::Empty
+        ParameterListInstruction::Value(_)
+        | ParameterListInstruction::Spread { .. }
+        | ParameterListInstruction::DropFirst { .. }
         | ParameterListInstruction::Constant(..)
         | ParameterListInstruction::Call { .. }
         | ParameterListInstruction::FunctionCall { .. } => None,
@@ -320,17 +339,16 @@ mod tests {
         ExternalListInstruction, ExternalListLocalId, FloatInstruction, FloatListLocalId,
         FunctionInstructionKind, FunctionListLocalId, IntInstruction, IntListLocalId,
         ListInstruction, ListListLocalId, NilInstruction, NilListLocalId, ParameterListInstruction,
-        ParameterListListLocalId, ProfiledInstructionKind, StringInstruction, StringListLocalId,
-        TupleInstruction, TupleListLocalId, TupleLocalId, TypedListInstruction,
-        UtfCodepointInstruction, UtfCodepointListLocalId,
+        ProfiledInstructionKind, StringInstruction, StringListLocalId, TupleInstruction,
+        TupleListLocalId, TupleLocalId, TypedListInstruction, UtfCodepointInstruction,
+        UtfCodepointListLocalId,
     };
     use crate::plan::execution::storage::Table;
     use crate::plan::execution::type_::{
         BitArrayListTypeId, BoolListTypeId, CustomConstructorId, CustomListTypeId, CustomTypeId,
         CustomValueShape, CustomValueShapeId, ExternalListTypeId, ExternalTypeId, FloatListTypeId,
         FunctionListTypeId, IntListTypeId, ListListTypeId, ListTypeId, NilListTypeId,
-        ParameterListListTypeId, ParameterListTypeId, StringListTypeId, TupleListTypeId,
-        UtfCodepointListTypeId,
+        ParameterListTypeId, StringListTypeId, TupleListTypeId, UtfCodepointListTypeId,
     };
 
     #[test]
@@ -550,7 +568,7 @@ mod tests {
                 shape_id: CustomValueShapeId(5),
             },
         };
-        let parameter = ParameterListTypeId::new(ListTypeId(0), TypeParameterId(0));
+        let parameter = ParameterListTypeId::new(ListTypeId(0), TypeParameterId::new(0));
         let cases = [
             (
                 ListInstruction::Parameter(
@@ -572,48 +590,7 @@ mod tests {
             (
                 ListInstruction::Parameter(
                     parameter,
-                    ParameterListInstruction::ListIndex {
-                        list: ParameterListListLocalId(3),
-                        index: 2,
-                    },
-                ),
-                Some((ParameterListListLocalId(3).into(), Projection::List(2))),
-            ),
-            (
-                ListInstruction::Parameter(parameter, ParameterListInstruction::Empty),
-                None,
-            ),
-            (
-                ListInstruction::ParameterList(
-                    ParameterListListTypeId::new(ListTypeId(1), parameter),
-                    TypedListInstruction::TupleIndex {
-                        tuple: TupleLocalId(4),
-                        index: 2,
-                    },
-                ),
-                Some((TupleLocalId(4).into(), Projection::Tuple(2))),
-            ),
-            (
-                ListInstruction::ParameterList(
-                    ParameterListListTypeId::new(ListTypeId(1), parameter),
-                    TypedListInstruction::CustomField { source, index: 2 },
-                ),
-                Some((CustomLocalId(7).into(), Projection::Custom(2))),
-            ),
-            (
-                ListInstruction::ParameterList(
-                    ParameterListListTypeId::new(ListTypeId(1), parameter),
-                    TypedListInstruction::ListIndex {
-                        list: ListListLocalId(3),
-                        index: 2,
-                    },
-                ),
-                Some((ListListLocalId(3).into(), Projection::List(2))),
-            ),
-            (
-                ListInstruction::ParameterList(
-                    ParameterListListTypeId::new(ListTypeId(1), parameter),
-                    TypedListInstruction::Value(Table::Static(&[])),
+                    ParameterListInstruction::Value(Vec::new().into()),
                 ),
                 None,
             ),

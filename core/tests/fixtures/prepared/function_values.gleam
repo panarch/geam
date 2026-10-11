@@ -20,9 +20,16 @@ pub fn main() {
   let label = "retained"
   let function = fn(_) { label }
   let alias = keep(function)
-  let assert False = has_callback(alias)
+  let assert True = has_callback(alias)
   let assert Held(field) = keep_holder(Held(function))
-  alias == function && field == function
+  let symbolic = fn(_: Empty) { label }
+  let symbolic_alias = keep(symbolic)
+  let assert False = has_callback(symbolic_alias)
+  let assert Held(symbolic_field) = keep_holder(Held(symbolic))
+  alias == function
+  && field == function
+  && symbolic_alias == symbolic
+  && symbolic_field == symbolic
 }
 
 pub fn concrete() {
@@ -37,3 +44,5 @@ pub fn compound() {
   let alias = keep_compound(function)
   #(alias == function, alias([]) == [])
 }
+
+type Empty

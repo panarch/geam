@@ -22,12 +22,7 @@ impl<'data, Graph: ExecutionGraphProfile> Instructions<'_, 'data, Graph> {
                 self.list_output(ListStorageTypeId::Parameter(*id), output)?;
                 self.parameter_list(instruction, output, locals)
             }
-            ListInstruction::ParameterList(id, instruction) => self.typed_list(
-                ListStorageTypeId::ParameterList(*id),
-                instruction,
-                output,
-                locals,
-            ),
+
             ListInstruction::Int(id, instruction) => {
                 self.typed_list(ListStorageTypeId::Int(*id), instruction, output, locals)
             }
@@ -96,7 +91,23 @@ impl<'data, Graph: ExecutionGraphProfile> Instructions<'_, 'data, Graph> {
         locals: &Locals<'data>,
     ) -> Result<(), InstructionError> {
         match instruction {
-            ParameterListInstruction::Empty => Ok(()),
+            ParameterListInstruction::Value(elements)
+            | ParameterListInstruction::Spread { elements, .. } => {
+                let slot = self.types.slot(output).map_err(InstructionError::Type)?;
+                let ValueShapeDescriptor::List(item) = slot.descriptor else {
+                    return Err(InstructionError::OutputType);
+                };
+                for element in elements.iter() {
+                    local_flow(self.types, read(element, locals)?, *item, locals)?;
+                }
+                if let ParameterListInstruction::Spread { tail, .. } = instruction {
+                    local_flow(self.types, read(tail, locals)?, output.shape, locals)?;
+                }
+                Ok(())
+            }
+            ParameterListInstruction::DropFirst { list, .. } => {
+                local_flow(self.types, read(list, locals)?, output.shape, locals)
+            }
             ParameterListInstruction::Constant(id) => self.constant(*id, output),
             ParameterListInstruction::Call {
                 function,
@@ -253,6 +264,14 @@ pub fn main() {{
                         .unwrap(),
                 ),
             );
+            assert_eq!(
+                context.parameter_list(
+                    &ParameterListInstruction::Value(Vec::new().into()),
+                    &wrong_output,
+                    &Locals::default()
+                ),
+                Err(InstructionError::OutputType),
+            );
             for function in plan.program.functions.value_returns.nil_functions.iter() {
                 for block in function.body().block_graph().blocks() {
                     let mut locals = Locals::default();
@@ -275,7 +294,7 @@ pub fn main() {{
                             );
                             families.insert(match value {
                                 ListInstruction::Parameter(..) => "parameter",
-                                ListInstruction::ParameterList(..) => "parameter list",
+
                                 ListInstruction::Int(..) => "int",
                                 ListInstruction::String(..) => "string",
                                 ListInstruction::BitArray(..) => "bit array",
@@ -304,7 +323,6 @@ pub fn main() {{
             families,
             [
                 "parameter",
-                "parameter list",
                 "int",
                 "string",
                 "bit array",
@@ -516,6 +534,149 @@ pub fn main() {
                 .inspect()
                 .to_string(),
             "#([#(42, True)], [#(True, 42)])"
+        );
+    }
+
+    #[test]
+    fn parameter_list_construction_checks_elements_tails_and_output_shape() {
+        use super::super::super::local::{Address, LocalError};
+        use super::super::super::type_::TypeError;
+        use crate::plan::execution::graph::{ParameterListLocalId, ParameterLocalId};
+
+        let typed = crate::compile_typed_module(
+            "example", "src/example.gleam",
+            "fn prepend(value: a, other: b, tail: List(a), wrong: List(b)) { let pair = #(value, 42, other, wrong) [pair.0, ..tail] } pub fn main() { echo 42 prepend }",
+        ).unwrap();
+        let plan = crate::ExecutionPlan::from_module_plan(crate::plan_module(typed).unwrap());
+        let common = &plan.program.common;
+        let types = Types::admit(
+            &common.list_types,
+            &common.custom_types,
+            &common.external_types,
+            &common.value_shapes,
+        )
+        .unwrap();
+        let catalog =
+            Catalog::admit(&common.function_parameters, &plan.program.functions, &types).unwrap();
+        let sources = Sources::admit(common.root, &common.modules).unwrap();
+        let context = Instructions {
+            types: &types,
+            catalog: &catalog,
+            sources: &sources,
+            constants: &common.constants,
+        };
+        let block = plan.program.functions.list_returns.parameter_list_functions[0]
+            .1
+            .body()
+            .block_graph()
+            .blocks()
+            .next()
+            .unwrap();
+        let mut locals = Locals::default();
+        for input in block.params() {
+            locals.define(input, &types).unwrap();
+        }
+        for entry in block.instructions() {
+            assert_eq!(context.check(entry, &locals), Ok(()));
+            locals
+                .define(&entry.value().unwrap().output, &types)
+                .unwrap();
+        }
+        let (output, storage, instruction) = block
+            .instructions()
+            .iter()
+            .find_map(|entry| {
+                let value = entry.value().unwrap();
+                match &value.kind {
+                    ProfiledInstructionKind::List(ListInstruction::Parameter(
+                        storage,
+                        instruction,
+                    )) => Some((&value.output, *storage, instruction)),
+                    _ => None,
+                }
+            })
+            .unwrap();
+        assert_eq!(context.parameter_list(instruction, output, &locals), Ok(()));
+        let mut missing_output = output.clone();
+        missing_output.shape = ValueShapeId(999);
+        assert_eq!(
+            context.parameter_list(instruction, &missing_output, &locals),
+            Err(InstructionError::Type(TypeError::MissingShape {
+                index: 999
+            })),
+        );
+        assert_eq!(
+            context.parameter_list(
+                &ParameterListInstruction::DropFirst {
+                    list: ParameterListLocalId(0),
+                    count: 1,
+                },
+                output,
+                &locals,
+            ),
+            Ok(())
+        );
+        for instruction in [
+            ParameterListInstruction::Value(vec![ParameterLocalId(1)].into()),
+            ParameterListInstruction::Spread {
+                elements: vec![].into(),
+                tail: ParameterListLocalId(1),
+            },
+            ParameterListInstruction::DropFirst {
+                list: ParameterListLocalId(1),
+                count: 1,
+            },
+        ] {
+            assert_eq!(
+                context.parameter_list(&instruction, output, &locals),
+                Err(InstructionError::Flow)
+            );
+        }
+        let tail = ParameterListLocalId(99);
+        for (instruction, address) in [
+            (
+                ParameterListInstruction::Value(vec![ParameterLocalId(99)].into()),
+                Address::from(ParameterLocalId(99)),
+            ),
+            (
+                ParameterListInstruction::Spread {
+                    elements: vec![].into(),
+                    tail,
+                },
+                Address::from(tail),
+            ),
+            (
+                ParameterListInstruction::DropFirst {
+                    list: tail,
+                    count: 1,
+                },
+                Address::from(tail),
+            ),
+        ] {
+            assert_eq!(
+                context.list(
+                    &ListInstruction::Parameter(storage, instruction),
+                    output,
+                    &locals
+                ),
+                Err(InstructionError::Local(LocalError::Missing(address)))
+            );
+        }
+        let int_shape = ValueShapeId(
+            common
+                .value_shapes
+                .shape_types
+                .iter()
+                .position(|type_| type_ == &ValueType::Int)
+                .unwrap(),
+        );
+        assert_eq!(
+            context.parameter_list(
+                &ParameterListInstruction::Value(vec![].into()),
+                &ParamSlot::new(ParamLocal::Int(IntLocalId(0)), int_shape),
+                &locals,
+            ),
+            Err(InstructionError::OutputType)
         );
     }
 

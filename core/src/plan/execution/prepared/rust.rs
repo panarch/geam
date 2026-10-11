@@ -286,7 +286,14 @@ impl Emit for num_bigint::Sign {
 
 impl Emit for crate::plan::TypeParameterId {
     fn emit(&self, output: &mut Rust) {
-        output.call("type_::parameter_id", &[&self.index()]);
+        match self.scope() {
+            None => output.call("type_::parameter_id", &[&self.index()]),
+            Some(scope) => {
+                output.output.push_str("const { ");
+                output.call("type_::scoped_parameter_id", &[&scope, &self.index()]);
+                output.output.push_str(" }");
+            }
+        }
     }
 }
 

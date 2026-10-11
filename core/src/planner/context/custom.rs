@@ -2510,7 +2510,7 @@ mod tests {
                     reason: Box::new(InvalidCustomTypeReason::FieldType {
                         index: 0,
                         expected: ValueType::Int,
-                        actual: ValueType::Parameter(TypeParameterId(0)),
+                        actual: ValueType::Parameter(TypeParameterId::new(0)),
                     }),
                 },
             }),
@@ -2553,7 +2553,7 @@ mod tests {
                     module: "main".into(),
                     name: "Invalid".into(),
                     reason: Box::new(InvalidCustomTypeReason::ConstructorType {
-                        actual: ValueType::Parameter(TypeParameterId(0)),
+                        actual: ValueType::Parameter(TypeParameterId::new(0)),
                     }),
                 },
             }),

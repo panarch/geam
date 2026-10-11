@@ -194,6 +194,11 @@ macro_rules! with_column {
                 $(let $destination = &mut ($target).utf_codepoints;)?
                 $body
             }
+            StorageFamily::Parameter => {
+                let $column = &mut ($values).parameters;
+                $(let $destination = &mut ($target).parameters;)?
+                $body
+            }
             StorageFamily::Custom => {
                 let $column = &mut ($values).customs;
                 $(let $destination = &mut ($target).customs;)?
@@ -269,11 +274,7 @@ macro_rules! with_column {
                 $(let $destination = &mut ($target).tuple_lists;)?
                 $body
             }
-            StorageFamily::ParameterListList => {
-                let $column = &mut ($values).parameter_list_lists;
-                $(let $destination = &mut ($target).parameter_list_lists;)?
-                $body
-            }
+
             StorageFamily::ListList => {
                 let $column = &mut ($values).list_lists;
                 $(let $destination = &mut ($target).list_lists;)?
@@ -309,6 +310,11 @@ macro_rules! with_column {
                 $(let $destination = &mut ($target).utf_codepoint_functions;)?
                 $body
             }
+            StorageFamily::ParameterFunction => {
+                let $column = &mut ($values).parameter_functions;
+                $(let $destination = &mut ($target).parameter_functions;)?
+                $body
+            }
             StorageFamily::CustomFunction => {
                 let $column = &mut ($values).custom_functions;
                 $(let $destination = &mut ($target).custom_functions;)?
@@ -339,11 +345,7 @@ macro_rules! with_column {
                 $(let $destination = &mut ($target).parameter_list_functions;)?
                 $body
             }
-            StorageFamily::ParameterListListFunction => {
-                let $column = &mut ($values).parameter_list_list_functions;
-                $(let $destination = &mut ($target).parameter_list_list_functions;)?
-                $body
-            }
+
             StorageFamily::IntListFunction => {
                 let $column = &mut ($values).int_list_functions;
                 $(let $destination = &mut ($target).int_list_functions;)?
@@ -690,7 +692,7 @@ mod tests {
     #[test]
     fn sparse_never_functions_keep_identity_without_invocation_and_release_empty_capacity() {
         let plan = crate::runtime::plan_src(
-            "fn stop(_value: Int) -> a { panic } pub fn main() { #(stop) }",
+            "pub type Never fn stop(_value: Int) -> Never { panic } pub fn main() { #(stop) }",
         );
         let mut echo = Vec::new();
         let mut state = RuntimeState::new(&mut echo);
@@ -739,8 +741,8 @@ mod tests {
         use crate::host::ExternalTestProfile;
         use crate::plan::execution::function::{ListFunctionId, RuntimeListFunctionId};
         use crate::plan::execution::graph::{
-            ExternalListFunctionLocalId, ListFunctionLocal, ParameterListFunctionLocalId,
-            ParameterListListFunctionLocalId,
+            ExternalListFunctionLocalId, ListFunctionLocal, ListListFunctionLocalId,
+            ParameterListFunctionLocalId,
         };
         use crate::plan::execution::type_::{FunctionType, ValueType};
         use crate::runtime::evaluated::EvaluatedListFunction;
@@ -756,7 +758,7 @@ mod tests {
         let empty = crate::runtime::plan_src("pub fn main() { [] }");
         let nested = crate::runtime::plan_src("pub fn main() { [[]] }");
         let parameter = empty.parameter_list_function_id(0);
-        let parameter_list = nested.parameter_list_list_function_id(0);
+        let parameter_list = nested.list_list_function_id(0);
         let provider = HostProviderModule::<ExternalTestProfile>::new("application", "main")
             .unwrap()
             .with_external_type::<RuntimeCounterProvider, RuntimeCounterSchema>()
@@ -806,10 +808,10 @@ pub fn main() -> List(Counter) { [] }
                 parameter_type,
             ),
             (
-                StorageFamily::ParameterListListFunction,
-                RuntimeListFunctionId::Core(ListFunctionId::ParameterList(parameter_list)),
-                ListFunctionLocal::ParameterList {
-                    local: ParameterListListFunctionLocalId(0),
+                StorageFamily::ListListFunction,
+                RuntimeListFunctionId::Core(ListFunctionId::List(parameter_list)),
+                ListFunctionLocal::List {
+                    local: ListListFunctionLocalId(0),
                     type_: nested_type.clone(),
                     list_type: parameter_list.type_id(),
                 },
@@ -1312,6 +1314,7 @@ pub fn main() {
                 strings,
                 bit_arrays,
                 utf_codepoints,
+                parameters,
                 customs,
                 externals,
                 bools,
@@ -1327,7 +1330,6 @@ pub fn main() {
                 bool_lists,
                 nil_lists,
                 tuple_lists,
-                parameter_list_lists,
                 list_lists,
                 function_lists,
                 int_functions,
@@ -1335,13 +1337,13 @@ pub fn main() {
                 string_functions,
                 bit_array_functions,
                 utf_codepoint_functions,
+                parameter_functions,
                 custom_functions,
                 external_functions,
                 bool_functions,
                 nil_functions,
                 tuple_functions,
                 parameter_list_functions,
-                parameter_list_list_functions,
                 int_list_functions,
                 string_list_functions,
                 bit_array_list_functions,

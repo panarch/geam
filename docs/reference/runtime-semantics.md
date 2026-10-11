@@ -343,23 +343,26 @@ host targets. `HostedModulePlan` owns the linked generic program;
 `HostedExecution::try_from_module_plan` seals only entry-reachable
 specializations. An inhabited result keeps the ordinary Value target. When the
 existing inhabitation rules determine that no successful result can be stored,
-the same registration seals into a Never target. This applies to generic
-wrappers and callback-free producers, including a bare type parameter or an
-uninhabited tuple/custom result. Inhabited containers, such as `List(a)` or a
-custom type with an empty alternative, keep the Value path. Sealing and taking
-a function reference do not execute its native body; calling it does.
+the same registration seals into a Never target, including an actually
+uninhabited tuple/custom result. An unresolved parameter with a sealed execution
+binding has opaque parameter storage; it is not uninhabited merely because its
+concrete source type remains unknown. Inhabited containers, such as `List(a)` or
+a custom type with an empty alternative, also keep the Value path. Sealing and
+taking a function reference do not execute its native body; calling it does.
 
-A function exposed through `HostFunctionType` must still have inhabited runtime
-argument storage. If its argument family remains symbolic, sealing rejects
-that invocation capability. The same function value may cross an opaque
-`HostTypeParameter` position for pass-through or equality because that position
-does not expose invocation.
+A function exposed through `HostFunctionType` must still have sealed, inhabited
+runtime argument storage and its declared invocation capability. A bound
+parameter supplies opaque storage without granting concrete structural access.
+An actually uninhabited or unsealed argument cannot acquire invocation
+capability. The same function value may cross an opaque `HostTypeParameter`
+position for pass-through or equality; that position does not expose invocation.
 
-A non-returning provider with a concrete result context enters that concrete
-function family; an unresolved result enters the Never family. Neither path
-fabricates a success value. Runtime performs no `Value` downcast, signature
-lookup, generic type lookup, callback shape validation, symbolic callback
-dispatch, or fallback selection.
+A non-returning provider uses the execution family selected for its resolved
+result, including concrete or bound parameter storage. An actually uninhabited
+result remains in the Never family. The presence of storage does not permit a
+fabricated success value. Runtime uses sealed targets rather than a `Value`
+downcast, signature lookup, generic type lookup, unsealed callback dispatch, or
+fallback selection.
 
 The failure-only specialization executes the registered body and permits its
 original source/host error or cancellation, but cannot return a placeholder
@@ -388,15 +391,23 @@ before either error returns to the caller.
 
 ## Generic Values
 
-A bare type parameter has no successful runtime value representation. A
-generic computation whose result remains bare can only stop through existing
-source-level behavior such as `panic`, `todo`, or non-returning recursion, or a
-failure-only native call. Geam does not fabricate a value or recover one through
-runtime type checks.
+A scheme-local type parameter is a declaration identity. Planning gives an
+unresolved execution parameter a sealed binding that ordinary arguments,
+returns, captures, and containers preserve. A registered native construction
+target may create an opaque payload for that binding, including a non-empty
+generic list. The payload's native kind does not determine a concrete Gleam
+type. A statically concrete target still uses its existing checked conversion.
 
-Containers may preserve a parameter in their public type metadata when their
-runtime payload does not require a value of that parameter, for example an empty
-`List(parameter)` or a phantom custom constructor.
+Retaining a generic payload preserves its source identity and lifetime; it does
+not grant structural access, exact restoration to another binding, or callback
+invocation permission. These operations keep their declared source and
+capability checks. Geam does not fabricate a parameter value or recover a
+concrete source type through runtime type inference or downcasts.
+
+Empty lists and phantom constructors also preserve parameter metadata without
+requiring a payload for that parameter. Source stops and native failures remain
+observable even when their result type has an execution representation. An
+actual empty custom type still has no successful value.
 
 ## Constant Evaluation
 

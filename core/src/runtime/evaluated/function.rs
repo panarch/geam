@@ -6,8 +6,8 @@ use crate::plan::execution::function::{
     BitArrayFunctionId, BoolFunctionId, CustomFunctionId, ExternalFunctionId,
     ExternalListFunctionId, FloatFunctionId, FunctionFunctionId, FunctionReturnFamily,
     GenericCallableId, IntFunctionId, ListFunctionId, NeverFunctionId, NilFunctionId,
-    ProfiledFunctionFunctionId, RuntimeListFunctionId, StringFunctionId, TupleFunctionId,
-    UtfCodepointFunctionId,
+    ParameterFunctionId, ProfiledFunctionFunctionId, RuntimeListFunctionId, StringFunctionId,
+    TupleFunctionId, UtfCodepointFunctionId,
 };
 use crate::plan::execution::type_::{CustomConstructorId, FunctionType};
 use crate::runtime::captures::Captures;
@@ -69,7 +69,6 @@ pub(in crate::runtime) enum FunctionTableIdentity {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(in crate::runtime) enum ListFunctionReturnFamily {
     Parameter,
-    ParameterList,
     Int,
     String,
     BitArray,
@@ -103,6 +102,7 @@ pub(in crate::runtime) type EvaluatedStringFunction = EvaluatedFunction<StringFu
 pub(in crate::runtime) type EvaluatedBitArrayFunction = EvaluatedFunction<BitArrayFunctionId>;
 pub(in crate::runtime) type EvaluatedUtfCodepointFunction =
     EvaluatedFunction<UtfCodepointFunctionId>;
+pub(in crate::runtime) type EvaluatedParameterFunction = EvaluatedFunction<ParameterFunctionId>;
 pub(in crate::runtime) type EvaluatedGenericFunction = EvaluatedFunction<GenericCallableId>;
 pub(in crate::runtime) type EvaluatedNeverFunction = EvaluatedFunction<NeverFunctionId>;
 #[derive(Debug, Clone, PartialEq)]
@@ -200,6 +200,12 @@ impl FunctionReferenceId for UtfCodepointFunctionId {
     }
 }
 
+impl FunctionReferenceId for ParameterFunctionId {
+    fn reference_identity(&self) -> FunctionReferenceIdentity {
+        FunctionReferenceIdentity::value(FunctionReturnFamily::Parameter, self.0)
+    }
+}
+
 impl FunctionReferenceId for CustomFunctionId {
     fn reference_identity(&self) -> FunctionReferenceIdentity {
         FunctionReferenceIdentity::value(FunctionReturnFamily::Custom, self.index())
@@ -236,9 +242,7 @@ impl FunctionReferenceId for ListFunctionId {
             Self::Parameter(id) => {
                 FunctionReferenceIdentity::list(ListFunctionReturnFamily::Parameter, id.index())
             }
-            Self::ParameterList(id) => {
-                FunctionReferenceIdentity::list(ListFunctionReturnFamily::ParameterList, id.index())
-            }
+
             Self::Int(id) => {
                 FunctionReferenceIdentity::list(ListFunctionReturnFamily::Int, id.index())
             }
@@ -309,6 +313,9 @@ impl FunctionReferenceId for FunctionFunctionId {
             Self::UtfCodepoint(id) => {
                 FunctionReferenceIdentity::function(FunctionReturnFamily::UtfCodepoint, id.0)
             }
+            Self::Parameter(id) => {
+                FunctionReferenceIdentity::function(FunctionReturnFamily::Parameter, id.0)
+            }
             Self::Custom(id) => {
                 FunctionReferenceIdentity::function(FunctionReturnFamily::Custom, id.index())
             }
@@ -327,13 +334,7 @@ impl FunctionReferenceId for FunctionFunctionId {
                     ListFunctionReturnFamily::Parameter,
                     id.0,
                 ),
-                crate::plan::execution::function::ListFunctionFunctionId::ParameterList {
-                    id,
-                    ..
-                } => FunctionReferenceIdentity::returning_list_function(
-                    ListFunctionReturnFamily::ParameterList,
-                    id.0,
-                ),
+
                 crate::plan::execution::function::ListFunctionFunctionId::Int { id, .. } => {
                     FunctionReferenceIdentity::returning_list_function(
                         ListFunctionReturnFamily::Int,
@@ -444,6 +445,7 @@ pub(in crate::runtime) enum EvaluatedFunctionValueKind {
     String(EvaluatedStringFunction),
     BitArray(EvaluatedBitArrayFunction),
     UtfCodepoint(EvaluatedUtfCodepointFunction),
+    Parameter(EvaluatedParameterFunction),
     Custom(EvaluatedCustomFunction),
     External(EvaluatedExternalFunction),
     Bool(EvaluatedBoolFunction),
@@ -599,6 +601,7 @@ evaluated_function_value_from!(EvaluatedFloatFunction, Float);
 evaluated_function_value_from!(EvaluatedStringFunction, String);
 evaluated_function_value_from!(EvaluatedBitArrayFunction, BitArray);
 evaluated_function_value_from!(EvaluatedUtfCodepointFunction, UtfCodepoint);
+evaluated_function_value_from!(EvaluatedParameterFunction, Parameter);
 evaluated_function_value_from!(EvaluatedCustomFunction, Custom);
 evaluated_function_value_from!(EvaluatedExternalFunction, External);
 evaluated_function_value_from!(EvaluatedBoolFunction, Bool);
@@ -647,6 +650,7 @@ impl EvaluatedFunctionValue {
             EvaluatedFunctionValueKind::String(value) => value.type_(),
             EvaluatedFunctionValueKind::BitArray(value) => value.type_(),
             EvaluatedFunctionValueKind::UtfCodepoint(value) => value.type_(),
+            EvaluatedFunctionValueKind::Parameter(value) => value.type_(),
             EvaluatedFunctionValueKind::Custom(value) => value.type_(),
             EvaluatedFunctionValueKind::External(value) => value.type_(),
             EvaluatedFunctionValueKind::Bool(value) => value.type_(),
@@ -679,6 +683,9 @@ impl EvaluatedFunctionValue {
             }
             EvaluatedFunctionValueKind::UtfCodepoint(value) => {
                 EvaluatedFunctionValueKind::UtfCodepoint(value.with_type(type_))
+            }
+            EvaluatedFunctionValueKind::Parameter(value) => {
+                EvaluatedFunctionValueKind::Parameter(value.with_type(type_))
             }
             EvaluatedFunctionValueKind::Custom(value) => {
                 EvaluatedFunctionValueKind::Custom(value.with_type(type_))
@@ -716,6 +723,7 @@ impl EvaluatedFunctionValueKind {
             Self::String(_) => FunctionReturnFamily::String,
             Self::BitArray(_) => FunctionReturnFamily::BitArray,
             Self::UtfCodepoint(_) => FunctionReturnFamily::UtfCodepoint,
+            Self::Parameter(_) => FunctionReturnFamily::Parameter,
             Self::Custom(_) => FunctionReturnFamily::Custom,
             Self::External(_) => FunctionReturnFamily::External,
             Self::Bool(_) => FunctionReturnFamily::Bool,
@@ -740,8 +748,8 @@ mod tests {
         FloatListFunctionFunctionId, FunctionFunctionId, FunctionListFunctionFunctionId,
         IntFunctionId, IntListFunctionFunctionId, ListFunctionFunctionId, ListFunctionId,
         ListListFunctionFunctionId, NilListFunctionFunctionId, ParameterListFunctionFunctionId,
-        ParameterListListFunctionFunctionId, StringListFunctionFunctionId,
-        TupleListFunctionFunctionId, UtfCodepointListFunctionFunctionId,
+        StringListFunctionFunctionId, TupleListFunctionFunctionId,
+        UtfCodepointListFunctionFunctionId,
     };
     use crate::plan::execution::graph::{IntFunctionLocalId, IntLocalId};
     use crate::plan::execution::type_::{FunctionType, ValueType};
@@ -971,7 +979,7 @@ pub fn main() {
         let plan = crate::runtime::plan_src(EVERY_LIST_FAMILY_SOURCE);
         let ids = [
             ListFunctionId::Parameter(plan.parameter_list_function_id(0)),
-            ListFunctionId::ParameterList(plan.parameter_list_list_function_id(0)),
+            ListFunctionId::List(plan.list_list_function_id(1)),
             ListFunctionId::Int(plan.int_list_function_id(0)),
             ListFunctionId::String(plan.string_list_function_id(0)),
             ListFunctionId::BitArray(plan.bit_array_list_function_id(0)),
@@ -989,7 +997,7 @@ pub fn main() {
             ids.map(|id| id.reference_identity()),
             [
                 FunctionReferenceIdentity::list(ListFunctionReturnFamily::Parameter, 0),
-                FunctionReferenceIdentity::list(ListFunctionReturnFamily::ParameterList, 0),
+                FunctionReferenceIdentity::list(ListFunctionReturnFamily::List, 1),
                 FunctionReferenceIdentity::list(ListFunctionReturnFamily::Int, 0),
                 FunctionReferenceIdentity::list(ListFunctionReturnFamily::String, 0),
                 FunctionReferenceIdentity::list(ListFunctionReturnFamily::BitArray, 0),
@@ -1018,10 +1026,10 @@ pub fn main() {
                 type_: type_.clone(),
                 list_type: plan.parameter_list_function_id(0).type_id(),
             },
-            ListFunctionFunctionId::ParameterList {
-                id: ParameterListListFunctionFunctionId(0),
+            ListFunctionFunctionId::List {
+                id: ListListFunctionFunctionId(1),
                 type_: type_.clone(),
-                list_type: plan.parameter_list_list_function_id(0).type_id(),
+                list_type: plan.list_list_function_id(1).type_id(),
             },
             ListFunctionFunctionId::Int {
                 id: IntListFunctionFunctionId(0),
@@ -1088,8 +1096,8 @@ pub fn main() {
                     0,
                 ),
                 FunctionReferenceIdentity::returning_list_function(
-                    ListFunctionReturnFamily::ParameterList,
-                    0,
+                    ListFunctionReturnFamily::List,
+                    1,
                 ),
                 FunctionReferenceIdentity::returning_list_function(
                     ListFunctionReturnFamily::Int,

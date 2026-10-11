@@ -653,8 +653,8 @@ mod tests {
                     },
                 ],
             };
-            let first = ValueShape::Parameter(TypeParameterId(0));
-            let second = ValueShape::Parameter(TypeParameterId(1));
+            let first = ValueShape::Parameter(TypeParameterId::new(0));
+            let second = ValueShape::Parameter(TypeParameterId::new(1));
             let expected = ValueShape::Tuple(
                 vec![
                     first.clone(),
@@ -700,8 +700,8 @@ mod tests {
             assert_eq!(
                 validate_pattern(&distinct, &collapsed, context),
                 Err(pattern_error(InvalidPatternShapeReason::TypeMismatch {
-                    expected: ValueType::Parameter(TypeParameterId(0)),
-                    actual: ValueType::Parameter(TypeParameterId(1)),
+                    expected: ValueType::Parameter(TypeParameterId::new(0)),
+                    actual: ValueType::Parameter(TypeParameterId::new(1)),
                 })),
             );
             assert_eq!(context.type_parameters().scheme(), TypeScheme::new(0));
@@ -729,8 +729,8 @@ mod tests {
             assert_eq!(
                 super::constructor_pattern_field_types(type_.as_ref(), &arguments, context),
                 Ok(vec![ValueType::Tuple(vec![
-                    ValueType::Parameter(TypeParameterId(1)),
-                    ValueType::Parameter(TypeParameterId(0))
+                    ValueType::Parameter(TypeParameterId::new(1)),
+                    ValueType::Parameter(TypeParameterId::new(0))
                 ],)]),
             );
             let nested = result_pattern(

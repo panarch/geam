@@ -5,6 +5,7 @@ mod external;
 mod function;
 mod inspection;
 mod list;
+mod parameter;
 mod string;
 
 use num_bigint::BigInt;
@@ -20,14 +21,17 @@ pub(crate) use self::function::{
     BitArrayFunctionValue, BoolFunctionValue, CustomFunctionValue, CustomFunctionValueTarget,
     ExternalFunctionValue, FloatFunctionValue, FunctionFunctionValue, FunctionValueKind,
     GenericFunctionValue, IntFunctionValue, ListFunctionValue, NeverFunctionValue,
-    NilFunctionValue, StringFunctionValue, TupleFunctionValue, UtfCodepointFunctionValue,
+    NilFunctionValue, ParameterFunctionValue, StringFunctionValue, TupleFunctionValue,
+    UtfCodepointFunctionValue,
 };
 pub use self::inspection::ValueInspection;
 pub use self::list::{ListValue, ListValueItemTypeMismatch};
+pub use self::parameter::ParameterValue;
 pub use self::string::StringValue;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Value {
+    Parameter(ParameterValue),
     Int(BigInt),
     Float(f64),
     String(StringValue),
@@ -49,6 +53,7 @@ impl Value {
 
     pub fn value_type(&self) -> ValueType {
         match self {
+            Self::Parameter(value) => ValueType::Parameter(value.parameter()),
             Self::Int(_) => ValueType::Int,
             Self::Float(_) => ValueType::Float,
             Self::String(_) => ValueType::String,

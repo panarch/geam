@@ -1000,6 +1000,10 @@ pub fn main() {
                     let mut lifetimes = artifact.program.list_types.lifetimes.to_vec();
                     lifetimes.push(crate::HostValueLifetime::LoadedOwner);
                     artifact.program.list_types.lifetimes = lifetimes.into();
+                    let mut parameter_lifetimes =
+                        artifact.program.list_types.parameter_lifetimes.to_vec();
+                    parameter_lifetimes.push(false);
+                    artifact.program.list_types.parameter_lifetimes = parameter_lifetimes.into();
                     let shapes = &mut artifact.program.value_shapes;
                     let alias_shape = ValueShapeId(shapes.shapes.len());
                     let mut descriptors = shapes.shapes.to_vec();
@@ -1172,7 +1176,7 @@ pub fn main() {
     }
 
     #[test]
-    fn symbolic_constructor_remainders_admit_fixed_payloads() {
+    fn bound_parameter_constructor_remainders_admit_fixed_payloads() {
         let source = r#"
 pub type InternalMessage {
   Close
@@ -1210,13 +1214,9 @@ pub fn main() {
   Nil
 }
 "#;
-        for (source, stored_symbolic_variant) in [
-            (source.to_string(), false),
-            (source.to_string(), true),
-            (
-                source.replace("message: Message(user)", "message: Message(Nil)"),
-                false,
-            ),
+        for source in [
+            source.to_string(),
+            source.replace("message: Message(user)", "message: Message(Nil)"),
         ] {
             let typed =
                 crate::compile_typed_module("example", "src/example.gleam", &source).unwrap();
@@ -1224,64 +1224,35 @@ pub fn main() {
                 .unwrap()
                 .function(FunctionDeclaration::<(), ()>::new("main"))
                 .unwrap();
-            let mut data = artifact(bindings.prepare());
-            if stored_symbolic_variant {
-                use crate::plan::TypeParameterId;
-                use crate::plan::execution::type_::custom::FieldRefinement;
-                use crate::plan::execution::type_::{
-                    CustomConstructorDescriptor, CustomConstructorId, CustomFieldDescriptor,
-                    CustomTypeId, TypeMetadata, ValueShapeDescriptor,
-                };
-
-                // Other retained signatures may require the symbolic User layout
-                // even though this specialization cannot construct a User payload.
-                let type_index = data
-                    .program
-                    .custom_types
-                    .types
-                    .iter()
-                    .position(|type_| {
-                        type_.type_.name.as_str() == "Message"
-                            && type_
-                                .type_
-                                .arguments
-                                .iter()
-                                .any(|argument| matches!(argument, TypeMetadata::Parameter(_)))
-                    })
-                    .unwrap();
-                let parameter_shape = data
-                    .program
-                    .value_shapes
-                    .custom_shapes
-                    .iter()
-                    .find(|shape| shape.type_id.index() == type_index)
-                    .unwrap()
-                    .arguments[0];
+            let data = artifact(bindings.prepare());
+            let generic_messages = data
+                .program
+                .custom_types
+                .types
+                .iter()
+                .filter(|type_| {
+                    type_.type_.name.as_str() == "Message"
+                        && type_.type_.arguments.iter().any(|argument| {
+                            matches!(
+                                argument,
+                                crate::plan::execution::type_::TypeMetadata::Parameter(_)
+                            )
+                        })
+                })
+                .collect::<Vec<_>>();
+            assert_eq!(generic_messages.is_empty(), source.contains("Message(Nil)"));
+            for type_ in generic_messages {
+                assert_eq!(type_.constructors.len(), 2);
+                assert_eq!(type_.constructors[1].name.as_str(), "User");
+                assert_eq!(type_.constructors[1].fields.len(), 1);
                 assert_eq!(
-                    data.program.value_shapes.shapes[parameter_shape.index()],
-                    ValueShapeDescriptor::Parameter(TypeParameterId(0))
+                    data.program.list_types.value_type(
+                        &type_.constructors[1].fields[0].type_,
+                        &data.program.custom_types,
+                        &data.program.external_types,
+                    ),
+                    type_.type_.arguments[0].materialize(),
                 );
-                let field_type =
-                    data.program.value_shapes.shape_types[parameter_shape.index()].clone();
-                let type_ = &mut owned_mut(&mut data.program.custom_types.types)[type_index];
-                assert_eq!(type_.constructors.len(), 1);
-                let mut constructors = type_.constructors.to_vec();
-                constructors.push(CustomConstructorDescriptor {
-                    id: CustomConstructorId {
-                        type_id: CustomTypeId(type_index),
-                        index: 1,
-                    },
-                    name: "User".into(),
-                    native_tag: "user".into(),
-                    fields: vec![CustomFieldDescriptor {
-                        label: None,
-                        type_: field_type,
-                        shape: parameter_shape,
-                        refinement: FieldRefinement::Argument(0),
-                    }]
-                    .into(),
-                });
-                type_.constructors = constructors.into();
             }
             assert_eq!(module(&data, &functions::InfallibleHosts).err(), None);
             let (execution, _) = plain(Box::leak(Box::new(data))).unwrap().into_execution();
@@ -1943,31 +1914,35 @@ pub fn main() { let assert 3 = choose(Ok(False)) Nil }
         for (format, expected) in [
             (
                 1,
-                "prepared format 1 is incompatible with format 30; regenerate the prepared program",
+                "prepared format 1 is incompatible with format 31; regenerate the prepared program",
             ),
             (
                 8,
-                "prepared format 8 is incompatible with format 30; regenerate the prepared program",
+                "prepared format 8 is incompatible with format 31; regenerate the prepared program",
             ),
             (
                 19,
-                "prepared format 19 is incompatible with format 30; regenerate the prepared program",
+                "prepared format 19 is incompatible with format 31; regenerate the prepared program",
             ),
             (
                 20,
-                "prepared format 20 is incompatible with format 30; regenerate the prepared program",
+                "prepared format 20 is incompatible with format 31; regenerate the prepared program",
             ),
             (
                 22,
-                "prepared format 22 is incompatible with format 30; regenerate the prepared program",
+                "prepared format 22 is incompatible with format 31; regenerate the prepared program",
             ),
             (
                 23,
-                "prepared format 23 is incompatible with format 30; regenerate the prepared program",
+                "prepared format 23 is incompatible with format 31; regenerate the prepared program",
             ),
             (
                 29,
-                "prepared format 29 is incompatible with format 30; regenerate the prepared program",
+                "prepared format 29 is incompatible with format 31; regenerate the prepared program",
+            ),
+            (
+                30,
+                "prepared format 30 is incompatible with format 31; regenerate the prepared program",
             ),
         ] {
             artifact.format = format;
@@ -2085,7 +2060,7 @@ pub fn main() { let assert 3 = choose(Ok(False)) Nil }
             (
                 Change::Format,
                 Some(
-                    "prepared format 1 is incompatible with format 30; regenerate the prepared program",
+                    "prepared format 1 is incompatible with format 31; regenerate the prepared program",
                 ),
             ),
             (
@@ -2310,7 +2285,7 @@ pub fn main() { let assert 3 = choose(Ok(False)) Nil }
             (
                 Change::Format,
                 Some(
-                    "prepared format 1 is incompatible with format 30; regenerate the prepared program",
+                    "prepared format 1 is incompatible with format 31; regenerate the prepared program",
                 ),
             ),
             (

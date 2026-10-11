@@ -5,8 +5,8 @@ use crate::plan::execution::type_::{
     BitArrayListTypeId, BoolListTypeId, CustomConstructorId, CustomFunctionType, CustomListTypeId,
     CustomTypeId, ExternalFunctionType, ExternalListTypeId, ExternalTypeId, FloatListTypeId,
     FunctionFunctionType, FunctionListTypeId, FunctionType, GenericFunctionType, IntListTypeId,
-    ListListTypeId, ListStorageTypeId, ListTypeId, NilListTypeId, ParameterListListTypeId,
-    ParameterListTypeId, StringListTypeId, TupleListTypeId, UtfCodepointListTypeId, ValueType,
+    ListListTypeId, ListStorageTypeId, ListTypeId, NilListTypeId, ParameterListTypeId,
+    StringListTypeId, TupleListTypeId, UtfCodepointListTypeId, ValueType,
 };
 use crate::plan::execution::type_::{
     CustomConstructorRefinement, CustomValueShape, CustomValueShapeId, FunctionShape, ValueShapeId,
@@ -26,7 +26,6 @@ pub(super) struct TypeInterner {
     types: Vec<ListStorageTypeId>,
     ids: HashMap<SpecializedValueShape, ListTypeId>,
     tuple_ids: HashMap<Vec<ValueType>, TupleListTypeId>,
-    parameter_list_ids: HashMap<plan::TypeParameterId, ParameterListListTypeId>,
     list_ids: HashMap<ListTypeId, ListListTypeId>,
     function_ids: HashMap<FunctionType, FunctionListTypeId>,
     custom_list_ids: HashMap<plan::CustomType, CustomListTypeId>,
@@ -49,28 +48,12 @@ struct CustomTypeBuilder {
     constructors: BTreeMap<usize, CustomConstructorDescriptor>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub(super) enum NestedListTypeId {
-    Parameter(ParameterListListTypeId),
-    Stored(ListListTypeId),
-}
-
-impl NestedListTypeId {
-    pub(super) fn list_type(self) -> ListTypeId {
-        match self {
-            Self::Parameter(id) => id.list_type(),
-            Self::Stored(id) => id.list_type(),
-        }
-    }
-}
-
 impl TypeInterner {
     pub(super) fn new() -> Self {
         Self {
             types: Vec::new(),
             ids: HashMap::new(),
             tuple_ids: HashMap::new(),
-            parameter_list_ids: HashMap::new(),
             list_ids: HashMap::new(),
             function_ids: HashMap::new(),
             custom_list_ids: HashMap::new(),
@@ -399,30 +382,11 @@ impl TypeInterner {
         id
     }
 
-    pub(super) fn list_list_type(&mut self, item: &SpecializedValueShape) -> NestedListTypeId {
-        match item.storage_representation() {
-            super::specialization::StorageRepresentation::Parameter(parameter) => {
-                NestedListTypeId::Parameter(self.parameter_list_list_type(parameter))
-            }
-            super::specialization::StorageRepresentation::Stored(item) => {
-                NestedListTypeId::Stored(self.stored_list_list_type(&item))
-            }
+    pub(super) fn list_list_type(&mut self, item: &SpecializedValueShape) -> ListListTypeId {
+        {
+            let item = item.storage_shape();
+            self.stored_list_list_type(&item)
         }
-    }
-
-    pub(super) fn parameter_list_list_type(
-        &mut self,
-        parameter: plan::TypeParameterId,
-    ) -> ParameterListListTypeId {
-        if let Some(id) = self.parameter_list_ids.get(&parameter) {
-            return *id;
-        }
-        let item_type = self.parameter_list_type(parameter);
-        let list_type = ListTypeId::new(self.types.len());
-        let type_id = ParameterListListTypeId::new(list_type, item_type);
-        self.types.push(ListStorageTypeId::ParameterList(type_id));
-        self.parameter_list_ids.insert(parameter, type_id);
-        type_id
     }
 
     pub(super) fn stored_list_list_type(&mut self, item: &StoredValueShape) -> ListListTypeId {
@@ -431,6 +395,9 @@ impl TypeInterner {
             StoredValueShape::String => self.string_list_type().list_type(),
             StoredValueShape::BitArray => self.bit_array_list_type().list_type(),
             StoredValueShape::UtfCodepoint => self.utf_codepoint_list_type().list_type(),
+            StoredValueShape::Parameter(parameter) => {
+                self.parameter_list_type(*parameter).list_type()
+            }
             StoredValueShape::Custom(item) => self.custom_list_type(item).list_type(),
             StoredValueShape::External(item) => self.external_list_type(item).list_type(),
             StoredValueShape::Float => self.float_list_type().list_type(),

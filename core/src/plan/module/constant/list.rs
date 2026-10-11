@@ -1396,7 +1396,7 @@ mod tests {
 
     #[test]
     fn stored_conversion_preserves_every_list_family() {
-        let parameter = TypeParameterId(0);
+        let parameter = TypeParameterId::new(0);
         let custom = CustomValueShape::new(
             CustomTypeName::new("geam".into(), "main".into(), "Boxed".into()),
             Vec::new(),
@@ -1511,7 +1511,7 @@ mod tests {
 
     #[test]
     fn parameter_list_retarget_preserves_generic_and_exact_sources() {
-        let parameter = TypeParameterId(0);
+        let parameter = TypeParameterId::new(0);
         let substitution = TypeSubstitution::from_arguments(vec![ValueShape::Parameter(parameter)]);
         let outer = TypeSubstitution::from_arguments(vec![ValueShape::Int]);
         let generic = ConstantGenericListTemplateId(2);

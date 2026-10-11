@@ -405,6 +405,7 @@ jobs:
               - tests/fixtures/selective_receive_service/embedding/gleam
               - tests/fixtures/native_function_views/embedding/gleam
               - tests/fixtures/decoder_service/embedding/gleam
+              - tests/fixtures/native_generic_results/embedding/gleam
 
     steps:
       - name: Checkout
@@ -443,6 +444,7 @@ jobs:
           cargo fetch --manifest-path tests/fixtures/selective_receive_service/embedding/Cargo.toml --locked
           cargo fetch --manifest-path tests/fixtures/native_function_views/embedding/Cargo.toml --locked
           cargo fetch --manifest-path tests/fixtures/decoder_service/embedding/Cargo.toml --locked
+          cargo fetch --manifest-path tests/fixtures/native_generic_results/embedding/Cargo.toml --locked
           cargo fetch --manifest-path tests/fixtures/raw_string_values/embedding/Cargo.toml --locked
 
       - name: Prepare Gleam dependency cache sequentially
@@ -789,6 +791,7 @@ jobs:
             tests/fixtures/dict_service/provider -> target
             tests/fixtures/bytes_tree_service/provider -> target
             tests/fixtures/decoder_service/provider -> target
+            tests/fixtures/native_generic_results/provider -> target
             tests/fixtures/selective_receive_service/provider -> target
             tests/fixtures/application_exit/provider -> target
             tests/fixtures/native_function_views/provider -> target
@@ -801,6 +804,7 @@ jobs:
           cargo fetch --manifest-path tests/fixtures/dict_service/provider/Cargo.toml --locked
           cargo fetch --manifest-path tests/fixtures/bytes_tree_service/provider/Cargo.toml --locked
           cargo fetch --manifest-path tests/fixtures/decoder_service/provider/Cargo.toml --locked
+          cargo fetch --manifest-path tests/fixtures/native_generic_results/provider/Cargo.toml --locked
           cargo fetch --manifest-path tests/fixtures/selective_receive_service/provider/Cargo.toml --locked
           cargo fetch --manifest-path tests/fixtures/application_exit/provider/Cargo.toml --locked
           cargo fetch --manifest-path tests/fixtures/native_function_views/provider/Cargo.toml --locked
@@ -826,6 +830,14 @@ jobs:
 
       - name: Verify producer-owned Decoder SDK through original source
         run: cargo test --manifest-path tests/fixtures/decoder_service/provider/Cargo.toml --locked
+
+      - name: Verify native generic results through the public provider
+        run: cargo test --manifest-path tests/fixtures/native_generic_results/provider/Cargo.toml --locked
+
+      - name: Verify native generic result source formatting
+        run: |
+          gleam format --check tests/fixtures/native_generic_results/project/src
+          gleam format --check tests/fixtures/native_generic_results/embedding/gleam/src
 
       - name: Verify Decoder fixture source formatting
         run: |

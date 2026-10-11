@@ -8,9 +8,8 @@ use crate::plan::execution::graph::LocalLabel;
 use crate::plan::execution::graph::{
     BitArrayListLocalId, BitArrayLocalId, BoolListLocalId, BoolLocalId, CustomListLocalId,
     CustomLocal, ExternalListLocalId, FloatListLocalId, FloatLocalId, FunctionListLocalId,
-    IntListLocalId, IntLocalId, ListListLocalId, NilListLocalId, NilLocalId,
-    ParameterListListLocalId, ParameterListLocalId, StringListLocalId, StringLocalId,
-    TupleListLocalId, TupleLocalId, UtfCodepointListLocalId,
+    IntListLocalId, IntLocalId, ListListLocalId, NilListLocalId, NilLocalId, ParameterListLocalId,
+    StringListLocalId, StringLocalId, TupleListLocalId, TupleLocalId, UtfCodepointListLocalId,
 };
 use crate::plan::execution::prepared::rust::{Emit, Rust};
 use crate::plan::execution::storage::Table;
@@ -25,7 +24,6 @@ pub struct ProfiledConstantTable<Graph: ExecutionGraphProfile> {
     pub nils: Table<ProfiledConstantProgram<NilLocalId, Graph>>,
     pub tuples: Table<ProfiledConstantProgram<TupleLocalId, Graph>>,
     pub parameter_lists: Table<ProfiledConstantProgram<ParameterListLocalId, Graph>>,
-    pub parameter_list_lists: Table<ProfiledConstantProgram<ParameterListListLocalId, Graph>>,
     pub int_lists: Table<ProfiledConstantProgram<IntListLocalId, Graph>>,
     pub string_lists: Table<ProfiledConstantProgram<StringListLocalId, Graph>>,
     pub bit_array_lists: Table<ProfiledConstantProgram<BitArrayListLocalId, Graph>>,
@@ -118,14 +116,6 @@ impl ConstantValue for ParameterListLocalId {
         table: &ProfiledConstantTable<Graph>,
     ) -> &[ProfiledConstantProgram<Self, Graph>] {
         &table.parameter_lists
-    }
-}
-
-impl ConstantValue for ParameterListListLocalId {
-    fn programs<Graph: ExecutionGraphProfile>(
-        table: &ProfiledConstantTable<Graph>,
-    ) -> &[ProfiledConstantProgram<Self, Graph>] {
-        &table.parameter_list_lists
     }
 }
 
@@ -263,7 +253,7 @@ where
         write_table::<NilLocalId, _>(context, self, "nil");
         write_table::<TupleLocalId, _>(context, self, "tuple");
         write_table::<ParameterListLocalId, _>(context, self, "list.parameter");
-        write_table::<ParameterListListLocalId, _>(context, self, "list.parameter_list");
+
         write_table::<IntListLocalId, _>(context, self, "list.int");
         write_table::<StringListLocalId, _>(context, self, "list.string");
         write_table::<BitArrayListLocalId, _>(context, self, "list.bit_array");
@@ -316,7 +306,6 @@ where
     Table<ProfiledConstantProgram<NilLocalId, Graph>>: Emit,
     Table<ProfiledConstantProgram<TupleLocalId, Graph>>: Emit,
     Table<ProfiledConstantProgram<ParameterListLocalId, Graph>>: Emit,
-    Table<ProfiledConstantProgram<ParameterListListLocalId, Graph>>: Emit,
     Table<ProfiledConstantProgram<IntListLocalId, Graph>>: Emit,
     Table<ProfiledConstantProgram<StringListLocalId, Graph>>: Emit,
     Table<ProfiledConstantProgram<BitArrayListLocalId, Graph>>: Emit,
@@ -342,7 +331,6 @@ where
             nils,
             tuples,
             parameter_lists,
-            parameter_list_lists,
             int_lists,
             string_lists,
             bit_array_lists,
@@ -369,7 +357,6 @@ where
                 ("nils", nils),
                 ("tuples", tuples),
                 ("parameter_lists", parameter_lists),
-                ("parameter_list_lists", parameter_list_lists),
                 ("int_lists", int_lists),
                 ("string_lists", string_lists),
                 ("bit_array_lists", bit_array_lists),

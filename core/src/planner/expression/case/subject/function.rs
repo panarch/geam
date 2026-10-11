@@ -499,7 +499,7 @@ pub fn main() {
         let int_param = LocalId::Int(IntLocalId(0));
         let empty_function_type = FunctionType::new(Vec::new(), ValueType::Int);
 
-        let generic_type = GenericFunctionType::new(vec![ValueShape::Int], TypeParameterId(0));
+        let generic_type = GenericFunctionType::new(vec![ValueShape::Int], TypeParameterId::new(0));
         let generic_shape = generic_type.shape();
         let source_generic_local =
             GenericFunctionLocal::new(GenericFunctionLocalId(7), generic_type.clone());
@@ -876,7 +876,7 @@ pub fn main() {
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::CaseShape {
                     reason: InvalidCaseShapeReason::BranchAnnotatedTypeMismatch {
-                        expected: ValueType::Parameter(crate::plan::TypeParameterId(0)),
+                        expected: ValueType::Parameter(crate::plan::TypeParameterId::new(0)),
                         actual: ValueType::Int,
                     },
                 },

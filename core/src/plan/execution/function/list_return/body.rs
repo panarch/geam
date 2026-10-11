@@ -2,14 +2,14 @@ use super::super::body::ProfiledFunctionBody;
 use super::{
     BitArrayListFunctionId, BoolListFunctionId, CustomListFunctionId, ExternalListFunctionId,
     FloatListFunctionId, FunctionListFunctionId, IntListFunctionId, ListListFunctionId,
-    NilListFunctionId, ParameterListFunctionId, ParameterListListFunctionId, StringListFunctionId,
-    TupleListFunctionId, UtfCodepointListFunctionId,
+    NilListFunctionId, ParameterListFunctionId, StringListFunctionId, TupleListFunctionId,
+    UtfCodepointListFunctionId,
 };
 use crate::plan::execution::function::{ExecutionProfile, HostedExecutionGraph};
 use crate::plan::execution::graph::{
     BitArrayListLocalId, BoolListLocalId, CustomListLocalId, ExternalListLocalId, FloatListLocalId,
-    FunctionListLocalId, IntListLocalId, ListListLocalId, NilListLocalId, ParameterListListLocalId,
-    ParameterListLocalId, StringListLocalId, TupleListLocalId, UtfCodepointListLocalId,
+    FunctionListLocalId, IntListLocalId, ListListLocalId, NilListLocalId, ParameterListLocalId,
+    StringListLocalId, TupleListLocalId, UtfCodepointListLocalId,
 };
 
 pub(crate) type ProfiledParameterListFunctionBody<Graph> = ProfiledFunctionBody<
@@ -61,11 +61,7 @@ pub(crate) type ProfiledTupleListFunctionBody<Graph> = ProfiledFunctionBody<
     crate::plan::FunctionCallTarget<TupleListFunctionId>,
     Graph,
 >;
-pub(crate) type ProfiledParameterListListFunctionBody<Graph> = ProfiledFunctionBody<
-    ParameterListListLocalId,
-    crate::plan::FunctionCallTarget<ParameterListListFunctionId>,
-    Graph,
->;
+
 pub(crate) type ProfiledListListFunctionBody<Graph> = ProfiledFunctionBody<
     ListListLocalId,
     crate::plan::FunctionCallTarget<ListListFunctionId>,
@@ -89,8 +85,7 @@ pub(crate) type ExternalListFunctionBody = ProfiledExternalListFunctionBody<Host
 pub(crate) type BoolListFunctionBody = ProfiledBoolListFunctionBody<HostedExecutionGraph>;
 pub(crate) type NilListFunctionBody = ProfiledNilListFunctionBody<HostedExecutionGraph>;
 pub(crate) type TupleListFunctionBody = ProfiledTupleListFunctionBody<HostedExecutionGraph>;
-pub(crate) type ParameterListListFunctionBody =
-    ProfiledParameterListListFunctionBody<HostedExecutionGraph>;
+
 pub(crate) type ListListFunctionBody = ProfiledListListFunctionBody<HostedExecutionGraph>;
 pub(crate) type FunctionListFunctionBody = ProfiledFunctionListFunctionBody<HostedExecutionGraph>;
 
@@ -116,8 +111,7 @@ pub(crate) type ExecutionNilListFunctionBody<Profile> =
     ProfiledNilListFunctionBody<<Profile as ExecutionProfile>::Graph>;
 pub(crate) type ExecutionTupleListFunctionBody<Profile> =
     ProfiledTupleListFunctionBody<<Profile as ExecutionProfile>::Graph>;
-pub(crate) type ExecutionParameterListListFunctionBody<Profile> =
-    ProfiledParameterListListFunctionBody<<Profile as ExecutionProfile>::Graph>;
+
 pub(crate) type ExecutionListListFunctionBody<Profile> =
     ProfiledListListFunctionBody<<Profile as ExecutionProfile>::Graph>;
 pub(crate) type ExecutionFunctionListFunctionBody<Profile> =

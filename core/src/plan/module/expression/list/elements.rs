@@ -407,7 +407,7 @@ mod tests {
 
     #[test]
     fn from_exprs_preserves_every_item_family() {
-        let parameter = TypeParameterId(0);
+        let parameter = TypeParameterId::new(0);
         let generic = GenericExpr::local_get(
             GenericLocal::new(GenericLocalId(0), parameter),
             "generic".into(),
@@ -549,8 +549,8 @@ mod tests {
         let second_custom = custom_type("Second");
         let first_external = external_type("First");
         let second_external = external_type("Second");
-        let first_parameter = TypeParameterId(0);
-        let second_parameter = TypeParameterId(1);
+        let first_parameter = TypeParameterId::new(0);
+        let second_parameter = TypeParameterId::new(1);
 
         assert_eq!(
             ListElements::from_exprs(
@@ -668,11 +668,11 @@ mod tests {
     fn item_type_reports_typed_element_family() {
         assert_eq!(
             ListElements::Generic {
-                parameter: TypeParameterId(0),
+                parameter: TypeParameterId::new(0),
                 values: Vec::new(),
             }
             .item_type(),
-            ValueType::Parameter(TypeParameterId(0)),
+            ValueType::Parameter(TypeParameterId::new(0)),
         );
         assert_eq!(
             ListElements::Int(vec![IntExpr::value(1.into())]).item_type(),
@@ -734,7 +734,7 @@ mod tests {
 
     #[test]
     fn spread_parts_reject_empty_prefix_for_every_item_family() {
-        let parameter = TypeParameterId(0);
+        let parameter = TypeParameterId::new(0);
         let custom = custom_type("Token");
         let external = external_type("Token");
         let function = FunctionType::new(vec![ValueType::Int], ValueType::Int);
@@ -838,8 +838,8 @@ mod tests {
         let second_custom = custom_type("Second");
         let first_external = external_type("First");
         let second_external = external_type("Second");
-        let first_parameter = TypeParameterId(0);
-        let second_parameter = TypeParameterId(1);
+        let first_parameter = TypeParameterId::new(0);
+        let second_parameter = TypeParameterId::new(1);
         let generic_value = GenericExpr::local_get(
             GenericLocal::new(GenericLocalId(0), first_parameter),
             "value".into(),

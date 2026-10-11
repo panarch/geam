@@ -862,7 +862,7 @@ mod tests {
         let mut anonymous = AnonymousFunctions::default();
         let mut context = PlanContext::new(&module, &functions, &mut anonymous);
         let span = crate::planner::support::dummy_span();
-        let parameter = TypeParameterId(0);
+        let parameter = TypeParameterId::new(0);
 
         let generic_binding = plan_runtime_pattern(
             Pattern::Variable {

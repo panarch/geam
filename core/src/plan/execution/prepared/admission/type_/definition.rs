@@ -68,9 +68,12 @@ impl<'data> Types<'data> {
                     let mut pending = vec![&field.type_];
                     while let Some(type_) = pending.pop() {
                         match type_ {
-                            TypeMetadata::Parameter(id) if id.0 >= definition.parameters => {
+                            TypeMetadata::Parameter(id) if id.scope().is_some() => {
+                                return Err(TypeError::Definition);
+                            }
+                            TypeMetadata::Parameter(id) if id.index() >= definition.parameters => {
                                 return Err(TypeError::DefinitionParameter {
-                                    index: id.0,
+                                    index: id.index(),
                                     parameters: definition.parameters,
                                 });
                             }
@@ -139,7 +142,9 @@ impl<'data> Types<'data> {
 
 fn refinement(rule: &FieldRefinement, template: &TypeMetadata) -> bool {
     match (rule, template) {
-        (FieldRefinement::Argument(index), TypeMetadata::Parameter(id)) => *index == id.0,
+        (FieldRefinement::Argument(index), TypeMetadata::Parameter(id)) => {
+            id.scope().is_none() && *index == id.index()
+        }
         (FieldRefinement::Tuple(rules), TypeMetadata::Tuple(items)) => {
             rules.len() == items.len()
                 && rules
@@ -273,13 +278,24 @@ pub fn main() { Box(42) }
                 name: "Box".into(),
                 fields: vec![FieldDefinition {
                     label: Some("item".into()),
-                    type_: TypeMetadata::Parameter(crate::plan::TypeParameterId(0))
+                    type_: TypeMetadata::Parameter(crate::plan::TypeParameterId::new(0))
                 }]
                 .into(),
             }]
         );
         type DefinitionMutation = fn(&mut CustomDefinition);
-        let cases: [(DefinitionMutation, TypeError); 6] = [
+        let cases: [(DefinitionMutation, TypeError); 7] = [
+            (
+                |definition| {
+                    let mut constructors = definition.constructors.clone().into_vec();
+                    let mut fields = constructors[0].fields.clone().into_vec();
+                    fields[0].type_ =
+                        TypeMetadata::Parameter(crate::plan::TypeParameterId::scoped(0, 0));
+                    constructors[0].fields = fields.into();
+                    definition.constructors = constructors.into();
+                },
+                TypeError::Definition,
+            ),
             (
                 |definition| definition.parameters = 0,
                 TypeError::DefinitionParameter {

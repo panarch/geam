@@ -11,8 +11,8 @@ use crate::plan::execution::function::{
     FunctionListFunctionId, GenericFunctionFunctionBody, IntFunctionBody, IntFunctionFunctionBody,
     IntListFunctionBody, IntListFunctionId, ListListFunctionBody, ListListFunctionId,
     NeverFunctionBody, NeverFunctionFunctionBody, NilFunctionBody, NilFunctionFunctionBody,
-    NilListFunctionBody, NilListFunctionId, ParameterListFunctionBody, ParameterListFunctionId,
-    ParameterListListFunctionBody, ParameterListListFunctionId, StringFunctionBody,
+    NilListFunctionBody, NilListFunctionId, ParameterFunctionBody, ParameterFunctionFunctionBody,
+    ParameterListFunctionBody, ParameterListFunctionId, StringFunctionBody,
     StringFunctionFunctionBody, StringListFunctionBody, StringListFunctionId, TupleFunctionBody,
     TupleFunctionFunctionBody, TupleListFunctionBody, TupleListFunctionId,
     UtfCodepointFunctionBody, UtfCodepointFunctionFunctionBody, UtfCodepointListFunctionBody,
@@ -33,6 +33,8 @@ pub(in crate::plan::execution::lowering) struct FunctionTableBuilder {
         Vec<(usize, LoweredFunction<BitArrayFunctionBody>)>,
     pub(in crate::plan::execution::lowering::function) utf_codepoint_functions:
         Vec<(usize, LoweredFunction<UtfCodepointFunctionBody>)>,
+    pub(in crate::plan::execution::lowering::function) parameter_functions:
+        Vec<(usize, LoweredFunction<ParameterFunctionBody>)>,
     pub(in crate::plan::execution::lowering::function) custom_functions:
         Vec<(usize, LoweredFunction<CustomFunctionBody>)>,
     pub(in crate::plan::execution::lowering::function) external_functions:
@@ -77,10 +79,6 @@ pub(in crate::plan::execution::lowering) struct FunctionTableBuilder {
         Vec<(NilListFunctionId, LoweredFunction<NilListFunctionBody>)>,
     pub(in crate::plan::execution::lowering::function) tuple_list_functions:
         Vec<(TupleListFunctionId, LoweredFunction<TupleListFunctionBody>)>,
-    pub(in crate::plan::execution::lowering::function) parameter_list_list_functions: Vec<(
-        ParameterListListFunctionId,
-        LoweredFunction<ParameterListListFunctionBody>,
-    )>,
     pub(in crate::plan::execution::lowering::function) list_list_functions:
         Vec<(ListListFunctionId, LoweredFunction<ListListFunctionBody>)>,
     pub(in crate::plan::execution::lowering::function) function_list_functions: Vec<(
@@ -97,6 +95,8 @@ pub(in crate::plan::execution::lowering) struct FunctionTableBuilder {
         Vec<(usize, LoweredFunction<BitArrayFunctionFunctionBody>)>,
     pub(in crate::plan::execution::lowering::function) utf_codepoint_function_functions:
         Vec<(usize, LoweredFunction<UtfCodepointFunctionFunctionBody>)>,
+    pub(in crate::plan::execution::lowering::function) parameter_function_functions:
+        Vec<(usize, LoweredFunction<ParameterFunctionFunctionBody>)>,
     pub(in crate::plan::execution::lowering::function) custom_function_functions:
         Vec<(usize, LoweredFunction<CustomFunctionFunctionBody>)>,
     pub(in crate::plan::execution::lowering::function) external_function_functions:
@@ -112,8 +112,6 @@ pub(in crate::plan::execution::lowering) struct FunctionTableBuilder {
     pub(in crate::plan::execution::lowering::function) never_function_functions:
         Vec<(usize, LoweredFunction<NeverFunctionFunctionBody>)>,
     pub(in crate::plan::execution::lowering::function) parameter_list_function_functions:
-        Vec<(usize, LoweredFunction<CoreListFunctionFunctionBody>)>,
-    pub(in crate::plan::execution::lowering::function) parameter_list_list_function_functions:
         Vec<(usize, LoweredFunction<CoreListFunctionFunctionBody>)>,
     pub(in crate::plan::execution::lowering::function) int_list_function_functions:
         Vec<(usize, LoweredFunction<CoreListFunctionFunctionBody>)>,
@@ -153,9 +151,7 @@ pub(in crate::plan::execution::lowering::function) fn push_core_list_function_fu
         CoreListFunctionReturn::Parameter(_) => functions
             .parameter_list_function_functions
             .push((index, function)),
-        CoreListFunctionReturn::ParameterList(_) => functions
-            .parameter_list_list_function_functions
-            .push((index, function)),
+
         CoreListFunctionReturn::Int(_) => functions
             .int_list_function_functions
             .push((index, function)),

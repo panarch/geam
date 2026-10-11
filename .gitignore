@@ -14,3 +14,8 @@
 *.snap.new
 # LLVM profiling counters emitted by coverage subprocesses.
 *.profraw
+# Native generic result consumers regenerate build data locally and in CI.
+/tests/fixtures/native_generic_results/provider/target/
+/tests/fixtures/native_generic_results/project/build/
+/tests/fixtures/native_generic_results/embedding/target/
+/tests/fixtures/native_generic_results/embedding/gleam/build/

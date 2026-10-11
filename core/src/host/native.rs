@@ -297,6 +297,17 @@ where
         }
         match conversion.kind() {
             NativeConversionKind::Exact => None,
+            NativeConversionKind::Parameter(parameter) => {
+                let requires_execution =
+                    value.retention_lifetime(&self.call.runtime.execution())?;
+                Some(HostScopedValue::Parameter(
+                    self.call.runtime.native_values().parameter(
+                        *parameter,
+                        value,
+                        requires_execution,
+                    ),
+                ))
+            }
             NativeConversionKind::Int => value.as_int().map(HostScopedValue::Int),
             NativeConversionKind::Float => value.as_float().map(HostScopedValue::Float),
             NativeConversionKind::String => value.as_string().map(HostScopedValue::String),
@@ -537,6 +548,241 @@ mod tests {
             &mut Profile::RunState::default(),
             &mut Vec::new(),
         )
+    }
+
+    #[test]
+    fn native_results_preserve_unspecialized_payloads() {
+        use crate::host::HostTupleType;
+        use crate::provider::GleamResult;
+
+        type Pair<A, B> = HostTupleType<HostTypeList<A, HostTypeList<B, HostTypeListEnd>>>;
+        type Return = GleamResult<StringValue, Pair<HostTypeParameter<0>, HostTypeParameter<1>>>;
+        type Targets = HostTypeList<Return, HostTypeListEnd>;
+
+        let provider = HostProviderModule::<StatelessHostProfile>::new("application", "main")
+            .unwrap()
+            .with_native_function::<Converter, (), Return, Targets, _>(
+                "native_result",
+                NativeRules::default(),
+                |mut call| {
+                    let values = call.call().native_values();
+                    let native = NativeValue::tuple([
+                        NativeValue::symbol("error"),
+                        NativeValue::tuple([
+                            values.string("invalid_uri".into()),
+                            values.string("input".into()),
+                        ]),
+                    ]);
+                    let result = call
+                        .convert::<HostTypeIndex0>(&native)
+                        .expect("the registered generic result accepts both native payloads");
+                    Ok(call.finish(result))
+                },
+            )
+            .unwrap();
+        let source = r#"
+@external(erlang, "native", "native_result")
+fn native_result() -> Result(String, #(reason, detail))
+fn identity(value: a) -> a { value }
+pub fn main() {
+  let result = identity(native_result())
+  case result { Error(_) -> True Ok(_) -> False }
+}
+"#;
+        let value = execute(provider, source).unwrap();
+        assert_eq!(value, crate::Value::Bool(true));
+    }
+
+    #[test]
+    fn native_parameter_payloads_flow_through_calls_captures_fields_and_lists() {
+        type Payload = HostTypeParameter<0>;
+        type ErasedSource = HostTypeParameter<1>;
+        type Targets = HostTypeList<Payload, HostTypeListEnd>;
+        type EraseTargets = HostTypeList<Payload, HostTypeListEnd>;
+        let provider = HostProviderModule::<StatelessHostProfile>::new("application", "main")
+            .unwrap()
+            .with_native_function::<Converter, (), Payload, Targets, _>(
+                "payload",
+                NativeRules::default(),
+                |mut call| {
+                    let value = NativeValue::tuple([
+                        NativeValue::symbol("reason"),
+                        call.call().native_values().string("detail".into()),
+                    ]);
+                    let value = call.convert::<HostTypeIndex0>(&value).unwrap();
+                    Ok(call.finish(value))
+                },
+            )
+            .unwrap()
+            .with_native_function::<Converter, (ErasedSource,), Payload, EraseTargets, _>(
+                "erase",
+                NativeRules::default(),
+                |mut call, value| {
+                    let native = call.source::<ErasedSource>(value);
+                    let erased = call.convert::<HostTypeIndex0>(&native).unwrap();
+                    Ok(call.finish(erased))
+                },
+            )
+            .unwrap();
+        let source = r#"
+pub type Boxed(a) { Boxed(value: a) }
+@external(erlang, "native", "payload")
+fn payload() -> a
+@external(erlang, "native", "erase")
+fn erase(value: a) -> b
+fn identity(value: a) -> a { value }
+fn tail(value: a) -> a { identity(value) }
+fn through_tuple(value: a) -> a { #(value).0 }
+fn through_custom(value: a) -> a { Boxed(value).value }
+fn through_function(value: a) -> a { let read = fn() { value } read() }
+fn choose(value: a, flag: Bool) -> a { case flag { True -> value False -> value } }
+fn choose_int(value: a, flag: Int) -> a { case flag { 0 -> value _ -> value } }
+fn choose_string(value: a, flag: String) -> a { case flag { "selected" -> value _ -> value } }
+fn choose_float(value: a, flag: Float) -> a { case flag { 1.0 -> value _ -> value } }
+fn through_list(value: a) -> a {
+  let values = [value, value]
+  let assert [head, ..tail] = values
+  case tail { [copy] -> case head == copy { True -> copy False -> panic } _ -> panic }
+}
+fn from_callback(read: fn() -> a) -> a { read() }
+pub fn main() {
+  let original = payload()
+  let copied = identity(original)
+  let read = fn() { copied }
+  let from_block = { let local = copied local }
+  let alternatives = [
+    tail(copied), through_tuple(copied), through_custom(copied),
+    through_function(copied), through_list(copied), from_callback(read),
+    choose(copied, True), choose(copied, False),
+    choose_int(copied, 0), choose_int(copied, 1),
+    choose_string(copied, "selected"), choose_string(copied, "other"),
+    choose_float(copied, 1.0), choose_float(copied, 2.0), from_block,
+  ]
+  let assert [first, ..rest] = alternatives
+  let rebuilt = [first, ..rest]
+  let captured = fn() { first }
+  let erased = erase(captured)
+  echo first
+  #(original == first, first == copied, rest == [copied, copied, copied,
+    copied, copied, copied, copied, copied, copied, copied, copied, copied,
+    copied, copied], rebuilt == alternatives, erased)
+}
+"#;
+        let value = execute(provider, source).unwrap();
+        assert_eq!(
+            value.inspect().to_string(),
+            "#(True, True, True, True, //fn() { ... })"
+        );
+    }
+
+    #[test]
+    fn native_parameter_construction_refuses_expired_and_foreign_callbacks() {
+        use crate::embedding::{FunctionDeclaration, HostedModuleBuilder};
+        use std::sync::{Arc, Mutex};
+
+        type Targets = HostTypeList<Output, HostTypeListEnd>;
+        let saved = Arc::new(Mutex::new(None::<NativeValue>));
+        let prepare = || {
+            let retained = Arc::clone(&saved);
+            let restored = Arc::clone(&saved);
+            let provider = HostProviderModule::<StatelessHostProfile>::new("application", "main")
+                .unwrap()
+                .with_native_function::<Converter, (Source,), bool, HostTypeListEnd, _>(
+                    "save",
+                    NativeRules::default(),
+                    move |call, value| {
+                        *retained.lock().unwrap() = Some(call.source::<Source>(value));
+                        Ok(call.finish(true))
+                    },
+                )
+                .unwrap()
+                .with_native_function::<Converter, (), Output, Targets, _>(
+                    "replay",
+                    NativeRules::default(),
+                    move |mut call| {
+                        let source = restored.lock().unwrap().as_ref().unwrap().clone();
+                        let value = call
+                            .convert::<HostTypeIndex0>(&source)
+                            .ok_or_else(|| crate::HostFailure::new("native payload refused"))?;
+                        Ok(call.finish(value))
+                    },
+                )
+                .unwrap();
+            let source = r#"
+@external(erlang, "native", "save") fn save(value: a) -> Bool
+@external(erlang, "native", "replay") fn replay() -> a
+pub fn save_and_restore() {
+  let bias = 1
+  let assert True = save(fn(value: Int) { value + bias })
+  let restored = replay()
+  restored == restored
+}
+pub fn restore_only() {
+  let restored = replay()
+  restored == restored
+}
+"#;
+            let typed = crate::compile_typed_host_program(
+                "application",
+                "main",
+                [crate::PackageSource::new(
+                    "application",
+                    Vec::<&str>::new(),
+                    [crate::ModuleSource::new("main", "src/main.gleam", source)],
+                )],
+                HostProviderSet::from_providers([provider]).unwrap(),
+            )
+            .unwrap();
+            let (mut builder, save) = HostedModuleBuilder::new(typed)
+                .unwrap()
+                .function(FunctionDeclaration::<(), bool>::new("save_and_restore"))
+                .unwrap();
+            let restore = builder
+                .function(FunctionDeclaration::<(), bool>::new("restore_only"))
+                .unwrap();
+            (builder.seal().unwrap(), save, restore)
+        };
+        let (mut module, save, restore) = prepare();
+        let (mut foreign, _, foreign_restore) = prepare();
+        let host = crate::execution_fixture::TestHost::default();
+        let mut echo = Vec::new();
+        host.block_on(
+            module.with_execution(&host, &mut (), &mut echo, async |scope| {
+                assert_eq!(scope.call(&save, ()).await, Ok(true));
+                assert_eq!(scope.call(&restore, ()).await, Ok(true));
+                let error = host
+                    .block_on(foreign.with_execution(
+                        &host,
+                        &mut (),
+                        &mut Vec::new(),
+                        async |foreign_scope| foreign_scope.call(&foreign_restore, ()).await,
+                    ))
+                    .unwrap()
+                    .try_into_value()
+                    .unwrap()
+                    .unwrap_err();
+                assert_eq!(
+                    error.to_string(),
+                    "host function application::main.replay failed: native payload refused"
+                );
+            }),
+        )
+        .unwrap()
+        .try_into_value()
+        .unwrap();
+        host.block_on(
+            module.with_execution(&host, &mut (), &mut echo, async |scope| {
+                let error = scope.call(&restore, ()).await.unwrap_err();
+                assert_eq!(
+                    error.to_string(),
+                    "host function application::main.replay failed: native payload refused"
+                );
+            }),
+        )
+        .unwrap()
+        .try_into_value()
+        .unwrap();
+        assert!(echo.is_empty());
     }
 
     #[test]
@@ -1724,12 +1970,33 @@ pub fn main() -> Bool {
     }
 
     #[test]
-    fn unresolved_source_functions_do_not_gain_a_concrete_invocation_signature() {
-        let mut execution = view_execution(
-            r#"
+    fn bound_parameter_function_views_require_a_grant_and_keep_never_inputs_symbolic() {
+        let body = r#"
 pub fn main() {
   let captured = "opaque result"
   let callback = fn(_input) { captured }
+  let view: fn(Box) -> Box = coerce(callback)
+  same(coerce(view(boxed(42))), captured)
+}
+"#;
+        let mut granted = view_execution(body, view_rules());
+        assert_eq!(
+            crate::execution_fixture::run(&mut granted, &mut Vec::new(), &mut Vec::new()),
+            Ok(crate::Value::Bool(true))
+        );
+        let mut denied = view_execution(body, NativeRules::default());
+        let error = crate::execution_fixture::run(&mut denied, &mut Vec::new(), &mut Vec::new())
+            .unwrap_err();
+        assert!(
+            error.to_string().contains("incompatible retained view"),
+            "{error}"
+        );
+        let mut execution = view_execution(
+            r#"
+pub type Never
+pub fn main() {
+  let captured = "opaque result"
+  let callback = fn(_input: Never) { captured }
   let _: fn(Box) -> Box = coerce(callback)
   True
 }
@@ -2103,6 +2370,7 @@ pub type Box
 pub type Packet(a) { Packet(a) }
 pub type Wrapped(a) { Wrapped(a) }
 pub type Empty(a) { Empty }
+pub type Never
 @external(erlang, "main", "boxed") fn boxed(value: a) -> Box
 @external(erlang, "gleam@function", "identity") fn coerce(value: a) -> b
 @external(erlang, "native", "opaque_value") fn opaque_value(value: String) -> Opaque
@@ -2116,7 +2384,8 @@ pub fn main() {
   let assert True = can_view(fn(_value: BitArray) { "*" }, target, False)
   let assert False = can_view(42, target, False)
   let assert False = can_view(fn() { "*" }, target, False)
-  let assert False = can_view(identity, target, False)
+  let assert True = can_view(identity, target, False)
+  let assert False = can_view(fn(_value: Never) { "*" }, target, False)
   let view: fn(String) -> BitArray = coerce(fn(_value: BitArray) { "*" })
   let assert False = can_view(view, Wrapped(""), False)
   let assert False = can_view(Wrapped(<<"ok":utf8>>), Wrapped(""), True)
@@ -2165,6 +2434,27 @@ pub fn main() {
         let replay = function.replace("False", "True");
         assert_eq!(
             execute(provider(), &format!("{header}{replay}")).unwrap(),
+            crate::Value::Bool(false)
+        );
+        let parameter = r#"
+pub fn main() {
+  let target = coerce(42)
+  let assert True = can_view(target, 42, False)
+  can_view(fn(_value: BitArray) { "*" }, target, False)
+}
+"#;
+        assert_eq!(
+            execute(provider(), &format!("{header}{parameter}")).unwrap(),
+            crate::Value::Bool(true)
+        );
+        let parameter_replay = r#"
+pub fn main() {
+  let target = coerce(42)
+  can_view(42, target, True)
+}
+"#;
+        assert_eq!(
+            execute(provider(), &format!("{header}{parameter_replay}")).unwrap(),
             crate::Value::Bool(false)
         );
     }
@@ -2278,7 +2568,7 @@ pub fn main() {
                         "Envelope".into(),
                     ),
                     vec![crate::plan::ValueType::Parameter(
-                        crate::plan::TypeParameterId(0)
+                        crate::plan::TypeParameterId::new(0)
                     )],
                 )),
             }

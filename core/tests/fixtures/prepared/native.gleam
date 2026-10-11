@@ -26,6 +26,7 @@ fn rebuild(result: Result(a, String)) -> Result(a, String) {
 }
 
 pub fn generic_results() {
+  let assert True = parameter_payloads()
   let assert Ok(5) = rebuild(success(5))
   let assert Error("caught") = rebuild(failure(fn() { 5 }))
   let assert Error("caught") = rebuild(failure(fn() { panic }))
@@ -119,4 +120,169 @@ fn integer_comparisons() {
   let assert False = negative >= wide
   let assert True = wide == 340_282_366_920_938_463_463_374_607_431_768_211_456
   True
+}
+
+pub type Boxed(a) {
+  Boxed(value: a)
+}
+
+@external(erlang, "native", "payload")
+fn payload() -> a
+
+fn identity(value: a) -> a {
+  value
+}
+
+fn tail(value: a) -> a {
+  identity(value)
+}
+
+fn through_tuple(value: a) -> a {
+  #(value).0
+}
+
+fn through_custom(value: a) -> a {
+  Boxed(value).value
+}
+
+fn through_function(value: a) -> a {
+  let read = fn() { value }
+  read()
+}
+
+fn choose(value: a, flag: Bool) -> a {
+  case flag {
+    True -> value
+    False -> value
+  }
+}
+
+fn choose_int(value: a, flag: Int) -> a {
+  case flag {
+    0 -> value
+    _ -> value
+  }
+}
+
+fn choose_string(value: a, flag: String) -> a {
+  case flag {
+    "selected" -> value
+    _ -> value
+  }
+}
+
+fn choose_float(value: a, flag: Float) -> a {
+  case flag {
+    1.0 -> value
+    _ -> value
+  }
+}
+
+fn through_list(value: a) -> a {
+  let values = [value, value]
+  let assert [head, ..tail] = values
+  case tail {
+    [copy] ->
+      case head == copy {
+        True -> copy
+        False -> panic
+      }
+    _ -> panic
+  }
+}
+
+fn from_callback(read: fn() -> a) -> a {
+  read()
+}
+
+fn parameter_payloads() {
+  let original = payload()
+  let copied = identity(original)
+  let read = fn() { copied }
+  let from_block = {
+    let local = copied
+    local
+  }
+  let alternatives = [
+    tail(copied),
+    through_tuple(copied),
+    through_custom(copied),
+    through_function(copied),
+    through_list(copied),
+    from_callback(read),
+    choose(copied, True),
+    choose(copied, False),
+    choose_int(copied, 0),
+    choose_int(copied, 1),
+    choose_string(copied, "selected"),
+    choose_string(copied, "other"),
+    choose_float(copied, 1.0),
+    choose_float(copied, 2.0),
+    from_block,
+  ]
+  let assert [first, ..rest] = alternatives
+  echo first
+  let assert True = parameter_function_payloads(original)
+  original == first
+  && first == copied
+  && rest
+  == [
+    copied,
+    copied,
+    copied,
+    copied,
+    copied,
+    copied,
+    copied,
+    copied,
+    copied,
+    copied,
+    copied,
+    copied,
+    copied,
+    copied,
+  ]
+}
+
+fn make_function(value: a) -> fn() -> a {
+  fn() { value }
+}
+
+fn keep_function(read: fn() -> a) -> fn() -> a {
+  read
+}
+
+fn tail_function(read: fn() -> a) -> fn() -> a {
+  keep_function(read)
+}
+
+fn make_function_list(value: a) -> List(fn() -> a) {
+  [make_function(value), fn() { value }]
+}
+
+fn parameter_function_payloads(value: a) -> Bool {
+  let read = make_function(value)
+  let outer = fn() { read }
+  let assert Boxed(boxed) = Boxed(read)
+  let tuple = #(read)
+  let assert [head, ..rest] = [read, ..make_function_list(value)]
+  let assert [other, ..] = rest
+  let captured = fn() { read() }
+  let selected = case rest {
+    [other, ..] -> other
+    _ -> read
+  }
+  [
+    read(),
+    keep_function(read)(),
+    tail_function(read)(),
+    tuple.0(),
+    boxed(),
+    head(),
+    other(),
+    captured(),
+    outer()(),
+    selected(),
+  ]
+  == [value, value, value, value, value, value, value, value, value, value]
 }

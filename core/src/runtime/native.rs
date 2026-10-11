@@ -69,7 +69,7 @@ enum Node<'value> {
     Tuple(Sequence<'value>),
     List(Sequence<'value>),
     Map(&'value NativeMap),
-    External(RetainedValueRef<'value>),
+    External(RetainedValueRef<'value>, RuntimeValueMetadata<'value>),
     Opaque(
         RetainedValueRef<'value>,
         RuntimeValueMetadata<'value>,
@@ -194,6 +194,7 @@ impl NativeValue {
             return Some(result);
         }
         match value.value() {
+            EvaluatedValue::Parameter(parameter) => parameter.native().find_source(read),
             EvaluatedValue::External(external) => external.lease().native_view()?.find_source(read),
             EvaluatedValue::Function(function) => {
                 Self::from_stored(function.native_source()?.clone_retained()).find_source(read)
@@ -302,7 +303,55 @@ impl NativeValue {
 
     /// Inspects the native representation using Gleam value formatting.
     pub fn inspect(&self, context: &HostExternalInspection<'_>) -> EcoString {
-        self.with_node(|node| inspect_node(node, context))
+        self.with_node(|node| inspect_node(node, &Inspection::Host(context)))
+    }
+
+    pub(in crate::runtime) fn inspect_retained(
+        &self,
+        storage: &crate::runtime::RuntimeListStorage,
+    ) -> EcoString {
+        self.with_node(|node| inspect_node(node, &Inspection::Retained(storage)))
+    }
+
+    pub(in crate::runtime) fn parameter_source(&self) -> Self {
+        match &self.0 {
+            Representation::Stored(source) => match source.value() {
+                EvaluatedValue::Parameter(value) => value.native().clone(),
+                _ => self.clone(),
+            },
+            _ => self.clone(),
+        }
+    }
+
+    pub(crate) fn retention_lifetime<Profile: crate::host::HostProfile>(
+        &self,
+        execution: &crate::runtime::execution::ExecutionContext<Profile>,
+    ) -> Option<bool> {
+        match &self.0 {
+            Representation::Stored(source) => source
+                .belongs_to(execution)
+                .then(|| source.requires_execution()),
+            Representation::Symbol(_) => Some(false),
+            Representation::Tuple(values) => native_lifetime(values.iter(), execution),
+            Representation::Closure(closure) => native_lifetime(closure.captures.iter(), execution),
+            Representation::Map(map) => {
+                let mut requires_execution = false;
+                for entry in map.entries() {
+                    requires_execution |= entry.key.retention_lifetime(execution)?;
+                    requires_execution |= entry.value.retention_lifetime(execution)?;
+                }
+                Some(requires_execution)
+            }
+            Representation::ListTuple { list, metadata } => {
+                let source = StoredRuntimeValue::from_retention(
+                    EvaluatedValue::from(list.clone()),
+                    metadata.as_borrowed(),
+                );
+                source
+                    .belongs_to(execution)
+                    .then(|| source.requires_execution())
+            }
+        }
     }
 
     fn with_node<Output>(&self, read: impl FnOnce(Node<'_>) -> Output) -> Output {
@@ -518,6 +567,17 @@ pub(in crate::runtime) fn value_hash(
     value.source_hash(&HostExternalHashing(&context))
 }
 
+fn native_lifetime<'value, Profile: crate::host::HostProfile>(
+    values: impl Iterator<Item = &'value NativeValue>,
+    execution: &crate::runtime::execution::ExecutionContext<Profile>,
+) -> Option<bool> {
+    let mut requires_execution = false;
+    for value in values {
+        requires_execution |= value.retention_lifetime(execution)?;
+    }
+    Some(requires_execution)
+}
+
 fn with_source_node<Output>(
     value: &EvaluatedValue,
     retention: ValueRetentionRef<'_>,
@@ -525,6 +585,7 @@ fn with_source_node<Output>(
 ) -> Output {
     let metadata = retention.metadata;
     let node = match value {
+        EvaluatedValue::Parameter(value) => return value.native().with_node(read),
         EvaluatedValue::Int(value) => Node::Int(Cow::Borrowed(value)),
         EvaluatedValue::UtfCodepoint(value) => Node::Int(Cow::Owned(u32::from(*value).into())),
         EvaluatedValue::Float(value) => Node::Float(*value),
@@ -538,9 +599,10 @@ fn with_source_node<Output>(
             RetainedList::new(list.clone().into()),
             retention,
         )),
-        EvaluatedValue::ParameterList(list) => {
-            Node::List(Sequence::List(RetainedList::new((*list).into()), retention))
-        }
+        EvaluatedValue::ParameterList(list) => Node::List(Sequence::List(
+            RetainedList::new(list.clone().into()),
+            retention,
+        )),
         EvaluatedValue::Custom(custom) => {
             if !metadata.custom_native_visible(custom.constructor().type_id()) {
                 return read(Node::Opaque(
@@ -566,7 +628,7 @@ fn with_source_node<Output>(
             if let Some(view) = external.lease().native_view() {
                 return view.with_node(read);
             }
-            Node::External(RetainedValueRef::new(value))
+            Node::External(RetainedValueRef::new(value), metadata)
         }
     };
     read(node)
@@ -582,7 +644,7 @@ impl Node<'_> {
             Self::Tuple(_) => NativeKind::Tuple,
             Self::List(_) => NativeKind::List,
             Self::Map(_) => NativeKind::Map,
-            Self::External(_) => NativeKind::External,
+            Self::External(..) => NativeKind::External,
             Self::Opaque(..) => NativeKind::Opaque,
             Self::Function(..) | Self::Closure(_) => NativeKind::Function,
         }
@@ -606,7 +668,7 @@ fn nodes_equal(left: Node<'_>, right: Node<'_>, context: &HostExternalEquality<'
                         })
                     })
         }
-        (Node::External(left), Node::External(right)) => {
+        (Node::External(left, _), Node::External(right, _)) => {
             context.0.stored_values_equal(&left, &right)
         }
         (Node::Opaque(left, left_owner, _), Node::Opaque(right, right_owner, _)) => {
@@ -654,7 +716,7 @@ fn hash_node(node: Node<'_>, context: &HostExternalHashing<'_>) -> u64 {
                     .hash(&mut hash);
             }
         }
-        Node::External(value) | Node::Opaque(value, _, _) | Node::Function(value, _) => {
+        Node::External(value, _) | Node::Opaque(value, _, _) | Node::Function(value, _) => {
             context.0.stored_value_hash(&value).hash(&mut hash)
         }
         Node::Closure(value) => {
@@ -714,7 +776,12 @@ fn binary_string(bits: &BitSlice<u8, Msb0>) -> Option<crate::StringValue> {
     Some(crate::StringValue::from_bytes(bytes))
 }
 
-fn inspect_node(node: Node<'_>, context: &HostExternalInspection<'_>) -> EcoString {
+enum Inspection<'context, 'value> {
+    Host(&'context HostExternalInspection<'value>),
+    Retained(&'context crate::runtime::RuntimeListStorage),
+}
+
+fn inspect_node(node: Node<'_>, context: &Inspection<'_, '_>) -> EcoString {
     match node {
         Node::Int(value) => value.to_string().into(),
         Node::Float(value) => crate::Value::Float(value).inspect().to_string().into(),
@@ -757,8 +824,8 @@ fn inspect_node(node: Node<'_>, context: &HostExternalInspection<'_>) -> EcoStri
                 .map(|entry| {
                     format!(
                         "#({}, {})",
-                        entry.key.inspect(context),
-                        entry.value.inspect(context)
+                        entry.key.with_node(|node| inspect_node(node, context)),
+                        entry.value.with_node(|node| inspect_node(node, context))
                     )
                 })
                 .collect::<Vec<_>>();
@@ -775,7 +842,15 @@ fn inspect_node(node: Node<'_>, context: &HostExternalInspection<'_>) -> EcoStri
             )
             .into()
         }
-        Node::External(value) | Node::Function(value, _) => context.0.inspect_stored_value(&value),
+        Node::External(value, metadata) | Node::Function(value, metadata) => match context {
+            Inspection::Host(context) => context.0.inspect_stored_value(&value),
+            Inspection::Retained(storage) => {
+                crate::runtime::materialize::value(metadata, storage, value.value().clone())
+                    .inspect()
+                    .to_string()
+                    .into()
+            }
+        },
         Node::Closure(_) => "//fn(a) { ... }".into(),
     }
 }
@@ -797,7 +872,7 @@ fn symbol_constructor(value: &str) -> Option<EcoString> {
     Some(name)
 }
 
-fn inspect_list(values: Sequence<'_>, context: &HostExternalInspection<'_>) -> EcoString {
+fn inspect_list(values: Sequence<'_>, context: &Inspection<'_, '_>) -> EcoString {
     let mut text = String::from("[");
     let mut chars = (values.len() != 0).then(String::new);
     for (index, item) in values.into_items().enumerate() {
@@ -829,7 +904,7 @@ fn inspect_items<'value>(
     values: impl Iterator<Item = Item<'value>>,
     start: &str,
     end: char,
-    context: &HostExternalInspection<'_>,
+    context: &Inspection<'_, '_>,
 ) -> EcoString {
     let mut text = String::from(start);
     for (index, value) in values.enumerate() {
@@ -872,6 +947,7 @@ mod tests {
     };
     use crate::plan::execution::runtime::RuntimeExecutionPlan;
     use crate::runtime::RetainedValueRef;
+    use crate::runtime::state::list::StoredListValueId;
     use crate::runtime::{EvaluatedValue, StoredRuntimeValue};
     use crate::{StringValue, ValueType};
     use ecow::EcoString;
@@ -893,6 +969,169 @@ mod tests {
 
     fn opaque_inspection(_: &RetainedValueRef) -> EcoString {
         "opaque".into()
+    }
+
+    #[test]
+    fn parameter_transport_keeps_the_original_native_source_without_wrapper_chains() {
+        use crate::plan::TypeParameterId;
+        use crate::runtime::{NativeValues, RuntimeListStorage};
+
+        let plan = crate::runtime::plan_src("pub fn main() -> List(a) { [] }");
+        let lists = RuntimeListStorage::default();
+        let values = NativeValues::new(&lists, plan.value_metadata());
+        let original = values.string("retained".into());
+        let parameter = values.parameter(TypeParameterId::scoped(0, 0), &original, false);
+        let transported = NativeValue::from_stored(StoredRuntimeValue::new(
+            EvaluatedValue::Parameter(parameter),
+            plan.value_metadata(),
+        ));
+
+        assert_eq!(transported.kind(), NativeKind::Binary);
+        assert_eq!(transported.as_string(), Some("retained".into()));
+        assert_eq!(
+            transported.find_source(|value| {
+                (value.type_() == &ValueType::String).then(|| value.type_().clone())
+            }),
+            Some(ValueType::String),
+        );
+        assert!(transported.find_source(|_| None::<()>).is_none());
+        let forwarded = transported.parameter_source();
+        assert_eq!(
+            forwarded.find_source(|value| Some(value.type_().clone())),
+            Some(ValueType::String),
+        );
+        assert!(values.equal(&forwarded, &original));
+        assert_eq!(values.hash(&forwarded), values.hash(&original));
+        assert_eq!(
+            original.parameter_source().as_string(),
+            Some("retained".into())
+        );
+        assert_eq!(
+            NativeValue::symbol("tag")
+                .parameter_source()
+                .as_symbol()
+                .as_deref(),
+            Some("tag")
+        );
+    }
+
+    #[test]
+    fn native_container_retention_tracks_nested_endpoints_and_pure_data() {
+        use crate::host::StatelessHostProfile;
+        use crate::runtime::ValueRetention;
+        use crate::runtime::execution::ExecutionServices;
+        use crate::runtime::host::ValueRetentionRef;
+        use crate::runtime::{NativeMap, NativeMapEntry, NativeValues, RuntimeListStorage};
+
+        let services = ExecutionServices::<StatelessHostProfile>::new(Default::default());
+        let execution = services.context();
+        let foreign_services = ExecutionServices::<StatelessHostProfile>::new(Default::default());
+        let foreign = foreign_services.context();
+        let native = source(
+            "pub fn main() { #(42, fn(value: Int) { value + 1 }, [fn(value: Int) { value + 1 }]) }",
+        );
+        let pure = native.index(0).unwrap();
+        let retain = |native: &NativeValue| {
+            native
+                .find_source(|value| {
+                    Some(StoredRuntimeValue::from_retention(
+                        value.value().clone(),
+                        ValueRetentionRef {
+                            metadata: value.retention().metadata,
+                            endpoint: Some(&execution.endpoint()),
+                        },
+                    ))
+                })
+                .unwrap()
+        };
+        let callable = NativeValue::from_stored(retain(&native.index(1).unwrap()));
+        let list = retain(&native.index(2).unwrap());
+        let list_value = source_function_list(&list);
+        let list_tuple = NativeValue::tuple_from_list(
+            list_value.clone().into(),
+            ValueRetention::new(list.retention().metadata).with_endpoint(execution.endpoint()),
+        );
+        let lists = RuntimeListStorage::default();
+        let values = NativeValues::new(&lists, list.retention().metadata);
+        let map = |key: NativeValue, value: NativeValue| {
+            let hash = values.hash(&key);
+            let map = NativeMap::new(
+                vec![(hash, key.clone(), value.clone())],
+                Vec::len,
+                |entries| {
+                    entries
+                        .iter()
+                        .map(|(key_hash, key, value)| NativeMapEntry {
+                            key_hash: *key_hash,
+                            key: key.clone(),
+                            value: value.clone(),
+                        })
+                        .collect::<Vec<_>>()
+                        .into_iter()
+                },
+                |entries, hash, key, equal| {
+                    entries.iter().find_map(|(key_hash, stored_key, value)| {
+                        (*key_hash == hash && equal(stored_key, key)).then(|| value.clone())
+                    })
+                },
+            );
+            let equal = |a: &NativeValue, b: &NativeValue| values.equal(a, b);
+            assert_eq!(map.len(), 1);
+            assert!(values.equal(&map.get(hash, &key, equal).unwrap(), &value));
+            assert!(
+                map.get(hash, &NativeValue::symbol("missing"), equal)
+                    .is_none()
+            );
+            assert!(map.get(hash.wrapping_add(1), &key, equal).is_none());
+            NativeValue::map(map)
+        };
+        let pure_values = [
+            pure.clone(),
+            NativeValue::symbol("tag"),
+            NativeValue::tuple([pure.clone(), NativeValue::symbol("tag")]),
+            NativeValue::unary_closure("native::pure", [pure.clone()]),
+            map(pure.clone(), pure.clone()),
+        ];
+        let scoped_values = [
+            callable.clone(),
+            list_tuple,
+            NativeValue::tuple([pure.clone(), callable.clone()]),
+            NativeValue::unary_closure("native::scoped", [callable.clone()]),
+            map(callable.clone(), pure.clone()),
+            map(pure, callable),
+        ];
+        for value in &pure_values {
+            assert_eq!(value.retention_lifetime(&execution), Some(false));
+            assert_eq!(value.retention_lifetime(&foreign), Some(false));
+        }
+        for value in &scoped_values {
+            assert_eq!(value.retention_lifetime(&execution), Some(true));
+            assert_eq!(value.retention_lifetime(&foreign), None);
+        }
+        services.close();
+        for value in &pure_values {
+            assert_eq!(value.retention_lifetime(&execution), Some(false));
+        }
+        for value in &scoped_values {
+            assert_eq!(value.retention_lifetime(&execution), None);
+        }
+    }
+
+    fn source_function_list(value: &StoredRuntimeValue) -> &StoredListValueId {
+        match value.value() {
+            EvaluatedValue::List(list) => list,
+            _ => panic!("source returns a function list"),
+        }
+    }
+
+    #[test]
+    #[should_panic(expected = "source returns a function list")]
+    fn source_function_list_guard_rejects_scalar_source_values() {
+        let native = source("pub fn main() { 42 }");
+        let original = native
+            .find_source(|value| Some(value.clone_retained()))
+            .unwrap();
+        source_function_list(&original);
     }
 
     #[test]

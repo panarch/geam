@@ -2252,7 +2252,7 @@ pub fn main() {
             ),
             Err(pattern_shape_error(
                 crate::planner::InvalidPatternShapeReason::ConstructorType {
-                    type_: ValueType::Parameter(TypeParameterId(0)),
+                    type_: ValueType::Parameter(TypeParameterId::new(0)),
                 },
             )),
         );
@@ -4065,7 +4065,7 @@ pub fn main() {
             }),
             Ok(BindingPattern::ListTail {
                 tail: ListTailBinding::Discard,
-                element_type: ValueType::Parameter(crate::plan::TypeParameterId(0)),
+                element_type: ValueType::Parameter(crate::plan::TypeParameterId::new(0)),
             }),
         );
     }

@@ -109,6 +109,22 @@ impl Target for function::UtfCodepointFunctionId {
     }
 }
 
+impl Target for function::ParameterFunctionId {
+    fn resolve<'data>(
+        &self,
+        catalog: &Catalog<'data>,
+        _types: &Types<'data>,
+    ) -> Result<Function<'data>, CallError> {
+        let function = catalog
+            .function(FunctionTableFamily::Parameter, self.0)
+            .map_err(CallError::Catalog)?;
+        if !matches!(function.return_type, ValueType::Parameter(p) if p.scope().is_some()) {
+            return Err(CallError::TargetType);
+        }
+        Ok(function)
+    }
+}
+
 impl Target for function::CustomFunctionId {
     fn resolve<'data>(
         &self,
@@ -417,26 +433,6 @@ impl Target for function::TupleListFunctionId {
     }
 }
 
-impl Target for function::ParameterListListFunctionId {
-    fn resolve<'data>(
-        &self,
-        catalog: &Catalog<'data>,
-        types: &Types<'data>,
-    ) -> Result<Function<'data>, CallError> {
-        let function = catalog
-            .function(FunctionTableFamily::ParameterListList, self.index)
-            .map_err(CallError::Catalog)?;
-        with_return(
-            function,
-            &ParamLocal::List(graph::ListLocal::ParameterList {
-                local: graph::ParameterListListLocalId(0),
-                type_id: self.type_id,
-            }),
-            types,
-        )
-    }
-}
-
 impl Target for function::ListListFunctionId {
     fn resolve<'data>(
         &self,
@@ -555,6 +551,23 @@ impl Target for function::UtfCodepointFunctionFunctionId {
             .function(FunctionTableFamily::UtfCodepointFunction, self.0)
             .map_err(CallError::Catalog)?;
         if !matches!(function.return_type, ValueType::Function(type_) if matches!(type_.return_(), ValueType::UtfCodepoint))
+        {
+            return Err(CallError::TargetType);
+        }
+        Ok(function)
+    }
+}
+
+impl Target for function::ParameterFunctionFunctionId {
+    fn resolve<'data>(
+        &self,
+        catalog: &Catalog<'data>,
+        _types: &Types<'data>,
+    ) -> Result<Function<'data>, CallError> {
+        let function = catalog
+            .function(FunctionTableFamily::ParameterFunction, self.0)
+            .map_err(CallError::Catalog)?;
+        if !matches!(function.return_type, ValueType::Function(type_) if matches!(type_.return_(), ValueType::Parameter(p) if p.scope().is_some()))
         {
             return Err(CallError::TargetType);
         }
@@ -701,23 +714,6 @@ impl Target for function::ParameterListFunctionFunctionId {
     ) -> Result<Function<'data>, CallError> {
         let function = catalog
             .function(FunctionTableFamily::ParameterListFunction, self.0)
-            .map_err(CallError::Catalog)?;
-        if !matches!(function.return_type, ValueType::Function(type_) if matches!(type_.return_(), ValueType::List(_)))
-        {
-            return Err(CallError::TargetType);
-        }
-        Ok(function)
-    }
-}
-
-impl Target for function::ParameterListListFunctionFunctionId {
-    fn resolve<'data>(
-        &self,
-        catalog: &Catalog<'data>,
-        _types: &Types<'data>,
-    ) -> Result<Function<'data>, CallError> {
-        let function = catalog
-            .function(FunctionTableFamily::ParameterListListFunction, self.0)
             .map_err(CallError::Catalog)?;
         if !matches!(function.return_type, ValueType::Function(type_) if matches!(type_.return_(), ValueType::List(_)))
         {
@@ -961,7 +957,7 @@ impl Target for function::ListFunctionId {
     ) -> Result<Function<'data>, CallError> {
         match self {
             Self::Parameter(id) => id.resolve(catalog, types),
-            Self::ParameterList(id) => id.resolve(catalog, types),
+
             Self::Int(id) => id.resolve(catalog, types),
             Self::String(id) => id.resolve(catalog, types),
             Self::BitArray(id) => id.resolve(catalog, types),
@@ -993,8 +989,12 @@ where
     }
 }
 
-impl<Graph: function::ExecutionGraphProfile, Symbolic: Target> Target
-    for function::ProfiledFunctionFunctionId<Graph, Symbolic>
+impl<
+    Graph: function::ExecutionGraphProfile,
+    Symbolic: Target,
+    Parameter: Target,
+    ListParameter: Target,
+> Target for function::ProfiledFunctionFunctionId<Graph, Symbolic, Parameter, ListParameter>
 where
     Graph::ExternalFunctionFunctionId: Target,
     Graph::ExternalListFunctionFunctionId: Target,
@@ -1012,6 +1012,7 @@ where
             Self::String(id) => id.resolve(catalog, types),
             Self::BitArray(id) => id.resolve(catalog, types),
             Self::UtfCodepoint(id) => id.resolve(catalog, types),
+            Self::Parameter(id) => id.resolve(catalog, types),
             Self::Custom(id) => id.resolve(catalog, types),
             Self::External(id) => id.resolve(catalog, types),
             Self::Bool(id) => id.resolve(catalog, types),
@@ -1023,8 +1024,8 @@ where
     }
 }
 
-impl<Graph: function::ExecutionGraphProfile> Target
-    for function::ProfiledListFunctionFunctionId<Graph>
+impl<Graph: function::ExecutionGraphProfile, Parameter: Target> Target
+    for function::ProfiledListFunctionFunctionId<Graph, Parameter>
 where
     Graph::ExternalListFunctionFunctionId: Target,
 {
@@ -1046,18 +1047,7 @@ where
                     list_type: *list_type,
                 },
             ),
-            Self::ParameterList {
-                id,
-                type_,
-                list_type,
-            } => (
-                id.resolve(catalog, types)?,
-                graph::ListFunctionLocal::ParameterList {
-                    local: graph::ParameterListListFunctionLocalId(0),
-                    type_: type_.clone(),
-                    list_type: *list_type,
-                },
-            ),
+
             Self::Int {
                 id,
                 type_,
@@ -1226,6 +1216,89 @@ mod tests {
     use crate::plan::execution::prepared::admission::catalog::CatalogError;
     use crate::plan::execution::storage::{Node, Table};
     use crate::plan::execution::type_::{FunctionType, ValueShapeId};
+
+    #[test]
+    fn parameter_targets_require_sealed_parameter_returns() {
+        use crate::plan::TypeParameterId;
+        use crate::plan::execution::function::{HostedExecutionGraph, ProfiledFunctionFunctionId};
+
+        let cases: [(
+            &str,
+            &dyn Target,
+            &dyn Target,
+            FunctionTableFamily,
+            ValueType,
+        ); 2] = [
+            (
+                "pub fn main() -> a { echo 42 panic }",
+                &function::ParameterFunctionId(0),
+                &function::ParameterFunctionId(99),
+                FunctionTableFamily::Parameter,
+                ValueType::Parameter(TypeParameterId::scoped(0, 0)),
+            ),
+            (
+                "pub fn main() -> fn() -> a { echo fn() { 42 } fn() { panic } }",
+                &ProfiledFunctionFunctionId::<HostedExecutionGraph>::Parameter(
+                    function::ParameterFunctionFunctionId(0),
+                ),
+                &ProfiledFunctionFunctionId::<HostedExecutionGraph>::Parameter(
+                    function::ParameterFunctionFunctionId(99),
+                ),
+                FunctionTableFamily::ParameterFunction,
+                ValueType::Function(FunctionType::new(
+                    vec![],
+                    ValueType::Parameter(TypeParameterId::scoped(0, 0)),
+                )),
+            ),
+        ];
+        for (source, target, missing, family, expected) in cases {
+            let plan = lower(source);
+            let common = &plan.program.common;
+            let types = execution_types(&plan.program);
+            let catalog =
+                Catalog::admit(&common.function_parameters, &plan.program.functions, &types)
+                    .unwrap();
+            assert_eq!(
+                target.resolve(&catalog, &types).unwrap().return_type,
+                &expected
+            );
+            assert_eq!(
+                missing.resolve(&catalog, &types).err(),
+                Some(CallError::Catalog(CatalogError::MissingFunction {
+                    family,
+                    index: 99
+                })),
+            );
+            let wrong_returns = if family == FunctionTableFamily::ParameterFunction {
+                vec![
+                    ValueType::Int,
+                    ValueType::Function(FunctionType::new(vec![], ValueType::Int)),
+                ]
+            } else {
+                vec![ValueType::Int]
+            };
+            for wrong_return in wrong_returns {
+                let wrong_shape = ValueShapeId(
+                    common
+                        .value_shapes
+                        .shape_types
+                        .iter()
+                        .position(|type_| type_ == &wrong_return)
+                        .unwrap(),
+                );
+                let mut raw = copy_catalog(&common.function_parameters);
+                let index = raw.families[family as usize].start;
+                let mut contracts = raw.functions.into_vec();
+                contracts[index].return_ = wrong_shape;
+                raw.functions = contracts.into();
+                let wrong = Catalog::admit(&raw, &plan.program.functions, &types).unwrap();
+                assert_eq!(
+                    target.resolve(&wrong, &types).err(),
+                    Some(CallError::TargetType)
+                );
+            }
+        }
+    }
 
     #[test]
     fn scalar_and_tuple_targets_resolve_only_their_declared_return_families() {
@@ -1458,7 +1531,7 @@ pub fn main() {
 
     #[test]
     fn never_targets_resolve_the_divergent_catalog_entry() {
-        let plan = lower("pub fn main() { panic as \"stopped\" }");
+        let plan = lower("pub type Never pub fn main() -> Never { panic as \"stopped\" }");
         let types = execution_types(&plan.program);
         let catalog = Catalog::admit(
             &plan.program.common.function_parameters,
@@ -1485,8 +1558,9 @@ pub fn main() {
         use crate::plan::execution::type_::GenericFunctionType;
         let source = r#"
 pub type Box { Box(Int) }
-fn identity(value) { value }
-fn stop() -> a { panic }
+pub type Never
+fn identity(value: Never) { value }
+fn stop() -> Never { panic }
 fn generic() { identity }
 fn never() { stop }
 fn custom() { fn() { Box(42) } }
@@ -1660,7 +1734,7 @@ pub fn main() { fn() { key() } }
         fn fields(value: &mut List<HostedExecutionGraph>) -> (&mut FunctionType, &mut usize) {
             match value {
                 List::Parameter { type_, id, .. } => (type_, &mut id.0),
-                List::ParameterList { type_, id, .. } => (type_, &mut id.0),
+
                 List::Int { type_, id, .. } => (type_, &mut id.0),
                 List::String { type_, id, .. } => (type_, &mut id.0),
                 List::BitArray { type_, id, .. } => (type_, &mut id.0),
@@ -1678,7 +1752,6 @@ pub fn main() { fn() { key() } }
         let cases = [
             (FunctionTableFamily::ParameterListFunction, r#"[]"#),
             (FunctionTableFamily::IntFunction, r#"42"#),
-            (FunctionTableFamily::ParameterListListFunction, r#"[[]]"#),
             (FunctionTableFamily::IntListFunction, r#"[42]"#),
             (FunctionTableFamily::StringListFunction, r#"["text"]"#),
             (FunctionTableFamily::BitArrayListFunction, r#"[<<42>>]"#),
@@ -1802,7 +1875,6 @@ pub fn main() { fn() { key() } }
         let cases = [
             (FunctionTableFamily::ParameterList, "[]"),
             (FunctionTableFamily::Int, "42"),
-            (FunctionTableFamily::ParameterListList, "[[]]"),
             (FunctionTableFamily::IntList, "[42]"),
             (FunctionTableFamily::StringList, "[\"text\"]"),
             (FunctionTableFamily::BitArrayList, "[<<42>>]"),
@@ -1845,7 +1917,7 @@ pub fn main() { fn() { key() } }
                 ProfiledListFunctionId::External(id) => &mut id.index,
                 ProfiledListFunctionId::Core(id) => match id {
                     List::Parameter(id) => &mut id.index,
-                    List::ParameterList(id) => &mut id.index,
+
                     List::Int(id) => &mut id.index,
                     List::String(id) => &mut id.index,
                     List::BitArray(id) => &mut id.index,

@@ -225,6 +225,7 @@ fn function_counts<Profile: ExecutionProfile>(
         string_functions,
         bit_array_functions,
         utf_codepoint_functions,
+        parameter_functions,
         custom_functions,
         external_functions,
         bool_functions,
@@ -243,7 +244,6 @@ fn function_counts<Profile: ExecutionProfile>(
         bool_list_functions,
         nil_list_functions,
         tuple_list_functions,
-        parameter_list_list_functions,
         list_list_functions,
         function_list_functions,
     } = list_returns;
@@ -253,6 +253,7 @@ fn function_counts<Profile: ExecutionProfile>(
         string_function_functions,
         bit_array_function_functions,
         utf_codepoint_function_functions,
+        parameter_function_functions,
         custom_function_functions,
         external_function_functions,
         bool_function_functions,
@@ -261,7 +262,6 @@ fn function_counts<Profile: ExecutionProfile>(
         generic_function_functions,
         never_function_functions,
         parameter_list_function_functions,
-        parameter_list_list_function_functions,
         int_list_function_functions,
         string_list_function_functions,
         bit_array_list_function_functions,
@@ -283,6 +283,7 @@ fn function_counts<Profile: ExecutionProfile>(
     counts[FunctionTableFamily::String as usize] = string_functions.len();
     counts[FunctionTableFamily::BitArray as usize] = bit_array_functions.len();
     counts[FunctionTableFamily::UtfCodepoint as usize] = utf_codepoint_functions.len();
+    counts[FunctionTableFamily::Parameter as usize] = parameter_functions.len();
     counts[FunctionTableFamily::Custom as usize] = custom_functions.len();
     counts[FunctionTableFamily::External as usize] = external_functions.len();
     counts[FunctionTableFamily::Bool as usize] = bool_functions.len();
@@ -299,7 +300,7 @@ fn function_counts<Profile: ExecutionProfile>(
     counts[FunctionTableFamily::BoolList as usize] = bool_list_functions.len();
     counts[FunctionTableFamily::NilList as usize] = nil_list_functions.len();
     counts[FunctionTableFamily::TupleList as usize] = tuple_list_functions.len();
-    counts[FunctionTableFamily::ParameterListList as usize] = parameter_list_list_functions.len();
+
     counts[FunctionTableFamily::ListList as usize] = list_list_functions.len();
     counts[FunctionTableFamily::FunctionList as usize] = function_list_functions.len();
     counts[FunctionTableFamily::IntFunction as usize] = int_function_functions.len();
@@ -308,6 +309,7 @@ fn function_counts<Profile: ExecutionProfile>(
     counts[FunctionTableFamily::BitArrayFunction as usize] = bit_array_function_functions.len();
     counts[FunctionTableFamily::UtfCodepointFunction as usize] =
         utf_codepoint_function_functions.len();
+    counts[FunctionTableFamily::ParameterFunction as usize] = parameter_function_functions.len();
     counts[FunctionTableFamily::CustomFunction as usize] = custom_function_functions.len();
     counts[FunctionTableFamily::ExternalFunction as usize] = external_function_functions.len();
     counts[FunctionTableFamily::BoolFunction as usize] = bool_function_functions.len();
@@ -317,8 +319,7 @@ fn function_counts<Profile: ExecutionProfile>(
     counts[FunctionTableFamily::NeverFunction as usize] = never_function_functions.len();
     counts[FunctionTableFamily::ParameterListFunction as usize] =
         parameter_list_function_functions.len();
-    counts[FunctionTableFamily::ParameterListListFunction as usize] =
-        parameter_list_list_function_functions.len();
+
     counts[FunctionTableFamily::IntListFunction as usize] = int_list_function_functions.len();
     counts[FunctionTableFamily::StringListFunction as usize] = string_list_function_functions.len();
     counts[FunctionTableFamily::BitArrayListFunction as usize] =

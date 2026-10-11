@@ -1823,7 +1823,7 @@ mod tests {
                 FunctionListLocalId(3),
                 FunctionType::new(vec![ValueType::Int], ValueType::String),
             ),
-            ListLocal::generic(GenericListLocalId(3), crate::plan::TypeParameterId(0)),
+            ListLocal::generic(GenericListLocalId(3), crate::plan::TypeParameterId::new(0)),
         ];
 
         assert_eq!(
@@ -1897,7 +1897,7 @@ mod tests {
                 ListFunctionLocal::Generic {
                     local: GenericListFunctionLocalId(3),
                     type_: cases[12].clone(),
-                    parameter: crate::plan::TypeParameterId(0),
+                    parameter: crate::plan::TypeParameterId::new(0),
                 },
             ],
         );
@@ -1969,7 +1969,7 @@ mod tests {
                 },
                 ListFunctionId::Generic {
                     id: GenericListFunctionId(5),
-                    parameter: crate::plan::TypeParameterId(0),
+                    parameter: crate::plan::TypeParameterId::new(0),
                 },
             ],
         );
@@ -2060,7 +2060,7 @@ mod tests {
                 ListFunctionFunctionId::Generic {
                     id: GenericListFunctionFunctionId(7),
                     type_: cases[12].clone(),
-                    parameter: crate::plan::TypeParameterId(0),
+                    parameter: crate::plan::TypeParameterId::new(0),
                 },
             ],
         );
@@ -2095,7 +2095,7 @@ mod tests {
                 vec![ValueType::Int],
                 ValueType::String,
             ))),
-            ValueType::Parameter(crate::plan::TypeParameterId(0)),
+            ValueType::Parameter(crate::plan::TypeParameterId::new(0)),
         ]
     }
 

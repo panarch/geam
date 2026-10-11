@@ -1,3 +1,5 @@
+pub type Empty
+
 pub type FunctionBox(output) {
   FunctionBox(function: fn(Int) -> output)
 }
@@ -14,72 +16,72 @@ pub type CustomFunctionBox(value) {
   CustomFunctionBox(function: fn(Int) -> ValueBox(value))
 }
 
-fn tuple_diverge(_value: Int) -> #(value) {
+fn tuple_diverge(_value: Int) -> #(Empty) {
   #(panic as "unreached tuple function")
 }
 
-fn custom_diverge(_value: Int) -> ValueBox(value) {
+fn custom_diverge(_value: Int) -> ValueBox(Empty) {
   ValueBox(panic as "unreached custom function")
 }
 
 const tuple_constant = tuple_diverge
 const custom_constant = custom_diverge
 
-fn tuple_from_reference() -> fn(Int) -> #(value) {
+fn tuple_from_reference() -> fn(Int) -> #(Empty) {
   tuple_diverge
 }
 
-fn tuple_from_closure() -> fn(Int) -> #(value) {
+fn tuple_from_closure() -> fn(Int) -> #(Empty) {
   fn(_value: Int) { #(panic as "unreached tuple closure") }
 }
 
-fn tuple_from_argument(function: fn(Int) -> #(value)) {
+fn tuple_from_argument(function: fn(Int) -> #(Empty)) {
   let local = function
   local
 }
 
-fn tuple_from_call() -> fn(Int) -> #(value) {
+fn tuple_from_call() -> fn(Int) -> #(Empty) {
   tuple_from_reference()
 }
 
 fn tuple_from_function_call(
-  provider: fn() -> fn(Int) -> #(value),
-) -> fn(Int) -> #(value) {
+  provider: fn() -> fn(Int) -> #(Empty),
+) -> fn(Int) -> #(Empty) {
   let selected = provider()
   selected
 }
 
-fn tuple_from_tuple() -> fn(Int) -> #(value) {
+fn tuple_from_tuple() -> fn(Int) -> #(Empty) {
   #(tuple_diverge).0
 }
 
-fn tuple_from_custom() -> fn(Int) -> #(value) {
+fn tuple_from_custom() -> fn(Int) -> #(Empty) {
   TupleFunctionBox(function: tuple_diverge).function
 }
 
-fn tuple_from_list() -> fn(Int) -> #(value) {
+fn tuple_from_list() -> fn(Int) -> #(Empty) {
   let assert [function] = [tuple_diverge]
   function
 }
 
-fn tuple_from_list_case() -> fn(Int) -> #(value) {
+fn tuple_from_list_case() -> fn(Int) -> #(Empty) {
   case [tuple_diverge] {
     [function] -> function
     _ -> tuple_constant
   }
 }
 
-fn tuple_provider(_value: input) -> fn(Int) -> #(output) {
+fn tuple_provider(_value: input) -> fn(Int) -> #(Empty) {
   tuple_diverge
 }
 
 fn tuple_from_diverging_function_argument(
-  provider: fn(input) -> fn(Int) -> #(output),
-) -> fn(Int) -> #(output) {
+  provider: fn(input) -> fn(Int) -> #(Empty),
+) -> fn(Int) -> #(Empty) {
   provider(panic as "unselected tuple provider argument")
 }
 
-fn tuple_from_bool(selector: Bool) -> fn(Int) -> #(value) {
+fn tuple_from_bool(selector: Bool) -> fn(Int) -> #(Empty) {
   let selected = case selector {
     True -> tuple_diverge
     False -> tuple_constant
@@ -87,7 +89,7 @@ fn tuple_from_bool(selector: Bool) -> fn(Int) -> #(value) {
   selected
 }
 
-fn tuple_from_int(selector: Int) -> fn(Int) -> #(value) {
+fn tuple_from_int(selector: Int) -> fn(Int) -> #(Empty) {
   let selected = case selector {
     0 -> tuple_diverge
     _ -> tuple_constant
@@ -95,7 +97,7 @@ fn tuple_from_int(selector: Int) -> fn(Int) -> #(value) {
   selected
 }
 
-fn tuple_from_string(selector: String) -> fn(Int) -> #(value) {
+fn tuple_from_string(selector: String) -> fn(Int) -> #(Empty) {
   let selected = case selector {
     "reference" -> tuple_diverge
     _ -> tuple_constant
@@ -103,7 +105,7 @@ fn tuple_from_string(selector: String) -> fn(Int) -> #(value) {
   selected
 }
 
-fn tuple_from_float(selector: Float) -> fn(Int) -> #(value) {
+fn tuple_from_float(selector: Float) -> fn(Int) -> #(Empty) {
   let selected = case selector {
     1.0 -> tuple_diverge
     _ -> tuple_constant
@@ -111,7 +113,7 @@ fn tuple_from_float(selector: Float) -> fn(Int) -> #(value) {
   selected
 }
 
-fn tuple_from_block() -> fn(Int) -> #(value) {
+fn tuple_from_block() -> fn(Int) -> #(Empty) {
   let selected = {
     let _ = Nil
     tuple_diverge
@@ -119,17 +121,17 @@ fn tuple_from_block() -> fn(Int) -> #(value) {
   selected
 }
 
-fn tuple_from_panic() -> fn(Int) -> #(value) {
+fn tuple_from_panic() -> fn(Int) -> #(Empty) {
   panic as "unselected tuple function panic"
 }
 
 fn tuple_from_nested_expression(
-  provider: fn() -> fn(Int) -> #(value),
+  provider: fn() -> fn(Int) -> #(Empty),
   selector: Int,
   bool_selector: Bool,
   string_selector: String,
   float_selector: Float,
-) -> fn(Int) -> #(value) {
+) -> fn(Int) -> #(Empty) {
   let selected = case selector {
     0 -> tuple_from_reference()
     1 -> provider()
@@ -160,66 +162,66 @@ fn tuple_from_nested_expression(
   selected
 }
 
-fn custom_from_reference() -> fn(Int) -> ValueBox(value) {
+fn custom_from_reference() -> fn(Int) -> ValueBox(Empty) {
   custom_diverge
 }
 
-fn custom_from_closure() -> fn(Int) -> ValueBox(value) {
+fn custom_from_closure() -> fn(Int) -> ValueBox(Empty) {
   fn(_value: Int) { ValueBox(panic as "unreached custom closure") }
 }
 
-fn custom_from_argument(function: fn(Int) -> ValueBox(value)) {
+fn custom_from_argument(function: fn(Int) -> ValueBox(Empty)) {
   let local = function
   local
 }
 
-fn custom_from_call() -> fn(Int) -> ValueBox(value) {
+fn custom_from_call() -> fn(Int) -> ValueBox(Empty) {
   custom_from_reference()
 }
 
 fn custom_from_function_call(
-  provider: fn() -> fn(Int) -> ValueBox(value),
-) -> fn(Int) -> ValueBox(value) {
+  provider: fn() -> fn(Int) -> ValueBox(Empty),
+) -> fn(Int) -> ValueBox(Empty) {
   let selected = provider()
   selected
 }
 
-fn custom_from_tuple() -> fn(Int) -> ValueBox(value) {
+fn custom_from_tuple() -> fn(Int) -> ValueBox(Empty) {
   #(custom_diverge).0
 }
 
-fn custom_from_custom() -> fn(Int) -> ValueBox(value) {
+fn custom_from_custom() -> fn(Int) -> ValueBox(Empty) {
   let selected = CustomFunctionBox(function: custom_diverge).function
   selected
 }
 
-fn custom_from_list() -> fn(Int) -> ValueBox(value) {
+fn custom_from_list() -> fn(Int) -> ValueBox(Empty) {
   let assert [function] = [custom_diverge]
   function
 }
 
-fn custom_from_list_case() -> fn(Int) -> ValueBox(value) {
+fn custom_from_list_case() -> fn(Int) -> ValueBox(Empty) {
   case [custom_diverge] {
     [function] -> function
     _ -> custom_constant
   }
 }
 
-fn custom_provider(_value: input) -> fn(Int) -> ValueBox(output) {
+fn custom_provider(_value: input) -> fn(Int) -> ValueBox(Empty) {
   custom_diverge
 }
 
 fn custom_from_diverging_function_argument(
-  provider: fn(input) -> fn(Int) -> ValueBox(output),
-) -> fn(Int) -> ValueBox(output) {
+  provider: fn(input) -> fn(Int) -> ValueBox(Empty),
+) -> fn(Int) -> ValueBox(Empty) {
   provider(panic as "unselected custom provider argument")
 }
 
-fn generic_diverge(_value: Int) -> output {
+fn generic_diverge(_value: Int) -> Empty {
   panic as "unreached generic function"
 }
 
-fn generic_provider(_value: input) -> fn(Int) -> output {
+fn generic_provider(_value: input) -> fn(Int) -> Empty {
   generic_diverge
 }
 
@@ -234,7 +236,7 @@ fn generic_first(values: List(value), fallback: value) -> value {
   }
 }
 
-fn custom_from_bool(selector: Bool) -> fn(Int) -> ValueBox(value) {
+fn custom_from_bool(selector: Bool) -> fn(Int) -> ValueBox(Empty) {
   let selected = case selector {
     True -> custom_diverge
     False -> custom_constant
@@ -242,7 +244,7 @@ fn custom_from_bool(selector: Bool) -> fn(Int) -> ValueBox(value) {
   selected
 }
 
-fn custom_from_int(selector: Int) -> fn(Int) -> ValueBox(value) {
+fn custom_from_int(selector: Int) -> fn(Int) -> ValueBox(Empty) {
   let selected = case selector {
     0 -> custom_diverge
     _ -> custom_constant
@@ -250,7 +252,7 @@ fn custom_from_int(selector: Int) -> fn(Int) -> ValueBox(value) {
   selected
 }
 
-fn custom_from_string(selector: String) -> fn(Int) -> ValueBox(value) {
+fn custom_from_string(selector: String) -> fn(Int) -> ValueBox(Empty) {
   let selected = case selector {
     "reference" -> custom_diverge
     _ -> custom_constant
@@ -258,7 +260,7 @@ fn custom_from_string(selector: String) -> fn(Int) -> ValueBox(value) {
   selected
 }
 
-fn custom_from_float(selector: Float) -> fn(Int) -> ValueBox(value) {
+fn custom_from_float(selector: Float) -> fn(Int) -> ValueBox(Empty) {
   let selected = case selector {
     1.0 -> custom_diverge
     _ -> custom_constant
@@ -266,7 +268,7 @@ fn custom_from_float(selector: Float) -> fn(Int) -> ValueBox(value) {
   selected
 }
 
-fn custom_from_block() -> fn(Int) -> ValueBox(value) {
+fn custom_from_block() -> fn(Int) -> ValueBox(Empty) {
   let selected = {
     let _ = Nil
     custom_diverge
@@ -277,7 +279,7 @@ fn custom_from_block() -> fn(Int) -> ValueBox(value) {
 fn custom_from_nested_int_case(
   outer: Bool,
   inner: Int,
-) -> fn(Int) -> ValueBox(value) {
+) -> fn(Int) -> ValueBox(Empty) {
   case outer {
     True -> case inner {
       0 -> custom_diverge
@@ -287,18 +289,18 @@ fn custom_from_nested_int_case(
   }
 }
 
-fn custom_from_panic() -> fn(Int) -> ValueBox(value) {
+fn custom_from_panic() -> fn(Int) -> ValueBox(Empty) {
   let selected = panic as "unselected custom function panic"
   selected
 }
 
 fn custom_from_nested_expression(
-  provider: fn() -> fn(Int) -> ValueBox(value),
+  provider: fn() -> fn(Int) -> ValueBox(Empty),
   selector: Int,
   bool_selector: Bool,
   string_selector: String,
   float_selector: Float,
-) -> fn(Int) -> ValueBox(value) {
+) -> fn(Int) -> ValueBox(Empty) {
   let selected = case selector {
     0 -> custom_from_reference()
     1 -> provider()

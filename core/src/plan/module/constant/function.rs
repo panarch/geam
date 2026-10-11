@@ -882,8 +882,8 @@ mod tests {
 
     #[test]
     fn generic_function_reference_substitution_preserves_symbolic_return_owner() {
-        let parameter = TypeParameterId(0);
-        let return_parameter = TypeParameterId(2);
+        let parameter = TypeParameterId::new(0);
+        let return_parameter = TypeParameterId::new(2);
         let inner = TypeSubstitution::from_arguments(vec![ValueShape::Parameter(parameter)]);
         let outer =
             TypeSubstitution::from_arguments(vec![ValueShape::List(Box::new(ValueShape::Int))]);

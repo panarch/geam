@@ -795,7 +795,7 @@ mod tests {
             ))),
         );
 
-        let parameter = TypeParameterId(0);
+        let parameter = TypeParameterId::new(0);
         assert_eq!(
             FunctionExpr::from(generic_function_ref(
                 10,
@@ -830,7 +830,7 @@ mod tests {
             Vec::new(),
         );
         let item_types = vec![
-            ValueType::Parameter(TypeParameterId(0)),
+            ValueType::Parameter(TypeParameterId::new(0)),
             ValueType::Int,
             ValueType::String,
             ValueType::BitArray,
@@ -874,7 +874,7 @@ mod tests {
             Vec::new(),
         );
         let item_types = vec![
-            ValueType::Parameter(TypeParameterId(0)),
+            ValueType::Parameter(TypeParameterId::new(0)),
             ValueType::Int,
             ValueType::String,
             ValueType::BitArray,

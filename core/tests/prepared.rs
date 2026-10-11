@@ -4215,7 +4215,7 @@ fn incompatible_format_never_produces_a_prepared_binding_owner() {
     let error = incompatible.load().err().unwrap();
     assert_eq!(
         error.to_string(),
-        "prepared format 6 is incompatible with format 30; regenerate the prepared program"
+        "prepared format 6 is incompatible with format 31; regenerate the prepared program"
     );
 }
 
@@ -4609,6 +4609,10 @@ fn selected_program_covers_all_plain_function_storage_families() {
             tables.value_returns.utf_codepoint_functions.len(),
         ),
         (
+            "parameter_functions",
+            tables.value_returns.parameter_functions.len(),
+        ),
+        (
             "custom_functions",
             tables.value_returns.custom_functions.len(),
         ),
@@ -4659,10 +4663,6 @@ fn selected_program_covers_all_plain_function_storage_families() {
             tables.list_returns.tuple_list_functions.len(),
         ),
         (
-            "parameter_list_list_functions",
-            tables.list_returns.parameter_list_list_functions.len(),
-        ),
-        (
             "list_list_functions",
             tables.list_returns.list_list_functions.len(),
         ),
@@ -4694,6 +4694,10 @@ fn selected_program_covers_all_plain_function_storage_families() {
                 .len(),
         ),
         (
+            "parameter_function_functions",
+            tables.function_returns.parameter_function_functions.len(),
+        ),
+        (
             "custom_function_functions",
             tables.function_returns.custom_function_functions.len(),
         ),
@@ -4722,13 +4726,6 @@ fn selected_program_covers_all_plain_function_storage_families() {
             tables
                 .function_returns
                 .parameter_list_function_functions
-                .len(),
-        ),
-        (
-            "parameter_list_list_function_functions",
-            tables
-                .function_returns
-                .parameter_list_list_function_functions
                 .len(),
         ),
         (
@@ -5195,7 +5192,7 @@ fn prepared_native_data_admits_fresh_providers() {
 
 #[cfg(feature = "tokio")]
 #[test]
-fn generic_provider_results_preserve_symbolic_failure_fields_in_compiled_artifacts() {
+fn generic_provider_results_preserve_native_payloads_and_failure_fields_in_compiled_artifacts() {
     let program = compile_typed_host_program(
         "application",
         "main",
@@ -5237,7 +5234,10 @@ fn generic_provider_results_preserve_symbolic_failure_fields_in_compiled_artifac
             .try_into_value()
             .unwrap();
         assert!(value);
-        assert!(echo.is_empty());
+        assert_eq!(
+            echo.iter().map(ToString::to_string).collect::<Vec<_>>(),
+            ["src/main.gleam:224\nReason(\"detail\")"],
+        );
     }
     let mut module = dynamic.seal().unwrap();
     let mut echo = Vec::new();
@@ -5252,7 +5252,10 @@ fn generic_provider_results_preserve_symbolic_failure_fields_in_compiled_artifac
             .try_into_value()
             .unwrap(),
     );
-    assert!(echo.is_empty());
+    assert_eq!(
+        echo.iter().map(ToString::to_string).collect::<Vec<_>>(),
+        ["src/main.gleam:224\nReason(\"detail\")"],
+    );
 }
 
 #[cfg(feature = "tokio")]
@@ -5498,18 +5501,54 @@ mod pricing {
 static CALLABLES: data::HostedModuleArtifact = include!("fixtures/prepared/generated/callables.rs");
 
 #[test]
-fn never_native_metadata_rejects_a_signature_different_from_the_registered_callable() {
+fn parameter_native_metadata_rejects_a_signature_different_from_the_registered_callable() {
     CALLABLES
         .load(callable_provider::implementations())
         .unwrap();
 
     const BASE: data::HostedModuleArtifact = include!("fixtures/prepared/generated/callables.rs");
     let mut artifact = BASE;
+    let mut functions = artifact.value_functions.to_vec();
+    let index = functions
+        .iter()
+        .position(|metadata| {
+            metadata.site.module() == "support/private" && metadata.site.function() == "stop"
+        })
+        .unwrap();
+    assert_eq!(
+        functions[index]
+            .callable_entry
+            .as_ref()
+            .map(|entry| entry.family),
+        Some(data::function::FunctionTableFamily::Parameter)
+    );
+    functions[index].signature.arguments = vec![data::type_::TypeMetadata::Int].into();
+    artifact.value_functions = functions.into();
+    let error = Box::leak(Box::new(artifact))
+        .load(callable_provider::implementations())
+        .err()
+        .unwrap();
+    assert_eq!(
+        error.to_string(),
+        format!(
+            "invalid prepared program: Hosts(Contract {{ value: true, index: {index}, reason: Signature }}); regenerate the prepared program"
+        ),
+    );
+}
+
+#[test]
+fn never_native_metadata_rejects_a_signature_different_from_the_registered_callable() {
+    FUNCTION_VIEWS
+        .load(function_view_provider::hosts())
+        .unwrap();
+    const BASE: data::HostedModuleArtifact =
+        include!("fixtures/prepared/generated/function_views.rs");
+    let mut artifact = BASE;
     let mut functions = artifact.never_functions.to_vec();
     functions[0].signature.arguments = vec![data::type_::TypeMetadata::Int].into();
     artifact.never_functions = functions.into();
     let error = Box::leak(Box::new(artifact))
-        .load(callable_provider::implementations())
+        .load(function_view_provider::hosts())
         .err()
         .unwrap();
     assert_eq!(

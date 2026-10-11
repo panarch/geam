@@ -4,9 +4,7 @@ use crate::plan::execution::lowering::graph::draft::DraftBoolTest;
 use crate::plan::execution::lowering::graph::{
     DraftBool, DraftCursor, DraftFlow, DraftGraph, DraftInt,
 };
-use crate::plan::execution::lowering::specialization::{
-    Representability, SpecializedValueShape, StoredValueShape,
-};
+use crate::plan::execution::lowering::specialization::{Representability, StoredValueShape};
 use crate::plan::{execution, module};
 
 pub(in crate::plan::execution::lowering) enum BoolPaths {
@@ -511,19 +509,6 @@ fn list_length_paths(
     list::list_expr(expression, cursor, graph, context).map(|flow| match flow {
         DraftFlow::Diverged => BoolPaths::Diverged,
         DraftFlow::Value { mut cursor, value } => {
-            let empty_only = matches!(
-                value.shape(),
-                StoredValueShape::List(item)
-                    if matches!(item.as_ref(), SpecializedValueShape::Parameter(_))
-            );
-            if empty_only {
-                let matched = length == 0;
-                return if matched {
-                    BoolPaths::True(cursor)
-                } else {
-                    BoolPaths::False(cursor)
-                };
-            }
             let kind = if equals {
                 DraftBoolInstruction::Test(DraftBoolTest::ListLengthEquals {
                     value: value.clone(),
@@ -615,14 +600,6 @@ mod tests {
             Representability::Uninhabited => FlowOutcome::Uninhabited,
             Representability::Inhabited(DraftFlow::Diverged) => FlowOutcome::Diverged,
             Representability::Inhabited(DraftFlow::Value { .. }) => FlowOutcome::Value,
-        }
-    }
-
-    fn static_path(paths: Representability<super::BoolPaths>) -> (bool, DraftCursor) {
-        match paths {
-            Representability::Inhabited(super::BoolPaths::True(cursor)) => (true, cursor),
-            Representability::Inhabited(super::BoolPaths::False(cursor)) => (false, cursor),
-            _ => panic!("fixture should produce a static Bool path"),
         }
     }
 
@@ -743,8 +720,24 @@ mod tests {
                 FlowOutcome::Diverged,
             ),
         ];
-        let mut context =
-            crate::plan::execution::lowering::test_support::lowering_context(Vec::new());
+        let never_name =
+            crate::plan::CustomTypeName::new("geam".into(), "main".into(), "Never".into());
+        let mut context = crate::plan::execution::lowering::test_support::lowering_context({
+            let definitions = vec![crate::plan::CustomTypeDefinition::new(
+                never_name.clone(),
+                crate::plan::CustomTypePublicity::Private,
+                false,
+                Vec::new(),
+                Vec::new(),
+            )];
+            definitions
+        });
+        context.substitution = crate::plan::execution::lowering::specialization::SpecializedTypeSubstitution::instantiate(
+            &crate::plan::module::TypeSubstitution::from_arguments(vec![crate::plan::ValueShape::Custom(
+                crate::plan::CustomValueShape::new(never_name, Vec::new(), crate::plan::CustomConstructorRefinement::Any),
+            )]),
+            &crate::plan::execution::lowering::specialization::SpecializedTypeSubstitution::empty(),
+        ).with_scope(0);
         let (mut graph, _) = DraftGraphBuilder::<DraftValueRef, ()>::new(Vec::new(), Vec::new());
 
         for (expression, expected) in expressions {
@@ -755,7 +748,7 @@ mod tests {
             );
         }
 
-        let parameter = TypeParameterId(0);
+        let parameter = TypeParameterId::new(0);
         let generic = || {
             Expr::generic(GenericExpr::local_get(
                 GenericLocal::new(GenericLocalId(0), parameter),
@@ -775,11 +768,10 @@ mod tests {
     }
 
     #[test]
-    fn empty_parameter_list_length_is_decided_without_a_length_instruction() {
-        let parameter = TypeParameterId(0);
+    fn unresolved_execution_list_lengths_read_the_stored_list() {
+        let parameter = TypeParameterId::new(0);
         let expression = ListExpr::value(Vec::new(), ValueType::Parameter(parameter));
-
-        for (length, expected) in [(0, true), (1, false)] {
+        for (length, equals) in [(0, true), (1, true), (1, false)] {
             let mut context =
                 crate::plan::execution::lowering::test_support::lowering_context(Vec::new());
             let (mut graph, cursor) =
@@ -787,40 +779,39 @@ mod tests {
             let paths = super::list_length_paths(
                 &expression,
                 length,
-                true,
+                equals,
                 cursor,
                 &mut graph,
                 &mut context,
             );
-
-            let (actual, cursor) = static_path(paths);
-            assert_eq!(actual, expected);
-            graph.finish_source_stop(
-                cursor,
-                crate::plan::execution::graph::SourceStopKind::Panic,
-                None,
-                PanicSite::unknown(),
-            );
+            for cursor in stored_list_length_branches(paths) {
+                graph.finish_source_stop(
+                    cursor,
+                    crate::plan::execution::graph::SourceStopKind::Panic,
+                    None,
+                    PanicSite::unknown(),
+                );
+            }
             let lowered = super::super::super::super::freeze::freeze(graph, &mut context);
-            assert_eq!(lowered.body.block_graph().blocks().len(), 1);
-            assert_eq!(
-                lowered
-                    .body
-                    .block_graph()
-                    .blocks()
-                    .next()
-                    .unwrap()
-                    .instructions()
-                    .len(),
-                1
-            );
+            let blocks = lowered.body.block_graph().blocks().collect::<Vec<_>>();
+            assert_eq!(blocks.len(), 3);
+            assert_eq!(blocks[0].instructions().len(), 1);
         }
     }
 
     #[test]
-    #[should_panic(expected = "fixture should produce a static Bool path")]
-    fn static_path_value_rejects_a_non_static_fixture() {
-        static_path(Representability::Uninhabited);
+    #[should_panic(expected = "an unresolved execution list must read its stored length")]
+    fn stored_list_length_fixture_rejects_an_uninhabited_result() {
+        stored_list_length_branches(Representability::Uninhabited);
+    }
+
+    fn stored_list_length_branches(paths: Representability<super::BoolPaths>) -> [DraftCursor; 2] {
+        match paths {
+            Representability::Inhabited(super::BoolPaths::Both { true_, false_ }) => {
+                [true_, false_]
+            }
+            _ => panic!("an unresolved execution list must read its stored length"),
+        }
     }
 
     #[test]

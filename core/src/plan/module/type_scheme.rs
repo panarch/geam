@@ -10,7 +10,7 @@ impl TypeScheme {
     pub(crate) fn new(parameter_count: usize) -> Self {
         Self {
             parameters: (0..parameter_count)
-                .map(TypeParameterId)
+                .map(TypeParameterId::new)
                 .collect::<Vec<_>>()
                 .into_boxed_slice(),
         }
@@ -27,6 +27,7 @@ impl TypeScheme {
     pub(crate) fn try_substitution(&self, arguments: Vec<ValueShape>) -> Option<TypeSubstitution> {
         (arguments.len() == self.parameters.len()).then(|| TypeSubstitution {
             arguments: arguments.into_boxed_slice(),
+            scope: None,
         })
     }
 }
@@ -34,12 +35,14 @@ impl TypeScheme {
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub(crate) struct TypeSubstitution {
     arguments: Box<[ValueShape]>,
+    scope: Option<usize>,
 }
 
 impl TypeSubstitution {
     pub(crate) fn from_arguments(arguments: Vec<ValueShape>) -> Self {
         Self {
             arguments: arguments.into_boxed_slice(),
+            scope: None,
         }
     }
 
@@ -52,7 +55,13 @@ impl TypeSubstitution {
                 .map(ValueShape::Parameter)
                 .collect::<Vec<_>>()
                 .into_boxed_slice(),
+            scope: None,
         }
+    }
+
+    pub(crate) fn with_scope(mut self, scope: Option<usize>) -> Self {
+        self.scope = scope;
+        self
     }
 
     pub(crate) fn arguments(&self) -> &[ValueShape] {
@@ -60,9 +69,15 @@ impl TypeSubstitution {
     }
 
     pub(crate) fn resolve(&self, parameter: TypeParameterId) -> ValueShape {
+        if parameter.scope().is_some() {
+            return ValueShape::Parameter(parameter);
+        }
         match self.arguments.get(parameter.index()) {
             Some(shape) => shape.clone(),
-            None => ValueShape::Parameter(parameter),
+            None => ValueShape::Parameter(match self.scope {
+                Some(scope) => TypeParameterId::scoped(scope, parameter.index()),
+                None => parameter,
+            }),
         }
     }
 
@@ -74,6 +89,7 @@ impl TypeSubstitution {
                 .map(|shape| shape.substitute(outer))
                 .collect::<Vec<_>>()
                 .into_boxed_slice(),
+            scope: self.scope,
         }
     }
 }
@@ -168,11 +184,36 @@ mod tests {
     use crate::plan::{FunctionShape, FunctionTemplateId, TypeParameterId, ValueShape};
 
     #[test]
+    fn substitution_preserves_bound_parameters_instead_of_reusing_their_scheme_index() {
+        let bound = TypeParameterId::scoped(7, 0);
+        let substitution = TypeSubstitution::from_arguments(vec![ValueShape::Int]);
+        let shape = ValueShape::Tuple(
+            vec![
+                ValueShape::Parameter(TypeParameterId::new(0)),
+                ValueShape::Parameter(bound),
+                ValueShape::List(Box::new(ValueShape::Parameter(bound))),
+            ]
+            .into_boxed_slice(),
+        );
+        assert_eq!(
+            shape.substitute(&substitution),
+            ValueShape::Tuple(
+                vec![
+                    ValueShape::Int,
+                    ValueShape::Parameter(bound),
+                    ValueShape::List(Box::new(ValueShape::Parameter(bound))),
+                ]
+                .into_boxed_slice()
+            )
+        );
+    }
+
+    #[test]
     fn type_substitution_composes_recursive_parameter_shapes() {
         let inner = TypeScheme::new(2)
             .try_substitution(vec![
-                ValueShape::Parameter(TypeParameterId(1)),
-                ValueShape::List(Box::new(ValueShape::Parameter(TypeParameterId(0)))),
+                ValueShape::Parameter(TypeParameterId::new(1)),
+                ValueShape::List(Box::new(ValueShape::Parameter(TypeParameterId::new(0)))),
             ])
             .expect("two arguments should match the scheme");
         let outer = TypeScheme::new(2)
@@ -194,8 +235,8 @@ mod tests {
             FunctionTemplateId::new(3),
             TypeScheme::new(1),
             FunctionShape::new(
-                vec![ValueShape::Parameter(TypeParameterId(0))],
-                ValueShape::Parameter(TypeParameterId(0)),
+                vec![ValueShape::Parameter(TypeParameterId::new(0))],
+                ValueShape::Parameter(TypeParameterId::new(0)),
             ),
         );
 
@@ -214,8 +255,8 @@ mod tests {
         assert_eq!(
             TypeSubstitution::identity(&TypeScheme::new(2)).arguments(),
             &[
-                ValueShape::Parameter(TypeParameterId(0)),
-                ValueShape::Parameter(TypeParameterId(1)),
+                ValueShape::Parameter(TypeParameterId::new(0)),
+                ValueShape::Parameter(TypeParameterId::new(1)),
             ],
         );
     }
@@ -223,7 +264,7 @@ mod tests {
     #[test]
     fn empty_outer_substitution_preserves_unresolved_parameters() {
         let substitution = TypeSubstitution::from_arguments(Vec::new());
-        let shape = ValueShape::List(Box::new(ValueShape::Parameter(TypeParameterId(6))));
+        let shape = ValueShape::List(Box::new(ValueShape::Parameter(TypeParameterId::new(6))));
 
         assert_eq!(shape.substitute(&substitution), shape);
     }
@@ -233,8 +274,8 @@ mod tests {
         let substitution = TypeSubstitution::from_arguments(vec![ValueShape::Int]);
         let shape = ValueShape::Tuple(
             vec![
-                ValueShape::Parameter(TypeParameterId(0)),
-                ValueShape::Parameter(TypeParameterId(1)),
+                ValueShape::Parameter(TypeParameterId::new(0)),
+                ValueShape::Parameter(TypeParameterId::new(1)),
             ]
             .into_boxed_slice(),
         );
@@ -242,8 +283,11 @@ mod tests {
         assert_eq!(
             shape.substitute(&substitution),
             ValueShape::Tuple(
-                vec![ValueShape::Int, ValueShape::Parameter(TypeParameterId(1)),]
-                    .into_boxed_slice(),
+                vec![
+                    ValueShape::Int,
+                    ValueShape::Parameter(TypeParameterId::new(1)),
+                ]
+                .into_boxed_slice(),
             ),
         );
     }

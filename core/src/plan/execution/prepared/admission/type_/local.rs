@@ -127,6 +127,9 @@ impl<'data> Types<'data> {
             ParamLocal::String(_) => return Ok(ValueType::String),
             ParamLocal::BitArray(_) => return Ok(ValueType::BitArray),
             ParamLocal::UtfCodepoint(_) => return Ok(ValueType::UtfCodepoint),
+            ParamLocal::Parameter { parameter, .. } => {
+                return Ok(ValueType::Parameter(*parameter));
+            }
             ParamLocal::Bool(_) => return Ok(ValueType::Bool),
             ParamLocal::Nil(_) => return Ok(ValueType::Nil),
             ParamLocal::Custom(local) => {
@@ -165,6 +168,13 @@ impl<'data> Types<'data> {
             }
             ParamLocal::UtfCodepointFunction { type_, .. } => {
                 self.require_return(type_, &ValueType::UtfCodepoint)?;
+                type_
+            }
+            ParamLocal::ParameterFunction { type_, .. } => {
+                if !matches!(type_.return_(), ValueType::Parameter(parameter) if parameter.scope().is_some())
+                {
+                    return Err(TypeError::LocalTypeMismatch);
+                }
                 type_
             }
             ParamLocal::BoolFunction { type_, .. } => {
@@ -217,9 +227,7 @@ impl<'data> Types<'data> {
                     ListFunctionLocal::Parameter {
                         type_, list_type, ..
                     } => (type_, ListStorageTypeId::Parameter(*list_type)),
-                    ListFunctionLocal::ParameterList {
-                        type_, list_type, ..
-                    } => (type_, ListStorageTypeId::ParameterList(*list_type)),
+
                     ListFunctionLocal::Int {
                         type_, list_type, ..
                     } => (type_, ListStorageTypeId::Int(*list_type)),
@@ -292,7 +300,7 @@ impl<'data> Types<'data> {
     fn local_list_type(&self, local: &ListLocal) -> Result<ListTypeId, TypeError> {
         let stored = match local {
             ListLocal::Parameter { type_id, .. } => ListStorageTypeId::Parameter(*type_id),
-            ListLocal::ParameterList { type_id, .. } => ListStorageTypeId::ParameterList(*type_id),
+
             ListLocal::Int { type_id, .. } => ListStorageTypeId::Int(*type_id),
             ListLocal::String { type_id, .. } => ListStorageTypeId::String(*type_id),
             ListLocal::BitArray { type_id, .. } => ListStorageTypeId::BitArray(*type_id),
@@ -474,6 +482,7 @@ mod tests {
     #[test]
     fn rejects_missing_or_disagreeing_slot_shapes_and_function_returns() {
         let lists = ListTypeTable {
+            parameter_lifetimes: crate::plan::execution::storage::Table::Static(&[false; 0]),
             lifetimes: Table::Static(&[]),
             types: Table::Static(&[]),
             tuple_items: Table::Static(&[]),
@@ -536,6 +545,7 @@ mod tests {
             return_: Node::Static(&RECURSIVE),
         });
         let lists = ListTypeTable {
+            parameter_lifetimes: crate::plan::execution::storage::Table::Static(&[false; 0]),
             lifetimes: Table::Static(&[]),
             types: Table::Static(&[]),
             tuple_items: Table::Static(&[]),
@@ -583,8 +593,9 @@ mod tests {
         use crate::plan::execution::graph;
         let source = r#"
 pub type Box { Box(Int) }
-fn identity(value) { value }
-fn stop() -> a { panic }
+pub type Never
+fn identity(value: Never) { value }
+fn stop() -> Never { panic }
 pub fn main() { #(Box, identity, stop, fn() { fn() { 42 } }, fn() { #(42) }) }
 "#;
         let typed = crate::compile_typed_module("example", "src/example.gleam", source).unwrap();
@@ -599,6 +610,10 @@ pub fn main() { #(Box, identity, stop, fn() { fn() { 42 } }, fn() { #(42) }) }
         .unwrap();
         let wrong = FunctionType::new(vec![], ValueType::Int);
         for local in [
+            ParamLocal::ParameterFunction {
+                local: graph::ParameterFunctionLocalId(0),
+                type_: wrong.clone(),
+            },
             ParamLocal::FloatFunction {
                 local: graph::FloatFunctionLocalId(0),
                 type_: wrong.clone(),
@@ -684,8 +699,9 @@ pub fn main() { #(Box, identity, stop, fn() { fn() { 42 } }, fn() { #(42) }) }
 pub type Box { Box(Int) }
 pub type Key
 @external(erlang, "native", "key") fn key() -> Key
-fn identity(value) { value }
-fn stop() -> a { panic }
+pub type Never
+fn identity(value: Never) { value }
+fn stop() -> Never { panic }
 pub fn main() {
   #(Box, identity, stop, fn(value: Int) { fn() { value } },
     fn(value: Int) { echo value key() }, fn() { [42] })

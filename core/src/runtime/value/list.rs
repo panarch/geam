@@ -22,7 +22,10 @@ pub struct ListValueItemTypeMismatch {
 // their values carry the metadata explicitly.
 #[derive(Debug, Clone, PartialEq)]
 pub(super) enum ListValueKind {
-    Parameter(TypeParameterId),
+    Parameter {
+        item_type: TypeParameterId,
+        values: Vec<crate::ParameterValue>,
+    },
     Int(Vec<BigInt>),
     String(Vec<StringValue>),
     BitArray(Vec<BitArrayValue>),
@@ -53,6 +56,15 @@ pub(super) enum ListValueKind {
 }
 
 impl ListValue {
+    pub(crate) fn from_evaluated_parameter(
+        item_type: TypeParameterId,
+        values: Vec<crate::ParameterValue>,
+    ) -> Self {
+        Self {
+            kind: ListValueKind::Parameter { item_type, values },
+        }
+    }
+
     pub fn int(values: Vec<BigInt>) -> Self {
         Self {
             kind: ListValueKind::Int(values),
@@ -220,7 +232,10 @@ impl ListValue {
     pub fn empty(item_type: ValueType) -> Self {
         match item_type {
             ValueType::Parameter(parameter) => Self {
-                kind: ListValueKind::Parameter(parameter),
+                kind: ListValueKind::Parameter {
+                    item_type: parameter,
+                    values: Vec::new(),
+                },
             },
             ValueType::Int => Self::int(Vec::new()),
             ValueType::String => Self::string(Vec::new()),
@@ -264,7 +279,7 @@ impl ListValue {
 
     pub fn item_type(&self) -> ValueType {
         match &self.kind {
-            ListValueKind::Parameter(parameter) => ValueType::Parameter(*parameter),
+            ListValueKind::Parameter { item_type, .. } => ValueType::Parameter(*item_type),
             ListValueKind::Int(_) => ValueType::Int,
             ListValueKind::String(_) => ValueType::String,
             ListValueKind::BitArray(_) => ValueType::BitArray,
@@ -284,7 +299,7 @@ impl ListValue {
 
     pub fn len(&self) -> usize {
         match &self.kind {
-            ListValueKind::Parameter(_) => 0,
+            ListValueKind::Parameter { values, .. } => values.len(),
             ListValueKind::Int(values) => values.len(),
             ListValueKind::String(values) => values.len(),
             ListValueKind::BitArray(values) => values.len(),
@@ -306,7 +321,9 @@ impl ListValue {
 
     pub fn to_values(&self) -> Vec<Value> {
         match &self.kind {
-            ListValueKind::Parameter(_) => Vec::new(),
+            ListValueKind::Parameter { values, .. } => {
+                values.iter().cloned().map(Value::Parameter).collect()
+            }
             ListValueKind::Int(values) => values.iter().cloned().map(Value::Int).collect(),
             ListValueKind::String(values) => values.iter().cloned().map(Value::String).collect(),
             ListValueKind::BitArray(values) => {
@@ -482,7 +499,7 @@ mod tests {
         }
 
         for item_type in [
-            ValueType::Parameter(TypeParameterId(0)),
+            ValueType::Parameter(TypeParameterId::new(0)),
             ValueType::Int,
             ValueType::String,
             ValueType::BitArray,

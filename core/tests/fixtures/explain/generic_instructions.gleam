@@ -118,11 +118,16 @@ pub fn main() {
 // module main
 // main tuple#0
 //
+// function parameter#0
+//   entry b0 params=[%parameter#0:shape#1(param#0)] captures=[]
+//   block b0 params=[%parameter#0:shape#1(param#0)]
+//     return %parameter#0
+//
 // function tuple#0
 //   entry b0 params=[] captures=[]
 //   block b0 params=[]
-//     %function.generic#0:shape#2(fn(param#0) -> param#0) = function[Generic] reference template#1 shapes=[shape#0]
-//     %function.generic#1:shape#4(fn(param#1) -> custom_type#0) = function[Generic] closure target=custom_type#0.constructor#0 captures=[]
+//     %function.parameter#0:shape#2(fn(param#0) -> param#0) = function[Parameter] reference parameter#0
+//     %function.custom#0:shape#4(fn(param#1) -> custom_type#0) = function[Custom] constructor custom_type#0.constructor#0
 //     %function.list.parameter#0:shape#7(fn() -> list_type#0) = function[List] reference list.parameter#0
 //     %function.list.parameter#1:shape#10(fn() -> list_type#1) = function[List] reference list.parameter#1
 //     %function.list.parameter#2:shape#13(fn() -> list_type#2) = function[List] reference list.parameter#2
@@ -130,22 +135,22 @@ pub fn main() {
 //     %function.list.parameter#4:shape#20(fn() -> list_type#4) = function[List] reference list.parameter#4
 //     %function.list.parameter#5:shape#23(fn() -> list_type#5) = function[List] reference list.parameter#5
 //     %function.list.parameter#6:shape#26(fn() -> list_type#6) = function[List] reference list.parameter#6
-//     %function.list.parameter_list#0:shape#30(fn() -> list_type#8) = function[List] reference list.parameter_list#0
-//     %function.list.parameter_list#1:shape#34(fn() -> list_type#10) = function[List] reference list.parameter_list#1
-//     %function.list.parameter_list#2:shape#38(fn(list_type#12) -> list_type#12) = function[List] reference list.parameter_list#2
-//     %function.list.parameter_list#3:shape#42(fn() -> list_type#14) = function[List] reference list.parameter_list#3
-//     %function.list.parameter_list#4:shape#47(fn(fn() -> list_type#16) -> list_type#16) = function[List] reference list.parameter_list#4
-//     %function.list.parameter_list#5:shape#51(fn() -> list_type#18) = function[List] reference list.parameter_list#5
-//     %function.list.parameter_list#6:shape#55(fn() -> list_type#20) = function[List] reference list.parameter_list#6
-//     %function.list.parameter_list#7:shape#59(fn() -> list_type#22) = function[List] reference list.parameter_list#7
-//     %function.list.parameter_list#8:shape#63(fn() -> list_type#24) = function[List] reference list.parameter_list#8
-//     %tuple#0:shape#64(#(fn(param#0) -> param#0, fn(param#1) -> custom_type#0, fn() -> list_type#0, fn() -> list_type#1, fn() -> list_type#2, fn(fn() -> list_type#3) -> list_type#3, fn() -> list_type#4, fn() -> list_type#5, fn() -> list_type#6, fn() -> list_type#8, fn() -> list_type#10, fn(list_type#12) -> list_type#12, fn() -> list_type#14, fn(fn() -> list_type#16) -> list_type#16, fn() -> list_type#18, fn() -> list_type#20, fn() -> list_type#22, fn() -> list_type#24)) = tuple.value elements=[%function.generic#0, %function.generic#1, %function.list.parameter#0, %function.list.parameter#1, %function.list.parameter#2, %function.list.parameter#3, %function.list.parameter#4, %function.list.parameter#5, %function.list.parameter#6, %function.list.parameter_list#0, %function.list.parameter_list#1, %function.list.parameter_list#2, %function.list.parameter_list#3, %function.list.parameter_list#4, %function.list.parameter_list#5, %function.list.parameter_list#6, %function.list.parameter_list#7, %function.list.parameter_list#8]
+//     %function.list.list#0:shape#30(fn() -> list_type#8) = function[List] reference list.list#0
+//     %function.list.list#1:shape#34(fn() -> list_type#10) = function[List] reference list.list#1
+//     %function.list.list#2:shape#38(fn(list_type#12) -> list_type#12) = function[List] reference list.list#2
+//     %function.list.list#3:shape#42(fn() -> list_type#14) = function[List] reference list.list#3
+//     %function.list.list#4:shape#47(fn(fn() -> list_type#16) -> list_type#16) = function[List] reference list.list#4
+//     %function.list.list#5:shape#51(fn() -> list_type#18) = function[List] reference list.list#5
+//     %function.list.list#6:shape#55(fn() -> list_type#20) = function[List] reference list.list#6
+//     %function.list.list#7:shape#59(fn() -> list_type#22) = function[List] reference list.list#7
+//     %function.list.list#8:shape#63(fn() -> list_type#24) = function[List] reference list.list#8
+//     %tuple#0:shape#64(#(fn(param#0) -> param#0, fn(param#1) -> custom_type#0, fn() -> list_type#0, fn() -> list_type#1, fn() -> list_type#2, fn(fn() -> list_type#3) -> list_type#3, fn() -> list_type#4, fn() -> list_type#5, fn() -> list_type#6, fn() -> list_type#8, fn() -> list_type#10, fn(list_type#12) -> list_type#12, fn() -> list_type#14, fn(fn() -> list_type#16) -> list_type#16, fn() -> list_type#18, fn() -> list_type#20, fn() -> list_type#22, fn() -> list_type#24)) = tuple.value elements=[%function.parameter#0, %function.custom#0, %function.list.parameter#0, %function.list.parameter#1, %function.list.parameter#2, %function.list.parameter#3, %function.list.parameter#4, %function.list.parameter#5, %function.list.parameter#6, %function.list.list#0, %function.list.list#1, %function.list.list#2, %function.list.list#3, %function.list.list#4, %function.list.list#5, %function.list.list#6, %function.list.list#7, %function.list.list#8]
 //     return %tuple#0
 //
 // function list.parameter#0
 //   entry b0 params=[] captures=[]
 //   block b0 params=[]
-//     %list.parameter#0:shape#6(list_type#0) = list.parameter[type#0] empty
+//     %list.parameter#0:shape#6(list_type#0) = list.parameter[type#0] value elements=[]
 //     return %list.parameter#0
 //
 // function list.parameter#1
@@ -168,7 +173,7 @@ pub fn main() {
 // function list.parameter#4
 //   entry b0 params=[] captures=[]
 //   block b0 params=[]
-//     %list.parameter#0:shape#19(list_type#4) = list.parameter[type#4] empty
+//     %list.parameter#0:shape#19(list_type#4) = list.parameter[type#4] value elements=[]
 //     %tuple#0:shape#65(#(list_type#4)) = tuple.value elements=[%list.parameter#0]
 //     %list.parameter#1:shape#19(list_type#4) = list.parameter[type#4] tuple_index %tuple#0 index=0
 //     return %list.parameter#1
@@ -176,7 +181,7 @@ pub fn main() {
 // function list.parameter#5
 //   entry b0 params=[] captures=[]
 //   block b0 params=[]
-//     %list.parameter#0:shape#22(list_type#5) = list.parameter[type#5] empty
+//     %list.parameter#0:shape#22(list_type#5) = list.parameter[type#5] value elements=[]
 //     %custom#0:shape#66(custom_type#1) = custom.construct custom_type#1.constructor#0 fields=[%list.parameter#0]
 //     %list.parameter#1:shape#22(list_type#5) = list.parameter[type#5] custom_field %custom#0 index=0
 //     return %list.parameter#1
@@ -184,115 +189,115 @@ pub fn main() {
 // function list.parameter#6
 //   entry b0 params=[] captures=[]
 //   block b0 params=[]
-//     %list.parameter#0:shape#25(list_type#6) = list.parameter[type#6] empty
-//     %list.parameter_list#0:shape#67(list_type#25) = list.parameter_list[type#25] value elements=[%list.parameter#0]
-//     branch_test bool.list_length_equals %list.parameter_list#0 length=1 true=b1(%list.parameter_list#0) false=b2()
-//   block b1 params=[%list.parameter_list#0:shape#67(list_type#25)]
-//     %list.parameter#0:shape#25(list_type#6) = list.parameter[type#6] list_index %list.parameter_list#0 index=0
+//     %list.parameter#0:shape#25(list_type#6) = list.parameter[type#6] value elements=[]
+//     %list.list#0:shape#67(list_type#25) = list.list[type#25] value elements=[%list.parameter#0]
+//     branch_test bool.list_length_equals %list.list#0 length=1 true=b1(%list.list#0) false=b2()
+//   block b1 params=[%list.list#0:shape#67(list_type#25)]
+//     %list.parameter#0:shape#25(list_type#6) = list.parameter[type#6] list_index %list.list#0 index=0
 //     return %list.parameter#0
 //   block b2 params=[]
-//     %list.parameter#0:shape#25(list_type#6) = list.parameter[type#6] empty
+//     %list.parameter#0:shape#25(list_type#6) = list.parameter[type#6] value elements=[]
 //     return %list.parameter#0
 //
 // function list.parameter#7
 //   entry b0 params=[] captures=[]
 //   block b0 params=[]
-//     %list.parameter#0:shape#12(list_type#2) = list.parameter[type#2] empty
+//     %list.parameter#0:shape#12(list_type#2) = list.parameter[type#2] value elements=[]
 //     return %list.parameter#0
 //
-// function list.parameter_list#0
+// function list.list#0
 //   entry b0 params=[] captures=[]
 //   block b0 params=[]
-//     %list.parameter#0:shape#28(list_type#7) = list.parameter[type#7] empty
-//     %list.parameter_list#0:shape#29(list_type#8) = list.parameter_list[type#8] value elements=[%list.parameter#0]
-//     return %list.parameter_list#0
+//     %list.parameter#0:shape#28(list_type#7) = list.parameter[type#7] value elements=[]
+//     %list.list#0:shape#29(list_type#8) = list.list[type#8] value elements=[%list.parameter#0]
+//     return %list.list#0
 //
-// function list.parameter_list#1
+// function list.list#1
 //   entry b0 params=[] captures=[]
 //   block b0 params=[]
-//     %list.parameter_list#0:shape#33(list_type#10) = list.parameter_list[type#10] constant.list.parameter_list#0
-//     return %list.parameter_list#0
+//     %list.list#0:shape#33(list_type#10) = list.list[type#10] constant.list.list#0
+//     return %list.list#0
 //
-// function list.parameter_list#2
-//   entry b0 params=[%list.parameter_list#0:shape#37(list_type#12)] captures=[]
-//   block b0 params=[%list.parameter_list#0:shape#37(list_type#12)]
-//     %list.parameter#0:shape#36(list_type#11) = list.parameter[type#11] empty
-//     %list.parameter_list#1:shape#37(list_type#12) = list.parameter_list[type#12] spread elements=[%list.parameter#0] tail=%list.parameter_list#0
-//     return %list.parameter_list#1
+// function list.list#2
+//   entry b0 params=[%list.list#0:shape#37(list_type#12)] captures=[]
+//   block b0 params=[%list.list#0:shape#37(list_type#12)]
+//     %list.parameter#0:shape#36(list_type#11) = list.parameter[type#11] value elements=[]
+//     %list.list#1:shape#37(list_type#12) = list.list[type#12] spread elements=[%list.parameter#0] tail=%list.list#0
+//     return %list.list#1
 //
-// function list.parameter_list#3
+// function list.list#3
 //   entry b0 params=[] captures=[]
 //   block b0 params=[]
-//     tail list.parameter_list#9 args=[]
+//     tail list.list#9 args=[]
 //
-// function list.parameter_list#4
-//   entry b0 params=[%function.list.parameter_list#0:shape#46(fn() -> list_type#16)] captures=[]
-//   block b0 params=[%function.list.parameter_list#0:shape#46(fn() -> list_type#16)]
-//     %list.parameter_list#0:shape#45(list_type#16) = list.parameter_list[type#16] function_call %function.list.parameter_list#0 args=[]
-//     return %list.parameter_list#0
+// function list.list#4
+//   entry b0 params=[%function.list.list#0:shape#46(fn() -> list_type#16)] captures=[]
+//   block b0 params=[%function.list.list#0:shape#46(fn() -> list_type#16)]
+//     %list.list#0:shape#45(list_type#16) = list.list[type#16] function_call %function.list.list#0 args=[]
+//     return %list.list#0
 //
-// function list.parameter_list#5
+// function list.list#5
 //   entry b0 params=[] captures=[]
 //   block b0 params=[]
-//     %list.parameter#0:shape#49(list_type#17) = list.parameter[type#17] empty
-//     %list.parameter_list#0:shape#50(list_type#18) = list.parameter_list[type#18] value elements=[%list.parameter#0]
-//     %tuple#0:shape#68(#(list_type#18)) = tuple.value elements=[%list.parameter_list#0]
-//     %list.parameter_list#1:shape#50(list_type#18) = list.parameter_list[type#18] tuple_index %tuple#0 index=0
-//     return %list.parameter_list#1
+//     %list.parameter#0:shape#49(list_type#17) = list.parameter[type#17] value elements=[]
+//     %list.list#0:shape#50(list_type#18) = list.list[type#18] value elements=[%list.parameter#0]
+//     %tuple#0:shape#68(#(list_type#18)) = tuple.value elements=[%list.list#0]
+//     %list.list#1:shape#50(list_type#18) = list.list[type#18] tuple_index %tuple#0 index=0
+//     return %list.list#1
 //
-// function list.parameter_list#6
+// function list.list#6
 //   entry b0 params=[] captures=[]
 //   block b0 params=[]
-//     %list.parameter#0:shape#53(list_type#19) = list.parameter[type#19] empty
-//     %list.parameter_list#0:shape#54(list_type#20) = list.parameter_list[type#20] value elements=[%list.parameter#0]
-//     %custom#0:shape#69(custom_type#2) = custom.construct custom_type#2.constructor#0 fields=[%list.parameter_list#0]
-//     %list.parameter_list#1:shape#54(list_type#20) = list.parameter_list[type#20] custom_field %custom#0 index=0
-//     return %list.parameter_list#1
+//     %list.parameter#0:shape#53(list_type#19) = list.parameter[type#19] value elements=[]
+//     %list.list#0:shape#54(list_type#20) = list.list[type#20] value elements=[%list.parameter#0]
+//     %custom#0:shape#69(custom_type#2) = custom.construct custom_type#2.constructor#0 fields=[%list.list#0]
+//     %list.list#1:shape#54(list_type#20) = list.list[type#20] custom_field %custom#0 index=0
+//     return %list.list#1
 //
-// function list.parameter_list#7
+// function list.list#7
 //   entry b0 params=[] captures=[]
 //   block b0 params=[]
-//     %list.parameter#0:shape#57(list_type#21) = list.parameter[type#21] empty
-//     %list.parameter_list#0:shape#58(list_type#22) = list.parameter_list[type#22] value elements=[%list.parameter#0]
-//     %list.list#0:shape#70(list_type#26) = list.list[type#26] value elements=[%list.parameter_list#0]
-//     branch_test bool.list_length_equals %list.list#0 length=1 true=b1(%list.list#0) false=b2()
+//     %list.parameter#0:shape#57(list_type#21) = list.parameter[type#21] value elements=[]
+//     %list.list#0:shape#58(list_type#22) = list.list[type#22] value elements=[%list.parameter#0]
+//     %list.list#1:shape#70(list_type#26) = list.list[type#26] value elements=[%list.list#0]
+//     branch_test bool.list_length_equals %list.list#1 length=1 true=b1(%list.list#1) false=b2()
 //   block b1 params=[%list.list#0:shape#70(list_type#26)]
-//     %list.parameter_list#0:shape#58(list_type#22) = list.parameter_list[type#22] list_index %list.list#0 index=0
-//     return %list.parameter_list#0
+//     %list.list#1:shape#58(list_type#22) = list.list[type#22] list_index %list.list#0 index=0
+//     return %list.list#1
 //   block b2 params=[]
-//     %list.parameter_list#0:shape#58(list_type#22) = list.parameter_list[type#22] value elements=[]
-//     return %list.parameter_list#0
+//     %list.list#0:shape#58(list_type#22) = list.list[type#22] value elements=[]
+//     return %list.list#0
 //
-// function list.parameter_list#8
+// function list.list#8
 //   entry b0 params=[] captures=[]
 //   block b0 params=[]
-//     %list.parameter#0:shape#61(list_type#23) = list.parameter[type#23] empty
-//     %list.parameter#1:shape#61(list_type#23) = list.parameter[type#23] empty
-//     %list.parameter_list#0:shape#62(list_type#24) = list.parameter_list[type#24] value elements=[%list.parameter#0, %list.parameter#1]
-//     branch_test bool.list_length_at_least %list.parameter_list#0 length=1 true=b1(%list.parameter_list#0) false=b2()
-//   block b1 params=[%list.parameter_list#0:shape#62(list_type#24)]
-//     %list.parameter_list#1:shape#62(list_type#24) = list.parameter_list[type#24] drop_first %list.parameter_list#0 count=1
-//     return %list.parameter_list#1
+//     %list.parameter#0:shape#61(list_type#23) = list.parameter[type#23] value elements=[]
+//     %list.parameter#1:shape#61(list_type#23) = list.parameter[type#23] value elements=[]
+//     %list.list#0:shape#62(list_type#24) = list.list[type#24] value elements=[%list.parameter#0, %list.parameter#1]
+//     branch_test bool.list_length_at_least %list.list#0 length=1 true=b1(%list.list#0) false=b2()
+//   block b1 params=[%list.list#0:shape#62(list_type#24)]
+//     %list.list#1:shape#62(list_type#24) = list.list[type#24] drop_first %list.list#0 count=1
+//     return %list.list#1
 //   block b2 params=[]
-//     %list.parameter_list#0:shape#62(list_type#24) = list.parameter_list[type#24] value elements=[]
-//     return %list.parameter_list#0
+//     %list.list#0:shape#62(list_type#24) = list.list[type#24] value elements=[]
+//     return %list.list#0
 //
-// function list.parameter_list#9
+// function list.list#9
 //   entry b0 params=[] captures=[]
 //   block b0 params=[]
-//     %list.parameter#0:shape#40(list_type#13) = list.parameter[type#13] empty
-//     %list.parameter_list#0:shape#41(list_type#14) = list.parameter_list[type#14] value elements=[%list.parameter#0]
-//     return %list.parameter_list#0
+//     %list.parameter#0:shape#40(list_type#13) = list.parameter[type#13] value elements=[]
+//     %list.list#0:shape#41(list_type#14) = list.list[type#14] value elements=[%list.parameter#0]
+//     return %list.list#0
 //
 // constant.list.parameter#0
 //   entry b0 params=[] captures=[]
 //   block b0 params=[]
-//     %list.parameter#0:shape#9(list_type#1) = list.parameter[type#1] empty
+//     %list.parameter#0:shape#9(list_type#1) = list.parameter[type#1] value elements=[]
 //     return %list.parameter#0
 //
-// constant.list.parameter_list#0
+// constant.list.list#0
 //   entry b0 params=[] captures=[]
 //   block b0 params=[]
-//     %list.parameter#0:shape#32(list_type#9) = list.parameter[type#9] empty
-//     %list.parameter_list#0:shape#33(list_type#10) = list.parameter_list[type#10] value elements=[%list.parameter#0]
-//     return %list.parameter_list#0
+//     %list.parameter#0:shape#32(list_type#9) = list.parameter[type#9] value elements=[]
+//     %list.list#0:shape#33(list_type#10) = list.list[type#10] value elements=[%list.parameter#0]
+//     return %list.list#0
