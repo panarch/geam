@@ -1,3 +1,4 @@
+use super::binary_name;
 use super::build::{BuildProfile, cargo_command, executable};
 use super::control::{CONTROL_ENV, RunnerControl};
 use super::source::RUNNER_SOURCE;
@@ -25,6 +26,7 @@ pub(crate) trait RunnerChecker {
         &self,
         project_root: &Utf8Path,
         module: &str,
+        package: &str,
         progress: &mut Progress<'_>,
     ) -> Result<(), CliError>;
 }
@@ -34,6 +36,7 @@ pub(crate) trait RunnerExecutor {
         &self,
         project_root: &Utf8Path,
         module: &str,
+        package: &str,
         configurations: &[(String, Utf8PathBuf)],
         arguments: &[OsString],
         progress: &mut Progress<'_>,
@@ -66,10 +69,11 @@ impl RunnerChecker for SystemCargo {
         &self,
         project_root: &Utf8Path,
         module: &str,
+        package: &str,
         progress: &mut Progress<'_>,
     ) -> Result<(), CliError> {
         finish_process(run_checked_with_progress(
-            &mut runner_command(project_root, module, RunnerControl::Check),
+            &mut runner_command(project_root, module, package, RunnerControl::Check),
             progress,
             Stdio::inherit(),
         ))
@@ -81,6 +85,7 @@ impl RunnerExecutor for SystemCargo {
         &self,
         project_root: &Utf8Path,
         module: &str,
+        package: &str,
         configurations: &[(String, Utf8PathBuf)],
         arguments: &[OsString],
         progress: &mut Progress<'_>,
@@ -91,15 +96,15 @@ impl RunnerExecutor for SystemCargo {
             CargoMetadataMode::Locked,
             progress,
         )?;
-        let package = "geam-runner";
+        let runner_name = binary_name(package);
         let root = metadata
             .root_package()
             .ok_or_else(|| CliError::InvalidBuildOutput {
-                package: package.into(),
+                package: runner_name.clone(),
                 reason: "managed package is absent".into(),
             })?;
         let output = run_checked_with_progress(
-            cargo_command(project_root, "build", package, BuildProfile::Debug)
+            cargo_command(project_root, "build", &runner_name, BuildProfile::Debug)
                 .arg("--manifest-path")
                 .arg(project_root.join("Cargo.toml"))
                 .arg("--message-format=json-render-diagnostics"),
@@ -109,7 +114,7 @@ impl RunnerExecutor for SystemCargo {
         let runner = executable(
             &output.stdout,
             &root.id,
-            package,
+            &runner_name,
             &metadata.workspace_root.join(RUNNER_SOURCE),
         )?;
         run_inherited(&mut execution_command(
@@ -126,13 +131,18 @@ fn finish_process(result: Result<std::process::Output, CliError>) -> Result<(), 
     result.map(drop)
 }
 
-fn runner_command(project_root: &Utf8Path, module: &str, control: RunnerControl<'_>) -> Command {
+fn runner_command(
+    project_root: &Utf8Path,
+    module: &str,
+    package: &str,
+    control: RunnerControl<'_>,
+) -> Command {
     let mut command = Command::new("cargo");
     command
         .arg("run")
         .arg("--locked")
         .arg("--bin")
-        .arg("geam-runner")
+        .arg(binary_name(package))
         .arg("--")
         .env(CONTROL_ENV, control.encode(project_root, module))
         .current_dir(project_root)
@@ -240,7 +250,7 @@ name = "runner_fixture"
 version = "0.0.0"
 edition = "2024"
 [[bin]]
-name = "geam-runner"
+name = "application-geam-runner"
 path = "build/geam/runner.rs"
 [workspace]
 "#,
@@ -277,17 +287,31 @@ fn main() -> std::process::ExitCode {
             ];
             assert_eq!(
                 SystemCargo
-                    .execute(root, "application", &[], &arguments, &mut Progress::Hidden)
+                    .execute(
+                        root,
+                        "application",
+                        "application",
+                        &[],
+                        &arguments,
+                        &mut Progress::Hidden
+                    )
                     .unwrap(),
                 ExitCode::from(code)
             );
         }
         fs::write(&source, "fn main() { let invalid = ; }\n").unwrap();
         let error = SystemCargo
-            .execute(root, "application", &[], &[], &mut Progress::Hidden)
+            .execute(
+                root,
+                "application",
+                "application",
+                &[],
+                &[],
+                &mut Progress::Hidden,
+            )
             .unwrap_err();
         assert!(
-            matches!(error, CliError::ProcessFailure { status: Some(101), command, .. } if command.starts_with("cargo build --locked --bin geam-runner"))
+            matches!(error, CliError::ProcessFailure { status: Some(101), command, .. } if command.starts_with("cargo build --locked --bin application-geam-runner"))
         );
         fs::write(&source, "fn main() {}\n").unwrap();
         let manifest = fs::read_to_string(root.join("Cargo.toml")).unwrap();
@@ -298,15 +322,29 @@ fn main() -> std::process::ExitCode {
         .unwrap();
         fs::copy(&source, root.join("build/geam/other.rs")).unwrap();
         let error = SystemCargo
-            .execute(root, "application", &[], &[], &mut Progress::Hidden)
+            .execute(
+                root,
+                "application",
+                "application",
+                &[],
+                &[],
+                &mut Progress::Hidden,
+            )
             .unwrap_err();
         assert_eq!(
             error.to_string(),
-            "invalid Cargo build output for geam-runner: Cargo did not report the selected executable"
+            "invalid Cargo build output for application-geam-runner: Cargo did not report the selected executable"
         );
         fs::remove_file(root.join("Cargo.toml")).unwrap();
         let error = SystemCargo
-            .execute(root, "application", &[], &[], &mut Progress::Hidden)
+            .execute(
+                root,
+                "application",
+                "application",
+                &[],
+                &[],
+                &mut Progress::Hidden,
+            )
             .unwrap_err();
         assert!(
             error
@@ -329,10 +367,17 @@ fn main() -> std::process::ExitCode {
             .unwrap();
         assert!(lock.status.success(), "{lock:?}");
         let error = SystemCargo
-            .execute(root, "application", &[], &[], &mut Progress::Hidden)
+            .execute(
+                root,
+                "application",
+                "application",
+                &[],
+                &[],
+                &mut Progress::Hidden,
+            )
             .unwrap_err();
         assert!(
-            matches!(error, CliError::InvalidBuildOutput { package, reason } if package == "geam-runner" && reason == "managed package is absent")
+            matches!(error, CliError::InvalidBuildOutput { package, reason } if package == "application-geam-runner" && reason == "managed package is absent")
         );
     }
 
@@ -353,12 +398,12 @@ fn main() -> std::process::ExitCode {
     #[test]
     fn constructs_check_and_run_commands_with_project_owned_targets() {
         let root = Utf8Path::new("project with spaces");
-        let check = runner_command(root, "application", RunnerControl::Check);
+        let check = runner_command(root, "tools/report", "application", RunnerControl::Check);
         assert_eq!(check.get_program(), "cargo");
         assert_eq!(check.get_current_dir(), Some(root.as_std_path()));
         assert_eq!(
             check.get_args().collect::<Vec<_>>(),
-            ["run", "--locked", "--bin", "geam-runner", "--"],
+            ["run", "--locked", "--bin", "application-geam-runner", "--"],
         );
         assert_eq!(
             check.get_envs().collect::<Vec<_>>(),
@@ -370,7 +415,7 @@ fn main() -> std::process::ExitCode {
                 (
                     OsStr::new(CONTROL_ENV),
                     Some(OsStr::new(
-                        "schema = 1\nmode = \"check\"\nproject_root = \"project with spaces\"\nmodule = \"application\"\n"
+                        "schema = 1\nmode = \"check\"\nproject_root = \"project with spaces\"\nmodule = \"tools/report\"\n"
                     ))
                 ),
             ],
@@ -379,7 +424,7 @@ fn main() -> std::process::ExitCode {
             .map(Into::into)
             .into();
         let run = execution_command(
-            Utf8Path::new("project with spaces/build/geam/target/debug/geam-runner"),
+            Utf8Path::new("project with spaces/build/geam/target/debug/application-geam-runner"),
             root,
             "worker",
             &[("images".into(), "config.toml".into())],
@@ -387,7 +432,8 @@ fn main() -> std::process::ExitCode {
         );
         assert_eq!(
             run.get_program(),
-            root.join("build/geam/target/debug/geam-runner").as_os_str()
+            root.join("build/geam/target/debug/application-geam-runner")
+                .as_os_str()
         );
         assert_eq!(run.get_current_dir(), Some(root.as_std_path()));
         assert_eq!(
@@ -425,7 +471,7 @@ fn main() -> std::process::ExitCode {
             OsString::from_wide(&[0x61, 0xd800])
         };
         let command = execution_command(
-            Utf8Path::new("project/build/geam/target/debug/geam-runner"),
+            Utf8Path::new("project/build/geam/target/debug/application-geam-runner"),
             Utf8Path::new("project"),
             "worker",
             &[],
@@ -541,13 +587,13 @@ fn main() -> std::process::ExitCode {
         ));
 
         let check = SystemCargo
-            .check(&root, "application", &mut Progress::Hidden)
+            .check(&root, "application", "application", &mut Progress::Hidden)
             .expect_err("missing manifest should reject runner checking");
         assert!(matches!(
             check,
             CliError::ProcessFailure { command, status: Some(101), stderr }
                 if command
-                    == "cargo run --locked --bin geam-runner --"
+                    == "cargo run --locked --bin application-geam-runner --"
                     && stderr.contains("could not find `Cargo.toml`")
         ));
     }

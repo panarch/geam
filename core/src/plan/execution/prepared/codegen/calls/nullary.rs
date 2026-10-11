@@ -13,7 +13,7 @@ pub(super) struct CallTypes<'types> {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(super) struct NullaryLocal {
+pub(super) struct CustomLocalShape {
     pub(super) local: CustomLocal,
     pub(super) arguments: Vec<ValueShapeId>,
     pub(super) constructors: Vec<CustomConstructorId>,
@@ -31,12 +31,7 @@ impl CallTypes<'_> {
         let type_ = &self.custom_types.types[local.shape.type_id.0];
         let constructors = match shape.constructor {
             CustomConstructorRefinement::Any => {
-                if type_.constructor_count != type_.constructors.len()
-                    || type_
-                        .constructors
-                        .iter()
-                        .any(|constructor| !constructor.fields.is_empty())
-                {
+                if type_.constructor_count != type_.constructors.len() {
                     return None;
                 }
                 type_
@@ -50,21 +45,29 @@ impl CallTypes<'_> {
                     .constructors
                     .iter()
                     .find(|constructor| constructor.id.index == index)?;
-                if !constructor.fields.is_empty() {
-                    return None;
-                }
                 vec![constructor.id]
             }
         };
-        Some(CallLocal::Nullary(NullaryLocal {
+        let nullary = constructors.iter().all(|id| {
+            type_
+                .constructors
+                .iter()
+                .any(|constructor| constructor.id == *id && constructor.fields.is_empty())
+        });
+        let projection = CustomLocalShape {
             local: *local,
             arguments: shape.arguments.to_vec(),
             constructors,
-        }))
+        };
+        Some(if nullary {
+            CallLocal::Nullary(projection)
+        } else {
+            CallLocal::Custom(projection)
+        })
     }
 }
 
-impl NullaryLocal {
+impl CustomLocalShape {
     pub(super) fn accepts(&self, argument: &Self) -> bool {
         self.local.shape.type_id == argument.local.shape.type_id
             && self.arguments == argument.arguments
@@ -198,8 +201,8 @@ mod tests {
             custom_types: &custom_types,
             value_shapes: &value_shapes,
         };
-        assert!(projection.local(&local(0)).is_none());
-        assert!(projection.local(&local(1)).is_none());
+        assert_eq!(projection.local(&local(0)), Some(CallLocal::Custom(any)));
+        assert_eq!(projection.local(&local(1)), Some(CallLocal::Custom(exact)));
         assert_eq!(
             projection
                 .local(&ParamLocal::Int(IntLocalId(0)))
@@ -219,7 +222,7 @@ mod tests {
                 .is_none()
         );
     }
-    fn nullary(local: Option<CallLocal>) -> super::NullaryLocal {
+    fn nullary(local: Option<CallLocal>) -> super::CustomLocalShape {
         match local {
             Some(CallLocal::Nullary(value)) => value,
             _ => panic!("fixture local must be a fieldless custom value"),

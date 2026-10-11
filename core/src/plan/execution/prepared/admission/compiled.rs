@@ -25,6 +25,7 @@ enum Family {
     Int,
     Bool,
     Custom,
+    Tuple,
     IntList,
     IntCallback,
     BoolCallback,

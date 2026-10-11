@@ -119,7 +119,7 @@ mod tests {
     use std::num::NonZeroUsize;
 
     #[test]
-    fn selection_keeps_uncompiled_and_foreign_source_callbacks_in_the_original_environment() {
+    fn selection_keeps_uncompiled_foreign_and_big_values_in_the_original_environment() {
         let runtime = tokio::runtime::Builder::new_current_thread()
             .build()
             .unwrap();
@@ -128,6 +128,15 @@ mod tests {
         let services = Services::<crate::ExecutionPlan>::new(captures.clone());
         let context = services.context();
         let metadata = CompiledCallbacks::interpreted();
+
+        let big =
+            crate::runtime::integer::IntegerValue::from(num_bigint::BigInt::from(1) << 180_usize);
+        let mut environment = BlockEnvironment::from_retained(RetainedValues::empty());
+        environment.push_int(big.clone());
+        let mut values = CustomLoopValues::default();
+        assert!(!environment.load_custom_loop(&mut values, &metadata, captures.domain()));
+        assert_eq!(environment.values.ints, [big]);
+        assert!(values.ints.is_empty());
 
         let plan = crate::runtime::plan_src(
             "pub fn main() { let bias = 7 fn(value: Int) { value + bias } }",

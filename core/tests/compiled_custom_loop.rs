@@ -8,7 +8,8 @@ use std::sync::Mutex;
 #[path = "support/work_representation.rs"]
 mod work_representation;
 
-static LOOP: data::ModuleArtifact<Infallible> = include!("fixtures/prepared/custom_loop.rs");
+static LOOP: data::ModuleArtifact<Infallible> =
+    include!("fixtures/prepared/generated/custom_loop.rs");
 const SOURCE: &str = include_str!("fixtures/prepared/custom_loop.gleam");
 
 macro_rules! functions {
@@ -68,16 +69,6 @@ macro_rules! functions {
 
 #[test]
 fn generated_connection_preserves_actual_callbacks_captures_big_values_and_errors() {
-    let typed = compile_typed_module("example", "src/custom_loop.gleam", SOURCE).unwrap();
-    let (mut bindings, run) = ModuleBuilder::new(typed)
-        .unwrap()
-        .function(FunctionDeclaration::<(BigInt, BigInt), BigInt>::new("run"))
-        .unwrap();
-    let _ = functions!(bindings, run);
-    assert_eq!(
-        bindings.prepare().emit_rust(),
-        include_str!("fixtures/prepared/custom_loop.rs").trim()
-    );
     assert!(LOOP.program.compiled.ints.iter().any(|target| matches!(
         target.implementation,
         data::compiled::CompiledImplementation::CustomLoop(_)
@@ -367,7 +358,8 @@ fn traced_guarded(
 #[test]
 fn generated_caller_resumes_after_interrupted_callbacks_and_small_overflow() {
     use data::compiled::{CompiledFunction, CompiledImplementation, CustomLoopImplementation};
-    const BASE: data::ModuleArtifact<Infallible> = include!("fixtures/prepared/custom_loop.rs");
+    const BASE: data::ModuleArtifact<Infallible> =
+        include!("fixtures/prepared/generated/custom_loop.rs");
     let mut artifact = BASE;
     assert_eq!(artifact.program.compiled.ints.len(), 4);
     artifact.program.compiled.ints = artifact
@@ -607,12 +599,9 @@ fn prepared_connection_and_capture_owners_can_move_to_another_thread() {
 #[cfg(feature = "tokio")]
 #[test]
 fn connected_standalone_entry_runs_without_the_source_compiler() {
+    use geam_core::HostProviderSet;
     use geam_core::execution::TokioHost;
     use geam_core::host::{HostComponentProfile, HostFutureStore, HostProfile, HostWorkProfile};
-    use geam_core::{
-        HostProviderSet, ModuleSource, PackageSource, PreparedHostedEntry,
-        compile_typed_host_program, plan_host_program,
-    };
     use work_representation::WorkComponent;
 
     struct Profile;
@@ -633,28 +622,8 @@ fn connected_standalone_entry_runs_without_the_source_compiler() {
         }
     }
 
-    static ENTRY: data::HostedEntryArtifact = include!("fixtures/prepared/custom_loop_entry.rs");
-    let typed = compile_typed_host_program(
-        "example",
-        "example",
-        [PackageSource::new(
-            "example",
-            Vec::<String>::new(),
-            [ModuleSource::new(
-                "example",
-                "src/custom_loop.gleam",
-                SOURCE,
-            )],
-        )],
-        HostProviderSet::<Profile>::new([]).unwrap(),
-    )
-    .unwrap();
-    let prepared =
-        PreparedHostedEntry::try_from_module_plan(plan_host_program(typed).unwrap()).unwrap();
-    assert_eq!(
-        prepared.emit_rust(),
-        include_str!("fixtures/prepared/custom_loop_entry.rs").trim()
-    );
+    static ENTRY: data::HostedEntryArtifact =
+        include!("fixtures/prepared/generated/custom_loop_entry.rs");
     assert!(!ENTRY.program.compiled.callbacks.ints.is_empty());
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
@@ -676,71 +645,72 @@ fn connected_standalone_entry_runs_without_the_source_compiler() {
 
 #[test]
 fn caller_suffixes_and_boolean_big_captures_keep_their_original_source_behavior() {
-    static BOUNDARIES: data::ModuleArtifact<Infallible> =
-        include!("fixtures/prepared/custom_loop_boundaries.rs");
-    const SOURCE: &str = include_str!("fixtures/prepared/custom_loop_boundaries.gleam");
-    let typed =
-        compile_typed_module("example", "src/custom_loop_boundaries.gleam", SOURCE).unwrap();
-    let (mut bindings, _) = ModuleBuilder::new(typed)
-        .unwrap()
-        .function(FunctionDeclaration::<(BigInt, bool, bool, BigInt), BigInt>::new("integer"))
-        .unwrap();
-    bindings
-        .function(FunctionDeclaration::<(BigInt,), bool>::new("boolean"))
-        .unwrap();
-    assert_eq!(
-        bindings.prepare().emit_rust(),
-        include_str!("fixtures/prepared/custom_loop_boundaries.rs").trim()
-    );
+    const BOUNDARIES: data::ModuleArtifact<Infallible> =
+        include!("fixtures/prepared/generated/custom_loop_boundaries.rs");
     assert!(!BOUNDARIES.program.compiled.callbacks.bools.is_empty());
-    let mut bindings = BOUNDARIES.load().unwrap();
-    let integer = bindings
-        .function(FunctionDeclaration::<(BigInt, bool, bool, BigInt), BigInt>::new("integer"))
-        .unwrap();
-    let boolean = bindings
-        .function(FunctionDeclaration::<(BigInt,), bool>::new("boolean"))
-        .unwrap();
-    let module = bindings.seal();
-    for connected in [false, true] {
-        for count in [0, 1, 2, 129] {
-            for initial in [BigInt::from(3), BigInt::from(i64::MAX)] {
-                let mut echo = Vec::new();
-                let expected = &initial + count * 3;
-                assert_eq!(
-                    module
+    let mut canonical_errors = Vec::new();
+    for compiled in [false, true] {
+        let mut artifact = BOUNDARIES;
+        if !compiled {
+            artifact.program.compiled = data::compiled::CompiledFunctions::interpreted();
+        }
+        let artifact = Box::leak(Box::new(artifact));
+        let mut bindings = artifact.load().unwrap();
+        let mut errors = Vec::new();
+        let integer = bindings
+            .function(FunctionDeclaration::<(BigInt, bool, bool, BigInt), BigInt>::new("integer"))
+            .unwrap();
+        let boolean = bindings
+            .function(FunctionDeclaration::<(BigInt,), bool>::new("boolean"))
+            .unwrap();
+        let module = bindings.seal();
+        for connected in [false, true] {
+            for count in [0, 1, 2, 129] {
+                for initial in [BigInt::from(3), BigInt::from(i64::MAX)] {
+                    let mut echo = Vec::new();
+                    let expected = &initial + count * 3;
+                    assert_eq!(
+                        module
+                            .call(
+                                &integer,
+                                (BigInt::from(count), false, connected, initial.clone()),
+                                &mut echo
+                            )
+                            .unwrap(),
+                        expected
+                    );
+                    assert_eq!(echo.len(), 1);
+                    assert_eq!(echo[0].value(), &geam_core::Value::Int(expected));
+                    echo.clear();
+                    let error = module
                         .call(
                             &integer,
-                            (BigInt::from(count), false, connected, initial),
-                            &mut echo
+                            (BigInt::from(count), true, connected, initial),
+                            &mut echo,
                         )
-                        .unwrap(),
-                    expected
-                );
-                assert_eq!(echo.len(), 1);
-                assert_eq!(echo[0].value(), &geam_core::Value::Int(expected));
-                echo.clear();
-                let error = module
-                    .call(
-                        &integer,
-                        (BigInt::from(count), true, connected, BigInt::from(3)),
-                        &mut echo,
-                    )
-                    .unwrap_err();
-                assert!(
-                    matches!(error, CallError::Execution(ExecutionError::Panic(panic)) if panic.kind() == PanicKind::Panic && panic.site().function() == "walk")
-                );
-                assert!(echo.is_empty());
+                        .unwrap_err();
+                    assert!(
+                        matches!(&error, CallError::Execution(ExecutionError::Panic(panic)) if panic.kind() == PanicKind::Panic && panic.site().function() == "walk")
+                    );
+                    assert!(echo.is_empty());
+                    errors.push(error);
+                }
             }
         }
-    }
-    let big: BigInt = BigInt::from(1) << 180;
-    for bias in [BigInt::from(-2), BigInt::from(0), big.clone(), -big] {
-        assert_eq!(
-            module
-                .call(&boolean, (bias.clone(),), &mut Vec::new())
-                .unwrap(),
-            bias + 1 > BigInt::from(0)
-        );
+        let big: BigInt = BigInt::from(1) << 180;
+        for bias in [BigInt::from(-2), BigInt::from(0), big.clone(), -big] {
+            assert_eq!(
+                module
+                    .call(&boolean, (bias.clone(),), &mut Vec::new())
+                    .unwrap(),
+                bias + 1 > BigInt::from(0)
+            );
+        }
+        if compiled {
+            assert_eq!(errors, canonical_errors);
+        } else {
+            canonical_errors = errors;
+        }
     }
 }
 
@@ -750,7 +720,7 @@ fn caller_suffixes_cross_the_hosted_quantum_without_replaying_effects_or_errors(
     use geam_core::execution::TokioHost;
     use geam_core::{HostProviderSet, StatelessHostProfile};
     const BASE: data::HostedModuleArtifact =
-        include!("fixtures/prepared/custom_loop_boundaries_hosted.rs");
+        include!("fixtures/prepared/generated/custom_loop_boundaries_hosted.rs");
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
@@ -780,7 +750,15 @@ fn caller_suffixes_cross_the_hosted_quantum_without_replaying_effects_or_errors(
             // 1024-step hosted quantum, including Small-to-Big caller steps.
             for count in 0..=260 {
                 for connected in [false, true] {
-                    for initial in [BigInt::from(3), BigInt::from(i64::MAX)] {
+                    let mut initial_values = vec![BigInt::from(3), BigInt::from(i64::MAX)];
+                    if count == 205 {
+                        // Entry and list construction use 15 + 6 * count steps.
+                        // Each connected callback iteration uses nine more.
+                        // After 203 items the next caller +1 crosses Small's
+                        // limit at step 3072, exactly the third hosted quantum.
+                        initial_values.push(BigInt::from(i64::MAX) - 203 * 3);
+                    }
+                    for initial in initial_values {
                         let value = scope.call(&integer, (BigInt::from(count), false, connected, initial.clone())).await.unwrap();
                         assert_eq!(value, &initial + count * 3);
                         let error = scope.call(&integer, (BigInt::from(count), true, connected, initial)).await.unwrap_err();

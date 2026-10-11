@@ -261,10 +261,12 @@ pub mod compiled {
         pub use crate::StringValue;
         pub use crate::runtime::compiled::calls::{
             BitArrayCallable, BoolCallable, CallArguments, CallBitArray, CallCapture,
-            CallCaptureInputs, CallCaptures, CallExecution, CallInputs, CallInteger,
+            CallCaptureInputs, CallCaptures, CallCustom, CallExecution, CallInputs, CallInteger,
             CallNativeInput, CallNullary, CallOps, CallOutput, CallProgress, CallResume, CallStart,
-            CallStorage, CallValues, FloatCallable, IntCallable, NilCallable, StringCallable,
-            StringNativeExecution, StringNativeRequest, UtfCodepointCallable,
+            CallStorage, CallTuple, CallValues, CompoundField, CustomNativeExecution,
+            CustomNativeRequest, FloatCallable, IntCallable, NilCallable, StringCallable,
+            StringNativeExecution, StringNativeRequest, TupleNativeExecution, TupleNativeRequest,
+            UtfCodepointCallable,
         };
         pub use crate::runtime::compiled::native_calls::{
             CallNativeFailure, CallNativeOps, CallNativeReturn,

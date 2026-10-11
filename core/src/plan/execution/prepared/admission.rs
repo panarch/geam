@@ -1943,27 +1943,31 @@ pub fn main() { let assert 3 = choose(Ok(False)) Nil }
         for (format, expected) in [
             (
                 1,
-                "prepared format 1 is incompatible with format 29; regenerate the prepared program",
+                "prepared format 1 is incompatible with format 30; regenerate the prepared program",
             ),
             (
                 8,
-                "prepared format 8 is incompatible with format 29; regenerate the prepared program",
+                "prepared format 8 is incompatible with format 30; regenerate the prepared program",
             ),
             (
                 19,
-                "prepared format 19 is incompatible with format 29; regenerate the prepared program",
+                "prepared format 19 is incompatible with format 30; regenerate the prepared program",
             ),
             (
                 20,
-                "prepared format 20 is incompatible with format 29; regenerate the prepared program",
+                "prepared format 20 is incompatible with format 30; regenerate the prepared program",
             ),
             (
                 22,
-                "prepared format 22 is incompatible with format 29; regenerate the prepared program",
+                "prepared format 22 is incompatible with format 30; regenerate the prepared program",
             ),
             (
                 23,
-                "prepared format 23 is incompatible with format 29; regenerate the prepared program",
+                "prepared format 23 is incompatible with format 30; regenerate the prepared program",
+            ),
+            (
+                29,
+                "prepared format 29 is incompatible with format 30; regenerate the prepared program",
             ),
         ] {
             artifact.format = format;
@@ -2081,7 +2085,7 @@ pub fn main() { let assert 3 = choose(Ok(False)) Nil }
             (
                 Change::Format,
                 Some(
-                    "prepared format 1 is incompatible with format 29; regenerate the prepared program",
+                    "prepared format 1 is incompatible with format 30; regenerate the prepared program",
                 ),
             ),
             (
@@ -2306,7 +2310,7 @@ pub fn main() { let assert 3 = choose(Ok(False)) Nil }
             (
                 Change::Format,
                 Some(
-                    "prepared format 1 is incompatible with format 29; regenerate the prepared program",
+                    "prepared format 1 is incompatible with format 30; regenerate the prepared program",
                 ),
             ),
             (

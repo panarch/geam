@@ -67,32 +67,37 @@ fn selects_locks_builds_and_runs_explicit_path_providers() {
     assert_eq!(
         manifest,
         format!(
-            concat!(
-                "# Managed by Geam. Use `geam provider` commands to change providers.\n\n",
-                "[package]\n",
-                "name = \"standalone_fixture-geam-runner\"\n",
-                "version = \"0.0.0\"\n",
-                "edition = \"2024\"\n",
-                "publish = false\n\n",
-                "[package.metadata.geam.runner]\n",
-                "schema = 1\n\n",
-                "[[bin]]\n",
-                "name = \"geam-runner\"\n",
-                "path = \"build/geam/runner.rs\"\n\n",
-                "[[bin]]\n",
-                "name = \"standalone_fixture\"\n",
-                "path = \"build/geam/application.rs\"\n\n",
-                "[dependencies]\n",
-                "geam = {{ version = \"={}\", default-features = false, features = [\"standalone\"] }}\n",
-                "tokio = {{ version = \"1.53.1\", default-features = false, features = [\"rt-multi-thread\", \"net\", \"time\"] }}\n",
-                "geam_provider_catalog = {{ package = \"geam-catalog\", path = {} }}\n",
-                "geam_provider_counter = {{ package = \"geam-counter\", path = {} }}\n\n",
-                "[workspace]\n",
-                "resolver = \"3\"\n",
-            ),
-            env!("CARGO_PKG_VERSION"),
-            toml::Value::String(catalog_path.to_string()).to_string(),
-            toml::Value::String(counter_path.to_string()).to_string(),
+            r#"# Managed by Geam. Use `geam provider` commands to change providers.
+
+[package]
+name = "standalone_fixture-geam-runner"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[package.metadata.geam.runner]
+schema = 1
+
+[[bin]]
+name = "standalone_fixture-geam-runner"
+path = "build/geam/runner.rs"
+
+[[bin]]
+name = "standalone_fixture"
+path = "build/geam/application.rs"
+
+[dependencies]
+geam = {{ version = "={version}", default-features = false, features = ["standalone"] }}
+tokio = {{ version = "1.53.1", default-features = false, features = ["rt-multi-thread", "net", "time"] }}
+geam_provider_catalog = {{ package = "geam-catalog", path = {catalog} }}
+geam_provider_counter = {{ package = "geam-counter", path = {counter} }}
+
+[workspace]
+resolver = "3"
+"#,
+            version = env!("CARGO_PKG_VERSION"),
+            catalog = toml::Value::String(catalog_path.to_string()),
+            counter = toml::Value::String(counter_path.to_string()),
         ),
     );
     let lock = fs::read(project_root.join("Cargo.lock")).expect("root lock should be readable");

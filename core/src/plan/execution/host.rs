@@ -19,7 +19,10 @@ pub(crate) use native::{
     NativeConversions, NativeCustomView, NativeFunctionView,
 };
 pub(in crate::plan::execution) use registration::{CallableRegistration, RegistrationContract};
-pub(crate) use synchronous::{SynchronousStringBinding, SynchronousStringFunctions};
+pub(crate) use synchronous::{
+    SynchronousBinding, SynchronousCustomFunctions, SynchronousStringFunctions,
+    SynchronousTupleFunctions,
+};
 pub(crate) use table::{HostBindingTables, HostFunctionTables};
 
 pub struct HostedExecutionProfile;

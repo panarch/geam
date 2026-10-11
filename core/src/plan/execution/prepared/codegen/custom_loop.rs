@@ -372,9 +372,8 @@ mod tests {
     use crate::{ExecutionPlan, Value, compile_typed_module, plan_module};
 
     #[test]
-    fn duplicate_loop_edge_owners_clone_before_the_last_move() {
+    fn loop_targets_preserve_checkpoints_calls_and_edge_ownership() {
         use super::{Code, FunctionCodegen, StorageFamily};
-        use crate::plan::execution::function::IntFunctionId;
         use crate::plan::execution::prepared::codegen::shape::CompiledShape;
         let source = r#"
 type Item { Item(Int) }
@@ -393,15 +392,133 @@ pub fn main() { fold([Item(2)], 0, add) }
             crate::run_main(&plan, &mut Vec::new()).unwrap(),
             Value::Int(2.into())
         );
-        let shape = CompiledShape::inspect_custom_loop(
-            plan.int_function(IntFunctionId(2)).body(),
-            &plan.program.common.custom_types,
-        )
-        .unwrap();
+        let program = &plan.program;
+        let fold = &program.functions.value_returns.int_functions[2];
+        let shape =
+            CompiledShape::inspect_custom_loop(fold.body(), &program.common.custom_types).unwrap();
         let function = FunctionCodegen {
             name: "fold",
             shape: &shape,
         };
+        let mut target = Code::default();
+        function.write_target(&mut target, "data::function::IntFunctionId(2)");
+        assert_eq!(
+            target.as_str(),
+            r#"data::compiled::CompiledFunction {
+    function: data::function::IntFunctionId(2),
+    implementation: data::compiled::CompiledImplementation::CustomLoop(data::Storage::Static(&data::compiled::CustomLoopImplementation {
+        entry: 0,
+        checkpoints: data::Storage::Static(&[
+            data::compiled::CompiledCheckpoint {
+                block: data::graph::BlockId(0),
+                instruction: 0,
+                ints: 1,
+                bools: 0,
+                bit_arrays: 0,
+                int_lists: 0,
+                strings: 0,
+                customs: 0,
+                custom_lists: 1,
+                int_functions: 1,
+                bool_functions: 0,
+            },
+            data::compiled::CompiledCheckpoint {
+                block: data::graph::BlockId(1),
+                instruction: 0,
+                ints: 1,
+                bools: 0,
+                bit_arrays: 0,
+                int_lists: 0,
+                strings: 0,
+                customs: 0,
+                custom_lists: 0,
+                int_functions: 0,
+                bool_functions: 0,
+            },
+            data::compiled::CompiledCheckpoint {
+                block: data::graph::BlockId(2),
+                instruction: 0,
+                ints: 1,
+                bools: 0,
+                bit_arrays: 0,
+                int_lists: 0,
+                strings: 0,
+                customs: 0,
+                custom_lists: 1,
+                int_functions: 1,
+                bool_functions: 0,
+            },
+            data::compiled::CompiledCheckpoint {
+                block: data::graph::BlockId(2),
+                instruction: 1,
+                ints: 1,
+                bools: 0,
+                bit_arrays: 0,
+                int_lists: 0,
+                strings: 0,
+                customs: 1,
+                custom_lists: 1,
+                int_functions: 1,
+                bool_functions: 0,
+            },
+            data::compiled::CompiledCheckpoint {
+                block: data::graph::BlockId(2),
+                instruction: 2,
+                ints: 1,
+                bools: 0,
+                bit_arrays: 0,
+                int_lists: 0,
+                strings: 0,
+                customs: 1,
+                custom_lists: 2,
+                int_functions: 1,
+                bool_functions: 0,
+            },
+            data::compiled::CompiledCheckpoint {
+                block: data::graph::BlockId(2),
+                instruction: 3,
+                ints: 2,
+                bools: 0,
+                bit_arrays: 0,
+                int_lists: 0,
+                strings: 0,
+                customs: 1,
+                custom_lists: 2,
+                int_functions: 1,
+                bool_functions: 0,
+            },
+        ]),
+        calls: data::Storage::Static(&[
+            data::compiled::CompiledLoopCall {
+                point: 4,
+                function: data::compiled::CompiledLoopFunction::Int {
+                    local: data::graph::IntFunctionLocalId(0),
+                    type_: data::type_::FunctionType {
+                        arguments: data::Storage::Static(&[
+                            data::type_::ValueType::Int,
+                            data::type_::ValueType::Custom(data::type_::CustomTypeId(0)),
+                        ]),
+                        return_: data::Storage::Static(&data::type_::ValueType::Int),
+                    },
+                },
+                args: data::Storage::Static(&[
+                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                    data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                        id: data::graph::CustomLocalId(0),
+                        shape: data::type_::CustomValueShape {
+                            type_id: data::type_::CustomTypeId(0),
+                            shape_id: data::type_::CustomValueShapeId(1),
+                        },
+                    }),
+                ]),
+                output: data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+            },
+        ]),
+        run: fold,
+    })),
+},
+"#
+        );
         let point = function.shape.checkpoints[function.entry()];
         assert_eq!(
             (point.ints, point.custom_lists, point.int_functions),
@@ -426,6 +543,17 @@ pub fn main() { fold([Item(2)], 0, add) }
         assert_eq!(
             inputs,
             "(b0_i0, b0_l0.clone(), b0_l0, b0_f0.clone(), b0_f0,)"
+        );
+        let inputs = function.loop_edge_inputs(
+            &mut code,
+            point.block,
+            vec![(StorageFamily::Int, "b0_i0".into())],
+            point,
+        );
+        assert_eq!(inputs, "_next");
+        assert_eq!(
+            code.as_str(),
+            "let _next = (b0_i0,);\ndrop(b0_l0);\ndrop(b0_f0);\n"
         );
     }
 

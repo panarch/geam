@@ -250,10 +250,12 @@ impl CompiledFunctions {
     }
 
     pub(crate) fn custom(&self, id: CustomFunctionId) -> Option<&CompiledImplementation> {
-        self.customs
-            .binary_search_by_key(&id.index(), |entry| entry.function)
-            .ok()
-            .map(|index| &self.customs[index].implementation)
+        self.call_root(CallTarget::Custom(id)).or_else(|| {
+            self.customs
+                .binary_search_by_key(&id.index(), |entry| entry.function)
+                .ok()
+                .map(|index| &self.customs[index].implementation)
+        })
     }
 
     pub(crate) fn int_list(&self, id: IntListFunctionId) -> Option<&CompiledImplementation> {

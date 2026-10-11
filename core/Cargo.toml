@@ -8,6 +8,12 @@ license.workspace = true
 repository.workspace = true
 publish = ["crates-io"]
 
+[[test]]
+name = "prepare_fixtures"
+path = "tests/support/prepare_fixtures.rs"
+harness = false
+test = false
+
 [features]
 tokio = ["dep:tokio"]
 

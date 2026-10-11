@@ -7,6 +7,10 @@ use crate::runtime::evaluated::EvaluatedCustomValue;
 pub struct CallNullary(CustomConstructorId);
 
 impl CallNullary {
+    pub fn matches_constructor(&self, constructor: CustomConstructorId) -> bool {
+        self.0 == constructor
+    }
+
     pub fn new(constructor: CustomConstructorId) -> Self {
         Self(constructor)
     }

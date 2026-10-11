@@ -6315,3 +6315,1116 @@ pub fn main() { let first = append("input") later(first) }
         assert!(echo.is_empty());
     }
 }
+
+#[cfg(test)]
+mod compound_native_tests {
+    use super::Domain;
+    use crate::execution_fixture::TestHost;
+    use crate::plan::HostCallSite;
+    use crate::plan::execution::HostedProgram;
+    use crate::plan::execution::compiled::CallTarget;
+    use crate::plan::execution::function::{
+        CoreRuntimeFunctionId, CustomFunctionId, ExecutionFunctionEntry, ExecutionFunctionRef,
+        RuntimeFunctionId, StringFunctionId, TupleFunctionId,
+    };
+    use crate::plan::execution::graph::{
+        CustomInstruction, ProfiledInstructionKind, StringInstruction, TupleInstruction,
+    };
+    use crate::plan::execution::runtime::RuntimeExecutionPlan;
+    use crate::runtime::EvaluatedValue;
+    use crate::runtime::ExecutableRuntimePlan;
+    use crate::runtime::compiled::calls::{
+        CallArguments, CallCustom, CallExecution, CallInputs, CallOps, CallOutput, CallProgress,
+        CallTuple, CallValues, CustomNativeExecution, CustomNativeRequest, GeneratedNativePhase,
+        GeneratedNativeState, StringNativeExecution, StringNativeRequest, TupleNativeExecution,
+        TupleNativeRequest,
+    };
+    use crate::{
+        HostCall, HostCallCompletion, HostCallError, HostCustomConstructorAt,
+        HostCustomConstructorDefinition, HostCustomConstructorList, HostCustomConstructorListEnd,
+        HostCustomFieldListEnd, HostCustomIndex0, HostCustomSchema, HostCustomType, HostProfile,
+        HostProvider, HostProviderModule, HostProviderSet, HostTupleType, HostTypeList,
+        HostTypeListEnd, ModuleSource, PackageSource, StringValue,
+    };
+    use std::num::NonZeroUsize;
+    use std::sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+    };
+
+    struct Profile;
+    impl HostProfile for Profile {
+        type RunState = Vec<StringValue>;
+        type ExternalStores = ();
+        type ExecutionState = ();
+    }
+    impl HostProvider<Profile> for Profile {
+        type State = Vec<StringValue>;
+        fn project(state: &mut Self::State) -> &mut Self::State {
+            state
+        }
+    }
+    struct MarkerSchema;
+    struct Found;
+    impl HostCustomSchema for MarkerSchema {
+        const PACKAGE: &'static str = "application";
+        const MODULE: &'static str = "example";
+        const NAME: &'static str = "Marker";
+        const PARAMETER_COUNT: usize = 0;
+        type Constructors = HostCustomConstructorList<Found, HostCustomConstructorListEnd>;
+    }
+    impl HostCustomConstructorDefinition for Found {
+        const NAME: &'static str = "Found";
+        type Fields = HostCustomFieldListEnd;
+    }
+    type Marker = HostCustomType<MarkerSchema, HostTypeListEnd>;
+    type MarkerFound = HostCustomConstructorAt<Marker, HostCustomIndex0, Found>;
+    type Pair =
+        HostTupleType<HostTypeList<StringValue, HostTypeList<StringValue, HostTypeListEnd>>>;
+    fn mark<'call>(
+        mut call: HostCall<'call, Profile, Profile, Marker>,
+    ) -> Result<HostCallCompletion<'call, Marker>, HostCallError> {
+        call.state().push("mark".into());
+        if call
+            .state()
+            .first()
+            .is_some_and(|value| value.as_str() == Ok("exit"))
+        {
+            return call.exit(crate::execution::ExitStatus::new(7));
+        }
+        if call
+            .state()
+            .first()
+            .is_some_and(|value| value.as_str() == Ok("cancel"))
+        {
+            assert!(call.execution_unit().unwrap().cancel());
+        }
+        Ok(call.return_custom::<MarkerFound>(()))
+    }
+    fn pair<'call>(
+        mut call: HostCall<'call, Profile, Profile, Pair>,
+        value: StringValue,
+    ) -> Result<HostCallCompletion<'call, Pair>, HostCallError> {
+        call.state().push(value.clone());
+        if call
+            .state()
+            .first()
+            .is_some_and(|value| value.as_str() == Ok("exit"))
+        {
+            return call.exit(crate::execution::ExitStatus::new(7));
+        }
+        if call
+            .state()
+            .first()
+            .is_some_and(|value| value.as_str() == Ok("cancel"))
+        {
+            assert!(call.execution_unit().unwrap().cancel());
+        }
+        Ok(call.return_tuple((value.clone(), (value, ()))))
+    }
+
+    fn mirror<'call>(
+        mut call: HostCall<'call, Profile, Profile, StringValue>,
+        value: StringValue,
+    ) -> Result<HostCallCompletion<'call, StringValue>, HostCallError> {
+        call.state().push(value.clone());
+        if call
+            .state()
+            .first()
+            .is_some_and(|value| value.as_str() == Ok("exit"))
+        {
+            return call.exit(crate::execution::ExitStatus::new(7));
+        }
+        if call
+            .state()
+            .first()
+            .is_some_and(|value| value.as_str() == Ok("cancel"))
+        {
+            assert!(call.execution_unit().unwrap().cancel());
+        }
+        Ok(call.return_value(value))
+    }
+
+    #[derive(Clone, Copy, PartialEq, Eq)]
+    enum NativeFamily {
+        Custom,
+        Tuple,
+        String,
+    }
+
+    fn native_fixture(
+        source: &str,
+        provider: HostProviderModule<Profile>,
+    ) -> crate::HostedExecution<Profile> {
+        let typed = crate::compile_typed_host_program(
+            "application",
+            "example",
+            [PackageSource::new(
+                "application",
+                Vec::<String>::new(),
+                [ModuleSource::new("example", "src/example.gleam", source)],
+            )],
+            HostProviderSet::from_providers([provider]).unwrap(),
+        )
+        .unwrap();
+        crate::HostedExecution::try_from_module_plan(crate::plan_host_program(typed).unwrap())
+            .unwrap()
+    }
+
+    // The source in each test contains exactly these three calls. This fixture
+    // reads their real targets/sites; it does not synthesize or change the graph.
+    struct NativeCalls {
+        main: TupleFunctionId,
+        custom: (CustomFunctionId, HostCallSite),
+        tuple: (TupleFunctionId, HostCallSite),
+        string: (StringFunctionId, HostCallSite),
+    }
+    impl NativeCalls {
+        fn inspect(plan: &HostedProgram<Profile>) -> Self {
+            let graphs = (0..plan.synchronous_tuples().len())
+                .map(TupleFunctionId)
+                .filter_map(|id| match plan.tuple_function(id).as_ref() {
+                    ExecutionFunctionRef::Graph(function) => Some((id, function)),
+                    ExecutionFunctionRef::Host(_) => None,
+                })
+                .collect::<Vec<_>>();
+            assert_eq!(graphs.len(), 1);
+            let (main, function) = graphs[0];
+            assert!(
+                matches!(plan.main_runtime(), RuntimeFunctionId::Core(CoreRuntimeFunctionId::Tuple { id, .. }) if id == main)
+            );
+            let graph = function.body().block_graph().as_view();
+            let mut customs = Vec::new();
+            let mut tuples = Vec::new();
+            let mut strings = Vec::new();
+            for instruction in graph
+                .blocks()
+                .flat_map(|block| block.instructions())
+                .filter_map(|instruction| instruction.value())
+            {
+                match instruction.kind() {
+                    ProfiledInstructionKind::Custom(CustomInstruction::Call {
+                        function,
+                        site,
+                        ..
+                    }) => customs.push((*function, site.clone())),
+                    ProfiledInstructionKind::Tuple(TupleInstruction::Call {
+                        function,
+                        site,
+                        ..
+                    }) => tuples.push((*function, site.clone())),
+                    ProfiledInstructionKind::String(StringInstruction::Call {
+                        function,
+                        site,
+                        ..
+                    }) => strings.push((*function, site.clone())),
+                    _ => {}
+                }
+            }
+            assert_eq!((customs.len(), tuples.len(), strings.len()), (1, 1, 1));
+            Self {
+                main,
+                custom: customs.remove(0),
+                tuple: tuples.remove(0),
+                string: strings.remove(0),
+            }
+        }
+
+        fn request(
+            &self,
+            family: NativeFamily,
+            input: StringValue,
+            root_tail: bool,
+            owner: DeliveryOwner,
+        ) -> CallProgress {
+            let execution = Box::new(PendingDelivery { owner, root_tail });
+            match family {
+                NativeFamily::Custom => CallProgress::CustomNative(CustomNativeRequest {
+                    function: self.custom.0,
+                    site: self.custom.1.clone(),
+                    arguments: Box::default(),
+                    root_tail,
+                    execution,
+                }),
+                NativeFamily::Tuple => CallProgress::TupleNative(TupleNativeRequest {
+                    function: self.tuple.0,
+                    site: self.tuple.1.clone(),
+                    arguments: Box::new(CallValues {
+                        strings: vec![input],
+                        ..Default::default()
+                    }),
+                    root_tail,
+                    execution,
+                }),
+                NativeFamily::String => CallProgress::StringNative(StringNativeRequest {
+                    function: self.string.0,
+                    site: self.string.1.clone(),
+                    arguments: Box::new(CallValues {
+                        strings: vec![input],
+                        ..Default::default()
+                    }),
+                    root_tail,
+                    execution,
+                }),
+            }
+        }
+    }
+
+    // This owner observes one already-published typed Native request. Public
+    // preparation tests prove the actual generated caller and match selection.
+    struct DeliveryOwner(Arc<AtomicUsize>);
+    impl Drop for DeliveryOwner {
+        fn drop(&mut self) {
+            self.0.fetch_add(1, Ordering::SeqCst);
+        }
+    }
+    struct PendingDelivery {
+        owner: DeliveryOwner,
+        root_tail: bool,
+    }
+    struct Delivered {
+        value: Option<CallOutput>,
+        _owner: DeliveryOwner,
+        root_tail: bool,
+    }
+    struct PublishedRequest(CallProgress);
+    impl CallExecution for PublishedRequest {
+        fn restart(&mut self, _: CallTarget, _: usize, _: CallInputs<'_>) -> bool {
+            false
+        }
+        fn retained_bytes(&self) -> usize {
+            0
+        }
+        fn advance(self: Box<Self>, _: &mut CallOps<'_>, _: &mut usize) -> CallProgress {
+            self.0
+        }
+    }
+    impl CallExecution for PendingDelivery {
+        fn restart(&mut self, _: CallTarget, _: usize, _: CallInputs<'_>) -> bool {
+            false
+        }
+        fn retained_bytes(&self) -> usize {
+            0
+        }
+        fn advance(self: Box<Self>, _: &mut CallOps<'_>, _: &mut usize) -> CallProgress {
+            CallProgress::Yield(self)
+        }
+    }
+    impl StringNativeExecution for PendingDelivery {
+        fn resume_native(self: Box<Self>, value: StringValue) -> Box<dyn CallExecution> {
+            let Self { owner, root_tail } = *self;
+            Box::new(Delivered {
+                value: Some(CallOutput::String(value)),
+                _owner: owner,
+                root_tail,
+            })
+        }
+    }
+    impl CustomNativeExecution for PendingDelivery {
+        fn resume_native(self: Box<Self>, value: CallCustom) -> Box<dyn CallExecution> {
+            let Self { owner, root_tail } = *self;
+            Box::new(Delivered {
+                value: Some(CallOutput::Custom(value)),
+                _owner: owner,
+                root_tail,
+            })
+        }
+    }
+    impl TupleNativeExecution for PendingDelivery {
+        fn resume_native(self: Box<Self>, value: CallTuple) -> Box<dyn CallExecution> {
+            let Self { owner, root_tail } = *self;
+            Box::new(Delivered {
+                value: Some(CallOutput::Tuple(value)),
+                _owner: owner,
+                root_tail,
+            })
+        }
+    }
+    impl CallExecution for Delivered {
+        fn restart(&mut self, _: CallTarget, _: usize, _: CallInputs<'_>) -> bool {
+            false
+        }
+        fn retained_bytes(&self) -> usize {
+            0
+        }
+        fn advance(mut self: Box<Self>, _: &mut CallOps<'_>, budget: &mut usize) -> CallProgress {
+            if !self.root_tail && *budget == 0 {
+                return CallProgress::Yield(self);
+            }
+            if !self.root_tail {
+                *budget -= 1;
+            }
+            match self.value.take() {
+                Some(output) => CallProgress::Complete {
+                    output,
+                    execution: self,
+                },
+                None => CallProgress::Yield(self),
+            }
+        }
+    }
+
+    #[test]
+    fn pending_and_published_delivery_owners_refuse_restart_and_release_once() {
+        use crate::plan::execution::function::FunctionReturnFamily;
+        use crate::plan::execution::function::IntFunctionId;
+        use crate::runtime::CaptureStorage;
+        use crate::runtime::compiled::numeric::NumericValues;
+        use crate::runtime::graph::{BlockEnvironment, RetainedValues};
+        use crate::runtime::state::list::RuntimeListStorage;
+        let drops = Arc::new(AtomicUsize::new(0));
+        let scenarios: [(Box<dyn CallExecution>, usize, bool); 5] = [
+            (
+                Box::new(PendingDelivery {
+                    owner: DeliveryOwner(Arc::clone(&drops)),
+                    root_tail: false,
+                }),
+                0,
+                false,
+            ),
+            (
+                Box::new(PendingDelivery {
+                    owner: DeliveryOwner(Arc::clone(&drops)),
+                    root_tail: false,
+                }),
+                1,
+                false,
+            ),
+            (
+                Box::new(Delivered {
+                    value: Some(CallOutput::Nil(())),
+                    _owner: DeliveryOwner(Arc::clone(&drops)),
+                    root_tail: false,
+                }),
+                0,
+                false,
+            ),
+            (
+                Box::new(Delivered {
+                    value: Some(CallOutput::Nil(())),
+                    _owner: DeliveryOwner(Arc::clone(&drops)),
+                    root_tail: false,
+                }),
+                1,
+                true,
+            ),
+            (
+                Box::new(Delivered {
+                    value: Some(CallOutput::Nil(())),
+                    _owner: DeliveryOwner(Arc::clone(&drops)),
+                    root_tail: true,
+                }),
+                0,
+                true,
+            ),
+        ];
+        let captures = CaptureStorage::default();
+        let mut numeric = NumericValues::default();
+        let lists = RuntimeListStorage::default();
+        let mut strings = None;
+        let mut bits = None;
+        let environment = BlockEnvironment::from_retained(RetainedValues::empty());
+        let mut ops = CallOps::new(&captures, &mut numeric, &lists, &mut strings, &mut bits);
+        for (index, (mut execution, mut grant, completed)) in scenarios.into_iter().enumerate() {
+            assert!(!execution.restart(
+                CallTarget::Int(IntFunctionId(0)),
+                0,
+                CallInputs::new(&environment)
+            ));
+            assert_eq!(execution.retained_bytes(), 0);
+            let progress = execution.advance(&mut ops, &mut grant);
+            assert_eq!(
+                matches!(&progress, CallProgress::Complete { .. }),
+                completed
+            );
+            assert_eq!(matches!(&progress, CallProgress::Yield(_)), !completed);
+            assert_eq!(drops.load(Ordering::SeqCst), index);
+            if let CallProgress::Complete { output, execution } = progress {
+                assert_eq!(output.family(), FunctionReturnFamily::Nil);
+                // Completion consumes the value once, while its pooled owner
+                // remains inert until it is dropped or successfully restarted.
+                let next = execution.advance(&mut ops, &mut grant);
+                drop(next);
+            } else {
+                drop(progress);
+            }
+            assert_eq!(drops.load(Ordering::SeqCst), index + 1);
+        }
+    }
+
+    #[test]
+    fn compound_native_exit_keeps_the_effect_prefix_and_drops_the_pending_owner() {
+        let source = r#"
+pub type Marker { Found }
+@external(erlang, "native", "mark")
+fn mark() -> Marker
+@external(erlang, "native", "pair")
+fn pair(value: String) -> #(String, String)
+@external(erlang, "native", "mirror")
+fn mirror(value: String) -> String
+pub fn main() { #(mark(), pair("input"), mirror("input")) }
+"#;
+        for family in [
+            NativeFamily::Custom,
+            NativeFamily::Tuple,
+            NativeFamily::String,
+        ] {
+            let custom = family == NativeFamily::Custom;
+            let mut hosted = native_fixture(
+                source,
+                HostProviderModule::new("application", "example")
+                    .unwrap()
+                    .with_scoped_function::<Profile, (), Marker, _>("mark", mark)
+                    .unwrap()
+                    .with_scoped_function::<Profile, (StringValue,), Pair, _>("pair", pair)
+                    .unwrap()
+                    .with_scoped_function::<Profile, (StringValue,), StringValue, _>(
+                        "mirror", mirror,
+                    )
+                    .unwrap(),
+            );
+            let (plan, stores, captures) = hosted.parts_mut();
+            let calls = NativeCalls::inspect(plan);
+            let drops = Arc::new(AtomicUsize::new(0));
+            let request = calls.request(
+                family,
+                "input".into(),
+                false,
+                DeliveryOwner(Arc::clone(&drops)),
+            );
+            let state = Box::new(GeneratedNativeState {
+                phase: GeneratedNativePhase::Progress(request),
+                numeric: Default::default(),
+                strings: None,
+                bit_arrays: None,
+                root_tail_entry: true,
+                domain: captures.domain(),
+                prepaid_completion: false,
+            });
+            let host = TestHost::default();
+            let mut effects = vec![StringValue::from("exit")];
+            let mut echo = Vec::new();
+            let domain = Domain::new(
+                Arc::clone(plan),
+                &host,
+                &mut effects,
+                stores,
+                &mut echo,
+                captures.clone(),
+                NonZeroUsize::new(8).unwrap(),
+            );
+            let context = domain.context();
+            let result = host
+                .block_on(
+                    domain.drive(
+                        plan.prepare_generated_native(state, 8)
+                            .ok()
+                            .unwrap()
+                            .submit(context.execution.services(), NonZeroUsize::new(8).unwrap()),
+                    ),
+                )
+                .unwrap();
+            assert_eq!(
+                result.try_into_value().err(),
+                Some(crate::execution::ExitStatus::new(7))
+            );
+            assert_eq!(
+                effects,
+                ["exit", if custom { "mark" } else { "input" }].map(StringValue::from)
+            );
+            assert_eq!(drops.load(Ordering::SeqCst), 1);
+            assert!(echo.is_empty());
+        }
+    }
+
+    #[test]
+    fn a_resumed_compound_request_declines_continuing_bindings_before_any_native_effect() {
+        use crate::HostCallContinuation;
+        use crate::HostConstructions;
+        use crate::HostFailure;
+        use crate::HostOwnedCompletion;
+        use crate::runtime::HostCallOrigin;
+        use crate::runtime::graph::{BlockEnvironment, RetainedValues};
+        fn later_mark<'call>(
+            mut call: HostCall<'call, Profile, Profile, Marker>,
+            _: HostConstructions<'call, HostTypeListEnd>,
+        ) -> Result<HostCallContinuation<'call, Marker>, HostCallError> {
+            call.state().push("mark".into());
+            Err(HostFailure::new("canonical marker refusal").into())
+        }
+        fn later_pair<'call>(
+            mut call: HostCall<'call, Profile, Profile, Pair>,
+            _: HostConstructions<'call, HostTypeListEnd>,
+            value: StringValue,
+        ) -> Result<HostCallContinuation<'call, Pair>, HostCallError> {
+            call.state().push(value);
+            Err(HostFailure::new("canonical tuple refusal").into())
+        }
+        fn later_mirror<'call>(
+            mut call: HostCall<'call, Profile, Profile, StringValue>,
+            constructions: HostConstructions<'call, HostTypeListEnd>,
+            value: StringValue,
+        ) -> Result<HostCallContinuation<'call, StringValue>, HostCallError> {
+            call.state().push(value.clone());
+            Ok(call.resume(constructions, move |_| {
+                Box::pin(async move {
+                    Ok(HostOwnedCompletion::new(move |call, _| {
+                        Ok(call.return_value(value))
+                    }))
+                })
+            }))
+        }
+        let source = r#"
+pub type Marker { Found }
+@external(erlang, "native", "mark")
+fn mark() -> Marker
+@external(erlang, "native", "pair")
+fn pair(value: String) -> #(String, String)
+@external(erlang, "native", "mirror")
+fn mirror(value: String) -> String
+pub fn main() { #(mark(), pair("input"), mirror("input")) }
+"#;
+        for (family, native) in [
+            (NativeFamily::Custom, true),
+            (NativeFamily::Tuple, true),
+            (NativeFamily::String, true),
+            (NativeFamily::String, false),
+        ] {
+            let custom = family == NativeFamily::Custom;
+            let input = "input";
+            let mut hosted = native_fixture(source, HostProviderModule::new(
+                    "application",
+                    "example",
+                )
+                .unwrap()
+                .with_resumable_function::<Profile, (), Marker, HostTypeListEnd, _>(
+                    "mark", later_mark,
+                )
+                .unwrap()
+                .with_resumable_function::<Profile, (StringValue,), Pair, HostTypeListEnd, _>(
+                    "pair", later_pair,
+                )
+                .unwrap()
+                .with_resumable_function::<Profile, (StringValue,), StringValue, HostTypeListEnd, _>(
+                    "mirror", later_mirror,
+                )
+                .unwrap());
+            let (plan, stores, captures) = hosted.parts_mut();
+            let calls = NativeCalls::inspect(plan);
+            let main_id = calls.main;
+            let (custom_function, custom_site) = calls.custom.clone();
+            let (tuple_function, tuple_site) = calls.tuple.clone();
+            let (string_function, string_site) = calls.string.clone();
+            assert!(!plan.synchronous_customs()[custom_function.index]);
+            assert!(!plan.synchronous_tuples()[tuple_function.0]);
+            assert!(!plan.synchronous_strings()[string_function.0]);
+            let drops = Arc::new(AtomicUsize::new(0));
+            let owner = DeliveryOwner(Arc::clone(&drops));
+            let request = if native {
+                calls.request(family, input.into(), false, owner)
+            } else {
+                let execution = Box::new(PendingDelivery {
+                    owner,
+                    root_tail: false,
+                });
+                CallProgress::String {
+                    function: string_function,
+                    site: string_site.clone(),
+                    arguments: CallArguments {
+                        values: Box::new(CallValues {
+                            strings: vec![input.into()],
+                            ..Default::default()
+                        }),
+                        captures: None,
+                    },
+                    resume: Box::new(move |value| {
+                        StringNativeExecution::resume_native(execution, value)
+                    }),
+                }
+            };
+            let mut published = PublishedRequest(request);
+            let environment = BlockEnvironment::from_retained(RetainedValues::empty());
+            assert!(!published.restart(
+                CallTarget::Tuple(main_id),
+                0,
+                CallInputs::new(&environment)
+            ));
+            assert_eq!(published.retained_bytes(), 0);
+            let state = Box::new(GeneratedNativeState {
+                phase: GeneratedNativePhase::Progress(CallProgress::Yield(Box::new(published))),
+                numeric: Default::default(),
+                strings: None,
+                bit_arrays: None,
+                root_tail_entry: true,
+                domain: captures.domain(),
+                prepaid_completion: false,
+            });
+            let host = TestHost::default();
+            let mut effects = Vec::new();
+            let mut echo = Vec::new();
+            let domain = Domain::new(
+                Arc::clone(plan),
+                &host,
+                &mut effects,
+                stores,
+                &mut echo,
+                captures.clone(),
+                NonZeroUsize::new(8).unwrap(),
+            );
+            let context = domain.context();
+            host.block_on(domain.drive(async {
+                let state = plan.prepare_generated_native(state, 8).ok().unwrap().submit(context.execution.services(), NonZeroUsize::new(8).unwrap()).await.unwrap().unwrap();
+                assert_eq!(drops.load(Ordering::SeqCst), 0);
+                assert!(context.execution.with_state(|effects| effects.is_empty()).await.unwrap());
+                if custom {
+                    assert!(matches!(&state.phase, GeneratedNativePhase::Progress(CallProgress::CustomNative(request)) if request.function == custom_function && request.site == custom_site));
+                } else if family == NativeFamily::Tuple {
+                    assert!(matches!(&state.phase, GeneratedNativePhase::Progress(CallProgress::TupleNative(request)) if request.function == tuple_function && request.site == tuple_site));
+                } else if native {
+                    assert!(matches!(&state.phase, GeneratedNativePhase::Progress(CallProgress::StringNative(request)) if request.function == string_function && request.site == string_site));
+                } else {
+                    assert!(matches!(&state.phase, GeneratedNativePhase::Progress(CallProgress::String { function, site, arguments, .. }) if *function == string_function && *site == string_site && arguments.values.strings == [StringValue::from(input)] && arguments.captures.is_none()));
+                }
+                let declined = if native {
+                    plan.prepare_generated_native(state, 8).err().unwrap()
+                } else {
+                    state
+                };
+                let resume = match declined.phase {
+                    GeneratedNativePhase::Progress(CallProgress::String { arguments, resume, .. }) => Some((arguments, resume)),
+                    phase => { drop(phase); None }
+                };
+                assert_eq!(resume.is_some(), !native);
+                // The original canonical caller owns this invocation. Native
+                // refusal has no effects; this call executes the body once.
+                match family {
+                    NativeFamily::Custom => assert!(context.call(custom_function, HostCallOrigin::source(custom_site), RetainedValues::empty()).await.unwrap().is_err()),
+                    NativeFamily::Tuple => {
+                        let mut inputs = RetainedValues::empty();
+                        inputs.push_string(input.into());
+                        assert!(context.call(tuple_function, HostCallOrigin::source(tuple_site), inputs).await.unwrap().is_err());
+                    }
+                    NativeFamily::String => {
+                        if let Some((arguments, resume)) = resume {
+                            let value = context.call(string_function, HostCallOrigin::source(string_site), arguments.values.into_retained()).await.unwrap().unwrap();
+                            assert_eq!(value, StringValue::from(input));
+                            assert_eq!(drops.load(Ordering::SeqCst), 0);
+                            drop(resume(value));
+                        } else {
+                            let mut inputs = RetainedValues::empty();
+                            inputs.push_string(input.into());
+                            assert_eq!(context.call(string_function, HostCallOrigin::source(string_site), inputs).await.unwrap().unwrap(), StringValue::from(input));
+                        }
+                    }
+                }
+                assert_eq!(drops.load(Ordering::SeqCst), 1);
+            })).unwrap().try_into_value().unwrap();
+            assert_eq!(
+                effects,
+                [StringValue::from(if custom { "mark" } else { input })]
+            );
+            assert!(echo.is_empty());
+        }
+    }
+
+    #[test]
+    fn compound_native_grants_keep_typed_delivery_owned_until_publication_or_drop() {
+        let source = r#"
+pub type Marker { Found }
+@external(erlang, "native", "mark")
+fn mark() -> Marker
+@external(erlang, "native", "pair")
+fn pair(value: String) -> #(String, String)
+@external(erlang, "native", "mirror")
+fn mirror(value: String) -> String
+pub fn main() { #(mark(), pair("input"), mirror("input")) }
+"#;
+        for family in [
+            NativeFamily::Custom,
+            NativeFamily::Tuple,
+            NativeFamily::String,
+        ] {
+            let custom = family == NativeFamily::Custom;
+            for root_tail in [false, true] {
+                for grant in [0, 1, 2, 7, 1024] {
+                    for drop_after_body in [false, true] {
+                        let mut hosted = native_fixture(
+                            source,
+                            HostProviderModule::new("application", "example")
+                                .unwrap()
+                                .with_scoped_function::<Profile, (), Marker, _>("mark", mark)
+                                .unwrap()
+                                .with_scoped_function::<Profile, (StringValue,), Pair, _>(
+                                    "pair", pair,
+                                )
+                                .unwrap()
+                                .with_scoped_function::<Profile, (StringValue,), StringValue, _>(
+                                    "mirror", mirror,
+                                )
+                                .unwrap(),
+                        );
+                        let (plan, stores, captures) = hosted.parts_mut();
+                        let calls = NativeCalls::inspect(plan);
+                        let drops = Arc::new(AtomicUsize::new(0));
+                        let request = calls.request(
+                            family,
+                            "input".into(),
+                            root_tail,
+                            DeliveryOwner(Arc::clone(&drops)),
+                        );
+                        let mut state = Box::new(GeneratedNativeState {
+                            phase: GeneratedNativePhase::Progress(request),
+                            numeric: Default::default(),
+                            strings: None,
+                            bit_arrays: None,
+                            root_tail_entry: true,
+                            domain: captures.domain(),
+                            prepaid_completion: false,
+                        });
+                        let pointer = std::ptr::from_ref(&*state);
+                        let host = TestHost::default();
+                        let mut effects = Vec::new();
+                        let mut echo = Vec::new();
+                        let domain = Domain::new(
+                            Arc::clone(plan),
+                            &host,
+                            &mut effects,
+                            stores,
+                            &mut echo,
+                            captures.clone(),
+                            NonZeroUsize::new(1024).unwrap(),
+                        );
+                        let context = domain.context();
+                        host.block_on(domain.drive(async {
+                            let mut turns = 0;
+                            loop {
+                                let allowance = if turns == 0 {
+                                    grant
+                                } else if drop_after_body {
+                                    1
+                                } else {
+                                    grant.max(1)
+                                };
+                                state = plan
+                                    .prepare_generated_native(state, allowance)
+                                    .ok()
+                                    .unwrap()
+                                    .submit(
+                                        context.execution.services(),
+                                        NonZeroUsize::new(allowance.max(1)).unwrap(),
+                                    )
+                                    .await
+                                    .unwrap()
+                                    .unwrap();
+                                assert_eq!(std::ptr::from_ref(&*state), pointer);
+                                assert_eq!(drops.load(Ordering::SeqCst), 0);
+                                let count = context
+                                    .execution
+                                    .with_state(|values| values.len())
+                                    .await
+                                    .unwrap();
+                                assert!(count <= 1, "a bounded grant cannot replay the body");
+                                if turns == 0 && grant == 0 {
+                                    assert_eq!(count, 0);
+                                }
+                                let completed = matches!(
+                                    &state.phase,
+                                    GeneratedNativePhase::Progress(CallProgress::Complete { .. })
+                                ) && state.prepaid_completion;
+                                if completed || (drop_after_body && count == 1) {
+                                    break;
+                                }
+                                turns += 1;
+                                assert!(turns < 10);
+                            }
+                            let body_charge: usize = if root_tail { 3 } else { 2 };
+                            let expected_turns = if drop_after_body {
+                                body_charge.saturating_sub(grant.max(1))
+                            } else {
+                                let publication_charge: usize = if root_tail { 3 } else { 5 };
+                                publication_charge.div_ceil(grant.max(1)) - 1
+                            };
+                            assert_eq!(turns, expected_turns);
+                            if drop_after_body && !root_tail && grant < 3 {
+                                assert!(matches!(
+                                    &state.phase,
+                                    GeneratedNativePhase::Deliver { charge: true, .. }
+                                        | GeneratedNativePhase::CustomDeliver { charge: true, .. }
+                                        | GeneratedNativePhase::TupleDeliver { charge: true, .. }
+                                ));
+                            }
+                            assert_eq!(
+                                context
+                                    .execution
+                                    .with_state(|values| values.clone())
+                                    .await
+                                    .unwrap(),
+                                vec![StringValue::from(if custom { "mark" } else { "input" })]
+                            );
+                            if !drop_after_body {
+                                if custom {
+                                    assert!(matches!(&state.phase, GeneratedNativePhase::Progress(CallProgress::Complete { output: CallOutput::Custom(value), .. }) if value.0.fields().is_empty() && value.0.constructor().index == 0));
+                                } else if family == NativeFamily::Tuple {
+                                    assert!(matches!(&state.phase, GeneratedNativePhase::Progress(CallProgress::Complete { output: CallOutput::Tuple(value), .. }) if value.0 == vec![EvaluatedValue::String("input".into()), EvaluatedValue::String("input".into())]));
+                                } else {
+                                    assert!(matches!(&state.phase, GeneratedNativePhase::Progress(CallProgress::Complete { output: CallOutput::String(value), .. }) if value.as_str() == Ok("input")));
+                                }
+                            }
+                            drop(state);
+                            assert_eq!(drops.load(Ordering::SeqCst), 1);
+                        }))
+                        .unwrap()
+                        .try_into_value()
+                        .unwrap();
+                        assert!(echo.is_empty());
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn cancellation_inside_native_preserves_the_effect_and_drops_undelivered_output() {
+        use crate::execution::UnitOwner;
+
+        let source = r#"
+pub type Marker { Found }
+@external(erlang, "native", "mark")
+fn mark() -> Marker
+@external(erlang, "native", "pair")
+fn pair(value: String) -> #(String, String)
+@external(erlang, "native", "mirror")
+fn mirror(value: String) -> String
+pub fn main() { #(mark(), pair("input"), mirror("input")) }
+"#;
+        for family in [
+            NativeFamily::Custom,
+            NativeFamily::Tuple,
+            NativeFamily::String,
+        ] {
+            let mut hosted = native_fixture(
+                source,
+                HostProviderModule::new("application", "example")
+                    .unwrap()
+                    .with_scoped_function::<Profile, (), Marker, _>("mark", mark)
+                    .unwrap()
+                    .with_scoped_function::<Profile, (StringValue,), Pair, _>("pair", pair)
+                    .unwrap()
+                    .with_scoped_function::<Profile, (StringValue,), StringValue, _>(
+                        "mirror", mirror,
+                    )
+                    .unwrap(),
+            );
+            let (plan, stores, captures) = hosted.parts_mut();
+            let calls = NativeCalls::inspect(plan);
+            let drops = Arc::new(AtomicUsize::new(0));
+            let request = calls.request(
+                family,
+                "input".into(),
+                false,
+                DeliveryOwner(Arc::clone(&drops)),
+            );
+            let state = Box::new(GeneratedNativeState {
+                phase: GeneratedNativePhase::Progress(request),
+                numeric: Default::default(),
+                strings: None,
+                bit_arrays: None,
+                root_tail_entry: true,
+                domain: captures.domain(),
+                prepaid_completion: false,
+            });
+            let host = TestHost::default();
+            let mut effects = vec![StringValue::from("cancel")];
+            let mut echo = Vec::new();
+            let mut domain = Domain::new(
+                Arc::clone(plan),
+                &host,
+                &mut effects,
+                stores,
+                &mut echo,
+                captures.clone(),
+                NonZeroUsize::new(8).unwrap(),
+            );
+            let (context, root) = domain.begin(UnitOwner::new(domain.units.completion()));
+            host.block_on(domain.drive(async {
+                let result = plan
+                    .prepare_generated_native(state, 8)
+                    .ok()
+                    .unwrap()
+                    .submit(context.services(), NonZeroUsize::new(8).unwrap())
+                    .await;
+                assert!(result.is_err());
+                assert!(!context.unit().unwrap().is_active());
+                assert_eq!(drops.load(Ordering::SeqCst), 1);
+                drop(root);
+            }))
+            .unwrap()
+            .try_into_value()
+            .unwrap();
+            assert_eq!(
+                effects,
+                [
+                    StringValue::from("cancel"),
+                    StringValue::from(if family == NativeFamily::Custom {
+                        "mark"
+                    } else {
+                        "input"
+                    })
+                ]
+            );
+            assert!(echo.is_empty());
+        }
+    }
+
+    #[test]
+    fn compound_native_cancellation_releases_invoke_delivery_and_publication_owners() {
+        use crate::execution::UnitOwner;
+
+        let source = r#"
+pub type Marker { Found }
+@external(erlang, "native", "mark")
+fn mark() -> Marker
+@external(erlang, "native", "pair")
+fn pair(value: String) -> #(String, String)
+@external(erlang, "native", "mirror")
+fn mirror(value: String) -> String
+pub fn main() { #(mark(), pair("input"), mirror("input")) }
+"#;
+        for family in [
+            NativeFamily::Custom,
+            NativeFamily::Tuple,
+            NativeFamily::String,
+        ] {
+            let custom = family == NativeFamily::Custom;
+            for charged in 0..=4 {
+                let mut hosted = native_fixture(
+                    source,
+                    HostProviderModule::new("application", "example")
+                        .unwrap()
+                        .with_scoped_function::<Profile, (), Marker, _>("mark", mark)
+                        .unwrap()
+                        .with_scoped_function::<Profile, (StringValue,), Pair, _>("pair", pair)
+                        .unwrap()
+                        .with_scoped_function::<Profile, (StringValue,), StringValue, _>(
+                            "mirror", mirror,
+                        )
+                        .unwrap(),
+                );
+                let (plan, stores, captures) = hosted.parts_mut();
+                let calls = NativeCalls::inspect(plan);
+                let drops = Arc::new(AtomicUsize::new(0));
+                let request = calls.request(
+                    family,
+                    "input".into(),
+                    false,
+                    DeliveryOwner(Arc::clone(&drops)),
+                );
+                let mut state = Box::new(GeneratedNativeState {
+                    phase: GeneratedNativePhase::Progress(request),
+                    numeric: Default::default(),
+                    strings: None,
+                    bit_arrays: None,
+                    root_tail_entry: true,
+                    domain: captures.domain(),
+                    prepaid_completion: false,
+                });
+                let host = TestHost::default();
+                let mut effects = Vec::new();
+                let mut echo = Vec::new();
+                let mut domain = Domain::new(
+                    Arc::clone(plan),
+                    &host,
+                    &mut effects,
+                    stores,
+                    &mut echo,
+                    captures.clone(),
+                    NonZeroUsize::new(1024).unwrap(),
+                );
+                let (context, root) = domain.begin(UnitOwner::new(domain.units.completion()));
+                host.block_on(domain.drive(async {
+                    if charged > 0 {
+                        state = plan
+                            .prepare_generated_native(state, charged)
+                            .ok()
+                            .unwrap()
+                            .submit(context.services(), NonZeroUsize::new(charged).unwrap())
+                            .await
+                            .unwrap()
+                            .unwrap();
+                    }
+                    assert!(state.domain == captures.domain());
+                    assert_eq!(drops.load(Ordering::SeqCst), 0);
+                    assert_eq!(
+                        matches!(
+                            &state.phase,
+                            GeneratedNativePhase::Progress(
+                                CallProgress::CustomNative(_)
+                                    | CallProgress::TupleNative(_)
+                                    | CallProgress::StringNative(_)
+                            )
+                        ),
+                        charged == 0,
+                    );
+                    assert_eq!(
+                        matches!(
+                            &state.phase,
+                            GeneratedNativePhase::CustomInvoke { before: 0, .. }
+                                | GeneratedNativePhase::TupleInvoke { before: 0, .. }
+                                | GeneratedNativePhase::Invoke { before: 0, .. }
+                        ),
+                        charged == 1,
+                    );
+                    assert_eq!(
+                        matches!(
+                            &state.phase,
+                            GeneratedNativePhase::CustomDeliver { charge: true, .. }
+                                | GeneratedNativePhase::TupleDeliver { charge: true, .. }
+                                | GeneratedNativePhase::Deliver { charge: true, .. }
+                        ),
+                        charged == 2,
+                    );
+                    assert_eq!(
+                        matches!(
+                            &state.phase,
+                            GeneratedNativePhase::Progress(CallProgress::Yield(_))
+                        ),
+                        charged == 3,
+                    );
+                    assert_eq!(
+                        matches!(
+                            &state.phase,
+                            GeneratedNativePhase::Progress(CallProgress::Complete { .. })
+                        ),
+                        charged == 4,
+                    );
+                    assert!(!state.prepaid_completion);
+                    // A separate request runs after Native's mutable state borrow
+                    // and before cancellation of the still-owned typed result.
+                    assert_eq!(
+                        context.with_state(|values| values.clone()).await.unwrap(),
+                        if charged < 2 {
+                            Vec::new()
+                        } else {
+                            vec![StringValue::from(if custom { "mark" } else { "input" })]
+                        }
+                    );
+                    assert!(context.unit().unwrap().cancel());
+                    let result = plan
+                        .prepare_generated_native(state, 1)
+                        .ok()
+                        .unwrap()
+                        .submit(context.services(), NonZeroUsize::MIN)
+                        .await;
+                    drop(root);
+                    assert!(result.is_err());
+                    assert_eq!(drops.load(Ordering::SeqCst), 1);
+                }))
+                .unwrap()
+                .try_into_value()
+                .unwrap();
+                assert_eq!(effects.len(), usize::from(charged >= 2));
+                assert!(echo.is_empty());
+            }
+        }
+    }
+}

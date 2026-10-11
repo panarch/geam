@@ -1,31 +1,17 @@
 use geam_core::__prepared_support as data;
-use geam_core::embedding::{
-    BigInt, CallableType, FunctionDeclaration, HostedModuleBuilder, List, ModuleBuilder,
-};
+use geam_core::embedding::{BigInt, FunctionDeclaration, List};
+#[cfg(feature = "tokio")]
+use geam_core::embedding::{CallableType, HostedModuleBuilder};
+#[cfg(feature = "tokio")]
 use geam_core::{HostProviderSet, ModuleSource, PackageSource, StatelessHostProfile};
 
-static LIST_CALLS: data::HostedModuleArtifact = include!("fixtures/prepared/int_list_calls.rs");
+static LIST_CALLS: data::HostedModuleArtifact =
+    include!("fixtures/prepared/generated/int_list_calls.rs");
 
 #[test]
 fn length_only_static_calls_compile_and_execute_without_other_list_operations() {
     static ARTIFACT: data::ModuleArtifact<std::convert::Infallible> =
-        include!("fixtures/prepared/int_list_static_calls.rs");
-    let typed = geam_core::compile_typed_module(
-        "example",
-        "src/int_list_static_calls.gleam",
-        include_str!("fixtures/prepared/int_list_static_calls.gleam"),
-    )
-    .unwrap();
-    let (bindings, _) = ModuleBuilder::new(typed)
-        .unwrap()
-        .function(FunctionDeclaration::<(List<BigInt>,), bool>::new(
-            "nonempty",
-        ))
-        .unwrap();
-    assert_eq!(
-        bindings.prepare().emit_rust(),
-        include_str!("fixtures/prepared/int_list_static_calls.rs").trim()
-    );
+        include!("fixtures/prepared/generated/int_list_static_calls.rs");
     assert!(ARTIFACT.program.compiled.function_calls.iter().any(|row| {
         row.function == data::compiled::CallTarget::Bool(ARTIFACT.entries.bools[0].function)
     }));
@@ -150,6 +136,7 @@ mod budget_trace {
     }
 }
 
+#[cfg(feature = "tokio")]
 macro_rules! select_list_calls {
     ($bindings:ident, $fold:expr) => {{
         let fold = $fold;
@@ -214,6 +201,7 @@ macro_rules! select_list_calls {
     }};
 }
 
+#[cfg(feature = "tokio")]
 fn dynamic_list_calls() -> geam_core::HostedTypedProgram<StatelessHostProfile> {
     geam_core::compile_typed_host_program(
         "example",
@@ -233,19 +221,8 @@ fn dynamic_list_calls() -> geam_core::HostedTypedProgram<StatelessHostProfile> {
 }
 
 #[test]
-fn public_generation_keeps_the_exact_list_and_nested_call_contract() {
+fn compiled_list_calls_select_the_nested_call_contract() {
     use data::compiled::{CallContractTarget, CallTarget, CompiledImplementation};
-    let (mut bindings, fold) = HostedModuleBuilder::new(dynamic_list_calls())
-        .unwrap()
-        .function(
-            FunctionDeclaration::<(List<BigInt>, BigInt, BigInt), BigInt>::new("capturing_fold"),
-        )
-        .unwrap();
-    let _ = select_list_calls!(bindings, fold);
-    assert_eq!(
-        bindings.prepare().unwrap().emit_rust(),
-        include_str!("fixtures/prepared/int_list_calls.rs").trim()
-    );
     let root = CallTarget::Int(LIST_CALLS.module.entries.ints[0].function);
     let row = LIST_CALLS
         .module
@@ -303,7 +280,8 @@ fn actual_list_calls_charge_every_boundary_and_fall_back_before_a_big_head() {
     use budget_trace::{TRACE, Trace, wrapper_target};
     use data::compiled::{CompiledFunction, CompiledImplementation, FunctionCallsImplementation};
     use geam_core::execution::TokioHost;
-    const BASE: data::HostedModuleArtifact = include!("fixtures/prepared/int_list_calls.rs");
+    const BASE: data::HostedModuleArtifact =
+        include!("fixtures/prepared/generated/int_list_calls.rs");
     let mut artifact = BASE;
     let target = wrapper_target();
     artifact.module.program.compiled.function_calls = artifact

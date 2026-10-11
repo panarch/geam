@@ -184,7 +184,8 @@ entry_target!(
     custom_function,
     |id| *id,
     |id, target| id.with_index(*target.function()),
-    compiled_custom_function
+    compiled_custom_function,
+    Custom
 );
 entry_target!(
     function::ExternalFunctionId,
@@ -216,7 +217,9 @@ entry_target!(
     ExecutionTupleFunctionBody,
     tuple_function,
     |id| *id,
-    |_, target| *target.function()
+    |_, target| *target.function(),
+    compiled_tuple_function,
+    Tuple
 );
 
 entry_target!(

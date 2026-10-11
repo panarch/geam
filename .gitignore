@@ -4,6 +4,8 @@
 /target/
 # Prepared embedding data is regenerated with `geam embedding sync`.
 **/src/geam_bindings/program.rs
+# Core and macro tests compile these fixtures after public preparation.
+/core/tests/fixtures/prepared/generated/
 # Independent Decoder consumers regenerate build data locally and in CI.
 /tests/fixtures/decoder_service/provider/target/
 /tests/fixtures/decoder_service/project/build/

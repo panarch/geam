@@ -127,6 +127,9 @@ jobs:
         working-directory: cli/tests/fixtures/standalone_cli/providers
         run: cargo fetch --locked --config net.offline=false
 
+      - name: Prepare compiled test fixtures
+        run: cargo test --package geam-core --test prepare_fixtures --locked
+
       - name: Run clippy
         run: cargo clippy --workspace --all-targets --features geam-core/tokio --locked -- -D warnings
 
@@ -277,6 +280,9 @@ jobs:
           cargo check --package geam --no-default-features --features embedding,geam-builtin --all-targets --locked
           cargo check --package geam --no-default-features --features embedding,gleam-erlang --all-targets --locked
           cargo check --package geam --no-default-features --features embedding,gleam-erlang,geam-builtin,tokio --all-targets --locked
+
+      - name: Prepare compiled test fixtures
+        run: cargo test --package geam-core --test prepare_fixtures --locked
 
       - name: Test workspace packages
         run: cargo test --workspace --exclude geam --exclude geam-cli --features geam-core/tokio --locked

@@ -5,9 +5,9 @@ use crate::plan::execution::function::{
     StringFunctionId, UtfCodepointFunctionId,
 };
 use crate::runtime::compiled::calls::{
-    BitArrayCallable, BoolCallable, CallArguments, CallBitArray, CallInputs, CallNativeInput,
-    CallNullary, CallValues, FloatCallable, IntCallable, NilCallable, StringCallable,
-    UtfCodepointCallable,
+    BitArrayCallable, BoolCallable, CallArguments, CallBitArray, CallCustom, CallInputs,
+    CallNativeInput, CallNullary, CallTuple, CallValues, FloatCallable, IntCallable, NilCallable,
+    StringCallable, UtfCodepointCallable,
 };
 use crate::runtime::compiled::int_list::IntList;
 use crate::runtime::compiled::primitive_list::{
@@ -22,6 +22,7 @@ impl BlockEnvironment {
 
     pub(in crate::runtime::graph) fn clear_call_values(&mut self) {
         self.values.customs.clear();
+        self.values.tuples.clear();
         self.values.ints.clear();
         self.values.bools.clear();
         self.values.floats.clear();
@@ -59,11 +60,8 @@ impl CallNativeInput {
 impl CallValues {
     pub(in crate::runtime) fn into_retained(self) -> RetainedValues {
         let mut inputs = RetainedValues::empty();
-        inputs.values.customs = self
-            .nullaries
-            .into_iter()
-            .map(|value| value.into_evaluated())
-            .collect();
+        inputs.values.customs = self.customs.into_iter().map(|value| value.0).collect();
+        inputs.values.tuples = self.tuples.into_iter().map(|value| value.0).collect();
         inputs.values.ints = self.ints.into_iter().map(|value| value.0).collect();
         inputs.values.bools = self.bools;
         inputs.values.floats = self.floats;
@@ -125,6 +123,12 @@ impl CallValues {
 }
 
 impl CallInputs<'_> {
+    pub fn custom(&self, index: usize) -> Option<CallCustom> {
+        self.0.values.customs.get(index).cloned().map(CallCustom)
+    }
+    pub fn tuple(&self, index: usize) -> Option<CallTuple> {
+        self.0.values.tuples.get(index).cloned().map(CallTuple)
+    }
     pub fn nullary(
         &self,
         index: usize,
@@ -330,6 +334,65 @@ mod tests {
     use crate::runtime::state::list::RuntimeListStorage;
 
     #[test]
+    fn compound_input_columns_retain_payloads_and_keep_their_own_offsets() {
+        use crate::plan::execution::type_::{CustomConstructorId, CustomTypeId};
+        use crate::runtime::evaluated::{EvaluatedCustomValue, EvaluatedValue};
+
+        let text: crate::StringValue = "immutable tuple payload".into();
+        let constructor = CustomConstructorId {
+            type_id: CustomTypeId(3),
+            index: 2,
+        };
+        let custom = EvaluatedCustomValue::from_fields(
+            constructor,
+            vec![EvaluatedValue::String(text.clone())].into_boxed_slice(),
+        );
+        let tuple = vec![
+            EvaluatedValue::Int(42.into()),
+            EvaluatedValue::String(text.clone()),
+        ];
+        let mut values = RetainedValues::empty();
+        values.push_custom(custom.clone());
+        values.values.tuples = vec![tuple.clone(), vec![EvaluatedValue::Nil]];
+        let mut environment = BlockEnvironment::from_retained(values);
+        let inputs = environment.call_inputs();
+        let retained_custom = inputs.custom(0).unwrap();
+        let retained_tuple = inputs.tuple(0).unwrap();
+        assert_eq!(retained_custom.0, custom);
+        assert_eq!(
+            retained_custom.0.fields().as_ptr(),
+            custom.fields().as_ptr()
+        );
+        assert_eq!(retained_tuple.0, tuple);
+        assert_eq!(
+            retained_tuple
+                .field(1)
+                .unwrap()
+                .string()
+                .unwrap()
+                .as_bytes()
+                .as_ptr(),
+            text.as_bytes().as_ptr()
+        );
+        assert_eq!(inputs.tuple(1).unwrap().0, vec![EvaluatedValue::Nil]);
+        assert!(inputs.custom(1).is_none());
+        assert!(inputs.tuple(2).is_none());
+        let tuple_capacity = environment.values.tuples.capacity();
+        environment.clear_call_values();
+        assert!(environment.values.customs.is_empty());
+        assert!(environment.values.tuples.is_empty());
+        assert_eq!(environment.values.tuples.capacity(), tuple_capacity);
+        let restored = CallValues {
+            customs: vec![retained_custom],
+            tuples: vec![retained_tuple],
+            ..Default::default()
+        }
+        .into_retained();
+        assert_eq!(restored.values.customs, vec![custom]);
+        assert_eq!(restored.values.tuples, vec![tuple]);
+    }
+
+    #[test]
     fn nullary_entry_projection_is_read_only_and_rejects_foreign_constructors_and_fields() {
         use crate::plan::execution::type_::{CustomConstructorId, CustomTypeId};
         use crate::runtime::compiled::calls::CallNullary;
@@ -363,7 +426,8 @@ mod tests {
         assert_eq!(environment.values.customs.len(), 2);
         assert_eq!(environment.values.customs[1].fields().len(), 1);
         let restored = CallValues {
-            nullaries: vec![CallNullary::new(before)],
+            customs: vec![CallNullary::new(before).into()],
+            tuples: Vec::new(),
             ..Default::default()
         }
         .into_retained();
@@ -649,7 +713,8 @@ mod tests {
             utf_codepoint_functions: vec![utf_codepoint_function.clone()],
             nil_lists: vec![nil_list.clone()],
             nil_functions: vec![nil_function.clone()],
-            nullaries: Vec::new(),
+            customs: Vec::new(),
+            tuples: Vec::new(),
         };
         let mut environment = BlockEnvironment::from_retained(values.into_retained());
         let inputs = environment.call_inputs();
@@ -770,7 +835,8 @@ mod tests {
                 utf_codepoint_functions: vec![utf_codepoint_function.clone()],
                 nil_lists: vec![nil_list.clone()],
                 nil_functions: vec![nil_function.clone()],
-                nullaries: Vec::new(),
+                customs: Vec::new(),
+                tuples: Vec::new(),
             }
             .into_retained(),
         );

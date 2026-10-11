@@ -470,14 +470,14 @@ pub fn main() { read(Item(7)) }
     }
 
     #[test]
-    fn boolean_projection_saves_the_original_custom_before_an_uncharged_stop() {
+    fn scalar_projections_save_the_original_custom_before_an_uncharged_stop() {
         use super::{CustomField, ProgressOutput};
-        use crate::plan::execution::function::BoolFunctionId;
 
         let source = r#"
 type Item { Item(value: Int, enabled: Bool) }
-fn read(item: Item) { item.enabled }
-pub fn main() { read(Item(7, True)) }
+fn read_value(item: Item) { item.value }
+fn read_enabled(item: Item) { item.enabled }
+pub fn main() { let value = read_value(Item(7, True)) read_enabled(Item(value, True)) }
 "#;
         let typed = compile_typed_module("example", "src/example.gleam", source).unwrap();
         let plan = ExecutionPlan::from_module_plan(plan_module(typed).unwrap());
@@ -485,19 +485,34 @@ pub fn main() { read(Item(7, True)) }
             crate::run_main(&plan, &mut Vec::new()).unwrap(),
             Value::Bool(true)
         );
-        let body = plan.bool_function(BoolFunctionId(1)).body();
-        let function = FunctionCodegen {
-            name: "read",
-            shape: &CompiledShape::inspect_callback(body, &plan.program.common.custom_types)
-                .unwrap(),
-        };
-        let entry = function.shape.graph.entry();
-        let field =
-            CustomField::inspect(&body.block_graph().block(entry).instructions()[0]).unwrap();
-        let mut code = Code::default();
-        function.custom_preflight(&mut code, function.entry(), &field, ProgressOutput::Direct);
-        assert_eq!(
-            code.as_str(),
+        let program = &plan.program;
+        let shapes = [
+            CompiledShape::inspect_callback(
+                program.functions.value_returns.int_functions[0].body(),
+                &program.common.custom_types,
+            )
+            .unwrap(),
+            CompiledShape::inspect_callback(
+                program.functions.value_returns.bool_functions[1].body(),
+                &program.common.custom_types,
+            )
+            .unwrap(),
+        ];
+        let expected = [
+            r#"let b0_i0 = match b0_c0.integer(0) {
+    Some(value) => value,
+    None => {
+
+        values.ints.clear();
+        values.ints.extend_from_slice(&[]);
+        values.bools.clear();
+        values.bools.extend_from_slice(&[]);
+        values.customs.clear();
+        values.customs.extend([b0_c0]);
+        return data::compiled::custom_loop::CallbackProgress::Stopped(data::compiled::custom_loop::CallbackStop::Interpreted(0));
+    }
+};
+"#,
             r#"let b0_v0 = match b0_c0.boolean(1) {
     Some(value) => value,
     None => {
@@ -511,8 +526,24 @@ pub fn main() { read(Item(7, True)) }
         return data::compiled::custom_loop::CallbackProgress::Stopped(data::compiled::custom_loop::CallbackStop::Interpreted(0));
     }
 };
-"#
-        );
+"#,
+        ];
+        for (shape, expected) in shapes.iter().zip(expected) {
+            let function = FunctionCodegen {
+                name: "read",
+                shape,
+            };
+            let entry = shape.graph.entry();
+            let field = CustomField::inspect(&shape.graph.block(entry).instructions()[0]).unwrap();
+            let mut code = Code::default();
+            function.custom_preflight(&mut code, function.entry(), &field, ProgressOutput::Direct);
+            assert_eq!(code.as_str(), expected);
+            // A callback is registered in the callback table, never as a
+            // standalone compiled function target.
+            let mut target = Code::default();
+            function.write_target(&mut target, "unused_callback_target");
+            assert_eq!(target.as_str(), "");
+        }
     }
     #[test]
     fn flat_pattern_views_keep_whole_and_field_aliases_and_reject_other_grammars() {

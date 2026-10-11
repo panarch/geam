@@ -1,12 +1,18 @@
+#![cfg(feature = "tokio")]
+
 use geam_core::__prepared_support as data;
 
+#[expect(
+    dead_code,
+    reason = "preparation is used by the public fixture generator"
+)]
 #[path = "fixtures/prepared/string_native_provider.rs"]
 mod provider;
 
-const GENERATED: data::HostedModuleArtifact = include!("fixtures/prepared/string_native_calls.rs");
+const GENERATED: data::HostedModuleArtifact =
+    include!("fixtures/prepared/generated/string_native_calls.rs");
 static ARTIFACT: data::HostedModuleArtifact = GENERATED;
 
-#[cfg(feature = "tokio")]
 mod bounded_native {
     use super::{ARTIFACT, GENERATED, data};
     use data::compiled::calls::{
@@ -203,7 +209,6 @@ mod bounded_native {
     }
 }
 
-#[cfg(feature = "tokio")]
 #[test]
 fn actual_generated_string_native_calls_resume_through_zero_and_single_instruction_allowances() {
     use geam_core::embedding::{FunctionDeclaration, StringValue};
@@ -285,15 +290,6 @@ fn actual_generated_string_native_calls_resume_through_zero_and_single_instructi
 }
 
 #[test]
-fn generated_string_calls_match_the_maintained_preparation() {
-    assert_eq!(
-        provider::prepare().emit_rust().trim(),
-        include_str!("fixtures/prepared/string_native_calls.rs").trim()
-    );
-}
-
-#[cfg(feature = "tokio")]
-#[test]
 fn synchronous_and_continuing_calls_preserve_nullary_arguments_results_and_effect_order() {
     use geam_core::embedding::{FunctionDeclaration, StringValue};
     use geam_core::execution::TokioHost;
@@ -363,7 +359,6 @@ fn synchronous_and_continuing_calls_preserve_nullary_arguments_results_and_effec
     }
 }
 
-#[cfg(feature = "tokio")]
 #[test]
 fn native_failure_cancellation_and_exit_do_not_replay_or_run_later_effects() {
     use geam_core::embedding::{CallError, FunctionDeclaration, StringValue};
@@ -445,7 +440,6 @@ fn native_failure_cancellation_and_exit_do_not_replay_or_run_later_effects() {
     assert_eq!(&failures[..4], &failures[4..]);
 }
 
-#[cfg(feature = "tokio")]
 #[test]
 fn a_generated_native_completion_keeps_the_callers_return_family_boundary() {
     use data::compiled::calls::{

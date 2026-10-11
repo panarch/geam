@@ -7,7 +7,8 @@ use std::convert::Infallible;
 #[path = "support/work_representation.rs"]
 mod work_representation;
 
-static CUSTOM: data::ModuleArtifact<Infallible> = include!("fixtures/prepared/custom_scalars.rs");
+static CUSTOM: data::ModuleArtifact<Infallible> =
+    include!("fixtures/prepared/generated/custom_scalars.rs");
 const SOURCE: &str = include_str!("fixtures/prepared/custom_scalars.gleam");
 
 macro_rules! functions {
@@ -74,18 +75,6 @@ macro_rules! functions {
 
 #[test]
 fn generated_custom_inputs_preserve_matches_guards_aliases_fields_and_big_values() {
-    let typed = compile_typed_module("example", "src/custom_scalars.gleam", SOURCE).unwrap();
-    let (mut bindings, credit) = ModuleBuilder::new(typed)
-        .unwrap()
-        .function(FunctionDeclaration::<(BigInt, BigInt), BigInt>::new(
-            "credit",
-        ))
-        .unwrap();
-    let _ = functions!(bindings, credit);
-    assert_eq!(
-        bindings.prepare().emit_rust(),
-        include_str!("fixtures/prepared/custom_scalars.rs").trim()
-    );
     assert!(CUSTOM.program.compiled.callbacks.ints.is_empty());
     assert!(CUSTOM.program.compiled.callbacks.bools.is_empty());
     assert!(CUSTOM.program.compiled.ints.iter().all(|target| !matches!(
@@ -313,12 +302,9 @@ fn generated_custom_inputs_preserve_matches_guards_aliases_fields_and_big_values
 #[cfg(feature = "tokio")]
 #[test]
 fn custom_generated_standalone_entry_has_the_same_source_free_execution_links() {
+    use geam_core::HostProviderSet;
     use geam_core::execution::TokioHost;
     use geam_core::host::{HostComponentProfile, HostFutureStore, HostProfile, HostWorkProfile};
-    use geam_core::{
-        HostProviderSet, ModuleSource, PackageSource, PreparedHostedEntry,
-        compile_typed_host_program, plan_host_program,
-    };
     use work_representation::WorkComponent;
 
     struct Profile;
@@ -339,28 +325,8 @@ fn custom_generated_standalone_entry_has_the_same_source_free_execution_links() 
         }
     }
 
-    static ENTRY: data::HostedEntryArtifact = include!("fixtures/prepared/custom_scalars_entry.rs");
-    let typed = compile_typed_host_program(
-        "example",
-        "example",
-        [PackageSource::new(
-            "example",
-            Vec::<String>::new(),
-            [ModuleSource::new(
-                "example",
-                "src/custom_scalars.gleam",
-                SOURCE,
-            )],
-        )],
-        HostProviderSet::<Profile>::new([]).unwrap(),
-    )
-    .unwrap();
-    let prepared =
-        PreparedHostedEntry::try_from_module_plan(plan_host_program(typed).unwrap()).unwrap();
-    assert_eq!(
-        prepared.emit_rust(),
-        include_str!("fixtures/prepared/custom_scalars_entry.rs").trim()
-    );
+    static ENTRY: data::HostedEntryArtifact =
+        include!("fixtures/prepared/generated/custom_scalars_entry.rs");
     assert!(ENTRY.program.compiled.callbacks.ints.is_empty());
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()

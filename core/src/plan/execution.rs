@@ -189,6 +189,8 @@ pub(crate) struct HostedProgram<Profile: HostProfile> {
     program: ExecutionProgram<host::HostedExecutionProfile>,
     host_functions: host::HostFunctionTables<Profile>,
     pub(crate) synchronous_strings: host::SynchronousStringFunctions<Profile>,
+    pub(crate) synchronous_customs: host::SynchronousCustomFunctions<Profile>,
+    pub(crate) synchronous_tuples: host::SynchronousTupleFunctions<Profile>,
 }
 
 pub(crate) struct ExecutionProgram<Profile: ExecutionProfile> {
@@ -373,10 +375,16 @@ impl<Profile: HostProfile> HostedProgram<Profile> {
     ) -> Self {
         let synchronous_strings =
             host::SynchronousStringFunctions::new(&program.functions, &host_functions);
+        let synchronous_customs =
+            host::SynchronousCustomFunctions::new(&program.functions, &host_functions);
+        let synchronous_tuples =
+            host::SynchronousTupleFunctions::new(&program.functions, &host_functions);
         Self {
             program,
             host_functions,
             synchronous_strings,
+            synchronous_customs,
+            synchronous_tuples,
         }
     }
 

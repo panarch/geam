@@ -1,7 +1,7 @@
-use super::{CallExecution, CallProgress, CallValues};
+use super::{CallCustom, CallExecution, CallProgress, CallTuple, CallValues};
 use crate::StringValue;
 use crate::plan::HostCallSite;
-use crate::plan::execution::function::StringFunctionId;
+use crate::plan::execution::function::{CustomFunctionId, StringFunctionId, TupleFunctionId};
 use crate::runtime::captures::ExecutionDomain;
 use crate::runtime::compiled::bit_array::BitArrayValues;
 use crate::runtime::compiled::numeric::NumericValues;
@@ -21,8 +21,48 @@ pub struct StringNativeRequest {
     pub execution: Box<dyn StringNativeExecution>,
 }
 
+pub trait CustomNativeExecution: CallExecution {
+    fn resume_native(self: Box<Self>, value: CallCustom) -> Box<dyn CallExecution>;
+}
+pub struct CustomNativeRequest {
+    pub function: CustomFunctionId,
+    pub site: HostCallSite,
+    pub arguments: Box<CallValues>,
+    pub root_tail: bool,
+    pub execution: Box<dyn CustomNativeExecution>,
+}
+
+pub trait TupleNativeExecution: CallExecution {
+    fn resume_native(self: Box<Self>, value: CallTuple) -> Box<dyn CallExecution>;
+}
+pub struct TupleNativeRequest {
+    pub function: TupleFunctionId,
+    pub site: HostCallSite,
+    pub arguments: Box<CallValues>,
+    pub root_tail: bool,
+    pub execution: Box<dyn TupleNativeExecution>,
+}
+
 pub(in crate::runtime) enum GeneratedNativePhase {
     Progress(CallProgress),
+    TupleInvoke {
+        request: TupleNativeRequest,
+        before: usize,
+    },
+    TupleDeliver {
+        value: CallTuple,
+        execution: Box<dyn TupleNativeExecution>,
+        charge: bool,
+    },
+    CustomInvoke {
+        request: CustomNativeRequest,
+        before: usize,
+    },
+    CustomDeliver {
+        value: CallCustom,
+        execution: Box<dyn CustomNativeExecution>,
+        charge: bool,
+    },
     Invoke {
         request: StringNativeRequest,
         before: usize,

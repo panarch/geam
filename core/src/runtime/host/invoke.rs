@@ -3,7 +3,7 @@ use crate::host::{HostCallError, HostCallErrorKind, HostCallReturn, HostCallRunt
 use crate::plan::execution::HostedProgram;
 use crate::plan::execution::function::{ExecutionFunctionBody, FunctionBodyOwner};
 use crate::plan::execution::host::HostedFunctionMetadata;
-use crate::plan::execution::host::SynchronousStringBinding;
+use crate::plan::execution::host::SynchronousBinding;
 use crate::runtime::ExecutionError;
 use crate::runtime::error::{ExecutionResult, HostCallOrigin};
 use crate::runtime::execution::ExecutionContext;
@@ -117,29 +117,32 @@ fn resolve_host_call_error<Profile: HostProfile>(
     }
 }
 
-pub(in crate::runtime) enum SynchronousStringReturn {
-    Value(crate::StringValue),
+pub(in crate::runtime) enum SynchronousReturn<Value> {
+    Value(Value),
     Exited,
 }
 
-pub(in crate::runtime) fn invoke_synchronous_string<Profile: HostProfile>(
+pub(in crate::runtime) fn invoke_synchronous<Profile: HostProfile, Body: ExecutionFunctionBody>(
     plan: &HostedProgram<Profile>,
     state: &mut RuntimeStateFor<'_, HostedProgram<Profile>>,
-    binding: &SynchronousStringBinding<Profile>,
+    binding: &SynchronousBinding<Profile, Body>,
     origin: HostCallOrigin,
     inputs: RetainedValues,
-) -> ExecutionResult<SynchronousStringReturn> {
+) -> ExecutionResult<SynchronousReturn<<Body::Return as GraphValue>::Evaluated>>
+where
+    Body::Return: GraphValue,
+{
     let function = &binding.function;
     let mut call = RuntimeHostCall::new(plan, state, function, inputs, origin.clone());
     match function.implementation().start(&mut call) {
-        Ok(value) => Ok(SynchronousStringReturn::Value(
+        Ok(value) => Ok(SynchronousReturn::Value(
             call.finish(value, binding.target.return_()),
         )),
         Err(error) => {
             let execution = call.execution();
             drop(call);
             resolve_host_call_error(plan, &execution, origin, function.metadata(), error)?;
-            Ok(SynchronousStringReturn::Exited)
+            Ok(SynchronousReturn::Exited)
         }
     }
 }

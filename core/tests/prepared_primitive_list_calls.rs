@@ -6,11 +6,16 @@ use geam_core::embedding::{
 #[cfg(feature = "tokio")]
 use geam_core::{HostProviderSet, StatelessHostProfile};
 
+#[cfg(feature = "tokio")]
+#[expect(
+    dead_code,
+    reason = "preparation is used by the public fixture generator"
+)]
 #[path = "fixtures/prepared/primitive_list_declarations.rs"]
 mod declarations;
 
 const GENERATED_ARTIFACT: data::HostedModuleArtifact =
-    include!("fixtures/prepared/primitive_list_calls.rs");
+    include!("fixtures/prepared/generated/primitive_list_calls.rs");
 static ARTIFACT: data::HostedModuleArtifact = GENERATED_ARTIFACT;
 
 #[cfg(feature = "tokio")]
@@ -290,12 +295,8 @@ mod bounded_execution {
 }
 
 #[test]
-fn primitive_list_artifact_matches_public_preparation_and_selects_every_return_family() {
-    assert_eq!(
-        declarations::prepare().emit_rust(),
-        include_str!("fixtures/prepared/primitive_list_calls.rs").trim(),
-    );
-    let mut families = [false; 14];
+fn compiled_primitive_list_calls_select_every_return_family() {
+    let mut families = [false; 16];
     for entry in ARTIFACT.module.program.compiled.function_calls.iter() {
         assert!(matches!(
             entry.implementation,
@@ -316,10 +317,18 @@ fn primitive_list_artifact_matches_public_preparation_and_selects_every_return_f
             data::compiled::CallTarget::BitArrayFunction(_) => 11,
             data::compiled::CallTarget::UtfCodepointFunction(_) => 12,
             data::compiled::CallTarget::NilFunction(_) => 13,
+            data::compiled::CallTarget::Custom(_) => 14,
+            data::compiled::CallTarget::Tuple(_) => 15,
         };
         families[family] = true;
     }
-    assert_eq!(families, [true; 14]);
+    assert_eq!(
+        families,
+        [
+            true, true, true, true, true, true, true, true, true, true, true, true, true, true,
+            false, false
+        ]
+    );
 }
 
 #[cfg(feature = "tokio")]

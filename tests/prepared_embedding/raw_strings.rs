@@ -1,4 +1,4 @@
-use super::{binary_path, checked, command, copy_source};
+use super::{binary_path, checked, command, copy_source, standalone_build};
 use std::fs;
 use std::path::Path;
 
@@ -96,8 +96,7 @@ fn raw_strings_run_dynamic_prepared_and_relocated_standalone_debug_and_release()
     ]));
     let mut standalone = Vec::new();
     for release in [false, true] {
-        let mut build = command(env!("CARGO_BIN_EXE_geam"), &project);
-        build.arg("build");
+        let mut build = standalone_build(&project);
         if release {
             build.arg("--release");
         }

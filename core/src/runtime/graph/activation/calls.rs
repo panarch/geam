@@ -7,8 +7,8 @@ use crate::plan::execution::function::{ExecutionFunctionRef, FunctionBodyOwner};
 use crate::runtime::ExecutableRuntimePlan;
 use crate::runtime::captures::ExecutionDomain;
 use crate::runtime::compiled::calls::{
-    BitArrayCallable, BoolCallable, CallBitArray, CallExecution, CallInteger, CallOps,
-    CallProgress, CallResume, CallValues, FloatCallable, GeneratedNativePhase,
+    BitArrayCallable, BoolCallable, CallBitArray, CallCustom, CallExecution, CallInteger, CallOps,
+    CallProgress, CallResume, CallTuple, CallValues, FloatCallable, GeneratedNativePhase,
     GeneratedNativeState, IntCallable, NilCallable, StringCallable, UtfCodepointCallable,
 };
 use crate::runtime::error::{ExecutionResult, HostCallOrigin};
@@ -112,7 +112,8 @@ pub(super) fn resume<'plan, Plan: ExecutableRuntimePlan>(
             &mut storage.bit_array_loop,
         )
         .with_root_tail_entry(frame.exit.root_tail_entry())
-        .with_synchronous_strings(plan.synchronous_strings()),
+        .with_synchronous_strings(plan.synchronous_strings())
+        .with_synchronous_compounds(plan.synchronous_customs(), plan.synchronous_tuples()),
         &mut budget,
     );
     *remaining = budget;
@@ -170,14 +171,16 @@ fn finish_progress<'plan, Plan: ExecutableRuntimePlan>(
         };
     }
     Ok(match progress {
-        CallProgress::StringNative(request) => {
+        progress @ (CallProgress::StringNative(_)
+        | CallProgress::CustomNative(_)
+        | CallProgress::TupleNative(_)) => {
             let root_tail_entry = frame.exit.root_tail_entry();
             // Every generated request retains its original capture domain
             // across the service grant and the eventual return.
             Activation::GeneratedNative {
                 frame,
                 state: Box::new(GeneratedNativeState {
-                    phase: GeneratedNativePhase::Progress(CallProgress::StringNative(request)),
+                    phase: GeneratedNativePhase::Progress(progress),
                     numeric: std::mem::take(&mut storage.numeric),
                     strings: storage.string.take(),
                     bit_arrays: storage.bit_array_loop.take(),
@@ -187,6 +190,40 @@ fn finish_progress<'plan, Plan: ExecutableRuntimePlan>(
                 }),
             }
         }
+        CallProgress::Custom {
+            function,
+            site,
+            arguments,
+            resume,
+        } => call!(function, site, arguments, resume, |value| Ok(CallCustom(
+            value
+        ))),
+        CallProgress::Tuple {
+            function,
+            site,
+            arguments,
+            resume,
+        } => call!(function, site, arguments, resume, |value| Ok(CallTuple(
+            value
+        ))),
+        CallProgress::InterpretedCustom {
+            function,
+            site,
+            point,
+            values,
+            resume,
+        } => interpreted!(function, site, point, values, resume, |value| Ok(
+            CallCustom(value)
+        )),
+        CallProgress::InterpretedTuple {
+            function,
+            site,
+            point,
+            values,
+            resume,
+        } => interpreted!(function, site, point, values, resume, |value| Ok(
+            CallTuple(value)
+        )),
         CallProgress::Yield(execution) => Activation::FunctionCalls { frame, execution },
         CallProgress::Complete { output, execution } => {
             storage.function_calls.recycle(execution);
@@ -508,6 +545,54 @@ fn bridge_native<'plan, Plan: ExecutableRuntimePlan>(
         Ok,
     )
 }
+fn bridge_custom_native<'plan, Plan: ExecutableRuntimePlan>(
+    frame: CallFrame<'plan, Plan>,
+    request: crate::runtime::compiled::calls::CustomNativeRequest,
+    plan: &'plan Plan,
+    domain: ExecutionDomain,
+) -> Activation<'plan, Plan> {
+    use crate::runtime::compiled::calls::CallArguments;
+    enter_function(
+        plan,
+        request.function,
+        HostCallOrigin::source(request.site),
+        CallArguments {
+            values: request.arguments,
+            captures: None,
+        }
+        .into_retained(),
+        GeneratedDestination {
+            frame,
+            domain: Some(domain),
+            resume: Box::new(move |value| request.execution.resume_native(value)),
+        },
+        |value| Ok(CallCustom(value)),
+    )
+}
+fn bridge_tuple_native<'plan, Plan: ExecutableRuntimePlan>(
+    frame: CallFrame<'plan, Plan>,
+    request: crate::runtime::compiled::calls::TupleNativeRequest,
+    plan: &'plan Plan,
+    domain: ExecutionDomain,
+) -> Activation<'plan, Plan> {
+    use crate::runtime::compiled::calls::CallArguments;
+    enter_function(
+        plan,
+        request.function,
+        HostCallOrigin::source(request.site),
+        CallArguments {
+            values: request.arguments,
+            captures: None,
+        }
+        .into_retained(),
+        GeneratedDestination {
+            frame,
+            domain: Some(domain),
+            resume: Box::new(move |value| request.execution.resume_native(value)),
+        },
+        |value| Ok(CallTuple(value)),
+    )
+}
 
 pub(super) fn finish_native<'plan, Plan: ExecutableRuntimePlan>(
     frame: CallFrame<'plan, Plan>,
@@ -541,6 +626,30 @@ pub(super) fn finish_native<'plan, Plan: ExecutableRuntimePlan>(
         GeneratedNativePhase::Progress(CallProgress::StringNative(request)) if declined => {
             bridge_native(frame, request, plan, domain)
         }
+        GeneratedNativePhase::Progress(CallProgress::CustomNative(request)) if declined => {
+            bridge_custom_native(frame, request, plan, domain)
+        }
+        GeneratedNativePhase::Progress(CallProgress::TupleNative(request)) if declined => {
+            bridge_tuple_native(frame, request, plan, domain)
+        }
+        GeneratedNativePhase::CustomInvoke { request, .. } => {
+            bridge_custom_native(frame, request, plan, domain)
+        }
+        GeneratedNativePhase::TupleInvoke { request, .. } => {
+            bridge_tuple_native(frame, request, plan, domain)
+        }
+        GeneratedNativePhase::CustomDeliver {
+            value, execution, ..
+        } => Activation::FunctionCalls {
+            frame,
+            execution: execution.resume_native(value),
+        },
+        GeneratedNativePhase::TupleDeliver {
+            value, execution, ..
+        } => Activation::FunctionCalls {
+            frame,
+            execution: execution.resume_native(value),
+        },
         // A non-declined Invoke is retained above with its original owner.
         GeneratedNativePhase::Invoke { request, .. } => bridge_native(frame, request, plan, domain),
         GeneratedNativePhase::Progress(progress) => {
@@ -599,12 +708,55 @@ mod tests {
     fn native_phases_retain_pending_owners_and_bridge_declined_calls_without_polling() {
         use crate::StringValue;
         use crate::plan::execution::function::StringFunctionId;
+        use crate::plan::execution::function::TupleFunctionId;
+        use crate::plan::execution::graph::{
+            CustomInstruction, ProfiledInstructionKind, TupleInstruction,
+        };
+        use crate::runtime::EvaluatedValue;
         use crate::runtime::ExecutableRuntimePlan;
         use crate::runtime::compiled::calls::{
+            CallCustom, CallTuple, CallValues, CustomNativeExecution, CustomNativeRequest,
             GeneratedNativePhase, GeneratedNativeState, StringNativeExecution, StringNativeRequest,
+            TupleNativeExecution, TupleNativeRequest,
+        };
+        use crate::runtime::host::call_fixture::StatelessTestProvider;
+        use crate::{
+            HostCall, HostCallCompletion, HostCallError, HostCustomConstructorAt,
+            HostCustomConstructorDefinition, HostCustomConstructorList,
+            HostCustomConstructorListEnd, HostCustomFieldListEnd, HostCustomIndex0,
+            HostCustomSchema, HostCustomType, HostTupleType, HostTypeList, HostTypeListEnd,
         };
         use std::ptr;
 
+        struct MarkerSchema;
+        struct Found;
+        impl HostCustomSchema for MarkerSchema {
+            const PACKAGE: &'static str = "example";
+            const MODULE: &'static str = "example";
+            const NAME: &'static str = "Marker";
+            const PARAMETER_COUNT: usize = 0;
+            type Constructors = HostCustomConstructorList<Found, HostCustomConstructorListEnd>;
+        }
+        impl HostCustomConstructorDefinition for Found {
+            const NAME: &'static str = "Found";
+            type Fields = HostCustomFieldListEnd;
+        }
+        type Marker = HostCustomType<MarkerSchema, HostTypeListEnd>;
+        type MarkerFound = HostCustomConstructorAt<Marker, HostCustomIndex0, Found>;
+        type Pair =
+            HostTupleType<HostTypeList<StringValue, HostTypeList<StringValue, HostTypeListEnd>>>;
+
+        fn mark<'call>(
+            call: HostCall<'call, StatelessHostProfile, StatelessTestProvider, Marker>,
+        ) -> Result<HostCallCompletion<'call, Marker>, HostCallError> {
+            Ok(call.return_custom::<MarkerFound>(()))
+        }
+        fn pair<'call>(
+            call: HostCall<'call, StatelessHostProfile, StatelessTestProvider, Pair>,
+            value: StringValue,
+        ) -> Result<HostCallCompletion<'call, Pair>, HostCallError> {
+            Ok(call.return_tuple((value.clone(), (value, ()))))
+        }
         struct Completion;
         impl CallExecution for Completion {
             fn restart(&mut self, _: CallTarget, _: usize, _: CallInputs<'_>) -> bool {
@@ -627,10 +779,34 @@ mod tests {
                 self
             }
         }
+        impl CustomNativeExecution for Completion {
+            fn resume_native(self: Box<Self>, value: CallCustom) -> Box<dyn CallExecution> {
+                assert_eq!(value.0.constructor().index, 0);
+                assert!(value.0.fields().is_empty());
+                self
+            }
+        }
+        impl TupleNativeExecution for Completion {
+            fn resume_native(self: Box<Self>, value: CallTuple) -> Box<dyn CallExecution> {
+                assert_eq!(
+                    value.0,
+                    vec![
+                        EvaluatedValue::String("input".into()),
+                        EvaluatedValue::String("input".into())
+                    ]
+                );
+                self
+            }
+        }
         let source = r#"
+pub type Marker { Found }
 @external(erlang, "example", "append")
 fn append(value: String) -> String
-pub fn main() { let _ = append("input") 42 }
+@external(erlang, "example", "mark")
+fn mark() -> Marker
+@external(erlang, "example", "pair")
+fn pair(value: String) -> #(String, String)
+pub fn main() { let _ = append("input") let _ = mark() let _ = pair("input") 42 }
 "#;
         let calls = Arc::new(AtomicUsize::new(0));
         let observed = calls.clone();
@@ -650,6 +826,10 @@ pub fn main() { let _ = append("input") 42 }
                 observed.fetch_add(1, Ordering::SeqCst);
                 format!("{}!", value.as_str().unwrap()).into()
             })
+            .unwrap()
+            .with_scoped_function::<StatelessTestProvider, (), Marker, _>("mark", mark)
+            .unwrap()
+            .with_scoped_function::<StatelessTestProvider, (StringValue,), Pair, _>("pair", pair)
             .unwrap()])
             .unwrap(),
         )
@@ -660,6 +840,17 @@ pub fn main() { let _ = append("input") 42 }
         let (plan, _, captures) = hosted.parts_mut();
         let plan = &**plan;
         let graph = int_body(plan, IntFunctionId(0)).block_graph().as_view();
+        let custom_function = graph
+            .blocks()
+            .flat_map(|block| block.instructions())
+            .filter_map(|instruction| instruction.value())
+            .find_map(|value| match value.kind() {
+                ProfiledInstructionKind::Custom(CustomInstruction::Call { function, .. }) => {
+                    Some(*function)
+                }
+                _ => None,
+            })
+            .unwrap();
         let frame = || CallFrame {
             graph,
             position: GraphPosition::new(BlockId(0), RetainedValues::empty()),
@@ -670,6 +861,23 @@ pub fn main() { let _ = append("input") 42 }
             site: HostCallSite::from_static("example", "main", SourceSpan::new(0, source.len())),
             root_tail: false,
             arguments: Box::new(crate::runtime::compiled::calls::CallValues {
+                strings: vec!["input".into()],
+                ..Default::default()
+            }),
+            execution: Box::new(Completion),
+        };
+        let custom_request = || CustomNativeRequest {
+            function: custom_function,
+            site: HostCallSite::from_static("example", "main", SourceSpan::new(0, source.len())),
+            root_tail: false,
+            arguments: Box::default(),
+            execution: Box::new(Completion),
+        };
+        let tuple_request = || TupleNativeRequest {
+            function: TupleFunctionId(0),
+            site: HostCallSite::from_static("example", "main", SourceSpan::new(0, source.len())),
+            root_tail: false,
+            arguments: Box::new(CallValues {
                 strings: vec!["input".into()],
                 ..Default::default()
             }),
@@ -694,9 +902,43 @@ pub fn main() { let _ = append("input") 42 }
                     execution: Box::new(Completion),
                     charge: true,
                 },
+                GeneratedNativePhase::Progress(CallProgress::CustomNative(custom_request())),
+                GeneratedNativePhase::CustomInvoke {
+                    request: custom_request(),
+                    before: 1,
+                },
+                GeneratedNativePhase::CustomDeliver {
+                    value: CallCustom(crate::runtime::EvaluatedCustomValue::from_fields(
+                        crate::plan::execution::type_::CustomConstructorId {
+                            type_id: crate::plan::execution::type_::CustomTypeId(0),
+                            index: 0,
+                        },
+                        Box::default(),
+                    )),
+                    execution: Box::new(Completion),
+                    charge: true,
+                },
+                GeneratedNativePhase::Progress(CallProgress::TupleNative(tuple_request())),
+                GeneratedNativePhase::TupleInvoke {
+                    request: tuple_request(),
+                    before: 1,
+                },
+                GeneratedNativePhase::TupleDeliver {
+                    value: CallTuple(vec![
+                        EvaluatedValue::String("input".into()),
+                        EvaluatedValue::String("input".into()),
+                    ]),
+                    execution: Box::new(Completion),
+                    charge: true,
+                },
             ] {
                 let pending = !declined && !matches!(phase, GeneratedNativePhase::Progress(_));
-                let delivered = matches!(phase, GeneratedNativePhase::Deliver { .. });
+                let delivered = matches!(
+                    phase,
+                    GeneratedNativePhase::Deliver { .. }
+                        | GeneratedNativePhase::CustomDeliver { .. }
+                        | GeneratedNativePhase::TupleDeliver { .. }
+                );
                 let state = Box::new(GeneratedNativeState {
                     phase,
                     numeric: Default::default(),
@@ -859,8 +1101,18 @@ pub fn main() { let _ = append("input") 42 }
         // submission. The graph driver then delivers that exact result.
         let plain = crate::ExecutionPlan::from_module_plan(
             crate::plan_module(
-                crate::compile_typed_module("example", "src/example.gleam", "fn append(value: String) { value <> \"!\" } pub fn main() { let _ = append(\"input\") 42 }")
-                    .unwrap(),
+                crate::compile_typed_module(
+                    "example",
+                    "src/example.gleam",
+                    r#"
+pub type Marker { Found }
+fn append(value: String) { value <> "!" }
+fn mark() { Found }
+fn pair(value: String) { #(value, value) }
+pub fn main() { let _ = append("input") let _ = mark() let _ = pair("input") 42 }
+"#,
+                )
+                .unwrap(),
             )
             .unwrap(),
         );
@@ -938,6 +1190,89 @@ pub fn main() { let _ = append("input") 42 }
             generated_output(progress).unwrap(),
             IntegerValue::from(42_i64)
         );
+        // A declined compound request resumes its original graph target, then
+        // delivers the exact owned value to the same generated continuation.
+        assert_eq!(plain.synchronous_customs(), &[] as &[bool]);
+        assert_eq!(plain.synchronous_tuples(), &[] as &[bool]);
+        let custom_calls = plain_root
+            .blocks()
+            .flat_map(|block| block.instructions())
+            .filter_map(|instruction| instruction.value())
+            .filter_map(|value| match value.kind() {
+                ProfiledInstructionKind::Custom(CustomInstruction::Call {
+                    function, site, ..
+                }) => Some((*function, site.clone())),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        let tuple_calls = plain_root
+            .blocks()
+            .flat_map(|block| block.instructions())
+            .filter_map(|instruction| instruction.value())
+            .filter_map(|value| match value.kind() {
+                ProfiledInstructionKind::Tuple(TupleInstruction::Call {
+                    function, site, ..
+                }) => Some((*function, site.clone())),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(custom_calls.len(), 1);
+        assert_eq!(tuple_calls.len(), 1);
+        for phase in [
+            GeneratedNativePhase::CustomInvoke {
+                request: CustomNativeRequest {
+                    function: custom_calls[0].0,
+                    site: custom_calls[0].1.clone(),
+                    arguments: Box::default(),
+                    root_tail: false,
+                    execution: Box::new(Completion),
+                },
+                before: 0,
+            },
+            GeneratedNativePhase::TupleInvoke {
+                request: TupleNativeRequest {
+                    function: tuple_calls[0].0,
+                    site: tuple_calls[0].1.clone(),
+                    arguments: Box::new(CallValues {
+                        strings: vec!["input".into()],
+                        ..Default::default()
+                    }),
+                    root_tail: false,
+                    execution: Box::new(Completion),
+                },
+                before: 0,
+            },
+        ] {
+            let state = Box::new(GeneratedNativeState {
+                phase,
+                numeric: Default::default(),
+                strings: None,
+                bit_arrays: None,
+                root_tail_entry: true,
+                domain: runtime.captures().domain(),
+                prepaid_completion: false,
+            });
+            let frame = CallFrame {
+                graph: plain_root,
+                position: GraphPosition::new(plain_root.entry(), RetainedValues::empty()),
+                exit: Box::new(RootExit),
+            };
+            let mut storage = Storage::new();
+            let mut progress = Execution {
+                active: Activation::GeneratedNative { frame, state },
+            }
+            .advance(&plain, &mut runtime, &mut storage, &mut 0)
+            .unwrap();
+            while let Progress::Continue(next) = progress {
+                progress = next
+                    .advance(&plain, &mut runtime, &mut storage, &mut 0)
+                    .unwrap();
+            }
+            assert_eq!(
+                generated_output(progress).unwrap(),
+                IntegerValue::from(42_i64)
+            );
+        }
         // Both native-delivery entry points propagate the existing fallible
         // return mapper; they must not convert its error into a completion.
         use crate::plan::execution::function::FunctionReturnFamily;
@@ -1281,7 +1616,15 @@ pub fn main() { let _ = append("input") 42 }
 
     #[test]
     fn canonical_call_boundaries_resume_each_typed_family_once_in_the_original_execution() {
+        use crate::plan::execution::function::TupleFunctionId;
+        use crate::plan::execution::graph::{CustomInstruction, ProfiledInstructionKind};
+        use crate::plan::execution::type_::{CustomConstructorId, CustomTypeId};
+        use crate::runtime::EvaluatedValue;
+        use crate::runtime::compiled::calls::{CallCustom, CallTuple};
         let source = r#"
+pub type Box { Box(Int) }
+fn boxed() -> Box { Box(42) }
+fn pair() -> #(Int, Bool) { #(42, True) }
 fn integer() -> Int { 42 }
 fn boolean() -> Bool { True }
 fn integer_function() -> fn() -> Int { integer }
@@ -1298,6 +1641,8 @@ fn codepoint_function() -> fn() -> UtfCodepoint { codepoint }
 fn nil_function() -> fn() -> Nil { nil }
 
 pub fn main() {
+  let _ = boxed()
+  let _ = pair()
   let number = integer_function()
   let predicate = boolean_function()
   let floating_callable = floating_function()
@@ -1330,6 +1675,19 @@ pub fn main() {
         let (plan, _, _) = hosted.parts_mut();
         let plan = &**plan;
         let root = int_body(plan, IntFunctionId(0)).block_graph().as_view();
+        let custom_functions = root
+            .blocks()
+            .flat_map(|block| block.instructions())
+            .filter_map(|instruction| instruction.value())
+            .filter_map(|value| match value.kind() {
+                ProfiledInstructionKind::Custom(CustomInstruction::Call { function, .. }) => {
+                    Some(*function)
+                }
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(custom_functions.len(), 1);
+        let custom_function = custom_functions[0];
         let point = CompiledCheckpoint {
             block: BlockId(0),
             instruction: 0,
@@ -1477,8 +1835,44 @@ pub fn main() {
                 nil_function_count.fetch_add(1, Ordering::SeqCst);
                 Box::new(Finish)
             });
+            let custom_count = mapped.clone();
+            let custom = Box::new(move |value: CallCustom| -> Box<dyn CallExecution> {
+                assert_eq!(
+                    value.0.constructor(),
+                    CustomConstructorId {
+                        type_id: CustomTypeId(0),
+                        index: 0
+                    }
+                );
+                assert_eq!(value.0.fields(), [EvaluatedValue::Int(42.into())]);
+                custom_count.fetch_add(1, Ordering::SeqCst);
+                Box::new(Finish)
+            });
+            let tuple_count = mapped.clone();
+            let tuple = Box::new(move |value: CallTuple| -> Box<dyn CallExecution> {
+                assert_eq!(
+                    value.0,
+                    [EvaluatedValue::Int(42.into()), EvaluatedValue::Bool(true)]
+                );
+                tuple_count.fetch_add(1, Ordering::SeqCst);
+                Box::new(Finish)
+            });
             let progress = if interpreted {
                 [
+                    CallProgress::InterpretedCustom {
+                        function: custom_function,
+                        site: site.clone(),
+                        point,
+                        values: Box::default(),
+                        resume: custom,
+                    },
+                    CallProgress::InterpretedTuple {
+                        function: TupleFunctionId(0),
+                        site: site.clone(),
+                        point,
+                        values: Box::default(),
+                        resume: tuple,
+                    },
                     CallProgress::InterpretedInt {
                         function: IntFunctionId(1),
                         site: site.clone(),
@@ -1580,6 +1974,24 @@ pub fn main() {
                 ]
             } else {
                 [
+                    CallProgress::Custom {
+                        function: custom_function,
+                        site: site.clone(),
+                        arguments: CallArguments {
+                            values: Box::default(),
+                            captures: None,
+                        },
+                        resume: custom,
+                    },
+                    CallProgress::Tuple {
+                        function: TupleFunctionId(0),
+                        site: site.clone(),
+                        arguments: CallArguments {
+                            values: Box::default(),
+                            captures: None,
+                        },
+                        resume: tuple,
+                    },
                     CallProgress::Int {
                         function: IntFunctionId(1),
                         site: site.clone(),
@@ -1745,7 +2157,7 @@ pub fn main() {
                 assert_eq!(mapped.load(Ordering::SeqCst), before + 1);
                 assert!(echo.is_empty());
             }
-            assert_eq!(mapped.load(Ordering::SeqCst), 14);
+            assert_eq!(mapped.load(Ordering::SeqCst), 16);
         }
     }
 

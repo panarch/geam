@@ -1,4 +1,4 @@
-use super::{binary_path, checked, command, copy_source};
+use super::{binary_path, checked, command, copy_source, standalone_build};
 use std::fs;
 use std::path::Path;
 
@@ -152,7 +152,7 @@ fn verify_consumer(fixture: &str, executable: &str, expected: &[u8], embedding_c
         "--path",
         "../provider",
     ]));
-    let build = checked(command(env!("CARGO_BIN_EXE_geam"), &project).arg("build"));
+    let build = checked(&mut standalone_build(&project));
     assert!(build.stdout.is_empty());
     let report = std::str::from_utf8(&build.stderr).unwrap();
     let built = report
@@ -164,7 +164,7 @@ fn verify_consumer(fixture: &str, executable: &str, expected: &[u8], embedding_c
     let standalone = binary_path(&deploy, "standalone-consumer");
     fs::copy(built, &standalone).unwrap();
     let program = fs::read(project.join("build/geam/program.rs")).unwrap();
-    checked(command(env!("CARGO_BIN_EXE_geam"), &project).arg("build"));
+    checked(&mut standalone_build(&project));
     assert_eq!(
         fs::read(project.join("build/geam/program.rs")).unwrap(),
         program

@@ -1,10 +1,15 @@
 mod callable;
 mod capture;
+mod compound;
 mod native;
 mod nullary;
 
+pub use compound::{CallCustom, CallTuple, CompoundField};
+pub use native::{
+    CustomNativeExecution, CustomNativeRequest, StringNativeExecution, StringNativeRequest,
+    TupleNativeExecution, TupleNativeRequest,
+};
 pub(in crate::runtime) use native::{GeneratedNativePhase, GeneratedNativeState};
-pub use native::{StringNativeExecution, StringNativeRequest};
 pub use nullary::CallNullary;
 
 pub use callable::{
@@ -18,9 +23,9 @@ use crate::plan::execution::compiled::{CallTarget, CompiledCheckpoint};
 use crate::plan::execution::function::FunctionReturnFamily;
 use crate::plan::execution::function::{
     BitArrayFunctionFunctionId, BitArrayFunctionId, BoolFunctionFunctionId, BoolFunctionId,
-    FloatFunctionFunctionId, FloatFunctionId, IntFunctionFunctionId, IntFunctionId,
-    NilFunctionFunctionId, NilFunctionId, StringFunctionFunctionId, StringFunctionId,
-    UtfCodepointFunctionFunctionId, UtfCodepointFunctionId,
+    CustomFunctionId, FloatFunctionFunctionId, FloatFunctionId, IntFunctionFunctionId,
+    IntFunctionId, NilFunctionFunctionId, NilFunctionId, StringFunctionFunctionId,
+    StringFunctionId, TupleFunctionId, UtfCodepointFunctionFunctionId, UtfCodepointFunctionId,
 };
 use crate::runtime::CaptureStorage;
 use crate::runtime::captures::Captures;
@@ -41,7 +46,8 @@ use crate::runtime::state::list::RuntimeListStorage;
 /// and carry only the actual result on completion.
 #[derive(Default)]
 pub struct CallValues {
-    pub nullaries: Vec<CallNullary>,
+    pub customs: Vec<CallCustom>,
+    pub tuples: Vec<CallTuple>,
     pub ints: Vec<CallInteger>,
     pub bools: Vec<bool>,
     pub floats: Vec<f64>,
@@ -115,6 +121,8 @@ pub struct CallOps<'execution> {
     primitive_lists: PrimitiveListOps<'execution>,
     root_tail_entry: bool,
     synchronous_strings: &'execution [bool],
+    synchronous_customs: &'execution [bool],
+    synchronous_tuples: &'execution [bool],
 }
 
 pub trait CallExecution: Send {
@@ -170,6 +178,8 @@ pub type CallResume<Value> = Box<dyn FnOnce(Value) -> Box<dyn CallExecution> + S
 
 /// A normal return carries only its actual typed result.
 pub enum CallOutput {
+    Custom(CallCustom),
+    Tuple(CallTuple),
     Int(CallInteger),
     Bool(bool),
     IntFunction(IntCallable),
@@ -189,6 +199,8 @@ pub enum CallOutput {
 impl CallOutput {
     pub(in crate::runtime) fn family(&self) -> FunctionReturnFamily {
         match self {
+            Self::Custom(_) => FunctionReturnFamily::Custom,
+            Self::Tuple(_) => FunctionReturnFamily::Tuple,
             Self::Int(_) => FunctionReturnFamily::Int,
             Self::Float(_) => FunctionReturnFamily::Float,
             Self::String(_) => FunctionReturnFamily::String,
@@ -241,6 +253,34 @@ impl CallNativeInput {
 /// does not enlarge the ordinary generated step or return representation.
 pub enum CallProgress {
     StringNative(StringNativeRequest),
+    CustomNative(CustomNativeRequest),
+    TupleNative(TupleNativeRequest),
+    Custom {
+        function: CustomFunctionId,
+        site: HostCallSite,
+        arguments: CallArguments,
+        resume: CallResume<CallCustom>,
+    },
+    Tuple {
+        function: TupleFunctionId,
+        site: HostCallSite,
+        arguments: CallArguments,
+        resume: CallResume<CallTuple>,
+    },
+    InterpretedCustom {
+        function: CustomFunctionId,
+        site: HostCallSite,
+        point: CompiledCheckpoint,
+        values: Box<CallValues>,
+        resume: CallResume<CallCustom>,
+    },
+    InterpretedTuple {
+        function: TupleFunctionId,
+        site: HostCallSite,
+        point: CompiledCheckpoint,
+        values: Box<CallValues>,
+        resume: CallResume<CallTuple>,
+    },
     Yield(Box<dyn CallExecution>),
     Complete {
         output: CallOutput,
@@ -465,6 +505,8 @@ impl<'execution> CallOps<'execution> {
             primitive_lists: PrimitiveListOps::new(lists),
             root_tail_entry: false,
             synchronous_strings: &[],
+            synchronous_customs: &[],
+            synchronous_tuples: &[],
         }
     }
 
@@ -479,6 +521,28 @@ impl<'execution> CallOps<'execution> {
     ) -> Self {
         self.synchronous_strings = enabled;
         self
+    }
+
+    pub(in crate::runtime) fn with_synchronous_compounds(
+        mut self,
+        customs: &'execution [bool],
+        tuples: &'execution [bool],
+    ) -> Self {
+        self.synchronous_customs = customs;
+        self.synchronous_tuples = tuples;
+        self
+    }
+    pub fn supports_custom_native(&self, function: CustomFunctionId) -> bool {
+        self.synchronous_customs
+            .get(function.index)
+            .copied()
+            .unwrap_or(false)
+    }
+    pub fn supports_tuple_native(&self, function: TupleFunctionId) -> bool {
+        self.synchronous_tuples
+            .get(function.0)
+            .copied()
+            .unwrap_or(false)
     }
 
     pub fn supports_string_native(&self, function: StringFunctionId) -> bool {

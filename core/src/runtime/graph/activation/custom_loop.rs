@@ -279,3 +279,150 @@ where
         Ok(Activation::CustomLoop(parent))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{CompiledCheckpoint, CompiledProgress, CustomListOps, CustomLoopImplementation};
+    use super::{CustomLoopProgress, CustomLoopValues};
+    use crate::plan::execution::compiled::CompiledImplementation;
+    use crate::plan::execution::function::IntFunctionId;
+    use crate::plan::execution::graph::IntLocalId;
+    use crate::runtime::execution::Evaluation;
+    use crate::runtime::graph::tests::{CanonicalProgress, canonical_progress};
+    use crate::runtime::graph::{GraphExecution, GraphStorage, RetainedValues};
+
+    #[test]
+    fn canonical_handoffs_restore_values_and_preserve_echo_or_panic_origin() {
+        use crate::{
+            ExecutionError, Panic, PanicKind, PanicMessage, PanicSite, SourceContext, SourceSpan,
+        };
+        use crate::{
+            HostProviderSet, HostedExecution, ModuleSource, PackageSource, StatelessHostProfile,
+            compile_typed_host_program, plan_host_program,
+        };
+        let panic_source = SourceContext::from_static(
+            "src/example.gleam",
+            "pub fn main() -> Int { let result = 4 panic }",
+        );
+        for (source, expected, turns) in [
+            (
+                "pub fn main() { let result = 4 echo result result }",
+                Ok(4.into()),
+                [
+                    (0, 4, vec![(2, crate::Value::Int(4.into()))]),
+                    (1, 3, vec![(1, crate::Value::Int(4.into()))]),
+                ],
+            ),
+            (
+                panic_source.source(),
+                Err(ExecutionError::Panic(Panic::new(
+                    PanicKind::Panic,
+                    PanicMessage::Default,
+                    PanicSite::from_static("example", "main", SourceSpan::new(38, 43)),
+                    Some(&panic_source),
+                    None,
+                ))),
+                [(0, 2, vec![]), (1, 1, vec![])],
+            ),
+        ] {
+            let typed = compile_typed_host_program(
+                "example",
+                "example",
+                [PackageSource::new(
+                    "example",
+                    Vec::<String>::new(),
+                    [ModuleSource::new("example", "src/example.gleam", source)],
+                )],
+                HostProviderSet::<StatelessHostProfile>::new([]).unwrap(),
+            )
+            .unwrap();
+            let mut hosted =
+                HostedExecution::try_from_module_plan(plan_host_program(typed).unwrap()).unwrap();
+            let (plan, _, _) = hosted.parts_mut();
+            let plan = &**plan;
+            let body = super::super::tests::int_body(plan, IntFunctionId(0));
+            let graph = body.block_graph().as_view();
+            let entry = CompiledCheckpoint {
+                block: graph.entry(),
+                instruction: 0,
+                ints: 0,
+                bools: 0,
+                bit_arrays: 0,
+                int_lists: 0,
+                strings: 0,
+                customs: 0,
+                custom_lists: 0,
+                int_functions: 0,
+                bool_functions: 0,
+            };
+            let implementation = CompiledImplementation::CustomLoop(
+                Box::new(CustomLoopImplementation {
+                    entry: 0,
+                    checkpoints: vec![
+                        entry,
+                        CompiledCheckpoint {
+                            instruction: 1,
+                            ints: 1,
+                            ..entry
+                        },
+                    ]
+                    .into(),
+                    calls: vec![].into(),
+                    run: literal_then_canonical_suffix,
+                })
+                .into(),
+            );
+            // This protocol fixture implements the literal, then hands the Echo
+            // or panic back to its unchanged canonical source graph. With no
+            // remaining budget, the effect waits until the following advance.
+            // Completion delivery does not execute another graph step.
+            for (first_remaining, total_turns, expected_echo) in turns {
+                let mut execution =
+                    GraphExecution::new(graph, RetainedValues::empty(), Some(&implementation));
+                let mut storage = GraphStorage::new();
+                let mut evaluation = Evaluation::new(Default::default());
+                let mut observed = Vec::new();
+                let mut turn = 0;
+                let result = loop {
+                    turn += 1;
+                    let mut remaining = if turn == 1 { first_remaining } else { 0 };
+                    let progress = evaluation.access(|state| {
+                        execution.advance(plan, state, &mut storage, &mut remaining)
+                    });
+                    assert_eq!(remaining, 0);
+                    observed.extend(
+                        evaluation
+                            .take_echo()
+                            .into_iter()
+                            .map(|echo| (turn, echo.value().clone())),
+                    );
+                    match progress {
+                        Err(error) => break Err(error.into_materialized()),
+                        Ok(progress) => match canonical_progress(progress) {
+                            CanonicalProgress::Continue(next) => execution = next,
+                            CanonicalProgress::Complete(completed) => {
+                                break Ok(completed.into_value(&IntLocalId(0)).into_bigint());
+                            }
+                        },
+                    }
+                };
+                assert_eq!(turn, total_turns);
+                assert_eq!(result, expected);
+                assert_eq!(observed, expected_echo);
+            }
+        }
+    }
+
+    fn literal_then_canonical_suffix(
+        point: usize,
+        values: &mut CustomLoopValues,
+        _: &CustomListOps<'_>,
+        budget: &mut usize,
+    ) -> CustomLoopProgress {
+        if point == 0 {
+            values.ints.push(4);
+            *budget -= 1;
+        }
+        CustomLoopProgress::Caller(CompiledProgress::Interpreted(1))
+    }
+}
