@@ -42,14 +42,14 @@ pub(in crate::plan::execution) static RESULT: CustomDefinition = CustomDefinitio
             name: Text::Static("Ok"),
             fields: Table::Static(&[FieldDefinition {
                 label: None,
-                type_: TypeMetadata::Parameter(plan::TypeParameterId(0)),
+                type_: TypeMetadata::Parameter(plan::TypeParameterId::new(0)),
             }]),
         },
         ConstructorDefinition {
             name: Text::Static("Error"),
             fields: Table::Static(&[FieldDefinition {
                 label: None,
-                type_: TypeMetadata::Parameter(plan::TypeParameterId(1)),
+                type_: TypeMetadata::Parameter(plan::TypeParameterId::new(1)),
             }]),
         },
     ]),
@@ -109,7 +109,7 @@ fn template(type_: &plan::CustomTypeTemplate) -> TypeMetadata {
         T::UtfCodepoint => TypeMetadata::UtfCodepoint,
         T::Bool => TypeMetadata::Bool,
         T::Nil => TypeMetadata::Nil,
-        T::Parameter(id) => TypeMetadata::Parameter(plan::TypeParameterId(id.0)),
+        T::Parameter(id) => TypeMetadata::Parameter(plan::TypeParameterId::new(id.0)),
         T::Tuple(items) => TypeMetadata::Tuple(items.iter().map(template).collect()),
         T::List(item) => TypeMetadata::List(Node::Owned(Box::new(template(item)))),
         T::Function { arguments, return_ } => TypeMetadata::Function(FunctionMetadata {
@@ -270,6 +270,7 @@ mod tests {
 
     #[test]
     fn emits_full_declarations_and_every_visibility() {
+        const PARAMETER: TypeParameterId = TypeParameterId::new(0);
         let definition = CustomDefinition {
             retention_lifetime: crate::HostValueLifetime::LoadedOwner,
             package: Text::Static("app"),
@@ -284,7 +285,7 @@ mod tests {
                 fields: Table::Static(&[
                     FieldDefinition {
                         label: Some(Text::Static("value")),
-                        type_: TypeMetadata::Parameter(TypeParameterId(0)),
+                        type_: TypeMetadata::Parameter(PARAMETER),
                     },
                     FieldDefinition {
                         label: None,

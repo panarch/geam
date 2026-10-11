@@ -68,12 +68,6 @@ pub struct ListListTypeId {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct ParameterListListTypeId {
-    pub list_type: ListTypeId,
-    pub item_type: ParameterListTypeId,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct FunctionListTypeId {
     pub list_type: ListTypeId,
     pub item_type: FunctionItemTypeId,
@@ -102,7 +96,6 @@ pub enum ListStorageTypeId {
     Bool(BoolListTypeId),
     Nil(NilListTypeId),
     Tuple(TupleListTypeId),
-    ParameterList(ParameterListListTypeId),
     List(ListListTypeId),
     Function(FunctionListTypeId),
     Custom(CustomListTypeId),
@@ -115,6 +108,7 @@ pub struct ListTypeTable {
     pub tuple_items: Table<Table<ValueType>>,
     pub function_items: Table<FunctionType>,
     pub lifetimes: Table<crate::host::HostValueLifetime>,
+    pub parameter_lifetimes: Table<bool>,
 }
 
 impl ListStorageTypeId {
@@ -129,7 +123,7 @@ impl ListStorageTypeId {
             Self::Bool(id) => id.list_type,
             Self::Nil(id) => id.list_type,
             Self::Tuple(id) => id.list_type,
-            Self::ParameterList(id) => id.list_type,
+
             Self::List(id) => id.list_type,
             Self::Function(id) => id.list_type,
             Self::Custom(id) => id.list_type,
@@ -266,26 +260,6 @@ impl ListListTypeId {
     }
 }
 
-impl ParameterListListTypeId {
-    pub(in crate::plan::execution) fn new(
-        list_type: ListTypeId,
-        item_type: ParameterListTypeId,
-    ) -> Self {
-        Self {
-            list_type,
-            item_type,
-        }
-    }
-
-    pub(crate) fn list_type(self) -> ListTypeId {
-        self.list_type
-    }
-
-    pub(crate) fn item_type(self) -> ParameterListTypeId {
-        self.item_type
-    }
-}
-
 impl FunctionListTypeId {
     pub(in crate::plan::execution) fn new(list_type: ListTypeId, item_index: usize) -> Self {
         Self {
@@ -343,6 +317,7 @@ impl ListTypeTable {
         function_items: Vec<FunctionType>,
     ) -> Self {
         Self {
+            parameter_lifetimes: vec![false; types.len()].into(),
             lifetimes: vec![crate::host::HostValueLifetime::LoadedOwner; types.len()].into(),
             types: types.into(),
             tuple_items: tuple_items.into_iter().map(Table::from).collect(),
@@ -448,9 +423,7 @@ impl ListTypeTable {
             ListStorageTypeId::Tuple(id) => {
                 plan::ValueType::Tuple(self.tuple_item_type(id, custom_types, external_types))
             }
-            ListStorageTypeId::ParameterList(id) => {
-                plan::ValueType::List(Box::new(plan::ValueType::Parameter(id.item_type().item())))
-            }
+
             ListStorageTypeId::List(id) => plan::ValueType::List(Box::new(
                 self.nested_list_item_type(id, custom_types, external_types),
             )),
@@ -613,19 +586,6 @@ impl Emit for ListListTypeId {
     }
 }
 
-impl Emit for ParameterListListTypeId {
-    fn emit(&self, output: &mut Rust) {
-        let Self {
-            list_type,
-            item_type,
-        } = self;
-        output.structure(
-            "type_::ParameterListListTypeId",
-            &[("list_type", list_type), ("item_type", item_type)],
-        );
-    }
-}
-
 impl Emit for FunctionListTypeId {
     fn emit(&self, output: &mut Rust) {
         let Self {
@@ -683,9 +643,7 @@ impl Emit for ListStorageTypeId {
             Self::Bool(field_0) => output.call("type_::ListStorageTypeId::Bool", &[field_0]),
             Self::Nil(field_0) => output.call("type_::ListStorageTypeId::Nil", &[field_0]),
             Self::Tuple(field_0) => output.call("type_::ListStorageTypeId::Tuple", &[field_0]),
-            Self::ParameterList(field_0) => {
-                output.call("type_::ListStorageTypeId::ParameterList", &[field_0])
-            }
+
             Self::List(field_0) => output.call("type_::ListStorageTypeId::List", &[field_0]),
             Self::Function(field_0) => {
                 output.call("type_::ListStorageTypeId::Function", &[field_0])
@@ -705,6 +663,7 @@ impl Emit for ListTypeTable {
             tuple_items,
             function_items,
             lifetimes,
+            parameter_lifetimes,
         } = self;
         output.structure(
             "type_::ListTypeTable",
@@ -713,6 +672,7 @@ impl Emit for ListTypeTable {
                 ("tuple_items", tuple_items),
                 ("function_items", function_items),
                 ("lifetimes", lifetimes),
+                ("parameter_lifetimes", parameter_lifetimes),
             ],
         );
     }

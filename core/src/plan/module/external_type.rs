@@ -33,7 +33,7 @@ impl ExternalTypeDefinition {
             name,
             lifetime: crate::host::HostValueLifetime::Execution,
             parameters: (0..parameter_count)
-                .map(TypeParameterId)
+                .map(TypeParameterId::new)
                 .collect::<Vec<_>>()
                 .into_boxed_slice(),
         }
@@ -191,7 +191,7 @@ mod tests {
         assert_eq!(definition.name(), &name);
         assert_eq!(
             definition.parameters(),
-            [TypeParameterId(0), TypeParameterId(1)],
+            [TypeParameterId::new(0), TypeParameterId::new(1)],
         );
     }
 
@@ -200,25 +200,25 @@ mod tests {
         let name = ExternalTypeName::new("domain".into(), "domain/box".into(), "Box".into());
         let parameter = ExternalValueShape::new(
             name.clone(),
-            vec![ValueShape::Parameter(TypeParameterId(0))],
+            vec![ValueShape::Parameter(TypeParameterId::new(0))],
         );
         let same = parameter.clone();
         let other = ExternalValueShape::new(
             ExternalTypeName::new("domain".into(), "domain/other".into(), "Box".into()),
-            vec![ValueShape::Parameter(TypeParameterId(0))],
+            vec![ValueShape::Parameter(TypeParameterId::new(0))],
         );
         let substituted =
             parameter.substitute(&TypeSubstitution::from_arguments(vec![ValueShape::Bool]));
-        let type_ = ExternalType::new(name, vec![ValueType::Parameter(TypeParameterId(0))]);
+        let type_ = ExternalType::new(name, vec![ValueType::Parameter(TypeParameterId::new(0))]);
 
         assert_eq!(ExternalValueShape::any(type_), parameter);
         assert_eq!(
             parameter.type_().arguments(),
-            [ValueType::Parameter(TypeParameterId(0))]
+            [ValueType::Parameter(TypeParameterId::new(0))]
         );
         assert_eq!(
             parameter.arguments(),
-            [ValueShape::Parameter(TypeParameterId(0))]
+            [ValueShape::Parameter(TypeParameterId::new(0))]
         );
         assert_eq!(parameter.merge(&same), Some(parameter.clone()));
         assert_eq!(parameter.refine(&same), Some(parameter.clone()));

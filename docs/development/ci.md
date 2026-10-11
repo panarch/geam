@@ -22,7 +22,12 @@ a `target`, and enable `diagnostics` when detailed reports are needed.
 | `charlist_service` | Charlist service provider consumer |
 | `dict_service` | Dict service provider consumer |
 | `bytes_tree_service` | BytesTree service provider consumer |
+| `decoder_service` | Decoder SDK provider consumer |
+| `native_generic_results` | Native generic result provider consumer |
 | `selective_receive_service` | Selective receive provider consumer |
+| `application_exit` | Application exit provider consumer |
+| `native_function_views` | Native function view provider consumer |
+| `raw_string_values` | Raw String provider consumer |
 | `all` | Every existing coverage closure |
 
 For example, run core/macros coverage on a work branch with detailed reports:

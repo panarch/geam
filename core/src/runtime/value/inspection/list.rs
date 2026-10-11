@@ -14,7 +14,9 @@ pub(super) fn write(output: &mut String, value: &ListValue) {
     }
 
     match value.kind() {
-        ListValueKind::Parameter(_) => output.push_str("[]"),
+        ListValueKind::Parameter { values, .. } => write_items(output, values, |output, value| {
+            output.push_str(&value.inspection())
+        }),
         ListValueKind::Int(values) => write_items(output, values, |output, value| {
             output.push_str(&value.to_string());
         }),
@@ -100,7 +102,7 @@ mod tests {
     fn writes_empty_printable_and_non_printable_int_lists() {
         let cases = [
             (
-                ListValue::empty(ValueType::Parameter(TypeParameterId(0))),
+                ListValue::empty(ValueType::Parameter(TypeParameterId::new(0))),
                 "[]",
             ),
             (ListValue::int(Vec::new()), "[]"),
@@ -117,6 +119,21 @@ mod tests {
         for (value, expected) in cases {
             assert_eq!(Value::List(value).inspect().to_string(), expected);
         }
+    }
+
+    #[test]
+    fn writes_parameter_list_from_its_retained_native_items() {
+        use crate::plan::execution::runtime::RuntimeExecutionPlan;
+        use crate::runtime::{NativeValues, RuntimeListStorage};
+
+        let plan = crate::runtime::plan_src("pub fn main() -> List(a) { [] }");
+        let storage = RuntimeListStorage::default();
+        let native = NativeValues::new(&storage, plan.value_metadata());
+        let binding = plan.parameter_list_function_id(0).type_id().item;
+        let text = native.parameter(binding, &native.string("detail".into()), false);
+        let number = native.parameter(binding, &native.integer(42.into()), false);
+        let list = ListValue::from_evaluated_parameter(binding, vec![text, number]);
+        assert_eq!(Value::List(list).inspect().to_string(), r#"["detail", 42]"#);
     }
 
     #[test]

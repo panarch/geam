@@ -334,7 +334,7 @@ mod tests {
 
     #[test]
     fn function_function_call_preserves_callee_stop_before_an_uninhabited_argument() {
-        let parameter = TypeParameterId(0);
+        let parameter = TypeParameterId::new(0);
         let returned_function = FunctionShape::new(
             Vec::new(),
             ValueShape::Function(Box::new(FunctionShape::new(Vec::new(), ValueShape::Int))),

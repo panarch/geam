@@ -59,6 +59,7 @@ pub enum DynamicKind {
     String,
     BitArray,
     UtfCodepoint,
+    Parameter,
     Bool,
     Nil,
     List,
@@ -76,6 +77,7 @@ impl DynamicKind {
             crate::provider_support::HostStoredValueFamily::String => Self::String,
             crate::provider_support::HostStoredValueFamily::BitArray => Self::BitArray,
             crate::provider_support::HostStoredValueFamily::UtfCodepoint => Self::UtfCodepoint,
+            crate::provider_support::HostStoredValueFamily::Parameter => Self::Parameter,
             crate::provider_support::HostStoredValueFamily::Bool => Self::Bool,
             crate::provider_support::HostStoredValueFamily::Nil => Self::Nil,
             crate::provider_support::HostStoredValueFamily::List => Self::List,
@@ -414,6 +416,10 @@ mod tests {
         assert_eq!(
             DynamicKind::from_family(HostStoredValueFamily::Int),
             DynamicKind::Int
+        );
+        assert_eq!(
+            DynamicKind::from_family(HostStoredValueFamily::Parameter),
+            DynamicKind::Parameter,
         );
         assert_eq!(
             DynamicKind::from_family(HostStoredValueFamily::Float),

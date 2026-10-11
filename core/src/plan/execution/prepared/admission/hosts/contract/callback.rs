@@ -68,8 +68,9 @@ impl Callbacks<'_, '_> {
     fn inhabited(&self, descriptor: &HostTypeDescriptor) -> Result<bool, ContractError> {
         let template = descriptor
             .resolve(&|index| {
-                (index < self.arguments)
-                    .then_some(ValueType::Parameter(crate::plan::TypeParameterId(index)))
+                (index < self.arguments).then_some(ValueType::Parameter(
+                    crate::plan::TypeParameterId::new(index),
+                ))
             })
             .ok_or(ContractError::TypeArguments)?;
         self.types
@@ -193,10 +194,12 @@ mod tests {
             HostProviderSet::from_providers([module]).unwrap()
         };
         let source = r#"
+pub type Never
 @external(erlang, "native", "accept")
 fn accept(callback: fn(a) -> Int) -> Bool
 pub fn main() {
   echo fn(value) { value }
+  echo fn(value: Never) { value }
   accept(fn(value: Int) { value + 1 })
 }
 "#;
@@ -226,8 +229,29 @@ pub fn main() {
                 .position(|shape| matches!(shape, ValueShapeDescriptor::Parameter(_)))
                 .unwrap();
             let arguments = [HostTypeArgument {
-                type_: TypeMetadata::Parameter(crate::plan::TypeParameterId(0)),
+                type_: TypeMetadata::Parameter(crate::plan::TypeParameterId::scoped(0, 0)),
                 shape: ValueShapeId(symbolic),
+            }];
+            assert_eq!(admit(&registered, &arguments, &types, true), Ok(()));
+            let never = common
+                .value_shapes
+                .shape_types
+                .iter()
+                .position(|type_| match type_ {
+                    crate::plan::execution::type_::ValueType::Custom(id) => {
+                        common.custom_types.types[id.index()].type_.name.as_str() == "Never"
+                    }
+                    _ => false,
+                })
+                .unwrap();
+            let arguments = [HostTypeArgument {
+                type_: TypeMetadata::Custom(crate::plan::execution::type_::NominalTypeMetadata {
+                    package: "app".into(),
+                    module: "main".into(),
+                    name: "Never".into(),
+                    arguments: Vec::new().into(),
+                }),
+                shape: ValueShapeId(never),
             }];
             assert_eq!(
                 admit(&registered, &arguments, &types, true),
@@ -321,11 +345,13 @@ pub fn main() {
             .unwrap()
         };
         let source = r#"
+pub type Never
 pub type CallbackBox(a) { CallbackBox(fn(a) -> Int) }
 @external(erlang, "native", "accept")
 fn accept(value: CallbackBox(a)) -> Bool
 pub fn main() {
   echo fn(value) { value }
+  echo fn(value: Never) { value }
   accept(CallbackBox(fn(value: Int) { value + 1 }))
 }
 "#;
@@ -376,8 +402,38 @@ pub fn main() {
             admit(
                 &registration,
                 &[HostTypeArgument {
-                    type_: TypeMetadata::Parameter(crate::plan::TypeParameterId(0)),
+                    type_: TypeMetadata::Parameter(crate::plan::TypeParameterId::scoped(0, 0)),
                     shape: ValueShapeId(symbolic),
+                }],
+                &types,
+                true
+            ),
+            Ok(())
+        );
+        let never = common
+            .value_shapes
+            .shape_types
+            .iter()
+            .position(|type_| match type_ {
+                crate::plan::execution::type_::ValueType::Custom(id) => {
+                    common.custom_types.types[id.index()].type_.name.as_str() == "Never"
+                }
+                _ => false,
+            })
+            .unwrap();
+        assert_eq!(
+            admit(
+                &registration,
+                &[HostTypeArgument {
+                    type_: TypeMetadata::Custom(
+                        crate::plan::execution::type_::NominalTypeMetadata {
+                            package: "app".into(),
+                            module: "main".into(),
+                            name: "Never".into(),
+                            arguments: Vec::new().into(),
+                        }
+                    ),
+                    shape: ValueShapeId(never),
                 }],
                 &types,
                 true
@@ -420,9 +476,14 @@ pub fn main() {
             .unwrap()
         };
         let source = r#"
+pub type Never
 pub type CallbackBox(a) { CallbackBox(fn(a) -> Int) }
 @external(erlang, "native", "make") fn make(value: a) -> CallbackBox(a)
-pub fn main() { echo fn(value) { value } make(42) }
+pub fn main() {
+  echo fn(value) { value }
+  echo fn(value: Never) { value }
+  make(42)
+}
 "#;
         let (program, values, nevers) = lowered(source, returning());
         let registration = NativeFunctions::new(&values, &nevers, returning())
@@ -449,8 +510,30 @@ pub fn main() { echo fn(value) { value } make(42) }
             .position(|shape| matches!(shape, ValueShapeDescriptor::Parameter(_)))
             .unwrap();
         let arguments = [HostTypeArgument {
-            type_: TypeMetadata::Parameter(crate::plan::TypeParameterId(0)),
+            type_: TypeMetadata::Parameter(crate::plan::TypeParameterId::scoped(0, 0)),
             shape: ValueShapeId(symbolic),
+        }];
+        assert_eq!(admit(&registration, &arguments, &types, false), Ok(()));
+        assert_eq!(admit(&registration, &arguments, &types, true), Ok(()));
+        let never = common
+            .value_shapes
+            .shape_types
+            .iter()
+            .position(|type_| match type_ {
+                crate::plan::execution::type_::ValueType::Custom(id) => {
+                    common.custom_types.types[id.0].type_.name.as_str() == "Never"
+                }
+                _ => false,
+            })
+            .unwrap();
+        let arguments = [HostTypeArgument {
+            type_: TypeMetadata::Custom(crate::plan::execution::type_::NominalTypeMetadata {
+                package: "app".into(),
+                module: "main".into(),
+                name: "Never".into(),
+                arguments: Vec::new().into(),
+            }),
+            shape: ValueShapeId(never),
         }];
         assert_eq!(admit(&registration, &arguments, &types, false), Ok(()));
         assert_eq!(

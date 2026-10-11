@@ -1,8 +1,8 @@
 use super::{
     ExecutionBitArrayFunctionBody, ExecutionBoolFunctionBody, ExecutionCustomFunctionBody,
     ExecutionExternalFunctionBody, ExecutionFloatFunctionBody, ExecutionIntFunctionBody,
-    ExecutionNilFunctionBody, ExecutionStringFunctionBody, ExecutionTupleFunctionBody,
-    ExecutionUtfCodepointFunctionBody,
+    ExecutionNilFunctionBody, ExecutionParameterFunctionBody, ExecutionStringFunctionBody,
+    ExecutionTupleFunctionBody, ExecutionUtfCodepointFunctionBody,
 };
 use crate::plan::execution::explain::{Explain, ExplainContext};
 use crate::plan::execution::function::{
@@ -21,6 +21,8 @@ pub struct ValueFunctionTables<Profile: ExecutionProfile> {
         Table<ExecutionFunction<Profile, ExecutionBitArrayFunctionBody<Profile>>>,
     pub utf_codepoint_functions:
         Table<ExecutionFunction<Profile, ExecutionUtfCodepointFunctionBody<Profile>>>,
+    pub parameter_functions:
+        Table<ExecutionFunction<Profile, ExecutionParameterFunctionBody<Profile>>>,
     pub custom_functions: Table<ExecutionFunction<Profile, ExecutionCustomFunctionBody<Profile>>>,
     pub external_functions:
         Table<ExecutionFunction<Profile, ExecutionExternalFunctionBody<Profile>>>,
@@ -37,6 +39,7 @@ impl Explain for ValueFunctionTables<Infallible> {
         write_table(context, "string", &self.string_functions);
         write_table(context, "bit_array", &self.bit_array_functions);
         write_table(context, "utf_codepoint", &self.utf_codepoint_functions);
+        write_table(context, "parameter", &self.parameter_functions);
         write_table(context, "custom", &self.custom_functions);
         write_table(context, "external", &self.external_functions);
         write_table(context, "bool", &self.bool_functions);
@@ -53,6 +56,7 @@ where
     Table<ExecutionFunction<Profile, ExecutionStringFunctionBody<Profile>>>: Emit,
     Table<ExecutionFunction<Profile, ExecutionBitArrayFunctionBody<Profile>>>: Emit,
     Table<ExecutionFunction<Profile, ExecutionUtfCodepointFunctionBody<Profile>>>: Emit,
+    Table<ExecutionFunction<Profile, ExecutionParameterFunctionBody<Profile>>>: Emit,
     Table<ExecutionFunction<Profile, ExecutionCustomFunctionBody<Profile>>>: Emit,
     Table<ExecutionFunction<Profile, ExecutionExternalFunctionBody<Profile>>>: Emit,
     Table<ExecutionFunction<Profile, ExecutionBoolFunctionBody<Profile>>>: Emit,
@@ -67,6 +71,7 @@ where
             string_functions,
             bit_array_functions,
             utf_codepoint_functions,
+            parameter_functions,
             custom_functions,
             external_functions,
             bool_functions,
@@ -82,6 +87,7 @@ where
                 ("string_functions", string_functions),
                 ("bit_array_functions", bit_array_functions),
                 ("utf_codepoint_functions", utf_codepoint_functions),
+                ("parameter_functions", parameter_functions),
                 ("custom_functions", custom_functions),
                 ("external_functions", external_functions),
                 ("bool_functions", bool_functions),

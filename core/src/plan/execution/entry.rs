@@ -427,10 +427,10 @@ pub fn main() {{ echo "before" work.map(exit({}, {}), fn(value) {{ echo "after" 
 
     #[test]
     fn sealing_preserves_uninhabited_callback_argument_errors() {
-        use crate::plan::TypeParameterId;
+        use crate::plan::{CustomType, CustomTypeName};
         use crate::{FunctionType, HostSpecializationErrorReason, ValueType};
         let error = entry(
-            "import fixture/work\npub fn main() { let _ = work.map 42 }",
+            "import fixture/work\npub type Never\npub fn main() { let _: fn(work.Work(Never), fn(Never) -> Int) -> work.Work(Int) = work.map 42 }",
             Vec::new(),
         )
         .err()
@@ -442,8 +442,11 @@ pub fn main() {{ echo "before" work.map(exit({}, {}), fn(value) {{ echo "after" 
             error.reason(),
             &HostSpecializationErrorReason::UninhabitedCallbackArguments {
                 callback: FunctionType::new(
-                    vec![ValueType::Parameter(TypeParameterId(0))],
-                    ValueType::Parameter(TypeParameterId(1)),
+                    vec![ValueType::Custom(CustomType::new(
+                        CustomTypeName::new("application".into(), "main".into(), "Never".into()),
+                        Vec::new(),
+                    ))],
+                    ValueType::Int,
                 ),
             }
         );

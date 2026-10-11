@@ -25,10 +25,10 @@ pub(crate) use block::{
     InstructionKind, IntInstruction, IntSwitch, Jump, LetAssertPanic, ListInstruction, Match,
     MatchEdge, MatchEdgeArgument, MatchIntBindingId, MatchIntPatternBinding, MatchPattern,
     MatchPatternBinding, MatchPatternList, MatchPatternListTail, NeverCall, NeverCallTarget,
-    NilInstruction, ParameterListInstruction, ProfiledBlock, ProfiledInstruction,
-    ProfiledInstructionKind, Signedness, SourceStop, SourceStopKind, StringInstruction,
-    StringSwitch, Terminator, TestBranch, TupleInstruction, TypedListInstruction,
-    UtfCodepointInstruction,
+    NilInstruction, ParameterInstruction, ParameterListInstruction, ProfiledBlock,
+    ProfiledInstruction, ProfiledInstructionKind, Signedness, SourceStop, SourceStopKind,
+    StringInstruction, StringSwitch, Terminator, TestBranch, TupleInstruction,
+    TypedListInstruction, UtfCodepointInstruction,
 };
 pub(crate) use exit::BlockGraphExitId;
 pub(crate) use integer::{IntegerLiteral, IntegerOperand};
@@ -47,8 +47,8 @@ pub(crate) use value::{
     GenericFunctionLocalId, IntFunctionLocalId, IntListFunctionLocalId, IntListLocalId, IntLocalId,
     ListFunctionLocal, ListListFunctionLocalId, ListListLocalId, ListLocal, NeverFunctionLocal,
     NeverFunctionLocalId, NilFunctionLocalId, NilListFunctionLocalId, NilListLocalId, NilLocalId,
-    ParamLocal, ParamSlot, ParameterListFunctionLocalId, ParameterListListFunctionLocalId,
-    ParameterListListLocalId, ParameterListLocalId, StoredListLocal, StringFunctionLocalId,
+    ParamLocal, ParamSlot, ParameterFunctionLocalId, ParameterListFunctionLocalId,
+    ParameterListLocalId, ParameterLocalId, StoredListLocal, StringFunctionLocalId,
     StringListFunctionLocalId, StringListLocalId, StringLocalId, TupleFunctionLocalId,
     TupleListFunctionLocalId, TupleListLocalId, TupleLocalId, UtfCodepointFunctionLocalId,
     UtfCodepointListFunctionLocalId, UtfCodepointListLocalId, UtfCodepointLocalId,

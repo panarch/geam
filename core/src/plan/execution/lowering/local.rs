@@ -46,6 +46,10 @@ pub(super) enum SpecializedFunctionLocal {
         local: execution::graph::UtfCodepointFunctionLocalId,
         type_: execution::type_::FunctionType,
     },
+    Parameter {
+        local: execution::graph::ParameterFunctionLocalId,
+        type_: execution::type_::FunctionType,
+    },
     Custom(execution::graph::CustomFunctionLocal),
     External(execution::graph::ExternalFunctionLocal),
     Bool {
@@ -143,6 +147,7 @@ enum StorageFamily {
     String,
     BitArray,
     UtfCodepoint,
+    Parameter,
     Custom,
     External,
     Bool,
@@ -160,13 +165,13 @@ enum StorageFamily {
     NilList,
     TupleList,
     ListList,
-    ParameterListList,
     FunctionList,
     IntFunction,
     FloatFunction,
     StringFunction,
     BitArrayFunction,
     UtfCodepointFunction,
+    ParameterFunction,
     CustomFunction,
     ExternalFunction,
     BoolFunction,
@@ -185,7 +190,6 @@ enum StorageFamily {
     BoolListFunction,
     NilListFunction,
     TupleListFunction,
-    ParameterListListFunction,
     ListListFunction,
     FunctionListFunction,
     FunctionFunction,
@@ -308,6 +312,7 @@ impl StorageFamily {
             StoredValueShape::String => Self::String,
             StoredValueShape::BitArray => Self::BitArray,
             StoredValueShape::UtfCodepoint => Self::UtfCodepoint,
+            StoredValueShape::Parameter(_) => Self::Parameter,
             StoredValueShape::Custom(_) => Self::Custom,
             StoredValueShape::External(_) => Self::External,
             StoredValueShape::Bool => Self::Bool,
@@ -331,10 +336,7 @@ impl StorageFamily {
             SpecializedValueShape::Bool => Self::BoolList,
             SpecializedValueShape::Nil => Self::NilList,
             SpecializedValueShape::Tuple(_) => Self::TupleList,
-            SpecializedValueShape::List(item) => match item.as_ref() {
-                SpecializedValueShape::Parameter(_) => Self::ParameterListList,
-                _ => Self::ListList,
-            },
+            SpecializedValueShape::List(_) => Self::ListList,
             SpecializedValueShape::Function(_) => Self::FunctionList,
         }
     }
@@ -352,6 +354,7 @@ impl StorageFamily {
                 StoredValueShape::String => Self::StringFunction,
                 StoredValueShape::BitArray => Self::BitArrayFunction,
                 StoredValueShape::UtfCodepoint => Self::UtfCodepointFunction,
+                StoredValueShape::Parameter(_) => Self::ParameterFunction,
                 StoredValueShape::Custom(_) => Self::CustomFunction,
                 StoredValueShape::External(_) => Self::ExternalFunction,
                 StoredValueShape::Bool => Self::BoolFunction,
@@ -382,10 +385,7 @@ impl StorageFamily {
             SpecializedValueShape::Bool => Self::BoolListFunction,
             SpecializedValueShape::Nil => Self::NilListFunction,
             SpecializedValueShape::Tuple(_) => Self::TupleListFunction,
-            SpecializedValueShape::List(item) => match item.as_ref() {
-                SpecializedValueShape::Parameter(_) => Self::ParameterListListFunction,
-                _ => Self::ListListFunction,
-            },
+            SpecializedValueShape::List(_) => Self::ListListFunction,
             SpecializedValueShape::Function(_) => Self::FunctionListFunction,
         }
     }
@@ -541,6 +541,10 @@ pub(super) fn stored_value_local_at(
         StoredValueShape::UtfCodepoint => {
             execution::graph::ParamLocal::UtfCodepoint(execution::graph::UtfCodepointLocalId(index))
         }
+        StoredValueShape::Parameter(parameter) => execution::graph::ParamLocal::Parameter {
+            local: execution::graph::ParameterLocalId(index),
+            parameter: *parameter,
+        },
         StoredValueShape::Custom(shape) => {
             execution::graph::ParamLocal::Custom(execution::graph::CustomLocal::new(
                 execution::graph::CustomLocalId(index),
@@ -625,20 +629,13 @@ pub(super) fn list_local_at(
             local: execution::graph::TupleListLocalId(index),
             type_id: context.specialized_tuple_list_type(elements),
         },
-        SpecializedValueShape::List(item) => match context.specialized_list_list_type(item) {
-            super::value_type::NestedListTypeId::Parameter(type_id) => {
-                execution::graph::ListLocal::ParameterList {
-                    local: execution::graph::ParameterListListLocalId(index),
-                    type_id,
-                }
+        SpecializedValueShape::List(item) => {
+            let type_id = context.specialized_list_list_type(item);
+            execution::graph::ListLocal::List {
+                local: execution::graph::ListListLocalId(index),
+                type_id,
             }
-            super::value_type::NestedListTypeId::Stored(type_id) => {
-                execution::graph::ListLocal::List {
-                    local: execution::graph::ListListLocalId(index),
-                    type_id,
-                }
-            }
-        },
+        }
         SpecializedValueShape::Function(function) => execution::graph::ListLocal::Function {
             local: execution::graph::FunctionListLocalId(index),
             type_id: context.specialized_function_list_type(function),
@@ -686,6 +683,12 @@ pub(super) fn function_local_at(
         FunctionRepresentation::Executable(StoredValueShape::BitArray) => {
             SpecializedFunctionLocal::BitArray {
                 local: execution::graph::BitArrayFunctionLocalId(index),
+                type_,
+            }
+        }
+        FunctionRepresentation::Executable(StoredValueShape::Parameter(_)) => {
+            SpecializedFunctionLocal::Parameter {
+                local: execution::graph::ParameterFunctionLocalId(index),
                 type_,
             }
         }
@@ -831,18 +834,14 @@ pub(super) fn list_function_local_at(
             type_,
             list_type: context.specialized_tuple_list_type(elements),
         },
-        SpecializedValueShape::List(item) => match context.specialized_list_list_type(item) {
-            super::value_type::NestedListTypeId::Parameter(list_type) => L::ParameterList {
-                local: execution::graph::ParameterListListFunctionLocalId(index),
-                type_,
-                list_type,
-            },
-            super::value_type::NestedListTypeId::Stored(list_type) => L::List {
+        SpecializedValueShape::List(item) => {
+            let list_type = context.specialized_list_list_type(item);
+            L::List {
                 local: execution::graph::ListListFunctionLocalId(index),
                 type_,
                 list_type,
-            },
-        },
+            }
+        }
         SpecializedValueShape::Function(function) => L::Function {
             local: execution::graph::FunctionListFunctionLocalId(index),
             type_,
@@ -876,6 +875,9 @@ pub(super) fn function_local_as_param(
         SpecializedFunctionLocal::UtfCodepoint { local, type_ } => {
             execution::graph::ParamLocal::UtfCodepointFunction { local, type_ }
         }
+        SpecializedFunctionLocal::Parameter { local, type_ } => {
+            execution::graph::ParamLocal::ParameterFunction { local, type_ }
+        }
         SpecializedFunctionLocal::Custom(local) => {
             execution::graph::ParamLocal::CustomFunction(local)
         }
@@ -905,8 +907,8 @@ mod tests {
         StoredValueShape,
     };
     use super::{
-        FunctionEntryTemplate, LocalKey, LocalKind, ParameterPrefix, function_local_as_param,
-        function_local_at, param_local_key, stored_value_local_at,
+        FunctionEntryTemplate, LocalKey, LocalKind, ParameterPrefix, StorageFamily,
+        function_local_as_param, function_local_at, param_local_key, stored_value_local_at,
     };
     use crate::plan::execution::{graph, type_ as execution_type};
     use crate::plan::{
@@ -927,9 +929,39 @@ mod tests {
     };
 
     #[test]
+    fn nested_list_prefix_uses_one_storage_family_for_all_item_bindings() {
+        let context = super::super::test_support::lowering_context(Vec::new());
+        let bare = SpecializedValueShape::List(Box::new(SpecializedValueShape::Parameter(
+            TypeParameterId::new(0),
+        )));
+        let bound = SpecializedValueShape::List(Box::new(SpecializedValueShape::Parameter(
+            TypeParameterId::scoped(4, 0),
+        )));
+        let concrete = SpecializedValueShape::List(Box::new(SpecializedValueShape::Int));
+
+        assert_eq!(StorageFamily::list(&bound), StorageFamily::ListList);
+        assert_eq!(StorageFamily::list(&concrete), StorageFamily::ListList);
+        let mut prefix = ParameterPrefix::default();
+        for (item, expected) in [(bare, 0), (bound, 1), (concrete, 2)] {
+            let list = SpecializedValueShape::List(Box::new(item.clone()));
+            let function = SpecializedFunctionShape::new(Vec::new(), list);
+            let shape = StoredValueShape::Function(Box::new(function));
+            assert_eq!(
+                prefix.allocate_stored(shape.clone(), &context.representations),
+                (expected, shape)
+            );
+            let shape = StoredValueShape::List(Box::new(item));
+            assert_eq!(
+                prefix.allocate_stored(shape.clone(), &context.representations),
+                (expected, shape)
+            );
+        }
+    }
+
+    #[test]
     fn source_parameter_locals_map_to_distinct_lowering_keys() {
         let index = 7;
-        let parameter = TypeParameterId(0);
+        let parameter = TypeParameterId::new(0);
         let custom = custom_type();
         let external = external_type();
         let function = FunctionType::new(vec![ValueType::Int], ValueType::String);
@@ -1167,6 +1199,25 @@ mod tests {
     }
 
     #[test]
+    fn an_unsealed_parameter_does_not_consume_a_capture_storage_slot() {
+        let context = super::super::test_support::lowering_context(Vec::new());
+        let template = FunctionEntryTemplate::from_shapes(
+            vec![ValueShape::Parameter(TypeParameterId::new(0))],
+            ValueShape::Int,
+        )
+        .with_captures(vec![ValueShape::Int]);
+        assert_eq!(
+            template.capture_target(
+                crate::plan::CapturePosition::new(0),
+                StoredValueShape::Int,
+                &SpecializedTypeSubstitution::empty(),
+                &context.representations,
+            ),
+            (0, StoredValueShape::Int),
+        );
+    }
+
+    #[test]
     fn specialized_shapes_lower_to_exact_execution_local_families() {
         let custom_name = CustomTypeName::new("geam".into(), "main".into(), "Boxed".into());
         let custom = CustomType::new(custom_name.clone(), Vec::new());
@@ -1209,24 +1260,17 @@ mod tests {
 
         for (index, item) in [
             SpecializedValueShape::Int,
-            SpecializedValueShape::Parameter(TypeParameterId(0)),
+            SpecializedValueShape::Parameter(TypeParameterId::new(0)),
         ]
         .into_iter()
         .enumerate()
         {
             let index = index + 5;
-            let expected = match context.specialized_list_list_type(&item) {
-                super::super::value_type::NestedListTypeId::Parameter(type_id) => {
-                    graph::ListLocal::ParameterList {
-                        local: graph::ParameterListListLocalId(index),
-                        type_id,
-                    }
-                }
-                super::super::value_type::NestedListTypeId::Stored(type_id) => {
-                    graph::ListLocal::List {
-                        local: graph::ListListLocalId(index),
-                        type_id,
-                    }
+            let expected = {
+                let type_id = context.specialized_list_list_type(&item);
+                graph::ListLocal::List {
+                    local: graph::ListListLocalId(index),
+                    type_id,
                 }
             };
             assert_eq!(
@@ -1267,7 +1311,7 @@ mod tests {
         );
 
         let symbolic = SpecializedFunctionShape::new(
-            vec![SpecializedValueShape::Parameter(TypeParameterId(0))],
+            vec![SpecializedValueShape::Parameter(TypeParameterId::new(0))],
             SpecializedValueShape::Int,
         );
         let symbolic_type = context.generic_function_type(&symbolic);
@@ -1281,7 +1325,7 @@ mod tests {
 
         let never = SpecializedFunctionShape::new(
             vec![SpecializedValueShape::Int],
-            SpecializedValueShape::Parameter(TypeParameterId(0)),
+            SpecializedValueShape::Parameter(TypeParameterId::new(0)),
         );
         let never_type = context.generic_function_type(&never);
         assert_eq!(

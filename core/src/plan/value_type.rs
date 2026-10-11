@@ -24,12 +24,84 @@ pub(crate) enum StandardVariant {
     Option,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub struct TypeParameterId(pub(crate) usize);
+#[derive(Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct TypeParameterId {
+    index: usize,
+    scope: Option<usize>,
+}
 
 impl TypeParameterId {
+    pub(crate) const fn new(index: usize) -> Self {
+        Self { index, scope: None }
+    }
+
+    pub(crate) const fn scoped(scope: usize, index: usize) -> Self {
+        Self {
+            index,
+            scope: Some(scope),
+        }
+    }
+
     pub fn index(self) -> usize {
-        self.0
+        self.index
+    }
+
+    pub(crate) fn scope(self) -> Option<usize> {
+        self.scope
+    }
+}
+
+impl std::fmt::Debug for TypeParameterId {
+    fn fmt(&self, output: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self.scope {
+            None => output
+                .debug_tuple("TypeParameterId")
+                .field(&self.index)
+                .finish(),
+            Some(scope) => output
+                .debug_struct("TypeParameterId")
+                .field("scope", &scope)
+                .field("index", &self.index)
+                .finish(),
+        }
+    }
+}
+
+#[cfg(test)]
+mod parameter_id_tests {
+    use super::TypeParameterId;
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
+
+    #[test]
+    fn binding_identity_preserves_the_scheme_index_and_distinguishes_scopes() {
+        let scheme = TypeParameterId::new(2);
+        let first = TypeParameterId::scoped(3, 2);
+        let other_scope = TypeParameterId::scoped(4, 2);
+        let other_index = TypeParameterId::scoped(3, 1);
+        assert_eq!(first.index(), 2);
+        assert_eq!(scheme.scope(), None);
+        assert_eq!(first.scope(), Some(3));
+        assert_eq!(first, TypeParameterId::scoped(3, 2));
+        assert_ne!(scheme, first);
+        assert_ne!(first, other_scope);
+        assert_ne!(first, other_index);
+        assert_ne!(hash(scheme), hash(first));
+        assert_ne!(hash(first), hash(other_scope));
+        assert_ne!(hash(first), hash(other_index));
+        assert_eq!(format!("{scheme:?}"), "TypeParameterId(2)");
+        assert_eq!(
+            format!("{first:?}"),
+            "TypeParameterId { scope: 3, index: 2 }"
+        );
+        assert!(other_index < first);
+        assert!(first < other_scope);
+    }
+
+    fn hash(value: TypeParameterId) -> u64 {
+        let mut hasher = DefaultHasher::new();
+        value.hash(&mut hasher);
+        hasher.finish()
     }
 }
 

@@ -48,16 +48,11 @@ pub fn main() -> fn() -> List(Int) {
 //   block b0 params=[]
 //     jump b0()
 //
-// function function.list.parameter_list#0
-//   entry b0 params=[] captures=[]
-//   block b0 params=[]
-//     jump b0()
-//
 // function function.list.int#0
 //   entry b0 params=[] captures=[]
 //   block b0 params=[]
 //     %function.function#0:shape#38(fn() -> fn() -> list_type#1) = function[Function] reference function.list.parameter#0
-//     %function.function#1:shape#39(fn() -> fn() -> list_type#3) = function[Function] reference function.list.parameter_list#0
+//     %function.function#1:shape#39(fn() -> fn() -> list_type#3) = function[Function] reference function.list.list#0
 //     %function.function#2:shape#40(fn() -> fn() -> list_type#4) = function[Function] reference function.list.string#0
 //     %function.function#3:shape#41(fn() -> fn() -> list_type#5) = function[Function] reference function.list.bit_array#0
 //     %function.function#4:shape#42(fn() -> fn() -> list_type#6) = function[Function] reference function.list.utf_codepoint#0
@@ -66,7 +61,7 @@ pub fn main() -> fn() -> List(Int) {
 //     %function.function#7:shape#45(fn() -> fn() -> list_type#9) = function[Function] reference function.list.bool#0
 //     %function.function#8:shape#46(fn() -> fn() -> list_type#10) = function[Function] reference function.list.nil#0
 //     %function.function#9:shape#47(fn() -> fn() -> list_type#11) = function[Function] reference function.list.tuple#0
-//     %function.function#10:shape#48(fn() -> fn() -> list_type#12) = function[Function] reference function.list.list#0
+//     %function.function#10:shape#48(fn() -> fn() -> list_type#12) = function[Function] reference function.list.list#1
 //     %function.function#11:shape#49(fn() -> fn() -> list_type#13) = function[Function] reference function.list.function#0
 //     %tuple#0:shape#50(#(fn() -> fn() -> list_type#1, fn() -> fn() -> list_type#3, fn() -> fn() -> list_type#4, fn() -> fn() -> list_type#5, fn() -> fn() -> list_type#6, fn() -> fn() -> list_type#7, fn() -> fn() -> list_type#8, fn() -> fn() -> list_type#9, fn() -> fn() -> list_type#10, fn() -> fn() -> list_type#11, fn() -> fn() -> list_type#12, fn() -> fn() -> list_type#13)) = tuple.value elements=[%function.function#0, %function.function#1, %function.function#2, %function.function#3, %function.function#4, %function.function#5, %function.function#6, %function.function#7, %function.function#8, %function.function#9, %function.function#10, %function.function#11]
 //     tail function.list.int#1 args=[]
@@ -117,6 +112,11 @@ pub fn main() -> fn() -> List(Int) {
 //     jump b0()
 //
 // function function.list.list#0
+//   entry b0 params=[] captures=[]
+//   block b0 params=[]
+//     jump b0()
+//
+// function function.list.list#1
 //   entry b0 params=[] captures=[]
 //   block b0 params=[]
 //     jump b0()

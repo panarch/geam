@@ -1,3 +1,5 @@
+pub type Empty
+
 pub type ValueBox(value) {
   ValueBox(value: value)
 }
@@ -6,168 +8,168 @@ fn fail() -> value {
   panic as "unreached generic argument"
 }
 
-fn tuple_argument(value: value) -> #(value) {
+fn tuple_argument(value: Empty) -> #(Empty) {
   #(value)
 }
 
-fn custom_argument(value: value) -> ValueBox(value) {
+fn custom_argument(value: Empty) -> ValueBox(Empty) {
   ValueBox(value: value)
 }
 
-fn tuple_leaf(_value: Int) -> #(value) {
+fn tuple_leaf(_value: Int) -> #(Empty) {
   #(panic as "unreached tuple leaf")
 }
 
-fn custom_leaf(_value: Int) -> ValueBox(value) {
+fn custom_leaf(_value: Int) -> ValueBox(Empty) {
   ValueBox(value: panic as "unreached custom leaf")
 }
 
-fn tuple_value(_selector: Int) -> #(#(value)) {
+fn tuple_value(_selector: Int) -> #(#(Empty)) {
   #(#(panic as "unreached tuple value"))
 }
 
-fn tuple_call(_selector: Int) -> #(#(value)) {
+fn tuple_call(_selector: Int) -> #(#(Empty)) {
   #(tuple_leaf(0))
 }
 
-fn tuple_function_call(_selector: Int) -> #(#(value)) {
+fn tuple_function_call(_selector: Int) -> #(#(Empty)) {
   let function = tuple_leaf
   #(function(0))
 }
 
-fn tuple_diverging_call(_selector: Int) -> #(#(value)) {
+fn tuple_diverging_call(_selector: Int) -> #(#(Empty)) {
   #(tuple_argument(fail()))
 }
 
-fn tuple_diverging_function_call(_selector: Int) -> #(#(value)) {
+fn tuple_diverging_function_call(_selector: Int) -> #(#(Empty)) {
   let function = tuple_argument
   #(function(fail()))
 }
 
-fn tuple_tuple_index(_selector: Int) -> #(#(value)) {
+fn tuple_tuple_index(_selector: Int) -> #(#(Empty)) {
   #(#(#(panic as "unreached nested tuple projection")).0)
 }
 
-fn tuple_custom_field(_selector: Int) -> #(#(value)) {
+fn tuple_custom_field(_selector: Int) -> #(#(Empty)) {
   #(ValueBox(value: #(panic as "unreached tuple custom field")).value)
 }
 
-fn tuple_panic(_selector: Int) -> #(#(value)) {
+fn tuple_panic(_selector: Int) -> #(#(Empty)) {
   #(panic as "unreached tuple panic")
 }
 
-fn tuple_bool_case(selector: Int) -> #(#(value)) {
+fn tuple_bool_case(selector: Int) -> #(#(Empty)) {
   #(case selector == 0 {
     True -> tuple_leaf(0)
     False -> tuple_leaf(1)
   })
 }
 
-fn tuple_int_case(selector: Int) -> #(#(value)) {
+fn tuple_int_case(selector: Int) -> #(#(Empty)) {
   #(case selector {
     0 -> tuple_leaf(0)
     _ -> tuple_leaf(1)
   })
 }
 
-fn tuple_string_case(selector: Int) -> #(#(value)) {
+fn tuple_string_case(selector: Int) -> #(#(Empty)) {
   #(case case selector { 0 -> "selected" _ -> "fallback" } {
     "selected" -> tuple_leaf(0)
     _ -> tuple_leaf(1)
   })
 }
 
-fn tuple_float_case(selector: Int) -> #(#(value)) {
+fn tuple_float_case(selector: Int) -> #(#(Empty)) {
   #(case case selector { 0 -> 1.0 _ -> 2.0 } {
     1.0 -> tuple_leaf(0)
     _ -> tuple_leaf(1)
   })
 }
 
-fn tuple_block(_selector: Int) -> #(#(value)) {
+fn tuple_block(_selector: Int) -> #(#(Empty)) {
   #({
     let _ = Nil
     tuple_leaf(0)
   })
 }
 
-fn tuple_diverging_block(_selector: Int) -> #(#(value)) {
+fn tuple_diverging_block(_selector: Int) -> #(#(Empty)) {
   #({
     let _ = panic as "unreached tuple block step"
     tuple_leaf(0)
   })
 }
 
-fn custom_value(_selector: Int) -> #(ValueBox(value)) {
+fn custom_value(_selector: Int) -> #(ValueBox(Empty)) {
   #(ValueBox(value: panic as "unreached custom value"))
 }
 
-fn custom_call(_selector: Int) -> #(ValueBox(value)) {
+fn custom_call(_selector: Int) -> #(ValueBox(Empty)) {
   #(custom_leaf(0))
 }
 
-fn custom_function_call(_selector: Int) -> #(ValueBox(value)) {
+fn custom_function_call(_selector: Int) -> #(ValueBox(Empty)) {
   let function = custom_leaf
   #(function(0))
 }
 
-fn custom_diverging_call(_selector: Int) -> #(ValueBox(value)) {
+fn custom_diverging_call(_selector: Int) -> #(ValueBox(Empty)) {
   #(custom_argument(fail()))
 }
 
-fn custom_diverging_function_call(_selector: Int) -> #(ValueBox(value)) {
+fn custom_diverging_function_call(_selector: Int) -> #(ValueBox(Empty)) {
   let function = custom_argument
   #(function(fail()))
 }
 
-fn custom_tuple_index(_selector: Int) -> #(ValueBox(value)) {
+fn custom_tuple_index(_selector: Int) -> #(ValueBox(Empty)) {
   #(#(ValueBox(value: panic as "unreached custom tuple projection")).0)
 }
 
-fn custom_custom_field(_selector: Int) -> #(ValueBox(value)) {
+fn custom_custom_field(_selector: Int) -> #(ValueBox(Empty)) {
   #(ValueBox(value: ValueBox(value: panic as "unreached nested custom field")).value)
 }
 
-fn custom_panic(_selector: Int) -> #(ValueBox(value)) {
+fn custom_panic(_selector: Int) -> #(ValueBox(Empty)) {
   #(panic as "unreached custom panic")
 }
 
-fn custom_bool_case(selector: Int) -> #(ValueBox(value)) {
+fn custom_bool_case(selector: Int) -> #(ValueBox(Empty)) {
   #(case selector == 0 {
     True -> custom_leaf(0)
     False -> custom_leaf(1)
   })
 }
 
-fn custom_int_case(selector: Int) -> #(ValueBox(value)) {
+fn custom_int_case(selector: Int) -> #(ValueBox(Empty)) {
   #(case selector {
     0 -> custom_leaf(0)
     _ -> custom_leaf(1)
   })
 }
 
-fn custom_string_case(selector: Int) -> #(ValueBox(value)) {
+fn custom_string_case(selector: Int) -> #(ValueBox(Empty)) {
   #(case case selector { 0 -> "selected" _ -> "fallback" } {
     "selected" -> custom_leaf(0)
     _ -> custom_leaf(1)
   })
 }
 
-fn custom_float_case(selector: Int) -> #(ValueBox(value)) {
+fn custom_float_case(selector: Int) -> #(ValueBox(Empty)) {
   #(case case selector { 0 -> 1.0 _ -> 2.0 } {
     1.0 -> custom_leaf(0)
     _ -> custom_leaf(1)
   })
 }
 
-fn custom_block(_selector: Int) -> #(ValueBox(value)) {
+fn custom_block(_selector: Int) -> #(ValueBox(Empty)) {
   #({
     let _ = Nil
     custom_leaf(0)
   })
 }
 
-fn custom_diverging_block(_selector: Int) -> #(ValueBox(value)) {
+fn custom_diverging_block(_selector: Int) -> #(ValueBox(Empty)) {
   #({
     let _ = panic as "unreached custom block step"
     custom_leaf(0)

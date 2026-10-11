@@ -654,6 +654,45 @@ mod tests {
         );
     }
 
+    #[test]
+    fn stored_generic_factory_and_tuple_callback_preserve_source_stops() {
+        for (source, expected) in [
+            (
+                r#"
+pub type Empty
+fn create() -> fn() -> a { fn() { panic as "created never callback" } }
+fn stored() -> fn() -> a { let callback = create() callback }
+fn invoke(value: fn() -> Empty) -> Empty { value() }
+pub fn main() -> Empty { let value = stored() invoke(value) }
+"#,
+                "panic: created never callback",
+            ),
+            (
+                r#"
+pub type Empty
+fn invoke(factory: fn(Int) -> fn() -> #(a)) {
+  let callback = factory(panic as "factory argument")
+  callback
+}
+fn make(_value: Int) -> fn() -> #(Empty) {
+  fn() { panic as "wrong callback" }
+}
+pub fn main() { let _ = invoke(make) 42 }
+"#,
+                "panic: factory argument",
+            ),
+        ] {
+            let typed = crate::compile_typed_module("main", "main.gleam", source).unwrap();
+            let plan = crate::ExecutionPlan::from_module_plan(crate::plan_module(typed).unwrap());
+            assert_eq!(
+                crate::run_main(&plan, &mut Vec::new())
+                    .unwrap_err()
+                    .to_string(),
+                expected,
+            );
+        }
+    }
+
     #[derive(Debug, PartialEq, Eq)]
     enum FlowOutcome {
         Uninhabited,
@@ -738,7 +777,7 @@ mod tests {
 
     #[test]
     fn never_function_owner_rejects_other_callable_families() {
-        let parameter = TypeParameterId(0);
+        let parameter = TypeParameterId::new(0);
         let type_ = FunctionType::new(Vec::new(), ValueType::Int);
         let expression = FunctionExpr::int_with_shape(
             IntFunctionExpr::panic(source_stop(), type_),
@@ -763,7 +802,7 @@ mod tests {
 
     #[test]
     fn never_function_owner_preserves_tuple_locals_and_source_stops() {
-        let parameter = TypeParameterId(0);
+        let parameter = TypeParameterId::new(0);
         let callable_shape = FunctionShape::new(
             Vec::new(),
             ValueShape::Tuple(vec![ValueShape::Parameter(parameter)].into()),
@@ -829,7 +868,7 @@ mod tests {
 
     #[test]
     fn tuple_never_callable_stops_at_each_diverging_owner_source() {
-        let parameter = TypeParameterId(0);
+        let parameter = TypeParameterId::new(0);
         let holder = CustomTypeName::new("geam".into(), "main".into(), "Holder".into());
         let mut context = crate::plan::execution::lowering::test_support::lowering_context(vec![
             holder_definition(holder.clone()),
@@ -898,7 +937,7 @@ mod tests {
 
     #[test]
     fn custom_never_callable_stops_at_each_diverging_owner_source() {
-        let parameter = TypeParameterId(0);
+        let parameter = TypeParameterId::new(0);
         let holder = CustomTypeName::new("geam".into(), "main".into(), "Holder".into());
         let empty = CustomTypeName::new("geam".into(), "main".into(), "Empty".into());
         let marker = CustomTypeName::new("geam".into(), "main".into(), "Marker".into());

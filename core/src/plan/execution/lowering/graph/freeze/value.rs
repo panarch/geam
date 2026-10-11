@@ -3,12 +3,12 @@ use super::super::draft::{
     BitArrayFunctionFamily, BitArrayListFamily, BoolFunctionFamily, BoolListFamily,
     CustomFunctionFamily, CustomListFamily, DraftBitArray, DraftBool, DraftCustom, DraftExternal,
     DraftFloat, DraftFunction, DraftGraphValue, DraftInt, DraftList, DraftNeverReturn, DraftNil,
-    DraftStoredList, DraftString, DraftTuple, DraftTypedFunction, DraftTypedList,
+    DraftParameter, DraftStoredList, DraftString, DraftTuple, DraftTypedFunction, DraftTypedList,
     DraftUtfCodepoint, DraftValueKey, DraftValueRef, ExternalFunctionFamily, ExternalListFamily,
     FloatFunctionFamily, FloatListFamily, FunctionFunctionFamily, FunctionListFamily,
     GenericFunctionFamily, IntFunctionFamily, IntListFamily, ListFunctionFamily, ListListFamily,
-    NeverFunctionFamily, NilFunctionFamily, NilListFamily, ParameterListFamily,
-    ParameterListListFamily, StringFunctionFamily, StringListFamily, TupleFunctionFamily,
+    NeverFunctionFamily, NilFunctionFamily, NilListFamily, ParameterFunctionFamily,
+    ParameterListFamily, StringFunctionFamily, StringListFamily, TupleFunctionFamily,
     TupleListFamily, UtfCodepointFunctionFamily, UtfCodepointListFamily,
 };
 use crate::plan::execution;
@@ -45,6 +45,7 @@ pub(in crate::plan::execution::lowering) struct BlockValues {
     strings: HashMap<DraftValueKey, execution::graph::StringLocalId>,
     bit_arrays: HashMap<DraftValueKey, execution::graph::BitArrayLocalId>,
     utf_codepoints: HashMap<DraftValueKey, execution::graph::UtfCodepointLocalId>,
+    parameters: HashMap<DraftValueKey, execution::graph::ParameterLocalId>,
     customs: HashMap<DraftValueKey, execution::graph::CustomLocal>,
     externals: HashMap<DraftValueKey, execution::graph::ExternalLocal>,
     bools: HashMap<DraftValueKey, execution::graph::BoolLocalId>,
@@ -52,7 +53,6 @@ pub(in crate::plan::execution::lowering) struct BlockValues {
     tuples: HashMap<DraftValueKey, execution::graph::TupleLocalId>,
     lists: HashMap<DraftValueKey, execution::graph::ListLocal>,
     parameter_lists: HashMap<DraftValueKey, execution::graph::ParameterListLocalId>,
-    parameter_list_lists: HashMap<DraftValueKey, execution::graph::ParameterListListLocalId>,
     int_lists: HashMap<DraftValueKey, execution::graph::IntListLocalId>,
     string_lists: HashMap<DraftValueKey, execution::graph::StringListLocalId>,
     bit_array_lists: HashMap<DraftValueKey, execution::graph::BitArrayListLocalId>,
@@ -71,6 +71,7 @@ pub(in crate::plan::execution::lowering) struct BlockValues {
     string_functions: HashMap<DraftValueKey, execution::graph::StringFunctionLocalId>,
     bit_array_functions: HashMap<DraftValueKey, execution::graph::BitArrayFunctionLocalId>,
     utf_codepoint_functions: HashMap<DraftValueKey, execution::graph::UtfCodepointFunctionLocalId>,
+    parameter_functions: HashMap<DraftValueKey, execution::graph::ParameterFunctionLocalId>,
     generic_functions: HashMap<DraftValueKey, execution::graph::GenericFunctionLocal>,
     never_functions: HashMap<DraftValueKey, execution::graph::NeverFunctionLocal>,
     custom_functions: HashMap<DraftValueKey, execution::graph::CustomFunctionLocal>,
@@ -131,6 +132,9 @@ impl BlockValues {
             L::UtfCodepoint(local) => {
                 self.utf_codepoints.insert(key, local);
             }
+            L::Parameter { local, .. } => {
+                self.parameters.insert(key, local);
+            }
             L::Custom(local) => {
                 self.customs.insert(key, local);
             }
@@ -173,6 +177,11 @@ impl BlockValues {
                 self.utf_codepoint_functions.insert(key, local);
                 self.functions
                     .insert(key, execution::graph::FunctionLocal::UtfCodepoint(local));
+            }
+            L::ParameterFunction { local, .. } => {
+                self.parameter_functions.insert(key, local);
+                self.functions
+                    .insert(key, execution::graph::FunctionLocal::Parameter(local));
             }
             L::GenericFunction(local) => {
                 self.generic_functions.insert(key, local.clone());
@@ -236,9 +245,7 @@ impl BlockValues {
             L::Parameter { local, .. } => {
                 self.parameter_lists.insert(key, local);
             }
-            L::ParameterList { local, .. } => {
-                self.parameter_list_lists.insert(key, local);
-            }
+
             L::Int { local, .. } => {
                 self.int_lists.insert(key, local);
             }
@@ -327,6 +334,10 @@ impl BlockValues {
                 target: *target,
                 source: self.utf_codepoints[&source.key],
             },
+            P::Parameter { local: target, .. } => C::Parameter {
+                target: *target,
+                source: self.parameters[&source.key],
+            },
             P::Custom(target) => C::Custom {
                 target: *target,
                 source: self.customs[&source.key],
@@ -352,10 +363,7 @@ impl BlockValues {
                     target: *target,
                     source: self.parameter_lists[&source.key],
                 },
-                L::ParameterList { local: target, .. } => C::ParameterListList {
-                    target: *target,
-                    source: self.parameter_list_lists[&source.key],
-                },
+
                 L::Int { local: target, .. } => C::IntList {
                     target: *target,
                     source: self.int_lists[&source.key],
@@ -425,6 +433,10 @@ impl BlockValues {
                 target: *target,
                 source: self.utf_codepoint_functions[&source.key],
             },
+            P::ParameterFunction { local: target, .. } => C::ParameterFunction {
+                target: *target,
+                source: self.parameter_functions[&source.key],
+            },
             P::GenericFunction(target) => C::GenericFunction {
                 target: target.clone(),
                 source: self.generic_functions[&source.key].clone(),
@@ -487,6 +499,10 @@ impl BlockValues {
         self.utf_codepoints[&value.key]
     }
 
+    pub(super) fn parameter(&self, value: &DraftParameter) -> execution::graph::ParameterLocalId {
+        self.parameters[&value.key]
+    }
+
     pub(super) fn custom(&self, value: &DraftCustom) -> execution::graph::CustomLocal {
         self.customs[&value.key]
     }
@@ -520,13 +536,6 @@ impl BlockValues {
         value: &DraftList,
     ) -> execution::graph::ParameterListLocalId {
         self.parameter_lists[&value.key]
-    }
-
-    pub(super) fn parameter_list_list(
-        &self,
-        value: &DraftList,
-    ) -> execution::graph::ParameterListListLocalId {
-        self.parameter_list_lists[&value.key]
     }
 
     pub(super) fn int_list(&self, value: &DraftList) -> execution::graph::IntListLocalId {
@@ -587,15 +596,13 @@ impl BlockValues {
         use execution::graph::StoredListLocal as S;
 
         match value {
-            DraftStoredList::ParameterList(value) => {
-                S::ParameterList(self.parameter_list_lists[&value.key])
-            }
             DraftStoredList::Int(value) => S::Int(self.int_lists[&value.key]),
             DraftStoredList::String(value) => S::String(self.string_lists[&value.key]),
             DraftStoredList::BitArray(value) => S::BitArray(self.bit_array_lists[&value.key]),
             DraftStoredList::UtfCodepoint(value) => {
                 S::UtfCodepoint(self.utf_codepoint_lists[&value.key])
             }
+            DraftStoredList::Parameter(value) => S::Parameter(self.parameter_lists[&value.key]),
             DraftStoredList::Custom(value) => S::Custom(self.custom_lists[&value.key]),
             DraftStoredList::External(value) => S::External(self.external_lists[&value.key]),
             DraftStoredList::Float(value) => S::Float(self.float_lists[&value.key]),
@@ -640,6 +647,13 @@ impl BlockValues {
         value: &DraftFunction,
     ) -> execution::graph::UtfCodepointFunctionLocalId {
         self.utf_codepoint_functions[&value.key]
+    }
+
+    pub(super) fn parameter_function(
+        &self,
+        value: &DraftFunction,
+    ) -> execution::graph::ParameterFunctionLocalId {
+        self.parameter_functions[&value.key]
     }
 
     pub(super) fn generic_function(
@@ -753,6 +767,14 @@ impl FreezeGraphValue for DraftUtfCodepoint {
     }
 }
 
+impl FreezeGraphValue for DraftParameter {
+    type Frozen = execution::graph::ParameterLocalId;
+
+    fn freeze(&self, values: &BlockValues) -> Self::Frozen {
+        values.parameter(self)
+    }
+}
+
 impl FreezeGraphValue for DraftCustom {
     type Frozen = execution::graph::CustomLocal;
 
@@ -822,14 +844,6 @@ impl FreezeListFamily for ParameterListFamily {
 
     fn freeze(values: &BlockValues, value: &DraftList) -> Self::Frozen {
         values.parameter_list(value)
-    }
-}
-
-impl FreezeListFamily for ParameterListListFamily {
-    type Frozen = execution::graph::ParameterListListLocalId;
-
-    fn freeze(values: &BlockValues, value: &DraftList) -> Self::Frozen {
-        values.parameter_list_list(value)
     }
 }
 
@@ -985,6 +999,14 @@ impl FreezeFunctionFamily for UtfCodepointFunctionFamily {
     }
 }
 
+impl FreezeFunctionFamily for ParameterFunctionFamily {
+    type Frozen = execution::graph::ParameterFunctionLocalId;
+
+    fn freeze(values: &BlockValues, value: &DraftFunction) -> Self::Frozen {
+        values.parameter_function(value)
+    }
+}
+
 impl FreezeFunctionFamily for CustomFunctionFamily {
     type Frozen = execution::graph::CustomFunctionLocal;
 
@@ -1072,13 +1094,13 @@ mod tests {
         String,
         BitArray,
         UtfCodepoint,
+        Parameter,
         Custom,
         External,
         Bool,
         Nil,
         Tuple,
         ParameterList,
-        ParameterListList,
         IntList,
         StringList,
         BitArrayList,
@@ -1098,13 +1120,13 @@ mod tests {
         StringFunction,
         BitArrayFunction,
         UtfCodepointFunction,
+        ParameterFunction,
         CustomFunction,
         ExternalFunction,
         BoolFunction,
         NilFunction,
         TupleFunction,
         ParameterListFunction,
-        ParameterListListFunction,
         IntListFunction,
         StringListFunction,
         BitArrayListFunction,
@@ -1124,8 +1146,21 @@ mod tests {
     #[test]
     fn allocates_every_stored_family_with_independent_local_counters_and_shape_ids() {
         let (custom_definition, custom_type) = custom_type();
-        let mut context =
-            super::super::super::super::test_support::lowering_context(vec![custom_definition]);
+        let empty_name = CustomTypeName::new("geam".into(), "main".into(), "Empty".into());
+        let empty_definition = CustomTypeDefinition::new(
+            empty_name.clone(),
+            CustomTypePublicity::Private,
+            false,
+            Vec::new(),
+            Vec::new(),
+        );
+        let mut context = super::super::super::super::test_support::lowering_context(vec![
+            custom_definition,
+            empty_definition,
+        ]);
+        let empty = SpecializedValueShape::Custom(context.concrete_custom_value_shape(
+            &CustomValueShape::new(empty_name, Vec::new(), CustomConstructorRefinement::Any),
+        ));
         let custom = context.concrete_custom_value_shape(&CustomValueShape::new(
             custom_type.type_name().clone(),
             Vec::new(),
@@ -1135,7 +1170,7 @@ mod tests {
             ExternalTypeName::new("domain".into(), "domain/resource".into(), "Resource".into()),
             Vec::new(),
         ));
-        let parameter = TypeParameterId(0);
+        let parameter = TypeParameterId::scoped(0, 0);
         let tuple_elements =
             vec![SpecializedValueShape::Int, SpecializedValueShape::String].into_boxed_slice();
         let tuple = SpecializedValueShape::Tuple(tuple_elements.clone());
@@ -1148,11 +1183,6 @@ mod tests {
                 SpecializedValueShape::Parameter(parameter),
                 FrozenFamily::ParameterList,
                 FrozenFamily::ParameterListFunction,
-            ),
-            (
-                SpecializedValueShape::List(Box::new(SpecializedValueShape::Parameter(parameter))),
-                FrozenFamily::ParameterListList,
-                FrozenFamily::ParameterListListFunction,
             ),
             (
                 SpecializedValueShape::Int,
@@ -1216,6 +1246,10 @@ mod tests {
             ),
         ];
         let mut shapes = vec![
+            (
+                StoredValueShape::Parameter(parameter),
+                FrozenFamily::Parameter,
+            ),
             (StoredValueShape::Int, FrozenFamily::Int),
             (StoredValueShape::Float, FrozenFamily::Float),
             (StoredValueShape::String, FrozenFamily::String),
@@ -1241,22 +1275,20 @@ mod tests {
         );
         shapes.extend([
             (
-                function_shape(
-                    vec![SpecializedValueShape::Parameter(parameter)],
-                    SpecializedValueShape::Int,
-                ),
+                function_shape(vec![empty.clone()], SpecializedValueShape::Int),
                 FrozenFamily::GenericFunction,
             ),
             (
-                function_shape(
-                    vec![SpecializedValueShape::Int],
-                    SpecializedValueShape::Parameter(parameter),
-                ),
+                function_shape(vec![SpecializedValueShape::Int], empty),
                 FrozenFamily::NeverFunction,
             ),
         ]);
         shapes.extend(
             [
+                (
+                    SpecializedValueShape::Parameter(parameter),
+                    FrozenFamily::ParameterFunction,
+                ),
                 (SpecializedValueShape::Int, FrozenFamily::IntFunction),
                 (SpecializedValueShape::Float, FrozenFamily::FloatFunction),
                 (SpecializedValueShape::String, FrozenFamily::StringFunction),
@@ -1369,6 +1401,7 @@ mod tests {
             | ParamLocal::StringFunction { .. }
             | ParamLocal::BitArrayFunction { .. }
             | ParamLocal::UtfCodepointFunction { .. }
+            | ParamLocal::ParameterFunction { .. }
             | ParamLocal::CustomFunction(_)
             | ParamLocal::ExternalFunction(_)
             | ParamLocal::BoolFunction { .. }
@@ -1384,6 +1417,7 @@ mod tests {
             | ParamLocal::String(_)
             | ParamLocal::BitArray(_)
             | ParamLocal::UtfCodepoint(_)
+            | ParamLocal::Parameter { .. }
             | ParamLocal::Custom(_)
             | ParamLocal::External(_)
             | ParamLocal::Bool(_)
@@ -1399,6 +1433,7 @@ mod tests {
             ParamLocal::String(local) => (FrozenFamily::String, local.0),
             ParamLocal::BitArray(local) => (FrozenFamily::BitArray, local.0),
             ParamLocal::UtfCodepoint(local) => (FrozenFamily::UtfCodepoint, local.0),
+            ParamLocal::Parameter { local, .. } => (FrozenFamily::Parameter, local.0),
             ParamLocal::Custom(local) => (FrozenFamily::Custom, local.id().0),
             ParamLocal::External(local) => (FrozenFamily::External, local.id().0),
             ParamLocal::Bool(local) => (FrozenFamily::Bool, local.0),
@@ -1411,6 +1446,9 @@ mod tests {
             ParamLocal::FloatFunction { local, .. } => (FrozenFamily::FloatFunction, local.0),
             ParamLocal::StringFunction { local, .. } => (FrozenFamily::StringFunction, local.0),
             ParamLocal::BitArrayFunction { local, .. } => (FrozenFamily::BitArrayFunction, local.0),
+            ParamLocal::ParameterFunction { local, .. } => {
+                (FrozenFamily::ParameterFunction, local.0)
+            }
             ParamLocal::UtfCodepointFunction { local, .. } => {
                 (FrozenFamily::UtfCodepointFunction, local.0)
             }
@@ -1427,7 +1465,7 @@ mod tests {
     fn frozen_list_family(local: &ListLocal) -> (FrozenFamily, usize) {
         match local {
             ListLocal::Parameter { local, .. } => (FrozenFamily::ParameterList, local.0),
-            ListLocal::ParameterList { local, .. } => (FrozenFamily::ParameterListList, local.0),
+
             ListLocal::Int { local, .. } => (FrozenFamily::IntList, local.0),
             ListLocal::String { local, .. } => (FrozenFamily::StringList, local.0),
             ListLocal::BitArray { local, .. } => (FrozenFamily::BitArrayList, local.0),
@@ -1452,6 +1490,7 @@ mod tests {
             FunctionLocal::String(local) => (FrozenFamily::StringFunction, local.0),
             FunctionLocal::BitArray(local) => (FrozenFamily::BitArrayFunction, local.0),
             FunctionLocal::UtfCodepoint(local) => (FrozenFamily::UtfCodepointFunction, local.0),
+            FunctionLocal::Parameter(local) => (FrozenFamily::ParameterFunction, local.0),
             FunctionLocal::Custom(local) => (FrozenFamily::CustomFunction, local.id().0),
             FunctionLocal::External(local) => (FrozenFamily::ExternalFunction, local.id().0),
             FunctionLocal::Bool(local) => (FrozenFamily::BoolFunction, local.0),
@@ -1467,9 +1506,7 @@ mod tests {
             ListFunctionLocal::Parameter { local, .. } => {
                 (FrozenFamily::ParameterListFunction, local.0)
             }
-            ListFunctionLocal::ParameterList { local, .. } => {
-                (FrozenFamily::ParameterListListFunction, local.0)
-            }
+
             ListFunctionLocal::Int { local, .. } => (FrozenFamily::IntListFunction, local.0),
             ListFunctionLocal::String { local, .. } => (FrozenFamily::StringListFunction, local.0),
             ListFunctionLocal::BitArray { local, .. } => {

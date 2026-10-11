@@ -98,7 +98,7 @@ mod tests {
         let list = CallArg::new(Expr::list(
             ListExpr::try_value(
                 Vec::new(),
-                crate::plan::ValueType::Parameter(TypeParameterId(0)),
+                crate::plan::ValueType::Parameter(TypeParameterId::new(0)),
             )
             .expect("an empty parameter list has no mismatching element"),
         ));
@@ -116,7 +116,7 @@ mod tests {
 
     #[test]
     fn potentially_uninhabited_arguments_keep_their_typed_source() {
-        let parameter = TypeParameterId(0);
+        let parameter = TypeParameterId::new(0);
         let generic = crate::plan::GenericExpr::panic(
             parameter,
             crate::plan::PanicExpr::panic_at(None, crate::plan::PanicSite::unknown()),

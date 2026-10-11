@@ -264,7 +264,7 @@ mod tests {
     use super::Hosts;
     use super::{
         ContractError, HostedExecutionProfile, Instructions, NativeError, NativeFunctions,
-        RegistrationError, admit_external_types,
+        RegistrationError, admit_external_types, contract,
     };
     use crate::host::{
         HostCall, HostCallCompletion, HostCallError, HostProvider, HostProviderModule,
@@ -969,9 +969,12 @@ pub fn main() {
     fn value_targets_require_an_inhabited_result_and_the_declared_return_slot() {
         use crate::plan::execution::function::{FunctionTableFamily, ValueFunctionEntry};
         use crate::plan::execution::graph::IntLocalId;
-        use crate::plan::execution::host::HostedFunctionTarget;
-        use crate::plan::execution::prepared::admission::{tests::owned_mut, type_::TypeError};
+        use crate::plan::execution::host::{HostTypeArgument, HostedFunctionTarget};
+        use crate::plan::execution::prepared::admission::{
+            local::Output, tests::owned_mut, type_::TypeError,
+        };
         use crate::plan::execution::type_::{ValueShapeDescriptor, ValueShapeId, ValueType};
+        use crate::plan::{CustomType, CustomTypeName, ValueType as PublicValueType};
 
         struct Provider;
         impl HostProvider<StatelessHostProfile> for Provider {
@@ -995,8 +998,9 @@ pub fn main() {
             .unwrap()
         };
         let source = r#"
+pub type Empty
 @external(erlang, "native", "make") fn make() -> a
-pub fn main() { echo fn(value) { value } echo True make() + 1 }
+pub fn main() { echo fn(value) { value } echo fn(value: Empty) { value } echo True make() + 1 }
 "#;
         #[derive(Clone, Copy, PartialEq, Eq)]
         enum Change {
@@ -1004,7 +1008,8 @@ pub fn main() { echo fn(value) { value } echo True make() + 1 }
             Missing,
             ReturnSlot,
             Signature,
-            Uninhabited,
+            ParameterResult,
+            UninhabitedResult,
         }
         for (change, expected) in [
             (Change::None, Ok(())),
@@ -1020,7 +1025,13 @@ pub fn main() { echo fn(value) { value } echo True make() + 1 }
                 Err(NativeError::Call(ContractError::Signature)),
             ),
             (
-                Change::Uninhabited,
+                Change::ParameterResult,
+                Err(NativeError::Call(ContractError::Type(
+                    TypeError::LocalTypeMismatch,
+                ))),
+            ),
+            (
+                Change::UninhabitedResult,
                 Err(NativeError::Call(ContractError::Signature)),
             ),
         ] {
@@ -1044,9 +1055,9 @@ pub fn main() { echo fn(value) { value } echo True make() + 1 }
                 Change::None => {}
                 Change::Missing => target.index = 99,
                 Change::ReturnSlot => target.return_ = IntLocalId(99),
-                Change::Signature | Change::Uninhabited => {
+                Change::Signature | Change::ParameterResult | Change::UninhabitedResult => {
                     let common = Arc::get_mut(&mut program.common).unwrap();
-                    let shape = if change == Change::Uninhabited {
+                    let shape = if change == Change::ParameterResult {
                         let symbolic_shapes = common
                             .value_shapes
                             .shapes
@@ -1059,17 +1070,52 @@ pub fn main() { echo fn(value) { value } echo True make() + 1 }
                             .collect::<Vec<_>>();
                         assert_eq!(symbolic_shapes.len(), 1);
                         let symbolic = symbolic_shapes[0];
-                        values[0].type_arguments =
-                            vec![crate::plan::execution::host::HostTypeArgument {
-                                type_: TypeMetadata::Parameter(crate::plan::TypeParameterId(0)),
-                                shape: symbolic,
-                            }]
-                            .into();
-                        values[0].signature.return_ =
-                            Node::Static(&TypeMetadata::Parameter(crate::plan::TypeParameterId(0)));
-                        values[0].type_.return_ =
-                            Node::Static(&ValueType::Parameter(crate::plan::TypeParameterId(0)));
+                        values[0].type_arguments = vec![HostTypeArgument {
+                            type_: TypeMetadata::Parameter(crate::plan::TypeParameterId::scoped(
+                                0, 0,
+                            )),
+                            shape: symbolic,
+                        }]
+                        .into();
+                        values[0].signature.return_ = Node::Owned(Box::new(
+                            TypeMetadata::Parameter(crate::plan::TypeParameterId::scoped(0, 0)),
+                        ));
+                        values[0].type_.return_ = Node::Owned(Box::new(ValueType::Parameter(
+                            crate::plan::TypeParameterId::scoped(0, 0),
+                        )));
                         symbolic
+                    } else if change == Change::UninhabitedResult {
+                        let empty_shapes = common
+                            .value_shapes
+                            .shapes
+                            .iter()
+                            .enumerate()
+                            .filter_map(|(index, shape)| match shape {
+                                ValueShapeDescriptor::Custom(custom) => {
+                                    Some((ValueShapeId(index), *custom))
+                                }
+                                _ => None,
+                            })
+                            .collect::<Vec<_>>();
+                        assert_eq!(empty_shapes.len(), 1);
+                        let (empty, custom_shape) = empty_shapes[0];
+                        let custom = common.value_shapes.custom(custom_shape).type_id();
+                        let metadata =
+                            TypeMetadata::from_public(&PublicValueType::Custom(CustomType::new(
+                                CustomTypeName::new("app".into(), "main".into(), "Empty".into()),
+                                Vec::new(),
+                            )));
+                        values[0].type_arguments = vec![HostTypeArgument {
+                            type_: metadata.clone(),
+                            shape: empty,
+                        }]
+                        .into();
+                        values[0].signature.return_ = Node::Owned(Box::new(metadata));
+                        values[0].constructions.customs.entries =
+                            vec![(values[0].type_arguments[0].type_.clone(), custom)].into();
+                        values[0].type_.return_ =
+                            Node::Owned(Box::new(common.value_shapes.value_type(empty).clone()));
+                        empty
                     } else {
                         ValueShapeId(
                             common
@@ -1104,6 +1150,27 @@ pub fn main() { echo fn(value) { value } echo True make() + 1 }
             };
             let linked = NativeFunctions::new(&values, &nevers, providers()).unwrap();
             assert_eq!(linked.tables(&context), Ok(()));
+            if matches!(change, Change::ReturnSlot | Change::UninhabitedResult) {
+                let (metadata, _, registration) = &linked.values[target.index];
+                let declaration = catalog.function(FunctionTableFamily::Int, index).unwrap();
+                assert_eq!(
+                    contract::call(
+                        metadata,
+                        &linked.registrations[*registration],
+                        &declaration,
+                        &types,
+                    ),
+                    Ok(()),
+                );
+                if change == Change::ReturnSlot {
+                    assert_eq!(
+                        target.return_.admit(declaration.return_, &types),
+                        Err(TypeError::LocalTypeMismatch),
+                    );
+                } else {
+                    assert!(!types.inhabited(declaration.return_shape));
+                }
+            }
             assert_eq!(
                 linked.function(
                     &HostedFunctionTarget::Value(target),

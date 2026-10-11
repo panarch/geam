@@ -50,6 +50,9 @@ impl BlockValues {
             ParamLocal::UtfCodepoint(local) => {
                 EvaluatedCapture::utf_codepoint(*local, take_last(&mut self.utf_codepoints))
             }
+            ParamLocal::Parameter { local, .. } => {
+                EvaluatedCapture::parameter(*local, take_last(&mut self.parameters))
+            }
             ParamLocal::Custom(local) => {
                 EvaluatedCapture::custom(*local, take_last(&mut self.customs))
             }
@@ -81,6 +84,10 @@ impl BlockValues {
                     take_last(&mut self.utf_codepoint_functions),
                 )
             }
+            ParamLocal::ParameterFunction { local, .. } => EvaluatedCapture::parameter_function(
+                *local,
+                take_last(&mut self.parameter_functions),
+            ),
             ParamLocal::BoolFunction { local, .. } => {
                 EvaluatedCapture::bool_function(*local, take_last(&mut self.bool_functions))
             }
@@ -129,10 +136,7 @@ impl BlockValues {
                 local: *local,
                 value: take_last(&mut self.parameter_lists),
             },
-            ListLocal::ParameterList { local, .. } => EvaluatedListCapture::ParameterList {
-                local: *local,
-                value: take_last(&mut self.parameter_list_lists),
-            },
+
             ListLocal::Int { local, .. } => EvaluatedListCapture::Int {
                 local: *local,
                 value: take_last(&mut self.int_lists),
@@ -187,9 +191,7 @@ impl BlockValues {
     fn take_list_function(&mut self, local: &ListFunctionLocal) -> EvaluatedListFunction {
         match local {
             ListFunctionLocal::Parameter { .. } => take_last(&mut self.parameter_list_functions),
-            ListFunctionLocal::ParameterList { .. } => {
-                take_last(&mut self.parameter_list_list_functions)
-            }
+
             ListFunctionLocal::Int { .. } => take_last(&mut self.int_list_functions),
             ListFunctionLocal::String { .. } => take_last(&mut self.string_list_functions),
             ListFunctionLocal::BitArray { .. } => take_last(&mut self.bit_array_list_functions),
@@ -231,6 +233,32 @@ mod tests {
     #[should_panic(expected = "expected tuple capture")]
     fn tuple_capture_observation_rejects_a_scalar() {
         tuple_capture(&EvaluatedValue::Nil);
+    }
+
+    #[test]
+    fn parameter_capture_handoff_consumes_only_the_sealed_column_suffix() {
+        use crate::plan::execution::graph::ParameterLocalId;
+        use crate::plan::execution::runtime::RuntimeExecutionPlan;
+        use crate::runtime::{NativeValues, RuntimeListStorage};
+
+        let plan = crate::runtime::plan_src("pub fn main() -> List(a) { [] }");
+        let storage = RuntimeListStorage::default();
+        let native = NativeValues::new(&storage, plan.value_metadata());
+        let binding = plan.parameter_list_function_id(0).type_id().item;
+        let argument = native.parameter(binding, &native.string("argument".into()), false);
+        let capture = native.parameter(binding, &native.integer(42.into()), false);
+        let mut inputs = RetainedValues::empty();
+        inputs.push_evaluated(EvaluatedValue::Parameter(argument.clone()));
+        inputs.push_evaluated(EvaluatedValue::Parameter(capture.clone()));
+        let mut environment = BlockEnvironment::from_retained(inputs);
+        assert_eq!(
+            environment.take_capture_value(&ParamLocal::Parameter {
+                local: ParameterLocalId(1),
+                parameter: binding,
+            }),
+            EvaluatedValue::Parameter(capture)
+        );
+        assert_eq!(environment.values.parameters, vec![argument]);
     }
 
     #[test]

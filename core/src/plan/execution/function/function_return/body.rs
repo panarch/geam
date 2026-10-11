@@ -2,8 +2,9 @@ use super::super::body::ProfiledFunctionBody;
 use super::{
     BitArrayFunctionFunctionId, BoolFunctionFunctionId, ExternalListFunctionFunctionId,
     FloatFunctionFunctionId, GenericFunctionFunctionId, IntFunctionFunctionId,
-    NeverFunctionFunctionId, NilFunctionFunctionId, ProfiledListFunctionFunctionId,
-    StringFunctionFunctionId, TupleFunctionFunctionId, UtfCodepointFunctionFunctionId,
+    NeverFunctionFunctionId, NilFunctionFunctionId, ParameterFunctionFunctionId,
+    ProfiledListFunctionFunctionId, StringFunctionFunctionId, TupleFunctionFunctionId,
+    UtfCodepointFunctionFunctionId,
 };
 use crate::plan::FunctionCallTarget;
 use crate::plan::execution::function::{
@@ -12,8 +13,8 @@ use crate::plan::execution::function::{
 use crate::plan::execution::graph::{
     BitArrayFunctionLocalId, BoolFunctionLocalId, CustomFunctionLocal, ExternalFunctionLocal,
     FloatFunctionLocalId, FunctionFunctionLocal, GenericFunctionLocal, IntFunctionLocalId,
-    ListFunctionLocal, NeverFunctionLocal, NilFunctionLocalId, StringFunctionLocalId,
-    TupleFunctionLocalId, UtfCodepointFunctionLocalId,
+    ListFunctionLocal, NeverFunctionLocal, NilFunctionLocalId, ParameterFunctionLocalId,
+    StringFunctionLocalId, TupleFunctionLocalId, UtfCodepointFunctionLocalId,
 };
 use crate::plan::execution::prepared::rust::{Emit, Rust};
 use crate::plan::execution::type_::{
@@ -45,6 +46,13 @@ pub(crate) type ProfiledUtfCodepointFunctionFunctionBody<Graph> = TypedFunctionB
     ProfiledFunctionBody<
         UtfCodepointFunctionLocalId,
         FunctionCallTarget<UtfCodepointFunctionFunctionId>,
+        Graph,
+    >,
+>;
+pub(crate) type ProfiledParameterFunctionFunctionBody<Graph> = TypedFunctionBody<
+    ProfiledFunctionBody<
+        ParameterFunctionLocalId,
+        FunctionCallTarget<ParameterFunctionFunctionId>,
         Graph,
     >,
 >;
@@ -90,6 +98,8 @@ pub(crate) type BitArrayFunctionFunctionBody =
     ProfiledBitArrayFunctionFunctionBody<HostedExecutionGraph>;
 pub(crate) type UtfCodepointFunctionFunctionBody =
     ProfiledUtfCodepointFunctionFunctionBody<HostedExecutionGraph>;
+pub(crate) type ParameterFunctionFunctionBody =
+    ProfiledParameterFunctionFunctionBody<HostedExecutionGraph>;
 pub(crate) type GenericFunctionFunctionBody =
     ProfiledGenericFunctionFunctionBody<HostedExecutionGraph>;
 pub(crate) type NeverFunctionFunctionBody = ProfiledNeverFunctionFunctionBody<HostedExecutionGraph>;
@@ -111,6 +121,8 @@ pub(crate) type ExecutionBitArrayFunctionFunctionBody<Profile> =
     ProfiledBitArrayFunctionFunctionBody<<Profile as ExecutionProfile>::Graph>;
 pub(crate) type ExecutionUtfCodepointFunctionFunctionBody<Profile> =
     ProfiledUtfCodepointFunctionFunctionBody<<Profile as ExecutionProfile>::Graph>;
+pub(crate) type ExecutionParameterFunctionFunctionBody<Profile> =
+    ProfiledParameterFunctionFunctionBody<<Profile as ExecutionProfile>::Graph>;
 pub(crate) type ExecutionGenericFunctionFunctionBody<Profile> =
     ProfiledGenericFunctionFunctionBody<<Profile as ExecutionProfile>::Graph>;
 pub(crate) type ExecutionNeverFunctionFunctionBody<Profile> =
@@ -404,6 +416,8 @@ mod explain_tests {
             "pub fn main() -> fn() -> UtfCodepoint { fn() { panic } }",
             "pub fn main() -> fn(value) -> value { fn(value) { value } }",
             "pub fn main() -> fn() -> value { fn() { panic } }",
+            "pub type Empty pub fn main() -> fn(Empty) -> Int { fn(_) { 1 } }",
+            "pub type Empty pub fn main() -> fn() -> Empty { fn() { panic } }",
             "pub fn main() -> fn() -> Bool { fn() { True } }",
             "pub fn main() -> fn() -> Nil { fn() { Nil } }",
             "pub fn main() -> fn() -> #(Int) { fn() { #(1) } }",
@@ -509,6 +523,9 @@ pub fn main() -> fn() -> Boxed { fn() { Boxed(1) } }
             }
             FunctionFunctionId::UtfCodepoint(id) => {
                 assert_typed_body_owner(plan.utf_codepoint_function_function(id).body());
+            }
+            FunctionFunctionId::Parameter(id) => {
+                assert_typed_body_owner(plan.parameter_function_function(id).body());
             }
             FunctionFunctionId::Custom(id) => {
                 let owner = plan.custom_function_function(&id).body();

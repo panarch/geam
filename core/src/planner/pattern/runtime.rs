@@ -359,13 +359,6 @@ pub(in crate::planner) fn plan_custom_subject_pattern(
     plan_custom_pattern(arguments, constructor, type_, source_shape, context)
 }
 
-pub(in crate::planner) fn pattern_value_type_in_context(
-    pattern: &TypedPattern,
-    context: &PlanContext<'_>,
-) -> Result<ValueType, PlanError> {
-    super::pattern_value_shape(pattern, context).map(|shape| shape.value_type())
-}
-
 fn plan_list_pattern(
     elements: Vec<TypedPattern>,
     tail: Option<TailPattern<Arc<Type>>>,
@@ -448,12 +441,10 @@ fn plan_custom_pattern(
     context: &mut PlanContext<'_>,
 ) -> Result<PlannedCustomPattern, PlanError> {
     let constructor = super::resolved_constructor(&constructor)?;
-    let field_types = arguments
-        .iter()
-        .map(|argument| pattern_value_type_in_context(&argument.value, context))
-        .collect::<Result<Vec<_>, _>>()?;
+    let pattern_shape = context.value_shape(type_.as_ref());
+    let field_types = super::constructor_pattern_field_types(type_.as_ref(), &arguments, context)?;
     let resolved_constructor =
-        context.custom_pattern_constructor(type_.as_ref(), constructor, field_types)?;
+        context.custom_pattern_constructor(pattern_shape, constructor, field_types)?;
     let pattern_source_shape = resolved_constructor.source_shape().clone();
     let constructor_count = resolved_constructor.constructor_count();
     let custom_constructor = resolved_constructor.into_constructor();
@@ -576,9 +567,8 @@ fn define_string_binding(
 mod tests {
     use super::{CustomConstructorRefinement, CustomValueShape};
     use super::{
-        pattern_value_type_in_context, plan_bool_pattern, plan_custom_pattern,
-        plan_custom_subject_pattern, plan_runtime_pattern, plan_runtime_pattern_with_source_shape,
-        total_bit_array_binding,
+        plan_bool_pattern, plan_custom_pattern, plan_custom_subject_pattern, plan_runtime_pattern,
+        plan_runtime_pattern_with_source_shape, total_bit_array_binding,
     };
     use crate::plan::{
         AssertBinding, AssertPattern, BitArrayBindingPattern, BitArrayLocalId, BitArrayPattern,
@@ -863,10 +853,6 @@ mod tests {
             super::super::pattern_value_shape(&pattern, &context),
             Ok(expected.clone())
         );
-        assert_eq!(
-            pattern_value_type_in_context(&pattern, &context),
-            Ok(expected.value_type()),
-        );
     }
 
     #[test]
@@ -876,7 +862,7 @@ mod tests {
         let mut anonymous = AnonymousFunctions::default();
         let mut context = PlanContext::new(&module, &functions, &mut anonymous);
         let span = crate::planner::support::dummy_span();
-        let parameter = TypeParameterId(0);
+        let parameter = TypeParameterId::new(0);
 
         let generic_binding = plan_runtime_pattern(
             Pattern::Variable {
@@ -954,7 +940,7 @@ mod tests {
             None
         );
         assert_eq!(
-            pattern_value_type_in_context(
+            super::super::pattern_value_shape(
                 &Pattern::Variable {
                     location: span,
                     name: "other".into(),
@@ -963,7 +949,7 @@ mod tests {
                 },
                 &context,
             ),
-            Ok(ValueType::Parameter(parameter)),
+            Ok(ValueShape::Parameter(parameter)),
         );
     }
     #[test]

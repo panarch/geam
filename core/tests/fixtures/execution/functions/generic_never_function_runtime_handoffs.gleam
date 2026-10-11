@@ -1,8 +1,10 @@
-fn fail(_value: Int) -> value {
+pub type Empty
+
+fn fail(_value: Int) -> Empty {
   panic as "diverging function must not run"
 }
 
-fn provide() -> fn(Int) -> value {
+fn provide() -> fn(Int) -> Empty {
   fail
 }
 

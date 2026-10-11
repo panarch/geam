@@ -65,11 +65,6 @@ pub fn main() {
 // module main
 // main int#0
 //
-// function never#0
-//   entry b0 params=[] captures=[]
-//   block b0 params=[]
-//     source_stop kind=panic message=none
-//
 // function int#0
 //   entry b0 params=[] captures=[]
 //   block b0 params=[]
@@ -103,13 +98,17 @@ pub fn main() {
 // function int#2
 //   entry b0 params=[] captures=[]
 //   block b0 params=[]
-//     %function.never#0:shape#8(fn() -> param#0) = function[Never] reference never#0
-//     never_call %function.never#0 args=[]
+//     %function.parameter#0:shape#8(fn() -> param#0) = function[Parameter] reference parameter#0
+//     %parameter#0:shape#7(param#0) = parameter.function_call %function.parameter#0 args=[]
+//     %int#0:shape#0(Int) = int.value 1
+//     return %int#0
 //
 // function int#3
 //   entry b0 params=[] captures=[]
 //   block b0 params=[]
-//     never_call never#0 args=[]
+//     %parameter#0:shape#9(param#0) = parameter.call parameter#1 args=[]
+//     %int#0:shape#0(Int) = int.value 1
+//     return %int#0
 //
 // function int#4
 //   entry b0 params=[%bool#0:shape#3(Bool)] captures=[]
@@ -180,3 +179,13 @@ pub fn main() {
 //   block b3 params=[]
 //     %int#0:shape#0(Int) = int.value 30
 //     return %int#0
+//
+// function parameter#0
+//   entry b0 params=[] captures=[]
+//   block b0 params=[]
+//     source_stop kind=panic message=none
+//
+// function parameter#1
+//   entry b0 params=[] captures=[]
+//   block b0 params=[]
+//     source_stop kind=panic message=none

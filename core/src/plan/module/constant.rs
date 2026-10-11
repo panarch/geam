@@ -4661,7 +4661,7 @@ pub fn main() {
 
     #[test]
     fn generic_empty_list_references_materialize_every_item_shape() {
-        let parameter = TypeParameterId(0);
+        let parameter = TypeParameterId::new(0);
         let base_signature = ConstantTemplateSignature::list(
             ConstantTemplateId::new(0),
             0,
@@ -4711,7 +4711,7 @@ pub fn main() {
             ValueShape::Bool,
             ValueShape::Nil,
             ValueShape::Tuple(vec![ValueShape::Int, ValueShape::String].into_boxed_slice()),
-            ValueShape::List(Box::new(ValueShape::Parameter(TypeParameterId(1)))),
+            ValueShape::List(Box::new(ValueShape::Parameter(TypeParameterId::new(1)))),
             ValueShape::List(Box::new(ValueShape::Bool)),
             ValueShape::Function(Box::new(function_shape)),
         ];
@@ -4792,8 +4792,8 @@ pub fn main() {
 
     #[test]
     fn nested_generic_list_values_materialize_parameter_and_stored_items() {
-        let parameter = TypeParameterId(0);
-        let nested_parameter = TypeParameterId(1);
+        let parameter = TypeParameterId::new(0);
+        let nested_parameter = TypeParameterId::new(1);
         let templates = ConstantTemplates::from_entries(Vec::new());
         let generic = ConstantValue::try_list(ValueShape::Parameter(parameter), Vec::new(), None)
             .expect("a bare-parameter list constant may be empty")
@@ -5098,7 +5098,7 @@ pub fn main() {
 
     #[test]
     fn parameter_list_list_spread_reference_materializes_uninhabited_and_stored_items() {
-        let parameter = TypeParameterId(0);
+        let parameter = TypeParameterId::new(0);
         let item_shape = ValueShape::List(Box::new(ValueShape::Parameter(parameter)));
         let generic_element = || {
             ConstantValue::try_list(ValueShape::Parameter(parameter), Vec::new(), None)
@@ -5532,7 +5532,7 @@ pub fn main() {
             ConstantTemplateId::new(3),
             0,
             TypeScheme::new(1),
-            ValueShape::Parameter(TypeParameterId(0)),
+            ValueShape::Parameter(TypeParameterId::new(0)),
         );
 
         assert_eq!(signature.try_instantiate(Vec::new()), None);
@@ -5547,7 +5547,7 @@ pub fn main() {
 
     #[test]
     fn constant_instantiations_preserve_every_family_through_substitution() {
-        let parameter = TypeParameterId(0);
+        let parameter = TypeParameterId::new(0);
         let replacement = ValueShape::String;
         let substitution = TypeSubstitution::from_arguments(vec![replacement.clone()]);
         let custom_shape = CustomValueShape::new(
@@ -5663,9 +5663,12 @@ pub fn main() {
             None,
         )
         .expect("a String list should accept String elements");
-        let generic_list =
-            ConstantValue::try_list(ValueShape::Parameter(TypeParameterId(0)), Vec::new(), None)
-                .expect("a bare-parameter list may be empty");
+        let generic_list = ConstantValue::try_list(
+            ValueShape::Parameter(TypeParameterId::new(0)),
+            Vec::new(),
+            None,
+        )
+        .expect("a bare-parameter list may be empty");
         let utf_codepoint_list =
             ConstantValue::try_list(ValueShape::UtfCodepoint, Vec::new(), None)
                 .expect("a UtfCodepoint list may be empty");
@@ -5686,7 +5689,7 @@ pub fn main() {
         );
         assert_eq!(
             ConstantValue::try_list(
-                ValueShape::Parameter(TypeParameterId(0)),
+                ValueShape::Parameter(TypeParameterId::new(0)),
                 Vec::new(),
                 Some(generic_list.clone()),
             ),
@@ -5710,12 +5713,12 @@ pub fn main() {
         );
         assert_eq!(
             ConstantValue::try_list(
-                ValueShape::Parameter(TypeParameterId(0)),
+                ValueShape::Parameter(TypeParameterId::new(0)),
                 vec![ConstantValue::int(1.into())],
                 None,
             ),
             Err(ConstantListConstructionError::TypeMismatch {
-                expected: ValueType::Parameter(TypeParameterId(0)),
+                expected: ValueType::Parameter(TypeParameterId::new(0)),
                 actual: ValueType::Int,
             }),
         );
@@ -5754,12 +5757,12 @@ pub fn main() {
         );
         assert_eq!(
             ConstantValue::try_list(
-                ValueShape::Parameter(TypeParameterId(0)),
+                ValueShape::Parameter(TypeParameterId::new(0)),
                 vec![ConstantValue::int(1.into())],
                 Some(generic_list.clone()),
             ),
             Err(ConstantListConstructionError::TypeMismatch {
-                expected: ValueType::Parameter(TypeParameterId(0)),
+                expected: ValueType::Parameter(TypeParameterId::new(0)),
                 actual: ValueType::Int,
             }),
         );
@@ -5881,47 +5884,47 @@ pub fn main() {
         );
         assert_eq!(
             ConstantValue::try_list(
-                ValueShape::List(Box::new(ValueShape::Parameter(TypeParameterId(0)))),
+                ValueShape::List(Box::new(ValueShape::Parameter(TypeParameterId::new(0)))),
                 vec![int_list.clone()],
                 None,
             ),
             Err(ConstantListConstructionError::TypeMismatch {
-                expected: ValueType::List(Box::new(ValueType::Parameter(TypeParameterId(0)))),
+                expected: ValueType::List(Box::new(ValueType::Parameter(TypeParameterId::new(0)))),
                 actual: ValueType::List(Box::new(ValueType::Int)),
             }),
         );
         assert_eq!(
             ConstantValue::try_list(
-                ValueShape::List(Box::new(ValueShape::Parameter(TypeParameterId(0)))),
+                ValueShape::List(Box::new(ValueShape::Parameter(TypeParameterId::new(0)))),
                 vec![ConstantValue::int(1.into())],
                 None,
             ),
             Err(ConstantListConstructionError::TypeMismatch {
-                expected: ValueType::List(Box::new(ValueType::Parameter(TypeParameterId(0)))),
+                expected: ValueType::List(Box::new(ValueType::Parameter(TypeParameterId::new(0)))),
                 actual: ValueType::Int,
             }),
         );
         assert_eq!(
             ConstantValue::try_list(
                 ValueShape::List(Box::new(ValueShape::List(Box::new(ValueShape::Parameter(
-                    TypeParameterId(0)
+                    TypeParameterId::new(0)
                 ),)))),
                 vec![int_list.clone()],
                 Some(int_list.clone()),
             ),
             Err(ConstantListConstructionError::TypeMismatch {
                 expected: ValueType::List(Box::new(ValueType::List(Box::new(
-                    ValueType::Parameter(TypeParameterId(0)),
+                    ValueType::Parameter(TypeParameterId::new(0)),
                 )))),
                 actual: ValueType::List(Box::new(ValueType::Int)),
             }),
         );
         assert_eq!(
             ConstantValue::try_list(
-                ValueShape::List(Box::new(ValueShape::Parameter(TypeParameterId(0)))),
+                ValueShape::List(Box::new(ValueShape::Parameter(TypeParameterId::new(0)))),
                 vec![
                     ConstantValue::try_list(
-                        ValueShape::Parameter(TypeParameterId(0)),
+                        ValueShape::Parameter(TypeParameterId::new(0)),
                         Vec::new(),
                         None,
                     )
@@ -5931,7 +5934,7 @@ pub fn main() {
             ),
             Err(ConstantListConstructionError::TypeMismatch {
                 expected: ValueType::List(Box::new(ValueType::List(Box::new(
-                    ValueType::Parameter(TypeParameterId(0)),
+                    ValueType::Parameter(TypeParameterId::new(0)),
                 )))),
                 actual: ValueType::List(Box::new(ValueType::Int)),
             }),
@@ -5944,7 +5947,7 @@ pub fn main() {
             ),
             Err(ConstantListConstructionError::TypeMismatch {
                 expected: ValueType::List(Box::new(ValueType::Int)),
-                actual: ValueType::List(Box::new(ValueType::Parameter(TypeParameterId(0)))),
+                actual: ValueType::List(Box::new(ValueType::Parameter(TypeParameterId::new(0)))),
             }),
         );
         assert_eq!(

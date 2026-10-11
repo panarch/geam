@@ -1,7 +1,7 @@
 #[path = "../../tests/support/execution_host.rs"]
 mod execution_fixture;
 
-use geam_core::plan::ValueType;
+use geam_core::plan::{CustomType, CustomTypeName, ValueType};
 use geam_core::provider::{
     Call, Callback, FunctionValue, HostFailure, HostResult, StringValue, Value,
 };
@@ -239,7 +239,7 @@ fn run(body: &str, expected: &str) {
 }
 
 #[test]
-fn symbolic_function_values_preserve_identity_and_captures_through_owned_and_nested_views() {
+fn parameter_function_values_preserve_identity_and_captures_through_owned_and_nested_views() {
     run(
         r#"
 pub fn main() {
@@ -247,6 +247,28 @@ pub fn main() {
   let function = fn(_) { label }
   let alias = keep(function)
   let selected = pick([fn(_) { "unused" }, function])
+  let assert [listed] = keep_list([function])
+  let assert #(Some(optional), Ok(result)) = compounds(#(Some(function), Ok(function)))
+  let assert #(Some(lazy_optional), Ok(lazy_result)) = pick_compound([#(None, Error("unused")), #(Some(function), Ok(function))])
+  let custom = unwrap(wrap(function))
+  let returned = produced(fn() { function })
+  #(has_callback(function), alias == function, selected == function, listed == function, optional == function, result == function, lazy_optional == function, lazy_result == function, custom == function, returned == function)
+}
+"#,
+        "#(True, True, True, True, True, True, True, True, True, True)",
+    );
+}
+
+#[test]
+fn symbolic_function_values_preserve_identity_and_captures_through_owned_and_nested_views() {
+    run(
+        r#"
+pub type Empty
+pub fn main() {
+  let label = "retained"
+  let function = fn(_: Empty) { label }
+  let alias = keep(function)
+  let selected = pick([fn(_: Empty) { "unused" }, function])
   let assert [listed] = keep_list([function])
   let assert #(Some(optional), Ok(result)) = compounds(#(Some(function), Ok(function)))
   let assert #(Some(lazy_optional), Ok(lazy_result)) = pick_compound([#(None, Error("unused")), #(Some(function), Ok(function))])
@@ -284,9 +306,12 @@ fn never_returning_functions_keep_an_invocable_input_representation() {
 
 #[test]
 fn a_storable_outer_function_does_not_relax_nested_strict_callback_permissions() {
-    let error = execution(r#"pub fn main() { nested_strict(fn(_) { fn(_) { True } }) }"#)
-        .err()
-        .expect("nested strict input must remain rejected");
+    let error = execution(
+        r#"pub type Empty
+pub fn main() { nested_strict(fn(_) { fn(_: Empty) { True } }) }"#,
+    )
+    .err()
+    .expect("nested strict input must remain rejected");
     assert_eq!(error.package(), "function_values");
     assert_eq!(error.module(), "function_values");
     assert_eq!(error.function(), "nested_strict");
@@ -295,10 +320,17 @@ fn a_storable_outer_function_does_not_relax_nested_strict_callback_permissions()
         _ => None,
     };
     let callback = callback.expect("nested strict input must remain rejected");
-    assert!(matches!(
+    assert_eq!(
         callback.argument_types(),
-        [ValueType::Parameter(_)]
-    ));
+        &[ValueType::Custom(CustomType::new(
+            CustomTypeName::new(
+                "function_values".into(),
+                "function_values".into(),
+                "Empty".into(),
+            ),
+            Vec::new(),
+        ))],
+    );
     assert_eq!(callback.return_(), &ValueType::Bool);
 }
 

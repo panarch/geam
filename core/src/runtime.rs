@@ -47,8 +47,8 @@ pub(in crate::runtime) use evaluated::{
     EvaluatedCustomFunction, EvaluatedCustomValue, EvaluatedExternalFunction,
     EvaluatedFloatFunction, EvaluatedFunctionFunction, EvaluatedFunctionValueKind,
     EvaluatedGenericFunction, EvaluatedIntFunction, EvaluatedListFunction, EvaluatedNeverFunction,
-    EvaluatedNilFunction, EvaluatedStringFunction, EvaluatedTupleFunction,
-    EvaluatedUtfCodepointFunction, EvaluatedValue,
+    EvaluatedNilFunction, EvaluatedParameterFunction, EvaluatedStringFunction,
+    EvaluatedTupleFunction, EvaluatedUtfCodepointFunction, EvaluatedValue,
 };
 #[cfg(test)]
 pub(in crate::runtime) use evaluated::{EvaluatedFunctionValue, EvaluatedListCapture};
@@ -62,13 +62,13 @@ pub(crate) use value::{
     BitArrayFunctionValue, BoolFunctionValue, CaptureListValue, CaptureValue, CustomFunctionValue,
     CustomFunctionValueTarget, ExternalFunctionValue, FloatFunctionValue, FunctionFunctionValue,
     FunctionValueKind, GenericFunctionValue, IntFunctionValue, ListFunctionValue,
-    NeverFunctionValue, NilFunctionValue, StringFunctionValue, TupleFunctionValue,
-    UtfCodepointFunctionValue,
+    NeverFunctionValue, NilFunctionValue, ParameterFunctionValue, StringFunctionValue,
+    TupleFunctionValue, UtfCodepointFunctionValue,
 };
 pub use value::{
     BitArrayValue, BitArrayValueLengthError, CustomFieldValue, CustomValue, ExternalValue,
-    ExternalValueIdentity, FunctionValue, ListValue, ListValueItemTypeMismatch, StringValue, Value,
-    ValueInspection,
+    ExternalValueIdentity, FunctionValue, ListValue, ListValueItemTypeMismatch, ParameterValue,
+    StringValue, Value, ValueInspection,
 };
 
 pub(crate) use crate::host::{ExternalPayloadLease, ExternalPayloadView};
@@ -143,6 +143,10 @@ fn run_core_program(
         ProfiledCoreRuntimeFunctionId::UtfCodepoint(function) => {
             function::run_utf_codepoint(plan, state, function, error::HostCallOrigin::Entry, inputs)
                 .map(EvaluatedValue::UtfCodepoint)
+        }
+        ProfiledCoreRuntimeFunctionId::Parameter(function) => {
+            function::run_parameter(plan, state, function, error::HostCallOrigin::Entry, inputs)
+                .map(EvaluatedValue::Parameter)
         }
         ProfiledCoreRuntimeFunctionId::Custom(function) => {
             function::run_custom(plan, state, function, error::HostCallOrigin::Entry, inputs)

@@ -164,7 +164,7 @@ pub fn main() {
             TypeMetadata::UtfCodepoint,
             TypeMetadata::Bool,
             TypeMetadata::Nil,
-            TypeMetadata::Parameter(crate::plan::TypeParameterId(0)),
+            TypeMetadata::Parameter(crate::plan::TypeParameterId::new(0)),
         ];
         let root = TypeMetadata::Tuple(
             [

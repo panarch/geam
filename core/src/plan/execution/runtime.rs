@@ -11,10 +11,10 @@ use super::function::{
     FunctionCatalog, FunctionFunctionFunctionId, FunctionListFunctionId, FunctionParameterView,
     GenericFunctionFunctionId, IntFunctionFunctionId, IntFunctionId, IntListFunctionId,
     ListListFunctionId, NeverFunctionFunctionId, NeverFunctionId, NilFunctionFunctionId,
-    NilFunctionId, NilListFunctionId, ParameterListFunctionId, ParameterListListFunctionId,
-    ProfiledListFunctionFunctionId, ProfiledRuntimeFunctionId, StringFunctionFunctionId,
-    StringFunctionId, StringListFunctionId, TupleFunctionFunctionId, TupleFunctionId,
-    TupleListFunctionId, UtfCodepointFunctionFunctionId, UtfCodepointFunctionId,
+    NilFunctionId, NilListFunctionId, ParameterFunctionFunctionId, ParameterFunctionId,
+    ParameterListFunctionId, ProfiledListFunctionFunctionId, ProfiledRuntimeFunctionId,
+    StringFunctionFunctionId, StringFunctionId, StringListFunctionId, TupleFunctionFunctionId,
+    TupleFunctionId, TupleListFunctionId, UtfCodepointFunctionFunctionId, UtfCodepointFunctionId,
     UtfCodepointListFunctionId,
 };
 use super::function::{
@@ -30,10 +30,11 @@ use super::function::{
     ExecutionGenericFunctionFunctionBody, ExecutionIntFunctionBody,
     ExecutionIntFunctionFunctionBody, ExecutionIntListFunctionBody, ExecutionListListFunctionBody,
     ExecutionNeverFunctionFunctionBody, ExecutionNilFunctionBody, ExecutionNilFunctionFunctionBody,
-    ExecutionNilListFunctionBody, ExecutionParameterListFunctionBody,
-    ExecutionParameterListListFunctionBody, ExecutionStringFunctionBody,
-    ExecutionStringFunctionFunctionBody, ExecutionStringListFunctionBody,
-    ExecutionTupleFunctionBody, ExecutionTupleFunctionFunctionBody, ExecutionTupleListFunctionBody,
+    ExecutionNilListFunctionBody, ExecutionParameterFunctionBody,
+    ExecutionParameterFunctionFunctionBody, ExecutionParameterListFunctionBody,
+    ExecutionStringFunctionBody, ExecutionStringFunctionFunctionBody,
+    ExecutionStringListFunctionBody, ExecutionTupleFunctionBody,
+    ExecutionTupleFunctionFunctionBody, ExecutionTupleListFunctionBody,
     ExecutionUtfCodepointFunctionBody, ExecutionUtfCodepointFunctionFunctionBody,
     ExecutionUtfCodepointListFunctionBody,
 };
@@ -277,6 +278,13 @@ pub(crate) trait RuntimeExecutionPlan: Sized {
         self.program().functions.utf_codepoint_function(id)
     }
 
+    fn parameter_function(
+        &self,
+        id: ParameterFunctionId,
+    ) -> &ExecutionFunction<Self::Profile, ExecutionParameterFunctionBody<Self::Profile>> {
+        self.program().functions.parameter_function(id)
+    }
+
     fn custom_function(
         &self,
         id: CustomFunctionId,
@@ -310,14 +318,6 @@ pub(crate) trait RuntimeExecutionPlan: Sized {
         id: ParameterListFunctionId,
     ) -> &ExecutionFunction<Self::Profile, ExecutionParameterListFunctionBody<Self::Profile>> {
         self.program().functions.parameter_list_function(id)
-    }
-
-    fn parameter_list_list_function(
-        &self,
-        id: ParameterListListFunctionId,
-    ) -> &ExecutionFunction<Self::Profile, ExecutionParameterListListFunctionBody<Self::Profile>>
-    {
-        self.program().functions.parameter_list_list_function(id)
     }
 
     fn int_list_function(
@@ -440,6 +440,14 @@ pub(crate) trait RuntimeExecutionPlan: Sized {
     ) -> &ExecutionFunction<Self::Profile, ExecutionUtfCodepointFunctionFunctionBody<Self::Profile>>
     {
         self.program().functions.utf_codepoint_function_function(id)
+    }
+
+    fn parameter_function_function(
+        &self,
+        id: ParameterFunctionFunctionId,
+    ) -> &ExecutionFunction<Self::Profile, ExecutionParameterFunctionFunctionBody<Self::Profile>>
+    {
+        self.program().functions.parameter_function_function(id)
     }
 
     fn custom_function_function(
@@ -599,6 +607,14 @@ impl<'plan> RuntimeValueMetadata<'plan> {
 
     pub(crate) fn list_lifetime(&self, id: ListTypeId) -> crate::host::HostValueLifetime {
         self.list_types.lifetimes[id.index()]
+    }
+
+    pub(crate) fn custom_parameter_lifetime(&self, id: CustomTypeId) -> bool {
+        self.custom_types.types[id.index()].parameter_lifetime
+    }
+
+    pub(crate) fn list_parameter_lifetime(&self, id: ListTypeId) -> bool {
+        self.list_types.parameter_lifetimes[id.index()]
     }
 
     pub(crate) fn custom_native_visible(&self, id: CustomTypeId) -> bool {

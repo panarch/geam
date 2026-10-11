@@ -19,7 +19,7 @@ pub(super) fn plan_assert_assignment(
     message: Option<TypedExpr>,
     context: &mut PlanContext<'_>,
 ) -> Result<PlannedAssignment, PlanError> {
-    let source_shape = context.value_shape_in_scope(value.type_().as_ref());
+    let source_shape = context.value_shape(value.type_().as_ref());
     if let Some(binding) = plan_total_assert_pattern(pattern.clone(), context)? {
         if binding_pattern_depends_on_source_shape(&binding) {
             let value = plan_expr(value, context)?;
@@ -46,7 +46,7 @@ pub(super) fn plan_assert_assignment_steps(
     message: Option<TypedExpr>,
     context: &mut PlanContext<'_>,
 ) -> Result<Vec<Step>, PlanError> {
-    let source_shape = context.value_shape_in_scope(value.type_().as_ref());
+    let source_shape = context.value_shape(value.type_().as_ref());
     if let Some(binding) = plan_total_assert_pattern(pattern.clone(), context)? {
         if binding_pattern_depends_on_source_shape(&binding) {
             let value = plan_expr(value, context)?;
@@ -316,6 +316,10 @@ mod tests {
         StringLocalId, TupleLocalId, TypeParameterId, UtfCodepointExpr, UtfCodepointLocalId,
         ValueShape, ValueType,
     };
+    use crate::plan::{
+        CustomConstructorField, CustomPattern, GenericLocal, GenericLocalId, TotalBindingPattern,
+        TypeScheme,
+    };
     use crate::planner::context::{AnonymousFunctions, PlanContext};
     use crate::planner::dsl::{
         bit_array, function, int, let_list_step, let_tuple_step, list, local_int, local_tuple,
@@ -335,6 +339,134 @@ mod tests {
     use std::collections::HashMap;
 
     use super::super::{BindingPattern, ListTailBinding};
+
+    #[test]
+    fn plan_generic_result_tuple_assertion_preserves_distinct_bindings() {
+        let plan = plan_module(compile(
+            r#"
+fn fail() -> Result(String, #(a, b)) { panic }
+pub fn main() {
+  let assert Error(#(first, second)) = fail()
+  True
+}
+"#,
+        ))
+        .expect("the generic pattern must plan before its source panic executes");
+        let first = TypeParameterId::new(0);
+        let second = TypeParameterId::new(1);
+        let fields = [
+            AssertBinding::new(
+                ParamLocal::generic(GenericLocal::new(GenericLocalId(0), first)),
+                "first".into(),
+                ValueShape::Parameter(first),
+            ),
+            AssertBinding::new(
+                ParamLocal::generic(GenericLocal::new(GenericLocalId(1), second)),
+                "second".into(),
+                ValueShape::Parameter(second),
+            ),
+        ];
+        let tuple_type = ValueType::Tuple(vec![
+            ValueType::Parameter(first),
+            ValueType::Parameter(second),
+        ]);
+        let result_type = CustomType::new(
+            CustomTypeName::new("".into(), "gleam".into(), "Result".into()),
+            vec![ValueType::String, tuple_type.clone()],
+        );
+        let patterns = plan
+            .main_function()
+            .steps()
+            .iter()
+            .filter_map(|step| {
+                if let StepKind::AssertPattern { pattern, .. } = step.kind() {
+                    Some(pattern.clone())
+                } else {
+                    None
+                }
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            patterns,
+            vec![AssertPattern::custom(CustomPattern::new(
+                CustomConstructor::new(
+                    result_type,
+                    "Error".into(),
+                    1,
+                    vec![CustomConstructorField::new(None, tuple_type)],
+                ),
+                vec![AssertPattern::Tuple(
+                    fields.iter().cloned().map(AssertPattern::Bind).collect()
+                )],
+                Some(vec![TotalBindingPattern::tuple(
+                    fields.into_iter().map(TotalBindingPattern::bind).collect()
+                )]),
+            ))],
+        );
+        assert_eq!(
+            plan.main_function().signature().scheme(),
+            &TypeScheme::new(0)
+        );
+        assert_eq!(
+            plan.functions()[0].signature().scheme(),
+            &TypeScheme::new(2)
+        );
+        assert_eq!(plan.main_function().return_().value_type(), ValueType::Bool);
+        let execution = crate::ExecutionPlan::from_module_plan(plan);
+        let mut echo = Vec::new();
+        let error =
+            crate::run_main(&execution, &mut echo).expect_err("the source fail function panics");
+        assert_eq!(error.to_string(), "panic: `panic` expression evaluated.");
+        assert!(echo.is_empty());
+    }
+
+    #[test]
+    fn plan_generic_constructor_binding_uses_type_argument_order_before_field_order() {
+        let plan = plan_module(compile(
+            r#"
+type Pair(a, b) { Pair(b, List(#(a, b))) }
+fn fail() -> Pair(a, b) { panic }
+pub fn main() {
+  let Pair(second, nested) = fail()
+  True
+}
+"#,
+        ))
+        .expect("type arguments and constructor fields may use different orders");
+        let binding_types = plan
+            .main_function()
+            .steps()
+            .iter()
+            .filter_map(|step| {
+                if let StepKind::BindCustomFields { pattern, .. } = step.kind() {
+                    Some(
+                        pattern
+                            .constructor()
+                            .fields()
+                            .iter()
+                            .map(|field| field.type_().clone())
+                            .collect::<Vec<_>>(),
+                    )
+                } else {
+                    None
+                }
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            binding_types,
+            vec![vec![
+                ValueType::Parameter(TypeParameterId::new(1)),
+                ValueType::List(Box::new(ValueType::Tuple(vec![
+                    ValueType::Parameter(TypeParameterId::new(0)),
+                    ValueType::Parameter(TypeParameterId::new(1)),
+                ]))),
+            ]]
+        );
+        assert_eq!(
+            plan.main_function().signature().scheme(),
+            &TypeScheme::new(0)
+        );
+    }
 
     #[test]
     fn plan_let_assert_named_assignment_reuses_exhaustive_binding_semantics() {
@@ -1542,7 +1674,7 @@ pub fn main() {
                     reason: crate::planner::InvalidPatternShapeReason::TypeMismatch {
                         expected: ValueType::Int,
                         actual: ValueType::Tuple(vec![ValueType::List(Box::new(
-                            ValueType::Parameter(TypeParameterId(0)),
+                            ValueType::Parameter(TypeParameterId::new(0)),
                         ))]),
                     },
                 },

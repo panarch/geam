@@ -22,6 +22,9 @@ pub struct BitArrayFunctionId(pub usize);
 pub struct UtfCodepointFunctionId(pub usize);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ParameterFunctionId(pub usize);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CustomFunctionId {
     pub index: usize,
     pub return_shape: CustomValueShape,
@@ -119,6 +122,12 @@ impl FunctionLabelSource for UtfCodepointFunctionId {
     }
 }
 
+impl FunctionLabelSource for ParameterFunctionId {
+    fn function_label(&self) -> FunctionLabel {
+        FunctionLabel::new("parameter", self.0)
+    }
+}
+
 impl FunctionLabelSource for CustomFunctionId {
     fn function_label(&self) -> FunctionLabel {
         FunctionLabel::new("custom", self.index())
@@ -188,6 +197,13 @@ impl Emit for UtfCodepointFunctionId {
     fn emit(&self, output: &mut Rust) {
         let Self(field_0) = self;
         output.call("function::UtfCodepointFunctionId", &[field_0]);
+    }
+}
+
+impl Emit for ParameterFunctionId {
+    fn emit(&self, output: &mut Rust) {
+        let Self(field_0) = self;
+        output.call("function::ParameterFunctionId", &[field_0]);
     }
 }
 

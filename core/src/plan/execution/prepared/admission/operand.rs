@@ -88,6 +88,7 @@ impl Operand for graph::FunctionLocal {
             Self::String(value) => value.read(locals),
             Self::BitArray(value) => value.read(locals),
             Self::UtfCodepoint(value) => value.read(locals),
+            Self::Parameter(value) => value.read(locals),
             Self::Custom(value) => value.read(locals),
             Self::External(value) => value.read(locals),
             Self::Bool(value) => value.read(locals),
@@ -111,26 +112,6 @@ impl Operand for graph::ExternalFunctionFunctionLocal {
     }
 }
 
-impl Operand for graph::StoredListLocal {
-    fn read<'data>(&self, locals: &Locals<'data>) -> Result<Slot<'data, 'data>, LocalError> {
-        match self {
-            Self::ParameterList(value) => value.read(locals),
-            Self::Int(value) => value.read(locals),
-            Self::String(value) => value.read(locals),
-            Self::BitArray(value) => value.read(locals),
-            Self::UtfCodepoint(value) => value.read(locals),
-            Self::Custom(value) => value.read(locals),
-            Self::External(value) => value.read(locals),
-            Self::Float(value) => value.read(locals),
-            Self::Bool(value) => value.read(locals),
-            Self::Nil(value) => value.read(locals),
-            Self::Tuple(value) => value.read(locals),
-            Self::List(value) => value.read(locals),
-            Self::Function(value) => value.read(locals),
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::{Address, LocalError, Locals, Operand, ParamLocal, graph};
@@ -147,10 +128,12 @@ mod tests {
     #[test]
     fn every_plain_operand_family_preserves_its_admitted_local_and_metadata() {
         let source = r#"
+pub type Empty
 pub type Box(a) { Box(a) }
 fn capture(value) { fn() { echo value 42 } }
 fn unchanged(value) { value }
-fn stop(_value: Int) -> a { panic }
+fn stop(_value: Int) -> Empty { panic }
+fn symbolic(_value: Empty) { 42 }
 fn codepoint() { let assert <<value:utf8_codepoint>> = <<65>> value }
 pub fn main() {
   let _ = #(capture(42), capture(1.5), capture("text"), capture(True), capture(Nil),
@@ -161,7 +144,7 @@ pub fn main() {
   let _ = #(capture(fn() { 42 }), capture(fn() { 1.5 }), capture(fn() { "text" }),
     capture(fn() { True }), capture(fn() { Nil }), capture(fn() { <<1>> }),
     capture(fn() { codepoint() }), capture(fn() { #(1, True) }),
-    capture(fn() { Box(7) }), capture(unchanged), capture(stop))
+    capture(fn() { Box(7) }), capture(unchanged), capture(stop), capture(symbolic))
   let _ = #(capture(fn() { [42] }), capture(fn() { [1.5] }), capture(fn() { ["text"] }),
     capture(fn() { [True] }), capture(fn() { [Nil] }), capture(fn() { [<<1>>] }),
     capture(fn() { [codepoint()] }), capture(fn() { [#(1, True)] }),
@@ -186,7 +169,7 @@ pub fn main() {
             .functions
             .function_returns
             .int_function_functions;
-        assert_eq!(functions.len(), 47);
+        assert_eq!(functions.len(), 48);
         for function in functions.iter() {
             let graph = function.body().function_body().block_graph();
             let parameters = graph.blocks().next().unwrap().params();
@@ -196,10 +179,51 @@ pub fn main() {
     }
 
     #[test]
+    fn sealed_parameter_operands_keep_the_same_local_read_contract() {
+        let typed = crate::compile_typed_module(
+            "example",
+            "src/example.gleam",
+            "fn capture(value: a) { fn() { echo value 42 } } pub fn main() { capture }",
+        )
+        .unwrap();
+        let plan = crate::ExecutionPlan::from_module_plan(crate::plan_module(typed).unwrap());
+        let common = &plan.program.common;
+        let types = Types::admit(
+            &common.list_types,
+            &common.custom_types,
+            &common.external_types,
+            &common.value_shapes,
+        )
+        .unwrap();
+        let capture = &plan
+            .program
+            .functions
+            .function_returns
+            .int_function_functions[0];
+        let slot = &capture
+            .body()
+            .function_body()
+            .block_graph()
+            .blocks()
+            .next()
+            .unwrap()
+            .params()[0];
+        assert_eq!(
+            slot.local,
+            ParamLocal::Parameter {
+                local: graph::ParameterLocalId(0),
+                parameter: crate::plan::TypeParameterId::scoped(0, 0),
+            }
+        );
+        assert_readers(slot, &types);
+    }
+
+    #[test]
     fn external_operands_keep_the_same_read_contract_without_a_payload_or_provider() {
         let key = ExternalTypeId(0);
         let key_list = ExternalListTypeId::new(ListTypeId(0), key);
         let lists = ListTypeTable {
+            parameter_lifetimes: crate::plan::execution::storage::Table::Static(&[false; 1]),
             lifetimes: Table::Static(&[HostValueLifetime::Execution]),
             types: vec![ListStorageTypeId::External(key_list)].into(),
             tuple_items: Table::Static(&[]),
@@ -325,6 +349,8 @@ pub fn main() {
             ParamLocal::String(local) => readers.push(Box::new(*local)),
             ParamLocal::BitArray(local) => readers.push(Box::new(*local)),
             ParamLocal::UtfCodepoint(local) => readers.push(Box::new(*local)),
+            ParamLocal::Parameter { local, .. } => readers.push(Box::new(*local)),
+            ParamLocal::ParameterFunction { local, .. } => readers.push(Box::new(*local)),
             ParamLocal::Bool(local) => readers.push(Box::new(*local)),
             ParamLocal::Nil(local) => readers.push(Box::new(*local)),
             ParamLocal::Tuple { local, .. } => readers.push(Box::new(*local)),
@@ -342,10 +368,7 @@ pub fn main() {
                     graph::ListLocal::Parameter { local, .. } => {
                         readers.push(Box::new(*local));
                     }
-                    graph::ListLocal::ParameterList { local, .. } => {
-                        readers.push(Box::new(*local));
-                        readers.push(Box::new(graph::StoredListLocal::ParameterList(*local)));
-                    }
+
                     graph::ListLocal::Int { local, .. } => {
                         readers.push(Box::new(*local));
                         readers.push(Box::new(graph::StoredListLocal::Int(*local)));
@@ -458,9 +481,7 @@ pub fn main() {
                     graph::ListFunctionLocal::Parameter { local, .. } => {
                         readers.push(Box::new(*local))
                     }
-                    graph::ListFunctionLocal::ParameterList { local, .. } => {
-                        readers.push(Box::new(*local))
-                    }
+
                     graph::ListFunctionLocal::Int { local, .. } => readers.push(Box::new(*local)),
                     graph::ListFunctionLocal::String { local, .. } => {
                         readers.push(Box::new(*local))

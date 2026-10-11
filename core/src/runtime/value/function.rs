@@ -4,7 +4,8 @@ use crate::plan::FunctionType;
 use crate::plan::execution::function::{
     BitArrayFunctionId, BoolFunctionId, CustomFunctionId, ExternalFunctionId, FloatFunctionId,
     FunctionFunctionId, GenericCallableId, IntFunctionId, NeverFunctionId, NilFunctionId,
-    RuntimeListFunctionId, StringFunctionId, TupleFunctionId, UtfCodepointFunctionId,
+    ParameterFunctionId, RuntimeListFunctionId, StringFunctionId, TupleFunctionId,
+    UtfCodepointFunctionId,
 };
 #[cfg(test)]
 use crate::plan::execution::function::{
@@ -27,6 +28,7 @@ pub(crate) enum FunctionValueKind {
     String(StringFunctionValue),
     BitArray(BitArrayFunctionValue),
     UtfCodepoint(UtfCodepointFunctionValue),
+    Parameter(ParameterFunctionValue),
     Custom(CustomFunctionValue),
     External(ExternalFunctionValue),
     Bool(BoolFunctionValue),
@@ -87,6 +89,14 @@ pub(crate) struct BitArrayFunctionValue {
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct UtfCodepointFunctionValue {
     runtime_id: UtfCodepointFunctionId,
+    params: Vec<ParamLocal>,
+    captures: Vec<CaptureValue>,
+    type_: FunctionType,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct ParameterFunctionValue {
+    runtime_id: ParameterFunctionId,
     params: Vec<ParamLocal>,
     captures: Vec<CaptureValue>,
     type_: FunctionType,
@@ -168,6 +178,7 @@ impl FunctionValue {
             FunctionValueKind::String(value) => value.type_(),
             FunctionValueKind::BitArray(value) => value.type_(),
             FunctionValueKind::UtfCodepoint(value) => value.type_(),
+            FunctionValueKind::Parameter(value) => value.type_(),
             FunctionValueKind::Custom(value) => value.type_(),
             FunctionValueKind::External(value) => value.type_(),
             FunctionValueKind::Bool(value) => value.type_(),
@@ -203,6 +214,14 @@ impl FunctionValue {
                 ),
                 CoreRuntimeFunctionId::UtfCodepoint(runtime_id) => {
                     FunctionValueKind::UtfCodepoint(UtfCodepointFunctionValue::new_with_captures(
+                        runtime_id,
+                        params,
+                        Vec::new(),
+                        type_,
+                    ))
+                }
+                CoreRuntimeFunctionId::Parameter(runtime_id) => {
+                    FunctionValueKind::Parameter(ParameterFunctionValue::new_with_captures(
                         runtime_id,
                         params,
                         Vec::new(),
@@ -270,6 +289,7 @@ impl FunctionValueKind {
             Self::String(_) => FunctionReturnFamily::String,
             Self::BitArray(_) => FunctionReturnFamily::BitArray,
             Self::UtfCodepoint(_) => FunctionReturnFamily::UtfCodepoint,
+            Self::Parameter(_) => FunctionReturnFamily::Parameter,
             Self::Custom(_) => FunctionReturnFamily::Custom,
             Self::External(_) => FunctionReturnFamily::External,
             Self::Bool(_) => FunctionReturnFamily::Bool,
@@ -413,6 +433,26 @@ impl BitArrayFunctionValue {
 impl UtfCodepointFunctionValue {
     pub(crate) fn new_with_captures(
         runtime_id: UtfCodepointFunctionId,
+        params: Vec<ParamLocal>,
+        captures: Vec<CaptureValue>,
+        type_: FunctionType,
+    ) -> Self {
+        Self {
+            runtime_id,
+            params,
+            captures,
+            type_,
+        }
+    }
+
+    pub(crate) fn type_(&self) -> FunctionType {
+        self.type_.clone()
+    }
+}
+
+impl ParameterFunctionValue {
+    pub(crate) fn new_with_captures(
+        runtime_id: ParameterFunctionId,
         params: Vec<ParamLocal>,
         captures: Vec<CaptureValue>,
         type_: FunctionType,
@@ -626,6 +666,14 @@ impl From<UtfCodepointFunctionValue> for FunctionValue {
     }
 }
 
+impl From<ParameterFunctionValue> for FunctionValue {
+    fn from(value: ParameterFunctionValue) -> Self {
+        Self {
+            kind: FunctionValueKind::Parameter(value),
+        }
+    }
+}
+
 impl From<CustomFunctionValue> for FunctionValue {
     fn from(value: CustomFunctionValue) -> Self {
         Self {
@@ -782,9 +830,17 @@ mod tests {
     fn function_value_preserves_every_lowered_return_family() {
         let cases = [
             (
-                "pub fn main() -> value { panic }",
-                ValueType::Parameter(TypeParameterId(0)),
+                "pub type Empty {} pub fn main() -> Empty { panic }",
+                ValueType::Custom(CustomType::new(
+                    CustomTypeName::new("geam".into(), "main".into(), "Empty".into()),
+                    Vec::new(),
+                )),
                 FunctionReturnFamily::Never,
+            ),
+            (
+                "pub fn main() -> value { panic }",
+                ValueType::Parameter(TypeParameterId::scoped(0, 0)),
+                FunctionReturnFamily::Parameter,
             ),
             (
                 "pub fn main() -> Int { 1 }",
@@ -860,8 +916,15 @@ mod tests {
     fn function_value_from_preserves_every_evaluated_return_family() {
         let cases = [
             (
+                "pub type Empty {} pub fn main() -> Empty { panic }",
+                ValueType::Custom(CustomType::new(
+                    CustomTypeName::new("geam".into(), "main".into(), "Empty".into()),
+                    Vec::new(),
+                )),
+            ),
+            (
                 "pub fn main() -> value { panic }",
-                ValueType::Parameter(TypeParameterId(0)),
+                ValueType::Parameter(TypeParameterId::new(0)),
             ),
             ("pub fn main() -> Int { 1 }", ValueType::Int),
             ("pub fn main() -> Float { 1.0 }", ValueType::Float),
@@ -909,8 +972,8 @@ mod tests {
             Vec::new(),
             Vec::new(),
             FunctionType::new(
-                vec![ValueType::Parameter(crate::plan::TypeParameterId(0))],
-                ValueType::Parameter(crate::plan::TypeParameterId(0)),
+                vec![ValueType::Parameter(crate::plan::TypeParameterId::new(0))],
+                ValueType::Parameter(crate::plan::TypeParameterId::new(0)),
             ),
         );
         let value = FunctionValue::from(generic.clone());
@@ -1024,6 +1087,7 @@ pub fn main() -> Resource {
             FunctionValueKind::String(value) => FunctionValue::from(value.clone()),
             FunctionValueKind::BitArray(value) => FunctionValue::from(value.clone()),
             FunctionValueKind::UtfCodepoint(value) => FunctionValue::from(value.clone()),
+            FunctionValueKind::Parameter(value) => FunctionValue::from(value.clone()),
             FunctionValueKind::Custom(value) => FunctionValue::from(value.clone()),
             FunctionValueKind::External(value) => FunctionValue::from(value.clone()),
             FunctionValueKind::Bool(value) => FunctionValue::from(value.clone()),

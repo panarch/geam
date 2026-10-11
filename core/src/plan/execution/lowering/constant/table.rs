@@ -7,8 +7,8 @@ use crate::plan::execution::graph::{
     BitArrayListLocalId, BitArrayLocalId, BoolListLocalId, BoolLocalId, CustomListLocalId,
     CustomLocal, ExternalListLocalId, FloatListLocalId, FloatLocalId, FunctionListLocalId,
     FunctionLocal, IntListLocalId, IntLocalId, ListListLocalId, NilListLocalId, NilLocalId,
-    ParameterListListLocalId, ParameterListLocalId, StringListLocalId, StringLocalId,
-    TupleListLocalId, TupleLocalId, UtfCodepointListLocalId,
+    ParameterListLocalId, StringListLocalId, StringLocalId, TupleListLocalId, TupleLocalId,
+    UtfCodepointListLocalId,
 };
 
 pub(super) struct ConstantTableBuilder<Graph: ExecutionGraphProfile> {
@@ -21,7 +21,6 @@ pub(super) struct ConstantTableBuilder<Graph: ExecutionGraphProfile> {
     pub(super) nils: Vec<ProfiledConstantProgram<NilLocalId, Graph>>,
     pub(super) tuples: Vec<ProfiledConstantProgram<TupleLocalId, Graph>>,
     pub(super) parameter_lists: Vec<ProfiledConstantProgram<ParameterListLocalId, Graph>>,
-    pub(super) parameter_list_lists: Vec<ProfiledConstantProgram<ParameterListListLocalId, Graph>>,
     pub(super) int_lists: Vec<ProfiledConstantProgram<IntListLocalId, Graph>>,
     pub(super) string_lists: Vec<ProfiledConstantProgram<StringListLocalId, Graph>>,
     pub(super) bit_array_lists: Vec<ProfiledConstantProgram<BitArrayListLocalId, Graph>>,
@@ -59,7 +58,6 @@ impl<Graph: ExecutionGraphProfile> ConstantTableBuilder<Graph> {
             nils: self.nils.into(),
             tuples: self.tuples.into(),
             parameter_lists: self.parameter_lists.into(),
-            parameter_list_lists: self.parameter_list_lists.into(),
             int_lists: self.int_lists.into(),
             string_lists: self.string_lists.into(),
             bit_array_lists: self.bit_array_lists.into(),
@@ -89,7 +87,6 @@ impl<Graph: ExecutionGraphProfile> Default for ConstantTableBuilder<Graph> {
             nils: Vec::new(),
             tuples: Vec::new(),
             parameter_lists: Vec::new(),
-            parameter_list_lists: Vec::new(),
             int_lists: Vec::new(),
             string_lists: Vec::new(),
             bit_array_lists: Vec::new(),

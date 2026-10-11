@@ -12,6 +12,7 @@ use crate::plan::execution::runtime::RuntimeExecutionPlan;
 use crate::runtime::evaluated::{
     EvaluatedBitArray, EvaluatedListRef, EvaluatedValue, EvaluatedValueRef,
 };
+use crate::runtime::state::list::StoredListValueRef;
 use crate::runtime::{InvariantError, RuntimeListStorage};
 
 pub(super) struct MatchBindings {
@@ -117,15 +118,11 @@ where
             Ok(true)
         }
         MatchPattern::List(pattern) => {
+            let parameter_list;
             let value = match value {
                 EvaluatedValueRef::ParameterList(value) => {
-                    if !pattern.elements().is_empty() {
-                        return Ok(false);
-                    }
-                    if let Some(MatchPatternListTail::Bind(binding)) = pattern.tail() {
-                        bindings.bind(binding, EvaluatedValue::ParameterList(*value));
-                    }
-                    return Ok(true);
+                    parameter_list = EvaluatedListRef::new(StoredListValueRef::Parameter(value));
+                    &parameter_list
                 }
                 EvaluatedValueRef::List(value) => value,
                 _ => return Ok(false),

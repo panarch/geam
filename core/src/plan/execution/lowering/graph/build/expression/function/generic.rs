@@ -5,8 +5,8 @@ use super::{
 };
 use crate::plan::execution::lowering::graph::{
     DraftBitArrayFunction, DraftBoolFunction, DraftFloatFunction, DraftFunction,
-    DraftGenericFunction, DraftIntFunction, DraftNilFunction, DraftStringFunction,
-    DraftTupleFunction, DraftUtfCodepointFunction,
+    DraftGenericFunction, DraftIntFunction, DraftNilFunction, DraftParameterFunction,
+    DraftStringFunction, DraftTupleFunction, DraftUtfCodepointFunction,
 };
 use crate::plan::execution::lowering::specialization::StoredValueShape;
 use crate::plan::{execution, module};
@@ -32,6 +32,10 @@ pub(in crate::plan::execution::lowering) fn executable_function_expr(
             .map(|flow| flow.map(|value| value.value().clone())),
         S::UtfCodepoint => {
             generic_utf_codepoint_function_expr(expression, shape, cursor, graph, context)
+                .map(|flow| flow.map(|value| value.value().clone()))
+        }
+        S::Parameter(_) => {
+            generic_parameter_function_expr(expression, shape, cursor, graph, context)
                 .map(|flow| flow.map(|value| value.value().clone()))
         }
         S::Custom(return_) => super::custom::generic_custom_function_expr(
@@ -422,6 +426,15 @@ generic_primitive_function!(
     utf_codepoint_function_id,
     UtfCodepoint,
     utf_codepoint_function_function_id
+);
+generic_primitive_function!(
+    generic_parameter_function_expr,
+    DraftParameterFunction,
+    ParameterFunction,
+    generic_parameter_function_constant,
+    parameter_function_id,
+    Parameter,
+    parameter_function_function_id
 );
 generic_primitive_function!(
     generic_bool_function_expr,
@@ -1862,8 +1875,31 @@ mod tests {
     }
 
     #[test]
+    fn actual_empty_constructor_and_identity_functions_keep_symbolic_storage() {
+        let source = r#"
+pub type Empty
+pub type Boxed(a) { Boxed(a) }
+fn identity(value: a) -> a { value }
+const constructor = Boxed
+const unchanged = identity
+pub fn main() {
+  let direct: fn(Empty) -> Boxed(Empty) = Boxed
+  let constant: fn(Empty) -> Boxed(Empty) = constructor
+  let generic: fn(Empty) -> Empty = unchanged
+  #(direct == direct, constant == constant, generic == generic)
+}
+"#;
+        let typed = crate::compile_typed_module("main", "main.gleam", source).unwrap();
+        let plan = crate::ExecutionPlan::from_module_plan(crate::plan_module(typed).unwrap());
+        assert_eq!(
+            crate::run_main(&plan, &mut Vec::new()),
+            Ok(crate::Value::Tuple(vec![crate::Value::Bool(true); 3])),
+        );
+    }
+
+    #[test]
     fn executable_generic_function_uses_external_return_storage() {
-        let parameter = TypeParameterId(0);
+        let parameter = TypeParameterId::new(0);
         let external = ExternalValueShape::new(
             ExternalTypeName::new("domain".into(), "domain/resource".into(), "Resource".into()),
             Vec::new(),
@@ -1900,8 +1936,8 @@ mod tests {
 
     #[test]
     fn external_return_function_call_evaluates_source_before_uninhabited_argument() {
-        let trigger = TypeParameterId(0);
-        let output = TypeParameterId(1);
+        let trigger = TypeParameterId::new(0);
+        let output = TypeParameterId::new(1);
         let never_name = CustomTypeName::new("application".into(), "main".into(), "Never".into());
         let never = CustomTypeDefinition::new(
             never_name.clone(),
@@ -2001,7 +2037,7 @@ mod tests {
         let mut context =
             crate::plan::execution::lowering::test_support::lowering_context(vec![holder, marker]);
         let panic = || PanicExpr::panic_at(None, PanicSite::unknown());
-        let parameter = TypeParameterId(0);
+        let parameter = TypeParameterId::new(0);
         let generic_type = GenericFunctionType::new(Vec::new(), parameter);
         let marker_type = CustomType::new(marker_name.clone(), Vec::new());
         let custom_type = CustomFunctionType::new(Vec::new(), marker_type.clone());
@@ -2288,7 +2324,7 @@ mod tests {
             Vec::new(),
         );
         let external_type = ExternalFunctionType::from_shapes(Vec::new(), external_shape.clone());
-        let parameter = TypeParameterId(0);
+        let parameter = TypeParameterId::new(0);
         let panic = || PanicExpr::panic_at(None, PanicSite::unknown());
         let function_shape = FunctionShape::from_function_type(external_type.to_function_type());
         let direct_target = monomorphic_function_instantiation(

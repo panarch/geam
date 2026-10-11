@@ -380,7 +380,7 @@ pub fn main() { Phantom }
             crate::plan::CustomType::new(
                 crate::plan::CustomTypeName::new("geam".into(), "main".into(), "Phantom".into(),),
                 vec![crate::plan::ValueType::Parameter(
-                    crate::plan::TypeParameterId(0),
+                    crate::plan::TypeParameterId::scoped(0, 0),
                 )],
             ),
         );

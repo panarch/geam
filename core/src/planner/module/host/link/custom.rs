@@ -581,7 +581,10 @@ mod tests {
                 Vec::new(),
                 ValueShape::Custom(CustomValueShape::new(
                     result,
-                    vec![ValueShape::Parameter(TypeParameterId(0)), ValueShape::Nil],
+                    vec![
+                        ValueShape::Parameter(TypeParameterId::new(0)),
+                        ValueShape::Nil,
+                    ],
                     CustomConstructorRefinement::Any,
                 )),
             ),
@@ -714,7 +717,7 @@ mod tests {
                 )],
             )],
         );
-        let parameter = TypeParameterId(0);
+        let parameter = TypeParameterId::new(0);
         let shape = FunctionShape::new(
             vec![ValueShape::External(ExternalValueShape::new(
                 ExternalTypeName::new("storage".into(), "storage/cell".into(), "Cell".into()),

@@ -19,10 +19,11 @@ use crate::plan::execution::function::{
     ExecutionGraphProfile, ExecutionIntFunctionBody, ExecutionIntFunctionFunctionBody,
     ExecutionIntListFunctionBody, ExecutionListListFunctionBody, ExecutionNeverFunctionBody,
     ExecutionNeverFunctionFunctionBody, ExecutionNilFunctionBody, ExecutionNilFunctionFunctionBody,
-    ExecutionNilListFunctionBody, ExecutionParameterListFunctionBody,
-    ExecutionParameterListListFunctionBody, ExecutionProfile, ExecutionStringFunctionBody,
-    ExecutionStringFunctionFunctionBody, ExecutionStringListFunctionBody,
-    ExecutionTupleFunctionBody, ExecutionTupleFunctionFunctionBody, ExecutionTupleListFunctionBody,
+    ExecutionNilListFunctionBody, ExecutionParameterFunctionBody,
+    ExecutionParameterFunctionFunctionBody, ExecutionParameterListFunctionBody, ExecutionProfile,
+    ExecutionStringFunctionBody, ExecutionStringFunctionFunctionBody,
+    ExecutionStringListFunctionBody, ExecutionTupleFunctionBody,
+    ExecutionTupleFunctionFunctionBody, ExecutionTupleListFunctionBody,
     ExecutionUtfCodepointFunctionBody, ExecutionUtfCodepointFunctionFunctionBody,
     ExecutionUtfCodepointListFunctionBody, FunctionFunctionTables, FunctionTableFamily,
     FunctionTables, ListFunctionTables, ValueFunctionTables,
@@ -115,6 +116,7 @@ where
         string_functions,
         bit_array_functions,
         utf_codepoint_functions,
+        parameter_functions,
         custom_functions,
         external_functions,
         bool_functions,
@@ -133,7 +135,6 @@ where
         bool_list_functions,
         nil_list_functions,
         tuple_list_functions,
-        parameter_list_list_functions,
         list_list_functions,
         function_list_functions,
     } = list_returns;
@@ -143,6 +144,7 @@ where
         string_function_functions,
         bit_array_function_functions,
         utf_codepoint_function_functions,
+        parameter_function_functions,
         custom_function_functions,
         external_function_functions,
         bool_function_functions,
@@ -151,7 +153,6 @@ where
         generic_function_functions,
         never_function_functions,
         parameter_list_function_functions,
-        parameter_list_list_function_functions,
         int_list_function_functions,
         string_list_function_functions,
         bit_array_list_function_functions,
@@ -265,6 +266,24 @@ where
                 hosts.function::<ExecutionUtfCodepointFunctionBody<Profile>>(
                     target, contract, context,
                 )
+            },
+        )?;
+    }
+
+    for (index, (value, contract)) in parameter_functions
+        .iter()
+        .zip(context.catalog.family(FunctionTableFamily::Parameter))
+        .enumerate()
+    {
+        let family = FunctionTableFamily::Parameter;
+        entry::<ExecutionParameterFunctionBody<Profile>, _, _>(
+            value,
+            family,
+            index,
+            &contract,
+            context,
+            |target, contract| {
+                hosts.function::<ExecutionParameterFunctionBody<Profile>>(target, contract, context)
             },
         )?;
     }
@@ -642,37 +661,7 @@ where
             },
         )?;
     }
-    for (index, ((id, value), contract)) in parameter_list_list_functions
-        .iter()
-        .zip(
-            context
-                .catalog
-                .family(FunctionTableFamily::ParameterListList),
-        )
-        .enumerate()
-    {
-        let family = FunctionTableFamily::ParameterListList;
-        list::<Host::Error>(
-            id,
-            id.index(),
-            family,
-            index,
-            context.catalog,
-            context.types,
-        )?;
-        entry::<ExecutionParameterListListFunctionBody<Profile>, _, _>(
-            value,
-            family,
-            index,
-            &contract,
-            context,
-            |target, contract| {
-                hosts.function::<ExecutionParameterListListFunctionBody<Profile>>(
-                    target, contract, context,
-                )
-            },
-        )?;
-    }
+
     for (index, ((id, value), contract)) in list_list_functions
         .iter()
         .zip(context.catalog.family(FunctionTableFamily::ListList))
@@ -823,6 +812,30 @@ where
             context,
             |target, contract| {
                 hosts.function::<ExecutionUtfCodepointFunctionFunctionBody<Profile>>(
+                    target, contract, context,
+                )
+            },
+        )?;
+    }
+
+    for (index, (value, contract)) in parameter_function_functions
+        .iter()
+        .zip(
+            context
+                .catalog
+                .family(FunctionTableFamily::ParameterFunction),
+        )
+        .enumerate()
+    {
+        let family = FunctionTableFamily::ParameterFunction;
+        entry::<ExecutionParameterFunctionFunctionBody<Profile>, _, _>(
+            value,
+            family,
+            index,
+            &contract,
+            context,
+            |target, contract| {
+                hosts.function::<ExecutionParameterFunctionFunctionBody<Profile>>(
                     target, contract, context,
                 )
             },
@@ -988,29 +1001,7 @@ where
             },
         )?;
     }
-    for (index, (value, contract)) in parameter_list_list_function_functions
-        .iter()
-        .zip(
-            context
-                .catalog
-                .family(FunctionTableFamily::ParameterListListFunction),
-        )
-        .enumerate()
-    {
-        let family = FunctionTableFamily::ParameterListListFunction;
-        entry::<ExecutionCoreListFunctionFunctionBody<Profile>, _, _>(
-            value,
-            family,
-            index,
-            &contract,
-            context,
-            |target, contract| {
-                hosts.function::<ExecutionCoreListFunctionFunctionBody<Profile>>(
-                    target, contract, context,
-                )
-            },
-        )?;
-    }
+
     for (index, (value, contract)) in int_list_function_functions
         .iter()
         .zip(context.catalog.family(FunctionTableFamily::IntListFunction))
@@ -1423,11 +1414,6 @@ mod tests {
             (FunctionTableFamily::TupleList, "[#(42, True)]", |tables| {
                 owned_mut(&mut tables.tuple_list_functions)[0].0.index = 99
             }),
-            (FunctionTableFamily::ParameterListList, "[[]]", |tables| {
-                owned_mut(&mut tables.parameter_list_list_functions)[0]
-                    .0
-                    .index = 99
-            }),
             (FunctionTableFamily::ListList, "[[42]]", |tables| {
                 owned_mut(&mut tables.list_list_functions)[0].0.index = 99
             }),
@@ -1768,6 +1754,7 @@ pub fn main() { let _ = handoff() 42 }
 
         let cases = [
             (FunctionTableFamily::Never, r#"panic"#),
+            (FunctionTableFamily::Parameter, r#"panic"#),
             (FunctionTableFamily::Int, r#"42"#),
             (FunctionTableFamily::Float, r#"1.5"#),
             (FunctionTableFamily::String, r#""text""#),
@@ -1792,9 +1779,12 @@ pub fn main() { let _ = handoff() 42 }
             (FunctionTableFamily::BoolList, r#"[True]"#),
             (FunctionTableFamily::NilList, r#"[Nil]"#),
             (FunctionTableFamily::TupleList, r#"[#(42, True)]"#),
-            (FunctionTableFamily::ParameterListList, r#"[[]]"#),
             (FunctionTableFamily::ListList, r#"[[42]]"#),
             (FunctionTableFamily::FunctionList, r#"[fn(x) { x + 1 }]"#),
+            (
+                FunctionTableFamily::ParameterFunction,
+                r#"fn() -> a { panic }"#,
+            ),
             (FunctionTableFamily::IntFunction, r#"fn() { 42 }"#),
             (FunctionTableFamily::FloatFunction, r#"fn() { 1.5 }"#),
             (FunctionTableFamily::StringFunction, r#"fn() { "text" }"#),
@@ -1811,13 +1801,15 @@ pub fn main() { let _ = handoff() 42 }
                 FunctionTableFamily::TupleFunction,
                 r#"fn() { #(42, True) }"#,
             ),
-            (FunctionTableFamily::GenericFunction, r#"fn(x) { x }"#),
-            (FunctionTableFamily::NeverFunction, r#"fn() { panic }"#),
-            (FunctionTableFamily::ParameterListFunction, r#"fn() { [] }"#),
             (
-                FunctionTableFamily::ParameterListListFunction,
-                r#"fn() { [[]] }"#,
+                FunctionTableFamily::GenericFunction,
+                r#"fn(x: Never) { x }"#,
             ),
+            (
+                FunctionTableFamily::NeverFunction,
+                r#"fn() -> Never { panic }"#,
+            ),
+            (FunctionTableFamily::ParameterListFunction, r#"fn() { [] }"#),
             (FunctionTableFamily::IntListFunction, r#"fn() { [42] }"#),
             (
                 FunctionTableFamily::StringListFunction,
@@ -1857,11 +1849,16 @@ pub fn main() { let _ = handoff() 42 }
             ),
         ];
         for (family, expression) in cases {
+            let return_annotation = match family {
+                FunctionTableFamily::Never => " -> Never",
+                FunctionTableFamily::Parameter => " -> value",
+                _ => "",
+            };
             let source = format!(
-                "pub type Box(a) {{ Box(a) }} pub type Key \
+                "pub type Never pub type Box(a) {{ Box(a) }} pub type Key \
                  @external(erlang, \"native\", \"key\") fn key() -> Key \
                  fn codepoint() {{ let assert <<value:utf8_codepoint>> = <<97>> value }} \
-                 pub fn main() {{ echo 42 {expression} }}"
+                 pub fn main(){return_annotation} {{ echo 42 {expression} }}"
             );
             let (program, values, nevers) = lowered_native(&source);
             let common = &program.common;

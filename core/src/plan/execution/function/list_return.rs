@@ -8,18 +8,17 @@ pub(crate) use body::{
     ExecutionCustomListFunctionBody, ExecutionExternalListFunctionBody,
     ExecutionFloatListFunctionBody, ExecutionFunctionListFunctionBody,
     ExecutionIntListFunctionBody, ExecutionListListFunctionBody, ExecutionNilListFunctionBody,
-    ExecutionParameterListFunctionBody, ExecutionParameterListListFunctionBody,
-    ExecutionStringListFunctionBody, ExecutionTupleListFunctionBody,
-    ExecutionUtfCodepointListFunctionBody, ExternalListFunctionBody, FloatListFunctionBody,
-    FunctionListFunctionBody, IntListFunctionBody, ListListFunctionBody, NilListFunctionBody,
-    ParameterListFunctionBody, ParameterListListFunctionBody, StringListFunctionBody,
+    ExecutionParameterListFunctionBody, ExecutionStringListFunctionBody,
+    ExecutionTupleListFunctionBody, ExecutionUtfCodepointListFunctionBody,
+    ExternalListFunctionBody, FloatListFunctionBody, FunctionListFunctionBody, IntListFunctionBody,
+    ListListFunctionBody, NilListFunctionBody, ParameterListFunctionBody, StringListFunctionBody,
     TupleListFunctionBody, UtfCodepointListFunctionBody,
 };
 pub(crate) use id::{
     BitArrayListFunctionId, BoolListFunctionId, CustomListFunctionId, ExternalListFunctionId,
     FloatListFunctionId, FunctionListFunctionId, IntListFunctionId, LibraryListFunctionId,
     ListFunctionId, ListListFunctionId, NilListFunctionId, ParameterListFunctionId,
-    ParameterListListFunctionId, ProfiledListFunctionId, RuntimeListFunctionId,
-    StringListFunctionId, TupleListFunctionId, UtfCodepointListFunctionId,
+    ProfiledListFunctionId, RuntimeListFunctionId, StringListFunctionId, TupleListFunctionId,
+    UtfCodepointListFunctionId,
 };
 pub(in crate::plan::execution) use table::ListFunctionTables;

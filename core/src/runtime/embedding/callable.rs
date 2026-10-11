@@ -3,8 +3,9 @@ use crate::runtime::evaluated::{
     EvaluatedBitArrayFunction, EvaluatedBoolFunction, EvaluatedCustomFunction,
     EvaluatedExternalFunction, EvaluatedFloatFunction, EvaluatedFunctionFunction,
     EvaluatedFunctionValue, EvaluatedFunctionValueKind, EvaluatedIntFunction,
-    EvaluatedListFunction, EvaluatedNeverFunction, EvaluatedNilFunction, EvaluatedStringFunction,
-    EvaluatedTupleFunction, EvaluatedUtfCodepointFunction,
+    EvaluatedListFunction, EvaluatedNeverFunction, EvaluatedNilFunction,
+    EvaluatedParameterFunction, EvaluatedStringFunction, EvaluatedTupleFunction,
+    EvaluatedUtfCodepointFunction,
 };
 use crate::runtime::function::InvocableFunctionValue;
 
@@ -62,6 +63,7 @@ callable_values!(
     String(EvaluatedStringFunction),
     BitArray(EvaluatedBitArrayFunction),
     UtfCodepoint(EvaluatedUtfCodepointFunction),
+    Parameter(EvaluatedParameterFunction),
     Custom(EvaluatedCustomFunction),
     External(EvaluatedExternalFunction),
     Bool(EvaluatedBoolFunction),
@@ -131,7 +133,7 @@ impl super::EmbeddingInputValue for EmbeddingCallable {
 
 #[cfg(test)]
 mod tests {
-    use crate::plan::{FunctionType, LibraryEntry, LibraryValueType, ValueType};
+    use crate::plan::{LibraryCallableType, LibraryEntry, LibraryValueType};
     use crate::runtime::{CallbackInputs, RetainedInputs, execution::Domain};
     use crate::{HostProviderSet, ModuleSource, PackageSource, StatelessHostProfile};
     use std::sync::Arc;
@@ -144,7 +146,7 @@ mod tests {
             r#"
 pub type Empty
 fn stop() -> Empty { panic as "stop" }
-fn identity(value) { value }
+fn identity(value: Empty) { value }
 pub fn main() { #(stop, identity, 42) }
 "#,
         );
@@ -213,7 +215,7 @@ pub fn main() { fn() { echo "called" 42 } }
             .id();
         let entry = LibraryEntry::new(
             root,
-            LibraryValueType::Function(FunctionType::new(vec![], ValueType::Int)),
+            LibraryValueType::Function(LibraryCallableType::new(vec![], LibraryValueType::Int)),
             vec![],
             vec![],
         );

@@ -45,6 +45,7 @@ pub enum FunctionTableFamily {
     String,
     BitArray,
     UtfCodepoint,
+    Parameter,
     Custom,
     External,
     Bool,
@@ -61,7 +62,6 @@ pub enum FunctionTableFamily {
     BoolList,
     NilList,
     TupleList,
-    ParameterListList,
     ListList,
     FunctionList,
     IntFunction,
@@ -69,6 +69,7 @@ pub enum FunctionTableFamily {
     StringFunction,
     BitArrayFunction,
     UtfCodepointFunction,
+    ParameterFunction,
     CustomFunction,
     ExternalFunction,
     BoolFunction,
@@ -77,7 +78,6 @@ pub enum FunctionTableFamily {
     GenericFunction,
     NeverFunction,
     ParameterListFunction,
-    ParameterListListFunction,
     IntListFunction,
     StringListFunction,
     BitArrayListFunction,
@@ -203,6 +203,7 @@ fn function_target_location(target: &FunctionTarget) -> Option<FunctionLocation>
         FunctionTarget::String(function) => (F::String, function.0),
         FunctionTarget::BitArray(function) => (F::BitArray, function.0),
         FunctionTarget::UtfCodepoint(function) => (F::UtfCodepoint, function.0),
+        FunctionTarget::Parameter(function) => (F::Parameter, function.0),
         FunctionTarget::Custom(function) => (F::Custom, function.index()),
         FunctionTarget::Bool(function) => (F::Bool, function.0),
         FunctionTarget::Nil(function) => (F::Nil, function.0),
@@ -218,7 +219,7 @@ fn list_function_location(function: &ListFunctionId) -> (FunctionTableFamily, us
 
     match function {
         ListFunctionId::Parameter(function) => (F::ParameterList, function.index()),
-        ListFunctionId::ParameterList(function) => (F::ParameterListList, function.index()),
+
         ListFunctionId::Int(function) => (F::IntList, function.index()),
         ListFunctionId::String(function) => (F::StringList, function.index()),
         ListFunctionId::BitArray(function) => (F::BitArrayList, function.index()),
@@ -247,6 +248,7 @@ fn function_function_location(
         R::String(function) => (F::StringFunction, function.0),
         R::BitArray(function) => (F::BitArrayFunction, function.0),
         R::UtfCodepoint(function) => (F::UtfCodepointFunction, function.0),
+        R::Parameter(function) => (F::ParameterFunction, function.0),
         R::Custom(function) => (F::CustomFunction, function.index()),
         R::External(function) => match *function {},
         R::Bool(function) => (F::BoolFunction, function.0),
@@ -265,7 +267,7 @@ fn list_function_function_location(
 
     match function {
         R::Parameter { id, .. } => (F::ParameterListFunction, id.0),
-        R::ParameterList { id, .. } => (F::ParameterListListFunction, id.0),
+
         R::Int { id, .. } => (F::IntListFunction, id.0),
         R::String { id, .. } => (F::StringListFunction, id.0),
         R::BitArray { id, .. } => (F::BitArrayListFunction, id.0),
@@ -328,6 +330,7 @@ impl crate::plan::execution::prepared::rust::Emit for FunctionTableFamily {
             Self::String => "function::FunctionTableFamily::String",
             Self::BitArray => "function::FunctionTableFamily::BitArray",
             Self::UtfCodepoint => "function::FunctionTableFamily::UtfCodepoint",
+            Self::Parameter => "function::FunctionTableFamily::Parameter",
             Self::Custom => "function::FunctionTableFamily::Custom",
             Self::External => "function::FunctionTableFamily::External",
             Self::Bool => "function::FunctionTableFamily::Bool",
@@ -344,7 +347,7 @@ impl crate::plan::execution::prepared::rust::Emit for FunctionTableFamily {
             Self::BoolList => "function::FunctionTableFamily::BoolList",
             Self::NilList => "function::FunctionTableFamily::NilList",
             Self::TupleList => "function::FunctionTableFamily::TupleList",
-            Self::ParameterListList => "function::FunctionTableFamily::ParameterListList",
+
             Self::ListList => "function::FunctionTableFamily::ListList",
             Self::FunctionList => "function::FunctionTableFamily::FunctionList",
             Self::IntFunction => "function::FunctionTableFamily::IntFunction",
@@ -352,6 +355,7 @@ impl crate::plan::execution::prepared::rust::Emit for FunctionTableFamily {
             Self::StringFunction => "function::FunctionTableFamily::StringFunction",
             Self::BitArrayFunction => "function::FunctionTableFamily::BitArrayFunction",
             Self::UtfCodepointFunction => "function::FunctionTableFamily::UtfCodepointFunction",
+            Self::ParameterFunction => "function::FunctionTableFamily::ParameterFunction",
             Self::CustomFunction => "function::FunctionTableFamily::CustomFunction",
             Self::ExternalFunction => "function::FunctionTableFamily::ExternalFunction",
             Self::BoolFunction => "function::FunctionTableFamily::BoolFunction",
@@ -360,9 +364,7 @@ impl crate::plan::execution::prepared::rust::Emit for FunctionTableFamily {
             Self::GenericFunction => "function::FunctionTableFamily::GenericFunction",
             Self::NeverFunction => "function::FunctionTableFamily::NeverFunction",
             Self::ParameterListFunction => "function::FunctionTableFamily::ParameterListFunction",
-            Self::ParameterListListFunction => {
-                "function::FunctionTableFamily::ParameterListListFunction"
-            }
+
             Self::IntListFunction => "function::FunctionTableFamily::IntListFunction",
             Self::StringListFunction => "function::FunctionTableFamily::StringListFunction",
             Self::BitArrayListFunction => "function::FunctionTableFamily::BitArrayListFunction",
@@ -387,14 +389,15 @@ mod tests {
     use super::FunctionCatalogEntry;
     use super::{
         FunctionCatalog, FunctionContract, FunctionParameterView, FunctionTableFamily,
-        ProfiledListFunctionFunctionId, list_function_function_location,
+        ProfiledFunctionFunctionId, ProfiledListFunctionFunctionId, function_function_location,
+        list_function_function_location,
     };
     use crate::plan::execution::function::{
         BitArrayListFunctionFunctionId, BoolListFunctionFunctionId, CustomListFunctionFunctionId,
         FloatListFunctionFunctionId, FunctionListFunctionFunctionId, IntListFunctionFunctionId,
         ListListFunctionFunctionId, NilListFunctionFunctionId, ParameterListFunctionFunctionId,
-        ParameterListListFunctionFunctionId, StringListFunctionFunctionId,
-        TupleListFunctionFunctionId, UtfCodepointListFunctionFunctionId,
+        StringListFunctionFunctionId, TupleListFunctionFunctionId,
+        UtfCodepointListFunctionFunctionId,
     };
     use crate::plan::execution::graph::ParamSlot;
     use crate::plan::execution::storage::Table;
@@ -402,8 +405,7 @@ mod tests {
     use crate::plan::execution::type_::{
         BitArrayListTypeId, BoolListTypeId, CustomListTypeId, CustomTypeId, FloatListTypeId,
         FunctionListTypeId, FunctionType, IntListTypeId, ListListTypeId, ListTypeId, NilListTypeId,
-        ParameterListListTypeId, ParameterListTypeId, StringListTypeId, TupleListTypeId,
-        UtfCodepointListTypeId, ValueType,
+        ParameterListTypeId, StringListTypeId, TupleListTypeId, UtfCodepointListTypeId, ValueType,
     };
     use std::convert::Infallible;
 
@@ -433,6 +435,10 @@ mod tests {
             (
                 FunctionTableFamily::UtfCodepoint,
                 "data::function::FunctionTableFamily::UtfCodepoint",
+            ),
+            (
+                FunctionTableFamily::Parameter,
+                "data::function::FunctionTableFamily::Parameter",
             ),
             (
                 FunctionTableFamily::Custom,
@@ -499,10 +505,6 @@ mod tests {
                 "data::function::FunctionTableFamily::TupleList",
             ),
             (
-                FunctionTableFamily::ParameterListList,
-                "data::function::FunctionTableFamily::ParameterListList",
-            ),
-            (
                 FunctionTableFamily::ListList,
                 "data::function::FunctionTableFamily::ListList",
             ),
@@ -559,12 +561,12 @@ mod tests {
                 "data::function::FunctionTableFamily::NeverFunction",
             ),
             (
-                FunctionTableFamily::ParameterListFunction,
-                "data::function::FunctionTableFamily::ParameterListFunction",
+                FunctionTableFamily::ParameterFunction,
+                "data::function::FunctionTableFamily::ParameterFunction",
             ),
             (
-                FunctionTableFamily::ParameterListListFunction,
-                "data::function::FunctionTableFamily::ParameterListListFunction",
+                FunctionTableFamily::ParameterListFunction,
+                "data::function::FunctionTableFamily::ParameterListFunction",
             ),
             (
                 FunctionTableFamily::IntListFunction,
@@ -812,6 +814,120 @@ mod tests {
     }
 
     #[test]
+    fn symbolic_function_locations_keep_generic_and_never_tables_distinct() {
+        use crate::plan::execution::function::{
+            GenericFunctionFunctionId, NeverFunctionFunctionId,
+        };
+        use crate::plan::execution::type_::{FunctionShape, GenericFunctionType};
+
+        let function = FunctionType::new(Vec::new(), ValueType::Custom(CustomTypeId::new(0)));
+        let type_ = GenericFunctionType::from_shapes(
+            function.clone(),
+            FunctionShape::new(ValueShapeId::new(0), function),
+        );
+        let generic = ProfiledFunctionFunctionId::<Infallible>::Generic(
+            GenericFunctionFunctionId::new(3, type_.clone()),
+        );
+        let never =
+            ProfiledFunctionFunctionId::<Infallible>::Never(NeverFunctionFunctionId::new(5, type_));
+        assert_eq!(
+            function_function_location(&generic),
+            (FunctionTableFamily::GenericFunction, 3)
+        );
+        assert_eq!(
+            function_function_location(&never),
+            (FunctionTableFamily::NeverFunction, 5)
+        );
+    }
+
+    #[test]
+    fn returned_function_locations_preserve_all_non_symbolic_table_indices() {
+        use crate::plan::execution::function::{
+            BitArrayFunctionFunctionId, BoolFunctionFunctionId, CustomFunctionFunctionId,
+            FloatFunctionFunctionId, FunctionFunctionFunctionId, IntFunctionFunctionId,
+            NilFunctionFunctionId, ParameterFunctionFunctionId, StringFunctionFunctionId,
+            TupleFunctionFunctionId, UtfCodepointFunctionFunctionId,
+        };
+        use crate::plan::execution::type_::{
+            CustomFunctionType, CustomValueShape, CustomValueShapeId, FunctionFunctionType,
+            FunctionShape,
+        };
+
+        let function = FunctionType::new(Vec::new(), ValueType::Int);
+        let cases = [
+            (
+                ProfiledFunctionFunctionId::<Infallible>::Int(IntFunctionFunctionId(1)),
+                (FunctionTableFamily::IntFunction, 1),
+            ),
+            (
+                ProfiledFunctionFunctionId::Float(FloatFunctionFunctionId(2)),
+                (FunctionTableFamily::FloatFunction, 2),
+            ),
+            (
+                ProfiledFunctionFunctionId::String(StringFunctionFunctionId(3)),
+                (FunctionTableFamily::StringFunction, 3),
+            ),
+            (
+                ProfiledFunctionFunctionId::BitArray(BitArrayFunctionFunctionId(4)),
+                (FunctionTableFamily::BitArrayFunction, 4),
+            ),
+            (
+                ProfiledFunctionFunctionId::UtfCodepoint(UtfCodepointFunctionFunctionId(5)),
+                (FunctionTableFamily::UtfCodepointFunction, 5),
+            ),
+            (
+                ProfiledFunctionFunctionId::Parameter(ParameterFunctionFunctionId(6)),
+                (FunctionTableFamily::ParameterFunction, 6),
+            ),
+            (
+                ProfiledFunctionFunctionId::Custom(CustomFunctionFunctionId::new(
+                    7,
+                    CustomFunctionType::from_shapes(
+                        FunctionType::new(Vec::new(), ValueType::Custom(CustomTypeId::new(0))),
+                        Vec::new(),
+                        CustomValueShape::new(CustomTypeId::new(0), CustomValueShapeId::new(0)),
+                    ),
+                )),
+                (FunctionTableFamily::CustomFunction, 7),
+            ),
+            (
+                ProfiledFunctionFunctionId::Bool(BoolFunctionFunctionId(8)),
+                (FunctionTableFamily::BoolFunction, 8),
+            ),
+            (
+                ProfiledFunctionFunctionId::Nil(NilFunctionFunctionId(9)),
+                (FunctionTableFamily::NilFunction, 9),
+            ),
+            (
+                ProfiledFunctionFunctionId::Tuple(TupleFunctionFunctionId(10)),
+                (FunctionTableFamily::TupleFunction, 10),
+            ),
+            (
+                ProfiledFunctionFunctionId::List(ProfiledListFunctionFunctionId::Int {
+                    id: IntListFunctionFunctionId(11),
+                    type_: FunctionType::new(Vec::new(), ValueType::List(ListTypeId::new(0))),
+                    list_type: IntListTypeId::new(ListTypeId::new(0)),
+                }),
+                (FunctionTableFamily::IntListFunction, 11),
+            ),
+            (
+                ProfiledFunctionFunctionId::Function(FunctionFunctionFunctionId::new(
+                    12,
+                    FunctionFunctionType::from_shapes(
+                        FunctionType::new(Vec::new(), ValueType::Function(function.clone())),
+                        Vec::new(),
+                        FunctionShape::new(ValueShapeId::new(0), function),
+                    ),
+                )),
+                (FunctionTableFamily::FunctionFunction, 12),
+            ),
+        ];
+        for (target, expected) in cases {
+            assert_eq!(function_function_location(&target), expected);
+        }
+    }
+
+    #[test]
     fn list_function_locations_preserve_parameter_and_concrete_tail_families() {
         let list_type = ListTypeId::new(0);
         let function_type = FunctionType::new(Vec::new(), ValueType::List(list_type));
@@ -844,23 +960,12 @@ mod tests {
                 ProfiledListFunctionFunctionId::<Infallible>::Parameter {
                     id: ParameterListFunctionFunctionId(10),
                     type_: function_type.clone(),
-                    list_type: ParameterListTypeId::new(list_type, crate::plan::TypeParameterId(0)),
-                },
-                (FunctionTableFamily::ParameterListFunction, 10),
-            ),
-            (
-                ProfiledListFunctionFunctionId::<Infallible>::ParameterList {
-                    id: ParameterListListFunctionFunctionId(11),
-                    type_: function_type.clone(),
-                    list_type: ParameterListListTypeId::new(
+                    list_type: ParameterListTypeId::new(
                         list_type,
-                        ParameterListTypeId::new(
-                            ListTypeId::new(1),
-                            crate::plan::TypeParameterId(0),
-                        ),
+                        crate::plan::TypeParameterId::new(0),
                     ),
                 },
-                (FunctionTableFamily::ParameterListListFunction, 11),
+                (FunctionTableFamily::ParameterListFunction, 10),
             ),
             (
                 ProfiledListFunctionFunctionId::<Infallible>::String {

@@ -346,7 +346,7 @@ fn standard_definition(
                 constructor.fields[0].label.is_some()
                     || constructor.fields[0].type_
                         != crate::plan::execution::type_::TypeMetadata::Parameter(
-                            crate::plan::TypeParameterId(argument),
+                            crate::plan::TypeParameterId::new(argument),
                         )
             })
         {
@@ -410,6 +410,7 @@ mod tests {
             }]
             .into(),
             types: vec![CustomTypeDescriptor {
+                parameter_lifetime: false,
                 lifetime: crate::HostValueLifetime::LoadedOwner,
                 native_visible: true,
                 type_: NominalTypeMetadata::from_custom(&custom),
@@ -437,6 +438,7 @@ mod tests {
         let nested = ListListTypeId::new(ListTypeId(10), ListTypeId(0));
         let function = FunctionListTypeId::new(ListTypeId(11), 0);
         let lists = ListTypeTable {
+            parameter_lifetimes: crate::plan::execution::storage::Table::Static(&[false; 12]),
             lifetimes: Table::Static(&[
                 crate::HostValueLifetime::LoadedOwner,
                 crate::HostValueLifetime::LoadedOwner,
@@ -499,9 +501,9 @@ mod tests {
             LibraryValueType::Nil,
             LibraryValueType::Tuple(vec![Public::Int, Public::Bool]),
             LibraryValueType::List(Box::new(LibraryValueType::Int)),
-            LibraryValueType::Function(crate::plan::FunctionType::new(
+            LibraryValueType::Function(crate::plan::LibraryCallableType::new(
                 vec![Public::Bool],
-                Public::Int,
+                LibraryValueType::Int,
             )),
         ];
         assert_eq!(admit(&inputs, &types), Ok(()));

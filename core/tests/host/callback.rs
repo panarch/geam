@@ -1,10 +1,10 @@
 use geam_core::provider_support::HostOpaqueFunctionType;
 use geam_core::{
-    ExecutionError, HostCall, HostCallCompletion, HostCallError, HostCallable, HostFailure,
-    HostFunctionType, HostLocation, HostModule, HostProfile, HostProvider, HostProviderModule,
-    HostProviderSet, HostSpecializationErrorReason, HostTypeList, HostTypeListEnd,
-    HostTypeParameter, HostValue, HostedExecution, ModuleSource, PackageSource,
-    StatelessHostProfile, Value, compile_typed_host_program, plan_host_program,
+    CustomType, CustomTypeName, ExecutionError, HostCall, HostCallCompletion, HostCallError,
+    HostCallable, HostFailure, HostFunctionType, HostLocation, HostModule, HostProfile,
+    HostProvider, HostProviderModule, HostProviderSet, HostSpecializationErrorReason, HostTypeList,
+    HostTypeListEnd, HostTypeParameter, HostValue, HostedExecution, ModuleSource, PackageSource,
+    StatelessHostProfile, Value, ValueType, compile_typed_host_program, plan_host_program,
 };
 use num_bigint::BigInt;
 use std::convert::Infallible;
@@ -181,7 +181,7 @@ pub fn main() {
 }
 
 #[test]
-fn rejects_only_a_reachable_callback_with_uninhabited_arguments() {
+fn accepts_a_registered_callback_with_unresolved_parameter_inputs() {
     let host = HostModule::new("host_support", "host/function")
         .expect("host module should be valid")
         .with_scoped_function::<StatelessProvider, (GenericCallable,), BigInt, _>(
@@ -193,6 +193,49 @@ fn rejects_only_a_reachable_callback_with_uninhabited_arguments() {
 import host/function
 
 fn generic(_value) {
+  1
+}
+
+pub fn main() {
+  function.accept(generic)
+}
+"#;
+    let typed = compile_typed_host_program(
+        "application",
+        "main",
+        [PackageSource::new(
+            "application",
+            ["host_support"],
+            [ModuleSource::new("main", "src/main.gleam", source)],
+        )],
+        HostProviderSet::new([host]).expect("host module should be unique"),
+    )
+    .expect("parameter callback source should compile");
+    let plan = plan_host_program(typed).expect("parameter callback source should plan");
+    let mut execution = HostedExecution::try_from_module_plan(plan)
+        .expect("a bound parameter can supply an invocation input");
+
+    assert_eq!(
+        crate::execution_fixture::run(&mut execution, &mut (), &mut Vec::new()),
+        Ok(Value::Int(1.into())),
+    );
+}
+
+#[test]
+fn rejects_only_a_reachable_callback_with_uninhabited_arguments() {
+    let host = HostModule::new("host_support", "host/function")
+        .expect("host module should be valid")
+        .with_scoped_function::<StatelessProvider, (GenericCallable,), BigInt, _>(
+            "accept",
+            accept_generic_callable,
+        )
+        .expect("generic callback should register");
+    let source = r#"
+import host/function
+
+pub type Empty
+
+fn generic(_value: Empty) {
   1
 }
 
@@ -224,11 +267,14 @@ pub fn main() {
         panic!("the callback argument should own the sealing reason");
     };
     assert_eq!(callback.argument_types().len(), 1);
-    assert!(matches!(
-        callback.argument_types()[0],
-        geam_core::ValueType::Parameter(_)
-    ));
-    assert_eq!(callback.return_(), &geam_core::ValueType::Int);
+    assert_eq!(
+        callback.argument_types(),
+        &[ValueType::Custom(CustomType::new(
+            CustomTypeName::new("application".into(), "main".into(), "Empty".into()),
+            Vec::new(),
+        ))],
+    );
+    assert_eq!(callback.return_(), &ValueType::Int);
 }
 
 #[test]
@@ -243,7 +289,9 @@ fn seals_callback_arguments_before_a_diverging_host_target() {
     let source = r#"
 import host/function
 
-fn generic(_value) {
+pub type Empty
+
+fn generic(_value: Empty) {
   1
 }
 

@@ -62,7 +62,9 @@ fn field(stored: &TypeMetadata, original: &HostSchemaType) -> bool {
     use HostSchemaType as H;
     use TypeMetadata as T;
     match (stored, original) {
-        (T::Parameter(left), H::Parameter(right)) => left.0 == *right,
+        (T::Parameter(left), H::Parameter(right)) => {
+            left.scope().is_none() && left.index() == *right
+        }
         (T::Int, H::Int)
         | (T::Float, H::Float)
         | (T::String, H::String)
@@ -277,7 +279,7 @@ pub fn main() { 42 }
             package: "producer".into(),
             module: "resources".into(),
             name: "Token".into(),
-            arguments: vec![TypeMetadata::Parameter(TypeParameterId(0))].into(),
+            arguments: vec![TypeMetadata::Parameter(TypeParameterId::new(0))].into(),
         };
         assert!(field(&TypeMetadata::External(nominal.clone()), &original));
         for changed in [
@@ -312,7 +314,7 @@ pub fn main() { 42 }
             }
         ));
         assert!(!field(
-            &TypeMetadata::Parameter(TypeParameterId(1)),
+            &TypeMetadata::Parameter(TypeParameterId::new(1)),
             &HostSchemaType::Parameter(0)
         ));
         assert!(!field(

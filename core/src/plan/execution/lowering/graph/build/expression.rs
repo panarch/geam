@@ -925,7 +925,7 @@ mod tests {
 
     #[test]
     fn call_argument_classification_preserves_compound_inhabitation() {
-        let parameter = TypeParameterId(0);
+        let parameter = TypeParameterId::new(0);
         let custom_name = CustomTypeName::new("geam".into(), "main".into(), "Boxed".into());
         let custom_definition = CustomTypeDefinition::new(
             custom_name.clone(),
@@ -941,9 +941,23 @@ mod tests {
                 )],
             )],
         );
-        let context = crate::plan::execution::lowering::test_support::lowering_context(vec![
+        let never_name = CustomTypeName::new("geam".into(), "main".into(), "Never".into());
+        let mut context = crate::plan::execution::lowering::test_support::lowering_context(vec![
             custom_definition,
+            CustomTypeDefinition::new(
+                never_name.clone(),
+                CustomTypePublicity::Private,
+                false,
+                Vec::new(),
+                Vec::new(),
+            ),
         ]);
+        context.substitution = crate::plan::execution::lowering::specialization::SpecializedTypeSubstitution::instantiate(
+            &crate::plan::TypeSubstitution::from_arguments(vec![
+                ValueShape::Custom(CustomValueShape::any(crate::plan::CustomType::new(never_name, Vec::new()))),
+            ]),
+            &crate::plan::execution::lowering::specialization::SpecializedTypeSubstitution::empty(),
+        ).with_scope(0);
         let inhabited_tuple = TupleExpr::value(
             vec![Expr::int(IntExpr::value(1.into()))],
             vec![ValueType::Int],
@@ -1020,7 +1034,7 @@ mod tests {
 
     #[test]
     fn diverging_call_arguments_preserve_function_and_prefix_evaluation_order() {
-        let parameter = TypeParameterId(0);
+        let parameter = TypeParameterId::new(0);
         let custom_name = CustomTypeName::new("geam".into(), "main".into(), "Boxed".into());
         let custom_definition = CustomTypeDefinition::new(
             custom_name.clone(),
@@ -1036,9 +1050,25 @@ mod tests {
                 )],
             )],
         );
-        let mut context = crate::plan::execution::lowering::test_support::lowering_context(vec![
-            custom_definition,
-        ]);
+        let never_name =
+            crate::plan::CustomTypeName::new("geam".into(), "main".into(), "Never".into());
+        let mut context = crate::plan::execution::lowering::test_support::lowering_context({
+            let mut definitions = vec![custom_definition];
+            definitions.push(crate::plan::CustomTypeDefinition::new(
+                never_name.clone(),
+                crate::plan::CustomTypePublicity::Private,
+                false,
+                Vec::new(),
+                Vec::new(),
+            ));
+            definitions
+        });
+        context.substitution = crate::plan::execution::lowering::specialization::SpecializedTypeSubstitution::instantiate(
+            &crate::plan::module::TypeSubstitution::from_arguments(vec![crate::plan::ValueShape::Custom(
+                crate::plan::CustomValueShape::new(never_name, Vec::new(), crate::plan::CustomConstructorRefinement::Any),
+            )]),
+            &crate::plan::execution::lowering::specialization::SpecializedTypeSubstitution::empty(),
+        ).with_scope(0);
         let local = GenericExpr::local_get(
             GenericLocal::new(GenericLocalId(0), parameter),
             "value".into(),
@@ -1280,7 +1310,7 @@ mod tests {
 
     #[test]
     fn capture_arguments_preserve_typed_source_and_entry_destination() {
-        let parameter = TypeParameterId(0);
+        let parameter = TypeParameterId::new(0);
         let signature = FunctionTemplateSignature::new(
             FunctionTemplateId::new(1),
             TypeScheme::new(1),
@@ -1627,9 +1657,25 @@ pub fn main() {{
                 external_shape,
             )),
         ];
-        let mut context = crate::plan::execution::lowering::test_support::lowering_context(vec![
-            custom_definition,
-        ]);
+        let never_name =
+            crate::plan::CustomTypeName::new("geam".into(), "main".into(), "Never".into());
+        let mut context = crate::plan::execution::lowering::test_support::lowering_context({
+            let mut definitions = vec![custom_definition];
+            definitions.push(crate::plan::CustomTypeDefinition::new(
+                never_name.clone(),
+                crate::plan::CustomTypePublicity::Private,
+                false,
+                Vec::new(),
+                Vec::new(),
+            ));
+            definitions
+        });
+        context.substitution = crate::plan::execution::lowering::specialization::SpecializedTypeSubstitution::instantiate(
+            &crate::plan::module::TypeSubstitution::from_arguments(vec![crate::plan::ValueShape::Custom(
+                crate::plan::CustomValueShape::new(never_name, Vec::new(), crate::plan::CustomConstructorRefinement::Any),
+            )]),
+            &crate::plan::execution::lowering::specialization::SpecializedTypeSubstitution::empty(),
+        ).with_scope(0);
         let (mut graph, cursor) =
             DraftGraphBuilder::<DraftValueRef, ()>::new(Vec::new(), Vec::new());
 
@@ -1647,7 +1693,7 @@ pub fn main() {{
         assert_eq!(
             flow_outcome(&super::expr(
                 &Expr::generic(GenericExpr::local_get(
-                    GenericLocal::new(GenericLocalId(0), TypeParameterId(0)),
+                    GenericLocal::new(GenericLocalId(0), TypeParameterId::new(0)),
                     "value".into(),
                 )),
                 cursor,

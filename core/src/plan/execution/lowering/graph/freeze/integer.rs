@@ -32,6 +32,7 @@ pub(super) fn use_immediates<Return: DraftGraphValue, TailCall>(
                 | DraftInstruction::String { .. }
                 | DraftInstruction::BitArray { .. }
                 | DraftInstruction::UtfCodepoint { .. }
+                | DraftInstruction::Parameter { .. }
                 | DraftInstruction::Custom { .. }
                 | DraftInstruction::External { .. }
                 | DraftInstruction::Nil { .. }

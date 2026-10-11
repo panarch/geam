@@ -146,11 +146,11 @@ mod tests {
             local_list(
                 17,
                 "generic_values",
-                ValueType::Parameter(TypeParameterId(0)),
+                ValueType::Parameter(TypeParameterId::new(0)),
             )
             .0,
             ListExpr::local_get(
-                ListLocal::generic(GenericListLocalId(17), TypeParameterId(0)),
+                ListLocal::generic(GenericListLocalId(17), TypeParameterId::new(0)),
                 "generic_values".into(),
             ),
         );

@@ -126,6 +126,10 @@ impl<'data, Graph: ExecutionGraphProfile> Instructions<'_, 'data, Graph> {
                 FunctionReturnFamily::UtfCodepoint,
                 id.resolve(self.catalog, self.types),
             ),
+            FunctionTarget::Parameter(id) => (
+                FunctionReturnFamily::Parameter,
+                id.resolve(self.catalog, self.types),
+            ),
             FunctionTarget::Custom(id) => (
                 FunctionReturnFamily::Custom,
                 id.resolve(self.catalog, self.types),
@@ -247,6 +251,7 @@ pub(super) fn header(
         ParamLocal::StringFunction { .. } => FunctionReturnFamily::String,
         ParamLocal::BitArrayFunction { .. } => FunctionReturnFamily::BitArray,
         ParamLocal::UtfCodepointFunction { .. } => FunctionReturnFamily::UtfCodepoint,
+        ParamLocal::ParameterFunction { .. } => FunctionReturnFamily::Parameter,
         ParamLocal::CustomFunction(_) => FunctionReturnFamily::Custom,
         ParamLocal::ExternalFunction(_) => FunctionReturnFamily::External,
         ParamLocal::BoolFunction { .. } => FunctionReturnFamily::Bool,
@@ -282,7 +287,9 @@ mod tests {
         use crate::plan::execution::function::{
             FunctionTableFamily, GenericCallableId, IntFunctionId,
         };
-        use crate::plan::execution::graph::{FunctionTarget, IntLocalId};
+        use crate::plan::execution::graph::{
+            FunctionCapture, FunctionTarget, IntLocalId, ParamLocal, ParamSlot,
+        };
         use crate::plan::execution::prepared::admission::{
             call::CallError, catalog::CatalogError, local::LocalError, type_::TypeError,
         };
@@ -290,7 +297,9 @@ mod tests {
 
         let source = r#"
 pub type Box(a) { Box(value: a) }
+pub type Empty
 fn pass(value) { value }
+fn stop(_value: Int) -> Empty { panic }
 fn increment(value: Int) { value + 1 }
 fn point() { let assert <<value:utf8_codepoint>> = <<65>> value }
 const saved = increment
@@ -305,7 +314,7 @@ pub fn main() {
   let factory = pass(create)
   let first = case values { [first, ..] -> first [] -> increment }
   echo #(saved, create(), factory(), tuple.0, boxed.value, first,
-    symbolic, constructor, Box, fn(value: Float) { value +. 1.0 }, point)
+    symbolic, constructor, Box, fn(value: Float) { value +. 1.0 }, point, stop)
   Nil
 }
 "#;
@@ -383,7 +392,7 @@ pub fn main() {
             .value()
             .unwrap()
             .output;
-        let locals = Locals::default();
+        let mut locals = Locals::default();
         assert_eq!(
             context.function_value(
                 &FunctionTarget::Int(IntFunctionId(999)),
@@ -437,6 +446,10 @@ pub fn main() {
             substitution: vec![output.shape].into(),
         });
         assert_eq!(
+            context.function_value(&symbolic, &[], FunctionReturnFamily::Bool, output, &locals,),
+            Err(InstructionError::FunctionFamily),
+        );
+        assert_eq!(
             context.function_value(
                 &symbolic,
                 &[crate::plan::execution::graph::FunctionCapture::Int {
@@ -450,6 +463,29 @@ pub fn main() {
             Err(InstructionError::Local(LocalError::Missing(
                 IntLocalId(999).into()
             ))),
+        );
+        let int_shape = ValueShapeId(
+            common
+                .value_shapes
+                .shape_types
+                .iter()
+                .position(|type_| type_ == &crate::plan::execution::type_::ValueType::Int)
+                .unwrap(),
+        );
+        let captured = ParamSlot::new(ParamLocal::Int(IntLocalId(0)), int_shape);
+        locals.define(&captured, &types).unwrap();
+        assert_eq!(
+            context.function_value(
+                &symbolic,
+                &[FunctionCapture::Int {
+                    target: IntLocalId(0),
+                    source: IntLocalId(0)
+                }],
+                FunctionReturnFamily::Generic,
+                output,
+                &locals,
+            ),
+            Ok(())
         );
         assert_eq!(
             crate::run_main(&plan, &mut Vec::new()).unwrap(),

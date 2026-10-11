@@ -72,19 +72,24 @@ pub fn main() {
 //     %int#1:shape#0(Int) = int.add %int#0 2
 //     return %int#1
 //
+// function parameter#0
+//   entry b0 params=[%parameter#0:shape#4(param#0)] captures=[]
+//   block b0 params=[%parameter#0:shape#4(param#0)]
+//     return %parameter#0
+//
 // function tuple#0
 //   entry b0 params=[] captures=[]
 //   block b0 params=[]
-//     %function.function#0:shape#3(fn() -> fn(Int) -> Int) = function[Function] closure target=function.int#0 captures=[]
-//     %list.function#0:shape#4(list_type#0) = list.function[type#0] call list.function#0 args=[]
+//     %function.function#0:shape#2(fn() -> fn(Int) -> Int) = function[Function] closure target=function.int#0 captures=[]
+//     %list.function#0:shape#3(list_type#0) = list.function[type#0] call list.function#0 args=[]
 //     branch_test bool.list_length_equals %list.function#0 length=1 true=b1(%function.function#0, %list.function#0) false=b3(%function.function#0)
-//   block b1 params=[%function.function#0:shape#3(fn() -> fn(Int) -> Int), %list.function#0:shape#4(list_type#0)]
+//   block b1 params=[%function.function#0:shape#2(fn() -> fn(Int) -> Int), %list.function#0:shape#3(list_type#0)]
 //     %function.int#0:shape#1(fn(Int) -> Int) = function[Int] list_index %list.function#0 index=0
 //     jump b2(%function.int#0, %function.function#0)
-//   block b2 params=[%function.int#0:shape#1(fn(Int) -> Int), %function.function#0:shape#3(fn() -> fn(Int) -> Int)]
+//   block b2 params=[%function.int#0:shape#1(fn(Int) -> Int), %function.function#0:shape#2(fn() -> fn(Int) -> Int)]
 //     %function.int#1:shape#1(fn(Int) -> Int) = function[Int] constant.function#0
 //     %function.int#2:shape#1(fn(Int) -> Int) = function[Int] reference int#0
-//     %function.generic#0:shape#5(fn(param#0) -> param#0) = function[Generic] closure target=template#7 shapes=[shape#2] captures=[]
+//     %function.parameter#0:shape#5(fn(param#0) -> param#0) = function[Parameter] closure target=parameter#0 captures=[]
 //     %function.custom#0:shape#7(fn(Int) -> custom_type#0) = function[Custom] constructor custom_type#0.constructor#0
 //     %function.int#3:shape#1(fn(Int) -> Int) = function[Int] call function.int#1 args=[]
 //     %function.int#4:shape#1(fn(Int) -> Int) = function[Int] function_call %function.function#0 args=[]
@@ -95,9 +100,9 @@ pub fn main() {
 //     %custom#0:shape#9(custom_type#1) = custom.construct custom_type#1.constructor#0 fields=[%function.int#7]
 //     %function.int#8:shape#1(fn(Int) -> Int) = function[Int] custom_field %custom#0 index=0
 //     %function.int#9:shape#11(fn(Int, String) -> Int) = function[Int] reference int#1
-//     %tuple#1:shape#12(#(fn(Int) -> Int, fn(Int) -> Int, fn(param#0) -> param#0, fn(Int) -> custom_type#0, fn(Int) -> Int, fn(Int) -> Int, fn(Int) -> Int, fn(Int) -> Int, fn(Int) -> Int, fn(Int, String) -> Int)) = tuple.value elements=[%function.int#1, %function.int#2, %function.generic#0, %function.custom#0, %function.int#3, %function.int#4, %function.int#6, %function.int#8, %function.int#0, %function.int#9]
+//     %tuple#1:shape#12(#(fn(Int) -> Int, fn(Int) -> Int, fn(param#0) -> param#0, fn(Int) -> custom_type#0, fn(Int) -> Int, fn(Int) -> Int, fn(Int) -> Int, fn(Int) -> Int, fn(Int) -> Int, fn(Int, String) -> Int)) = tuple.value elements=[%function.int#1, %function.int#2, %function.parameter#0, %function.custom#0, %function.int#3, %function.int#4, %function.int#6, %function.int#8, %function.int#0, %function.int#9]
 //     return %tuple#1
-//   block b3 params=[%function.function#0:shape#3(fn() -> fn(Int) -> Int)]
+//   block b3 params=[%function.function#0:shape#2(fn() -> fn(Int) -> Int)]
 //     %function.int#0:shape#1(fn(Int) -> Int) = function[Int] reference int#0
 //     jump b2(%function.int#0, %function.function#0)
 //
@@ -105,7 +110,7 @@ pub fn main() {
 //   entry b0 params=[] captures=[]
 //   block b0 params=[]
 //     %function.int#0:shape#1(fn(Int) -> Int) = function[Int] reference int#0
-//     %list.function#0:shape#4(list_type#0) = list.function[type#0] value elements=[%function.int#0]
+//     %list.function#0:shape#3(list_type#0) = list.function[type#0] value elements=[%function.int#0]
 //     return %list.function#0
 //
 // function function.int#0

@@ -25,6 +25,10 @@ pub enum ParamLocal {
     String(StringLocalId),
     BitArray(BitArrayLocalId),
     UtfCodepoint(UtfCodepointLocalId),
+    Parameter {
+        local: super::ParameterLocalId,
+        parameter: crate::plan::TypeParameterId,
+    },
     Custom(CustomLocal),
     External(ExternalLocal),
     Bool(BoolLocalId),
@@ -52,6 +56,10 @@ pub enum ParamLocal {
     },
     UtfCodepointFunction {
         local: UtfCodepointFunctionLocalId,
+        type_: FunctionType,
+    },
+    ParameterFunction {
+        local: super::ParameterFunctionLocalId,
         type_: FunctionType,
     },
     GenericFunction(GenericFunctionLocal),
@@ -111,6 +119,14 @@ impl Emit for ParamLocal {
     fn emit(&self, output: &mut Rust) {
         match self {
             Self::Int(field_0) => output.call("graph::ParamLocal::Int", &[field_0]),
+            Self::Parameter { local, parameter } => output.structure(
+                "graph::ParamLocal::Parameter",
+                &[("local", local), ("parameter", parameter)],
+            ),
+            Self::ParameterFunction { local, type_ } => output.structure(
+                "graph::ParamLocal::ParameterFunction",
+                &[("local", local), ("type_", type_)],
+            ),
             Self::Float(field_0) => output.call("graph::ParamLocal::Float", &[field_0]),
             Self::String(field_0) => output.call("graph::ParamLocal::String", &[field_0]),
             Self::BitArray(field_0) => output.call("graph::ParamLocal::BitArray", &[field_0]),

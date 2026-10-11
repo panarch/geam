@@ -35,8 +35,8 @@ use crate::runtime::function::EntryTarget;
 use crate::runtime::integer::IntegerValue;
 use crate::runtime::state::list::{
     BitArrayListValueId, BoolListValueId, CustomListValueId, ExternalListValueId, FloatListValueId,
-    FunctionListValueId, IntListValueId, ListListValueId, NilListValueId, ParameterListListValueId,
-    ParameterListValueId, StringListValueId, TupleListValueId, UtfCodepointListValueId,
+    FunctionListValueId, IntListValueId, ListListValueId, NilListValueId, ParameterListValueId,
+    StringListValueId, TupleListValueId, UtfCodepointListValueId,
 };
 use crate::runtime::{ExecutableRuntimePlan, RuntimeGraph};
 use std::marker::PhantomData;
@@ -251,6 +251,7 @@ pub(super) struct Returns<'plan, Plan: ExecutableRuntimePlan> {
     strings: Vec<Frame<'plan, Plan>>,
     bit_arrays: Vec<Frame<'plan, Plan>>,
     utf_codepoints: Vec<Frame<'plan, Plan>>,
+    parameters: Vec<Frame<'plan, Plan>>,
     customs: Vec<Frame<'plan, Plan>>,
     externals: Vec<Frame<'plan, Plan>>,
     bools: Vec<Frame<'plan, Plan>>,
@@ -258,7 +259,6 @@ pub(super) struct Returns<'plan, Plan: ExecutableRuntimePlan> {
     tuples: Vec<Frame<'plan, Plan>>,
     functions: Vec<Frame<'plan, Plan>>,
     parameter_lists: Vec<Frame<'plan, Plan>>,
-    parameter_list_lists: Vec<Frame<'plan, Plan>>,
     int_lists: Vec<Frame<'plan, Plan>>,
     string_lists: Vec<Frame<'plan, Plan>>,
     bit_array_lists: Vec<Frame<'plan, Plan>>,
@@ -673,6 +673,7 @@ impl<'plan, Plan: ExecutableRuntimePlan> Returns<'plan, Plan> {
             strings: Vec::new(),
             bit_arrays: Vec::new(),
             utf_codepoints: Vec::new(),
+            parameters: Vec::new(),
             customs: Vec::new(),
             externals: Vec::new(),
             bools: Vec::new(),
@@ -680,7 +681,6 @@ impl<'plan, Plan: ExecutableRuntimePlan> Returns<'plan, Plan> {
             tuples: Vec::new(),
             functions: Vec::new(),
             parameter_lists: Vec::new(),
-            parameter_list_lists: Vec::new(),
             int_lists: Vec::new(),
             string_lists: Vec::new(),
             bit_array_lists: Vec::new(),
@@ -1036,17 +1036,14 @@ return_value!(f64, floats, push_float);
 return_value!(StringValue, strings, push_string);
 return_value!(EvaluatedBitArray, bit_arrays, push_bit_array);
 return_value!(char, utf_codepoints, push_utf_codepoint);
+return_value!(crate::ParameterValue, parameters, push_parameter);
 return_value!(EvaluatedCustomValue, customs, push_custom);
 return_value!(EvaluatedExternalValue, externals, push_external);
 return_value!(bool, bools, push_bool);
 return_value!(Vec<EvaluatedValue>, tuples, push_tuple);
 return_value!(EvaluatedFunctionValue, functions, push_function_value);
 return_value!(ParameterListValueId, parameter_lists, push_parameter_list);
-return_value!(
-    ParameterListListValueId,
-    parameter_list_lists,
-    push_parameter_list_list
-);
+
 return_value!(IntListValueId, int_lists, push_int_list);
 return_value!(StringListValueId, string_lists, push_string_list);
 return_value!(BitArrayListValueId, bit_array_lists, push_bit_array_list);
@@ -3144,7 +3141,8 @@ pub fn main() { walk(100) + 1 }
 
         let plan = crate::runtime::plan_src(
             r#"
-fn left(n) { case n { 0 -> panic as "tail stopped" _ -> right(n - 1) } }
+pub type Never
+fn left(n) -> Never { case n { 0 -> panic as "tail stopped" _ -> right(n - 1) } }
 fn right(n) { left(n) }
 pub fn main() { left(20) }
 "#,
@@ -3326,9 +3324,10 @@ pub fn main() { count(0) + 1 }
                 r#"
 @external(erlang, "native", "stop")
 fn native_stop() -> value
-fn source_stop() {{ panic as "source stopped" }}
-fn forward() {{ {body} }}
-pub fn main() {{ let stop = forward stop() }}
+pub type Empty
+fn source_stop() -> Empty {{ panic as "source stopped" }}
+fn forward() -> Empty {{ {body} }}
+pub fn main() -> Empty {{ let stop = forward stop() }}
 "#
             );
             let provider = HostProviderModule::<StatelessHostProfile>::new("application", "main")

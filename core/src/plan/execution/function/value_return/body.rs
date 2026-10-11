@@ -1,14 +1,14 @@
 use super::super::body::ProfiledFunctionBody;
 use super::{
     BitArrayFunctionId, BoolFunctionId, FloatFunctionId, IntFunctionId, NeverFunctionId,
-    NilFunctionId, StringFunctionId, TupleFunctionId, UtfCodepointFunctionId,
+    NilFunctionId, ParameterFunctionId, StringFunctionId, TupleFunctionId, UtfCodepointFunctionId,
 };
 use crate::plan::execution::function::{
     ExecutionGraphProfile, ExecutionProfile, FunctionBodyOwner, HostedExecutionGraph,
 };
 use crate::plan::execution::graph::{
     BitArrayLocalId, BoolLocalId, CustomLocal, ExternalLocal, FloatLocalId, IntLocalId, NilLocalId,
-    StringLocalId, TupleLocalId, UtfCodepointLocalId,
+    ParameterLocalId, StringLocalId, TupleLocalId, UtfCodepointLocalId,
 };
 use crate::plan::execution::prepared::rust::{Emit, Rust};
 use crate::plan::execution::type_::{CustomValueShape, ExternalTypeId};
@@ -32,6 +32,11 @@ pub(crate) type ProfiledUtfCodepointFunctionBody<Graph> = ProfiledFunctionBody<
     crate::plan::FunctionCallTarget<UtfCodepointFunctionId>,
     Graph,
 >;
+pub(crate) type ProfiledParameterFunctionBody<Graph> = ProfiledFunctionBody<
+    ParameterLocalId,
+    crate::plan::FunctionCallTarget<ParameterFunctionId>,
+    Graph,
+>;
 pub(crate) type ProfiledBoolFunctionBody<Graph> =
     ProfiledFunctionBody<BoolLocalId, crate::plan::FunctionCallTarget<BoolFunctionId>, Graph>;
 pub(crate) type ProfiledNilFunctionBody<Graph> =
@@ -45,6 +50,7 @@ pub(crate) type FloatFunctionBody = ProfiledFloatFunctionBody<HostedExecutionGra
 pub(crate) type StringFunctionBody = ProfiledStringFunctionBody<HostedExecutionGraph>;
 pub(crate) type BitArrayFunctionBody = ProfiledBitArrayFunctionBody<HostedExecutionGraph>;
 pub(crate) type UtfCodepointFunctionBody = ProfiledUtfCodepointFunctionBody<HostedExecutionGraph>;
+pub(crate) type ParameterFunctionBody = ProfiledParameterFunctionBody<HostedExecutionGraph>;
 pub(crate) type BoolFunctionBody = ProfiledBoolFunctionBody<HostedExecutionGraph>;
 pub(crate) type NilFunctionBody = ProfiledNilFunctionBody<HostedExecutionGraph>;
 pub(crate) type TupleFunctionBody = ProfiledTupleFunctionBody<HostedExecutionGraph>;
@@ -61,6 +67,8 @@ pub(crate) type ExecutionBitArrayFunctionBody<Profile> =
     ProfiledBitArrayFunctionBody<<Profile as ExecutionProfile>::Graph>;
 pub(crate) type ExecutionUtfCodepointFunctionBody<Profile> =
     ProfiledUtfCodepointFunctionBody<<Profile as ExecutionProfile>::Graph>;
+pub(crate) type ExecutionParameterFunctionBody<Profile> =
+    ProfiledParameterFunctionBody<<Profile as ExecutionProfile>::Graph>;
 pub(crate) type ExecutionBoolFunctionBody<Profile> =
     ProfiledBoolFunctionBody<<Profile as ExecutionProfile>::Graph>;
 pub(crate) type ExecutionNilFunctionBody<Profile> =

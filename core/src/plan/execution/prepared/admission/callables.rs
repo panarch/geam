@@ -113,6 +113,7 @@ mod tests {
     };
 
     static LISTS: ListTypeTable = ListTypeTable {
+        parameter_lifetimes: crate::plan::execution::storage::Table::Static(&[false; 0]),
         lifetimes: Table::Static(&[]),
         types: Table::Static(&[]),
         tuple_items: Table::Static(&[]),

@@ -163,6 +163,7 @@ mod tests {
         use crate::plan::execution::type_::IntListTypeId;
 
         let lists = ListTypeTable {
+            parameter_lifetimes: crate::plan::execution::storage::Table::Static(&[false; 2]),
             lifetimes: Table::Static(&[
                 crate::HostValueLifetime::LoadedOwner,
                 crate::HostValueLifetime::LoadedOwner,
@@ -217,6 +218,7 @@ mod tests {
     fn preserves_constructor_widening_and_function_variance_over_borrowed_shapes() {
         let custom = CustomTypeId(0);
         let lists = ListTypeTable {
+            parameter_lifetimes: crate::plan::execution::storage::Table::Static(&[false; 1]),
             lifetimes: Table::Static(&[crate::HostValueLifetime::LoadedOwner]),
             types: vec![ListStorageTypeId::Custom(
                 crate::plan::execution::type_::CustomListTypeId {
@@ -250,6 +252,7 @@ mod tests {
             }]
             .into(),
             types: vec![CustomTypeDescriptor {
+                parameter_lifetime: false,
                 lifetime: crate::HostValueLifetime::LoadedOwner,
                 native_visible: true,
                 constructor_count: 2,
@@ -477,12 +480,12 @@ mod tests {
             (ValueShapeDescriptor::Bool, ValueType::Bool),
             (ValueShapeDescriptor::Nil, ValueType::Nil),
             (
-                ValueShapeDescriptor::Parameter(TypeParameterId(0)),
-                ValueType::Parameter(TypeParameterId(0)),
+                ValueShapeDescriptor::Parameter(TypeParameterId::new(0)),
+                ValueType::Parameter(TypeParameterId::new(0)),
             ),
             (
-                ValueShapeDescriptor::Parameter(TypeParameterId(1)),
-                ValueType::Parameter(TypeParameterId(1)),
+                ValueShapeDescriptor::Parameter(TypeParameterId::new(1)),
+                ValueType::Parameter(TypeParameterId::new(1)),
             ),
             (
                 ValueShapeDescriptor::External(ExternalTypeId(0)),

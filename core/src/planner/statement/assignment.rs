@@ -26,7 +26,7 @@ pub(super) fn plan_assignment(
 ) -> Result<Vec<Step>, PlanError> {
     match validate_assignment_kind(assignment.kind)? {
         ValidatedAssignmentKind::Let => {
-            let source_shape = context.value_shape_in_scope(assignment.value.type_().as_ref());
+            let source_shape = context.value_shape(assignment.value.type_().as_ref());
             let typed_pattern = assignment.pattern.clone();
             let pattern = plan_binding_pattern_in_context(assignment.pattern, context)?;
             let value = plan_ordinary_assignment_value(&pattern, assignment.value, context)?;
@@ -56,7 +56,7 @@ pub(super) fn plan_final_assignment(
 ) -> Result<PlannedAssignment, PlanError> {
     let (pattern, value) = match validate_assignment_kind(assignment.kind)? {
         ValidatedAssignmentKind::Let => {
-            let source_shape = context.value_shape_in_scope(assignment.value.type_().as_ref());
+            let source_shape = context.value_shape(assignment.value.type_().as_ref());
             let typed_pattern = assignment.pattern.clone();
             let pattern = plan_binding_pattern_in_context(assignment.pattern, context)?;
             let value = plan_ordinary_assignment_value(&pattern, assignment.value, context)?;
@@ -891,15 +891,16 @@ pub(super) fn is_total_binding_pattern(
             ..
         } if !type_.is_bool() && !type_.is_nil() => {
             let constructor = crate::planner::pattern::resolved_constructor(constructor)?;
-            let field_types = arguments
-                .iter()
-                .map(|argument| {
-                    crate::planner::pattern::pattern_value_shape(&argument.value, context)
-                        .map(|shape| shape.value_type())
-                })
-                .collect::<Result<Vec<_>, _>>()?;
-            let resolved =
-                context.custom_pattern_constructor(type_.as_ref(), constructor, field_types)?;
+            let field_types = crate::planner::pattern::constructor_pattern_field_types(
+                type_.as_ref(),
+                arguments,
+                context,
+            )?;
+            let resolved = context.custom_pattern_constructor(
+                context.value_shape_in_scope(type_.as_ref()),
+                constructor,
+                field_types,
+            )?;
             let source_is_exact = resolved.source_shape().constructor()
                 == crate::plan::CustomConstructorRefinement::Exact(usize::from(
                     constructor.constructor_index,
@@ -974,14 +975,16 @@ fn plan_binding_pattern_in_context_with_alias(
             ValueShape::Custom(source_shape),
         ) if !type_.is_bool() && !type_.is_nil() => {
             let constructor = crate::planner::pattern::resolved_constructor(&constructor)?;
-            let field_types = arguments
-                .iter()
-                .map(|argument| {
-                    crate::planner::pattern::pattern_value_type_in_context(&argument.value, context)
-                })
-                .collect::<Result<Vec<_>, _>>()?;
-            let resolved =
-                context.custom_pattern_constructor(type_.as_ref(), constructor, field_types)?;
+            let field_types = crate::planner::pattern::constructor_pattern_field_types(
+                type_.as_ref(),
+                &arguments,
+                context,
+            )?;
+            let resolved = context.custom_pattern_constructor(
+                context.value_shape_in_scope(type_.as_ref()),
+                constructor,
+                field_types,
+            )?;
             let constructor_count = resolved.constructor_count();
             let source_is_exact = resolved.source_shape().constructor()
                 == crate::plan::CustomConstructorRefinement::Exact(usize::from(
@@ -2249,7 +2252,7 @@ pub fn main() {
             ),
             Err(pattern_shape_error(
                 crate::planner::InvalidPatternShapeReason::ConstructorType {
-                    type_: ValueType::Parameter(TypeParameterId(0)),
+                    type_: ValueType::Parameter(TypeParameterId::new(0)),
                 },
             )),
         );
@@ -4062,7 +4065,7 @@ pub fn main() {
             }),
             Ok(BindingPattern::ListTail {
                 tail: ListTailBinding::Discard,
-                element_type: ValueType::Parameter(crate::plan::TypeParameterId(0)),
+                element_type: ValueType::Parameter(crate::plan::TypeParameterId::new(0)),
             }),
         );
     }

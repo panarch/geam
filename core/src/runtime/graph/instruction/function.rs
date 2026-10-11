@@ -232,6 +232,9 @@ fn target_value(
         FunctionTarget::UtfCodepoint(function) => {
             evaluated_function(*function, captures, type_, identity).into()
         }
+        FunctionTarget::Parameter(function) => {
+            evaluated_function(*function, captures, type_, identity).into()
+        }
         FunctionTarget::Custom(function) => EvaluatedCustomFunction::Function(evaluated_function(
             *function, captures, type_, identity,
         ))
@@ -359,6 +362,9 @@ fn capture_values(
             FunctionCapture::UtfCodepoint { target, source } => {
                 EvaluatedCapture::utf_codepoint(*target, environment.utf_codepoint(*source))
             }
+            FunctionCapture::Parameter { target, source } => {
+                EvaluatedCapture::parameter(*target, environment.parameter(*source))
+            }
             FunctionCapture::Custom { target, source } => {
                 EvaluatedCapture::custom(*target, environment.custom(*source))
             }
@@ -381,12 +387,7 @@ fn capture_values(
                     value: environment.parameter_list(*source),
                 })
             }
-            FunctionCapture::ParameterListList { target, source } => {
-                EvaluatedCapture::list(EvaluatedListCapture::ParameterList {
-                    local: *target,
-                    value: environment.parameter_list_list(*source),
-                })
-            }
+
             FunctionCapture::IntList { target, source } => {
                 EvaluatedCapture::list(EvaluatedListCapture::Int {
                     local: *target,
@@ -482,6 +483,12 @@ fn capture_values(
                 EvaluatedCapture::utf_codepoint_function(
                     *target,
                     environment.utf_codepoint_function(*source).clone(),
+                )
+            }
+            FunctionCapture::ParameterFunction { target, source } => {
+                EvaluatedCapture::parameter_function(
+                    *target,
+                    environment.parameter_function(*source).clone(),
                 )
             }
             FunctionCapture::GenericFunction { target, source } => {

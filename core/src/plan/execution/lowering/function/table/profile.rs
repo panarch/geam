@@ -6,10 +6,10 @@ use crate::plan::execution::function::{
     FloatFunctionFunctionId, FloatFunctionId, FloatListFunctionId, FunctionListFunctionId,
     GenericFunctionFunctionId, IntFunctionFunctionId, IntFunctionId, IntListFunctionId,
     ListListFunctionId, NeverFunctionBody, NeverFunctionFunctionId, NeverFunctionId,
-    NilFunctionFunctionId, NilFunctionId, NilListFunctionId, ParameterListFunctionId,
-    ParameterListListFunctionId, StringFunctionFunctionId, StringFunctionId, StringListFunctionId,
-    TupleFunctionFunctionId, TupleFunctionId, TupleListFunctionId, UtfCodepointFunctionFunctionId,
-    UtfCodepointFunctionId, UtfCodepointListFunctionId,
+    NilFunctionFunctionId, NilFunctionId, NilListFunctionId, ParameterFunctionFunctionId,
+    ParameterFunctionId, ParameterListFunctionId, StringFunctionFunctionId, StringFunctionId,
+    StringListFunctionId, TupleFunctionFunctionId, TupleFunctionId, TupleListFunctionId,
+    UtfCodepointFunctionFunctionId, UtfCodepointFunctionId, UtfCodepointListFunctionId,
 };
 use crate::plan::execution::function::{
     ExecutableFunction, ExecutionBitArrayFunctionBody, ExecutionBitArrayFunctionFunctionBody,
@@ -25,10 +25,11 @@ use crate::plan::execution::function::{
     ExecutionIntFunctionBody, ExecutionIntFunctionFunctionBody, ExecutionIntListFunctionBody,
     ExecutionListListFunctionBody, ExecutionNeverFunction, ExecutionNeverFunctionBody,
     ExecutionNeverFunctionFunctionBody, ExecutionNilFunctionBody, ExecutionNilFunctionFunctionBody,
-    ExecutionNilListFunctionBody, ExecutionParameterListFunctionBody,
-    ExecutionParameterListListFunctionBody, ExecutionProfile, ExecutionStringFunctionBody,
-    ExecutionStringFunctionFunctionBody, ExecutionStringListFunctionBody,
-    ExecutionTupleFunctionBody, ExecutionTupleFunctionFunctionBody, ExecutionTupleListFunctionBody,
+    ExecutionNilListFunctionBody, ExecutionParameterFunctionBody,
+    ExecutionParameterFunctionFunctionBody, ExecutionParameterListFunctionBody, ExecutionProfile,
+    ExecutionStringFunctionBody, ExecutionStringFunctionFunctionBody,
+    ExecutionStringListFunctionBody, ExecutionTupleFunctionBody,
+    ExecutionTupleFunctionFunctionBody, ExecutionTupleListFunctionBody,
     ExecutionUtfCodepointFunctionBody, ExecutionUtfCodepointFunctionFunctionBody,
     ExecutionUtfCodepointListFunctionBody, FunctionFunctionTables, HostedExecutionGraph,
     ListFunctionTables, ProfiledCustomFunctionBody, ProfiledCustomFunctionFunctionBody,
@@ -66,6 +67,8 @@ pub(in crate::plan::execution::lowering) struct ProfiledFunctionEntries<Profile:
         ProfiledLoweredFunctionTable<usize, Profile, ExecutionBitArrayFunctionBody<Profile>>,
     pub(in crate::plan::execution::lowering) utf_codepoint:
         ProfiledLoweredFunctionTable<usize, Profile, ExecutionUtfCodepointFunctionBody<Profile>>,
+    pub(in crate::plan::execution::lowering) parameter:
+        ProfiledLoweredFunctionTable<usize, Profile, ExecutionParameterFunctionBody<Profile>>,
     pub(in crate::plan::execution::lowering) bool:
         ProfiledLoweredFunctionTable<usize, Profile, ExecutionBoolFunctionBody<Profile>>,
     pub(in crate::plan::execution::lowering) nil:
@@ -127,11 +130,6 @@ pub(in crate::plan::execution::lowering) struct ProfiledFunctionEntries<Profile:
         Profile,
         ExecutionTupleListFunctionBody<Profile>,
     >,
-    pub(in crate::plan::execution::lowering) parameter_list_list: ProfiledLoweredFunctionTable<
-        ParameterListListFunctionId,
-        Profile,
-        ExecutionParameterListListFunctionBody<Profile>,
-    >,
     pub(in crate::plan::execution::lowering) list_list: ProfiledLoweredFunctionTable<
         ListListFunctionId,
         Profile,
@@ -160,6 +158,12 @@ pub(in crate::plan::execution::lowering) struct ProfiledFunctionEntries<Profile:
             Profile,
             ExecutionUtfCodepointFunctionFunctionBody<Profile>,
         >,
+    pub(in crate::plan::execution::lowering) parameter_function_functions:
+        ProfiledLoweredFunctionTable<
+            usize,
+            Profile,
+            ExecutionParameterFunctionFunctionBody<Profile>,
+        >,
     pub(in crate::plan::execution::lowering) custom_function_functions:
         ProfiledLoweredFunctionTable<usize, Profile, ExecutionCustomFunctionFunctionBody<Profile>>,
     pub(in crate::plan::execution::lowering) external_function_functions:
@@ -179,12 +183,6 @@ pub(in crate::plan::execution::lowering) struct ProfiledFunctionEntries<Profile:
     pub(in crate::plan::execution::lowering) never_function_functions:
         ProfiledLoweredFunctionTable<usize, Profile, ExecutionNeverFunctionFunctionBody<Profile>>,
     pub(in crate::plan::execution::lowering) parameter_list_function_functions:
-        ProfiledLoweredFunctionTable<
-            usize,
-            Profile,
-            ExecutionCoreListFunctionFunctionBody<Profile>,
-        >,
-    pub(in crate::plan::execution::lowering) parameter_list_list_function_functions:
         ProfiledLoweredFunctionTable<
             usize,
             Profile,
@@ -281,6 +279,7 @@ impl<Profile: ExecutionProfile> ProfiledFunctionEntries<Profile> {
             string: Vec::new(),
             bit_array: Vec::new(),
             utf_codepoint: Vec::new(),
+            parameter: Vec::new(),
             bool: Vec::new(),
             nil: Vec::new(),
             tuple: Vec::new(),
@@ -295,7 +294,6 @@ impl<Profile: ExecutionProfile> ProfiledFunctionEntries<Profile> {
             bool_list: Vec::new(),
             nil_list: Vec::new(),
             tuple_list: Vec::new(),
-            parameter_list_list: Vec::new(),
             list_list: Vec::new(),
             function_list: Vec::new(),
             int_function_functions: Vec::new(),
@@ -303,6 +301,7 @@ impl<Profile: ExecutionProfile> ProfiledFunctionEntries<Profile> {
             string_function_functions: Vec::new(),
             bit_array_function_functions: Vec::new(),
             utf_codepoint_function_functions: Vec::new(),
+            parameter_function_functions: Vec::new(),
             custom_function_functions: Vec::new(),
             external_function_functions: Vec::new(),
             bool_function_functions: Vec::new(),
@@ -311,7 +310,6 @@ impl<Profile: ExecutionProfile> ProfiledFunctionEntries<Profile> {
             generic_function_functions: Vec::new(),
             never_function_functions: Vec::new(),
             parameter_list_function_functions: Vec::new(),
-            parameter_list_list_function_functions: Vec::new(),
             int_list_function_functions: Vec::new(),
             string_list_function_functions: Vec::new(),
             bit_array_list_function_functions: Vec::new(),
@@ -346,6 +344,7 @@ impl FunctionTableBuilder {
             string: profile_functions::<Infallible, _, _>(self.string_functions),
             bit_array: profile_functions::<Infallible, _, _>(self.bit_array_functions),
             utf_codepoint: profile_functions::<Infallible, _, _>(self.utf_codepoint_functions),
+            parameter: profile_functions::<Infallible, _, _>(self.parameter_functions),
             bool: profile_functions::<Infallible, _, _>(self.bool_functions),
             nil: profile_functions::<Infallible, _, _>(self.nil_functions),
             tuple: profile_functions::<Infallible, _, _>(self.tuple_functions),
@@ -362,9 +361,6 @@ impl FunctionTableBuilder {
             bool_list: profile_functions::<Infallible, _, _>(self.bool_list_functions),
             nil_list: profile_functions::<Infallible, _, _>(self.nil_list_functions),
             tuple_list: profile_functions::<Infallible, _, _>(self.tuple_list_functions),
-            parameter_list_list: profile_functions::<Infallible, _, _>(
-                self.parameter_list_list_functions,
-            ),
             list_list: profile_functions::<Infallible, _, _>(self.list_list_functions),
             function_list: profile_functions::<Infallible, _, _>(self.function_list_functions),
             int_function_functions: profile_functions::<Infallible, _, _>(
@@ -381,6 +377,9 @@ impl FunctionTableBuilder {
             ),
             utf_codepoint_function_functions: profile_functions::<Infallible, _, _>(
                 self.utf_codepoint_function_functions,
+            ),
+            parameter_function_functions: profile_functions::<Infallible, _, _>(
+                self.parameter_function_functions,
             ),
             custom_function_functions: profile_functions::<Infallible, _, _>(
                 self.custom_function_functions,
@@ -405,9 +404,6 @@ impl FunctionTableBuilder {
             ),
             parameter_list_function_functions: profile_functions::<Infallible, _, _>(
                 self.parameter_list_function_functions,
-            ),
-            parameter_list_list_function_functions: profile_functions::<Infallible, _, _>(
-                self.parameter_list_list_function_functions,
             ),
             int_list_function_functions: profile_functions::<Infallible, _, _>(
                 self.int_list_function_functions,
@@ -463,6 +459,7 @@ impl FunctionTableBuilder {
             utf_codepoint: profile_functions::<HostedExecutionProfile, _, _>(
                 self.utf_codepoint_functions,
             ),
+            parameter: profile_functions::<HostedExecutionProfile, _, _>(self.parameter_functions),
             bool: profile_functions::<HostedExecutionProfile, _, _>(self.bool_functions),
             nil: profile_functions::<HostedExecutionProfile, _, _>(self.nil_functions),
             tuple: profile_functions::<HostedExecutionProfile, _, _>(self.tuple_functions),
@@ -493,9 +490,6 @@ impl FunctionTableBuilder {
             tuple_list: profile_functions::<HostedExecutionProfile, _, _>(
                 self.tuple_list_functions,
             ),
-            parameter_list_list: profile_functions::<HostedExecutionProfile, _, _>(
-                self.parameter_list_list_functions,
-            ),
             list_list: profile_functions::<HostedExecutionProfile, _, _>(self.list_list_functions),
             function_list: profile_functions::<HostedExecutionProfile, _, _>(
                 self.function_list_functions,
@@ -514,6 +508,9 @@ impl FunctionTableBuilder {
             ),
             utf_codepoint_function_functions: profile_functions::<HostedExecutionProfile, _, _>(
                 self.utf_codepoint_function_functions,
+            ),
+            parameter_function_functions: profile_functions::<HostedExecutionProfile, _, _>(
+                self.parameter_function_functions,
             ),
             custom_function_functions: profile_functions::<HostedExecutionProfile, _, _>(
                 self.custom_function_functions,
@@ -538,9 +535,6 @@ impl FunctionTableBuilder {
             ),
             parameter_list_function_functions: profile_functions::<HostedExecutionProfile, _, _>(
                 self.parameter_list_function_functions,
-            ),
-            parameter_list_list_function_functions: profile_functions::<HostedExecutionProfile, _, _>(
-                self.parameter_list_list_function_functions,
             ),
             int_list_function_functions: profile_functions::<HostedExecutionProfile, _, _>(
                 self.int_list_function_functions,
@@ -612,6 +606,10 @@ impl FunctionTableBuilder {
             .into_iter()
             .chain(additional.utf_codepoint)
             .collect();
+        let parameter_functions = std::mem::take(&mut functions.parameter)
+            .into_iter()
+            .chain(additional.parameter)
+            .collect();
         let bool_functions = std::mem::take(&mut functions.bool)
             .into_iter()
             .chain(additional.bool)
@@ -647,6 +645,7 @@ impl FunctionTableBuilder {
                 string_functions: sort_functions(string_functions, &mut erased),
                 bit_array_functions: sort_functions(bit_array_functions, &mut erased),
                 utf_codepoint_functions: sort_functions(utf_codepoint_functions, &mut erased),
+                parameter_functions: sort_functions(parameter_functions, &mut erased),
                 custom_functions: sort_functions(custom_functions, &mut erased),
                 external_functions: sort_functions(external_functions, &mut erased),
                 bool_functions: sort_inhabited(bool_functions, |index| *index, &mut erased)
@@ -756,15 +755,6 @@ impl FunctionTableBuilder {
                     |id| id.index(),
                     &mut erased,
                 ),
-                parameter_list_list_functions: sort_list_functions(
-                    functions
-                        .parameter_list_list
-                        .into_iter()
-                        .chain(additional.parameter_list_list)
-                        .collect(),
-                    |id| id.index(),
-                    &mut erased,
-                ),
                 list_list_functions: sort_list_functions(
                     functions
                         .list_list
@@ -822,6 +812,14 @@ impl FunctionTableBuilder {
                         .utf_codepoint_function_functions
                         .into_iter()
                         .chain(additional.utf_codepoint_function_functions)
+                        .collect(),
+                    &mut erased,
+                ),
+                parameter_function_functions: sort_functions(
+                    functions
+                        .parameter_function_functions
+                        .into_iter()
+                        .chain(additional.parameter_function_functions)
                         .collect(),
                     &mut erased,
                 ),
@@ -886,14 +884,6 @@ impl FunctionTableBuilder {
                         .parameter_list_function_functions
                         .into_iter()
                         .chain(additional.parameter_list_function_functions)
-                        .collect(),
-                    &mut erased,
-                ),
-                parameter_list_list_function_functions: sort_functions(
-                    functions
-                        .parameter_list_list_function_functions
-                        .into_iter()
-                        .chain(additional.parameter_list_list_function_functions)
                         .collect(),
                     &mut erased,
                 ),
@@ -1022,6 +1012,7 @@ impl ProfileIndependentTailCallId for FloatFunctionId {}
 impl ProfileIndependentTailCallId for StringFunctionId {}
 impl ProfileIndependentTailCallId for BitArrayFunctionId {}
 impl ProfileIndependentTailCallId for UtfCodepointFunctionId {}
+impl ProfileIndependentTailCallId for ParameterFunctionId {}
 impl ProfileIndependentTailCallId for BoolFunctionId {}
 impl ProfileIndependentTailCallId for NilFunctionId {}
 impl ProfileIndependentTailCallId for TupleFunctionId {}
@@ -1036,7 +1027,7 @@ impl ProfileIndependentTailCallId for ExternalListFunctionId {}
 impl ProfileIndependentTailCallId for BoolListFunctionId {}
 impl ProfileIndependentTailCallId for NilListFunctionId {}
 impl ProfileIndependentTailCallId for TupleListFunctionId {}
-impl ProfileIndependentTailCallId for ParameterListListFunctionId {}
+
 impl ProfileIndependentTailCallId for ListListFunctionId {}
 impl ProfileIndependentTailCallId for FunctionListFunctionId {}
 impl ProfileIndependentTailCallId for IntFunctionFunctionId {}
@@ -1044,6 +1035,7 @@ impl ProfileIndependentTailCallId for FloatFunctionFunctionId {}
 impl ProfileIndependentTailCallId for StringFunctionFunctionId {}
 impl ProfileIndependentTailCallId for BitArrayFunctionFunctionId {}
 impl ProfileIndependentTailCallId for UtfCodepointFunctionFunctionId {}
+impl ProfileIndependentTailCallId for ParameterFunctionFunctionId {}
 impl ProfileIndependentTailCallId for GenericFunctionFunctionId {}
 impl ProfileIndependentTailCallId for NeverFunctionFunctionId {}
 impl ProfileIndependentTailCallId for BoolFunctionFunctionId {}

@@ -1373,7 +1373,7 @@ pub fn main() {
 "#,
         ))
         .expect("a symbolic constructor constant should plan");
-        let parameter = TypeParameterId(0);
+        let parameter = TypeParameterId::new(0);
         let custom_shape = CustomValueShape::new(
             CustomTypeName::new("geam".into(), "main".into(), "Boxed".into()),
             vec![ValueShape::Parameter(parameter)],

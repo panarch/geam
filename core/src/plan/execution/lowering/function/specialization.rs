@@ -6,8 +6,7 @@ use crate::plan::execution::lowering::LoweringContext;
 use crate::plan::execution::lowering::graph;
 use crate::plan::execution::lowering::specialization::{
     FunctionArgumentsRepresentation, FunctionRepresentation, Representability,
-    SpecializedFunctionShape, SpecializedValueShape, StorageRepresentation, StoredValueShape,
-    ValueInhabitation,
+    SpecializedFunctionShape, SpecializedValueShape, StoredValueShape, ValueInhabitation,
 };
 use crate::plan::{execution, module};
 
@@ -19,7 +18,7 @@ pub(in crate::plan::execution::lowering) fn lower_specialized(
     let index = context.specialization_index(key);
     let return_shape = SpecializedValueShape::instantiate(
         template.signature().shape().return_shape(),
-        key.substitution(),
+        &context.substitution,
     );
     let return_inhabitation = context.representations.inhabitation(&return_shape);
     let mut functions = std::mem::take(&mut context.functions);
@@ -771,6 +770,32 @@ fn lower_generic_value(
                 .utf_codepoint_functions
                 .push((index, lowered_function(key, graph)));
         }
+        S::Parameter(_) => {
+            let graph = graph::lower_function_graph(
+                template,
+                body,
+                context,
+                |expression, cursor, graph, context| {
+                    lower_generic_as(
+                        expression,
+                        cursor,
+                        graph,
+                        context,
+                        graph::DraftParameter::from_owned,
+                    )
+                },
+                |target, context| {
+                    context
+                        .parameter_function_id(target.function())
+                        .map(|function| {
+                            crate::plan::FunctionCallTarget::new(function, target.site().clone())
+                        })
+                },
+            );
+            functions
+                .parameter_functions
+                .push((index, lowered_function(key, graph)));
+        }
         S::Custom(shape) => {
             let lowered_shape = context.lower_concrete_custom_shape(shape);
             let graph = graph::lower_function_graph(
@@ -943,31 +968,9 @@ fn lower_generic_list(
     functions: &mut FunctionTableBuilder,
     context: &mut LoweringContext,
 ) {
-    match item.storage_representation() {
-        StorageRepresentation::Parameter(parameter) => {
-            let type_id = context.parameter_list_type(parameter);
-            let id = execution::function::ParameterListFunctionId::new(index, type_id);
-            let graph = graph::lower_function_graph(
-                template,
-                body,
-                context,
-                |expression, cursor, graph, context| {
-                    graph::generic_list_expr(expression, cursor, graph, context)
-                        .map(|flow| flow.map(graph::DraftParameterList::new))
-                },
-                move |target, context| {
-                    lower_call_target(target, context, |function, context| {
-                        context.parameter_list_function_id(function, parameter)
-                    })
-                },
-            );
-            functions
-                .parameter_list_functions
-                .push((id, lowered_function(key, graph)));
-        }
-        StorageRepresentation::Stored(item) => {
-            lower_generic_item_list(template, key, index, body, &item, functions, context)
-        }
+    {
+        let item = item.storage_shape();
+        lower_generic_item_list(template, key, index, body, &item, functions, context)
     }
 }
 
@@ -980,52 +983,27 @@ fn lower_parameter_list_list(
     functions: &mut FunctionTableBuilder,
     context: &mut LoweringContext,
 ) {
-    match item.storage_representation() {
-        StorageRepresentation::Parameter(parameter) => {
-            let type_id = context.parameter_list_list_type(parameter);
-            let id = execution::function::ParameterListListFunctionId::new(index, type_id);
-            let graph = graph::lower_function_graph(
-                template,
-                body,
-                context,
-                |expression, cursor, graph, context| {
-                    graph::parameter_list_list_expr(expression, cursor, graph, context).map(
-                        |flow| {
-                            flow.map(|value| graph::DraftParameterListList::new(value.into_list()))
-                        },
-                    )
-                },
-                move |target, context| {
-                    lower_call_target(target, context, |function, context| {
-                        context.parameter_list_list_function_id(function, type_id)
-                    })
-                },
-            );
-            functions
-                .parameter_list_list_functions
-                .push((id, lowered_function(key, graph)));
-        }
-        StorageRepresentation::Stored(item) => {
-            let type_id = context.specialized_stored_list_list_type(&item);
-            let id = execution::function::ListListFunctionId::new(index, type_id);
-            let graph = graph::lower_function_graph(
-                template,
-                body,
-                context,
-                |expression, cursor, graph, context| {
-                    graph::parameter_list_list_expr(expression, cursor, graph, context)
-                        .map(|flow| flow.map(|value| graph::DraftListList::new(value.into_list())))
-                },
-                move |target, context| {
-                    lower_call_target(target, context, |function, context| {
-                        context.list_list_function_id(function, type_id)
-                    })
-                },
-            );
-            functions
-                .list_list_functions
-                .push((id, lowered_function(key, graph)));
-        }
+    {
+        let item = item.storage_shape();
+        let type_id = context.specialized_stored_list_list_type(&item);
+        let id = execution::function::ListListFunctionId::new(index, type_id);
+        let graph = graph::lower_function_graph(
+            template,
+            body,
+            context,
+            |expression, cursor, graph, context| {
+                graph::parameter_list_list_expr(expression, cursor, graph, context)
+                    .map(|flow| flow.map(|value| graph::DraftListList::new(value.into_list())))
+            },
+            move |target, context| {
+                lower_call_target(target, context, |function, context| {
+                    context.list_list_function_id(function, type_id)
+                })
+            },
+        );
+        functions
+            .list_list_functions
+            .push((id, lowered_function(key, graph)));
     }
 }
 
@@ -1097,6 +1075,22 @@ fn lower_generic_item_list(
             );
             functions
                 .utf_codepoint_list_functions
+                .push((id, lowered_function(key, graph)));
+        }
+        S::Parameter(parameter) => {
+            let id = execution::function::ParameterListFunctionId::new(
+                index,
+                context.parameter_list_type(*parameter),
+            );
+            let graph = generic_item_list_graph(
+                template,
+                body,
+                context,
+                graph::DraftParameterList::new,
+                |function, context| context.parameter_list_function_id(function, *parameter),
+            );
+            functions
+                .parameter_list_functions
                 .push((id, lowered_function(key, graph)));
         }
         S::Custom(shape) => {
@@ -1181,38 +1175,21 @@ fn lower_generic_item_list(
                 .tuple_list_functions
                 .push((id, lowered_function(key, graph)));
         }
-        S::List(item) => match item.storage_representation() {
-            StorageRepresentation::Parameter(parameter) => {
-                let type_id = context.parameter_list_list_type(parameter);
-                let id = execution::function::ParameterListListFunctionId::new(index, type_id);
-                let graph = generic_item_list_graph(
-                    template,
-                    body,
-                    context,
-                    graph::DraftParameterListList::new,
-                    move |function, context| {
-                        context.parameter_list_list_function_id(function, type_id)
-                    },
-                );
-                functions
-                    .parameter_list_list_functions
-                    .push((id, lowered_function(key, graph)));
-            }
-            StorageRepresentation::Stored(stored) => {
-                let type_id = context.specialized_stored_list_list_type(&stored);
-                let id = execution::function::ListListFunctionId::new(index, type_id);
-                let graph = generic_item_list_graph(
-                    template,
-                    body,
-                    context,
-                    graph::DraftListList::new,
-                    move |function, context| context.list_list_function_id(function, type_id),
-                );
-                functions
-                    .list_list_functions
-                    .push((id, lowered_function(key, graph)));
-            }
-        },
+        S::List(item) => {
+            let stored = item.storage_shape();
+            let type_id = context.specialized_stored_list_list_type(&stored);
+            let id = execution::function::ListListFunctionId::new(index, type_id);
+            let graph = generic_item_list_graph(
+                template,
+                body,
+                context,
+                graph::DraftListList::new,
+                move |function, context| context.list_list_function_id(function, type_id),
+            );
+            functions
+                .list_list_functions
+                .push((id, lowered_function(key, graph)));
+        }
         S::Function(shape) => {
             let type_id = context.specialized_function_list_type(shape);
             let id = execution::function::FunctionListFunctionId::new(index, type_id);
@@ -1425,38 +1402,21 @@ fn lower_generic_value_list(
                 .tuple_list_functions
                 .push((id, lowered_function(key, graph)));
         }
-        SpecializedValueShape::List(item) => match item.storage_representation() {
-            StorageRepresentation::Parameter(parameter) => {
-                let type_id = context.parameter_list_list_type(parameter);
-                let id = execution::function::ParameterListListFunctionId::new(index, type_id);
-                let graph = generic_value_list_graph(
-                    template,
-                    body,
-                    context,
-                    graph::DraftParameterListList::new,
-                    move |function, context| {
-                        context.parameter_list_list_function_id(function, type_id)
-                    },
-                );
-                functions
-                    .parameter_list_list_functions
-                    .push((id, lowered_function(key, graph)));
-            }
-            StorageRepresentation::Stored(stored) => {
-                let type_id = context.specialized_stored_list_list_type(&stored);
-                let id = execution::function::ListListFunctionId::new(index, type_id);
-                let graph = generic_value_list_graph(
-                    template,
-                    body,
-                    context,
-                    graph::DraftListList::new,
-                    move |function, context| context.list_list_function_id(function, type_id),
-                );
-                functions
-                    .list_list_functions
-                    .push((id, lowered_function(key, graph)));
-            }
-        },
+        SpecializedValueShape::List(item) => {
+            let stored = item.storage_shape();
+            let type_id = context.specialized_stored_list_list_type(&stored);
+            let id = execution::function::ListListFunctionId::new(index, type_id);
+            let graph = generic_value_list_graph(
+                template,
+                body,
+                context,
+                graph::DraftListList::new,
+                move |function, context| context.list_list_function_id(function, type_id),
+            );
+            functions
+                .list_list_functions
+                .push((id, lowered_function(key, graph)));
+        }
         SpecializedValueShape::Function(item) => {
             let type_id = context.specialized_function_list_type(item);
             let id = execution::function::FunctionListFunctionId::new(index, type_id);
@@ -2555,6 +2515,28 @@ fn lower_polymorphic_function<Expression, ModuleFunction, Lower>(
                 let graph = typed_function_return(function, graph, context);
                 functions
                     .utf_codepoint_function_functions
+                    .push((index, lowered_function(key, graph)));
+            }
+            StoredValueShape::Parameter(_) => {
+                let graph = graph::lower_function_graph(
+                    template,
+                    body,
+                    context,
+                    |expression, cursor, graph, context| {
+                        Lower::lower(expression, cursor, graph, context)
+                            .map(|flow| flow.map(graph::DraftParameterFunction::new))
+                    },
+                    |tail, context| {
+                        lower_call_target(
+                            Lower::function_target(tail),
+                            context,
+                            |function, context| context.parameter_function_function_id(function),
+                        )
+                    },
+                );
+                let graph = typed_function_return(function, graph, context);
+                functions
+                    .parameter_function_functions
                     .push((index, lowered_function(key, graph)));
             }
             StoredValueShape::Custom(return_shape) => {

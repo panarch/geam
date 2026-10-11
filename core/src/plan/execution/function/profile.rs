@@ -183,6 +183,7 @@ impl ExecutionGraphProfile for Infallible {
             F::String(id) => FunctionFunctionId::String(*id),
             F::BitArray(id) => FunctionFunctionId::BitArray(*id),
             F::UtfCodepoint(id) => FunctionFunctionId::UtfCodepoint(*id),
+            F::Parameter(id) => FunctionFunctionId::Parameter(*id),
             F::Custom(id) => FunctionFunctionId::Custom(id.clone()),
             F::External(id) => match *id {},
             F::Bool(id) => FunctionFunctionId::Bool(*id),
@@ -206,15 +207,7 @@ impl ExecutionGraphProfile for Infallible {
                 type_: type_.clone(),
                 list_type: *list_type,
             },
-            F::ParameterList {
-                id,
-                type_,
-                list_type,
-            } => ListFunctionFunctionId::ParameterList {
-                id: *id,
-                type_: type_.clone(),
-                list_type: *list_type,
-            },
+
             F::Int {
                 id,
                 type_,
@@ -325,7 +318,7 @@ impl ExecutionGraphProfile for HostedExecutionGraph {
     type ExternalFunctionFunctionId = ExternalFunctionFunctionId;
     type ExternalListFunctionFunctionId = ExternalListFunctionFunctionId;
     type RuntimeFunctionFunctionId = RuntimeFunctionFunctionTarget;
-    type InvocableFunctionFunctionId = RuntimeFunctionFunctionTarget<Infallible>;
+    type InvocableFunctionFunctionId = super::LibraryFunctionFunctionTarget;
     type ExternalInstruction = ExternalInstruction;
     type ExternalListInstruction = ExternalListInstruction;
     type ExternalFunctionInstruction = ExternalFunctionInstruction;
@@ -393,6 +386,7 @@ pub(super) fn plain_core_runtime_function_id(
         F::String(id) => CoreRuntimeFunctionId::String(*id),
         F::BitArray(id) => CoreRuntimeFunctionId::BitArray(*id),
         F::UtfCodepoint(id) => CoreRuntimeFunctionId::UtfCodepoint(*id),
+        F::Parameter(id) => CoreRuntimeFunctionId::Parameter(*id),
         F::Custom(id) => CoreRuntimeFunctionId::Custom(*id),
         F::Bool(id) => CoreRuntimeFunctionId::Bool(*id),
         F::Nil(id) => CoreRuntimeFunctionId::Nil(*id),
@@ -431,11 +425,10 @@ mod tests {
         GenericFunctionFunctionBody, IntFunctionBody, IntFunctionFunctionBody, IntListFunctionBody,
         ListFunctionFunctionId, ListListFunctionBody, NeverFunctionBody, NeverFunctionFunctionBody,
         NilFunctionBody, NilFunctionFunctionBody, NilListFunctionBody, ParameterListFunctionBody,
-        ParameterListListFunctionBody, ProfiledFunctionBody, ProfiledFunctionFunctionId,
-        ProfiledListFunctionFunctionId, StringFunctionBody, StringFunctionFunctionBody,
-        StringListFunctionBody, TupleFunctionBody, TupleFunctionFunctionBody,
-        TupleListFunctionBody, UtfCodepointFunctionBody, UtfCodepointFunctionFunctionBody,
-        UtfCodepointListFunctionBody, ValueFunctionEntry,
+        ProfiledFunctionBody, ProfiledFunctionFunctionId, ProfiledListFunctionFunctionId,
+        StringFunctionBody, StringFunctionFunctionBody, StringListFunctionBody, TupleFunctionBody,
+        TupleFunctionFunctionBody, TupleListFunctionBody, UtfCodepointFunctionBody,
+        UtfCodepointFunctionFunctionBody, UtfCodepointListFunctionBody, ValueFunctionEntry,
     };
     use crate::plan::execution::graph::{
         BlockGraphExitId, BlockId, IntLocalId, ProfiledBlock, ProfiledBlockGraph, Terminator,
@@ -473,7 +466,7 @@ mod tests {
         assert_hosted::<BoolListFunctionBody>();
         assert_hosted::<NilListFunctionBody>();
         assert_hosted::<TupleListFunctionBody>();
-        assert_hosted::<ParameterListListFunctionBody>();
+
         assert_hosted::<ListListFunctionBody>();
         assert_hosted::<FunctionListFunctionBody>();
         assert_hosted::<IntFunctionFunctionBody>();

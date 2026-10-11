@@ -110,6 +110,7 @@ pub(crate) struct HostValueToken {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) enum HostValueFamily {
+    Parameter,
     Int,
     Float,
     String,
@@ -194,6 +195,7 @@ impl<Arguments, Return> Copy for HostFunctionValue<'_, Arguments, Return> {}
 
 #[derive(Debug, PartialEq)]
 pub(crate) enum HostScopedValue {
+    Parameter(crate::ParameterValue),
     Int(BigInt),
     Float(f64),
     String(StringValue),

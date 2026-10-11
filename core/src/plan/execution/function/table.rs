@@ -16,20 +16,22 @@ use super::{
     ExecutionGenericFunctionFunctionBody, ExecutionIntFunctionBody,
     ExecutionIntFunctionFunctionBody, ExecutionIntListFunctionBody, ExecutionListListFunctionBody,
     ExecutionNeverFunctionFunctionBody, ExecutionNilFunctionBody, ExecutionNilFunctionFunctionBody,
-    ExecutionNilListFunctionBody, ExecutionParameterListFunctionBody,
-    ExecutionParameterListListFunctionBody, ExecutionStringFunctionBody,
-    ExecutionStringFunctionFunctionBody, ExecutionStringListFunctionBody,
-    ExecutionTupleFunctionBody, ExecutionTupleFunctionFunctionBody, ExecutionTupleListFunctionBody,
+    ExecutionNilListFunctionBody, ExecutionParameterFunctionBody,
+    ExecutionParameterFunctionFunctionBody, ExecutionParameterListFunctionBody,
+    ExecutionStringFunctionBody, ExecutionStringFunctionFunctionBody,
+    ExecutionStringListFunctionBody, ExecutionTupleFunctionBody,
+    ExecutionTupleFunctionFunctionBody, ExecutionTupleListFunctionBody,
     ExecutionUtfCodepointFunctionBody, ExecutionUtfCodepointFunctionFunctionBody,
     ExecutionUtfCodepointListFunctionBody, ExternalFunctionFunctionId, ExternalFunctionId,
     ExternalListFunctionFunctionId, ExternalListFunctionId, FloatFunctionFunctionId,
     FloatFunctionId, FloatListFunctionId, FunctionFunctionFunctionId, FunctionListFunctionId,
     GenericFunctionFunctionId, IntFunctionFunctionId, IntFunctionId, IntListFunctionId,
     ListListFunctionId, NeverFunctionFunctionId, NeverFunctionId, NilFunctionFunctionId,
-    NilFunctionId, NilListFunctionId, ParameterListFunctionId, ParameterListListFunctionId,
-    ProfiledListFunctionFunctionId, StringFunctionFunctionId, StringFunctionId,
-    StringListFunctionId, TupleFunctionFunctionId, TupleFunctionId, TupleListFunctionId,
-    UtfCodepointFunctionFunctionId, UtfCodepointFunctionId, UtfCodepointListFunctionId,
+    NilFunctionId, NilListFunctionId, ParameterFunctionFunctionId, ParameterFunctionId,
+    ParameterListFunctionId, ProfiledListFunctionFunctionId, StringFunctionFunctionId,
+    StringFunctionId, StringListFunctionId, TupleFunctionFunctionId, TupleFunctionId,
+    TupleListFunctionId, UtfCodepointFunctionFunctionId, UtfCodepointFunctionId,
+    UtfCodepointListFunctionId,
 };
 use super::{
     ExecutableFunction, ExecutionFunction, ExecutionNeverFunction, ExecutionProfile,
@@ -138,27 +140,12 @@ impl<Profile: ExecutionProfile> FunctionTables<Profile> {
         &self.list_returns.parameter_list_functions[id.index()].1
     }
 
-    pub(in crate::plan::execution) fn parameter_list_list_function(
-        &self,
-        id: ParameterListListFunctionId,
-    ) -> &ExecutionFunction<Profile, ExecutionParameterListListFunctionBody<Profile>> {
-        &self.list_returns.parameter_list_list_functions[id.index()].1
-    }
-
     #[cfg(test)]
     pub(in crate::plan::execution) fn parameter_list_function_id(
         &self,
         index: usize,
     ) -> ParameterListFunctionId {
         self.list_returns.parameter_list_functions[index].0
-    }
-
-    #[cfg(test)]
-    pub(in crate::plan::execution) fn parameter_list_list_function_id(
-        &self,
-        index: usize,
-    ) -> ParameterListListFunctionId {
-        self.list_returns.parameter_list_list_functions[index].0
     }
 
     #[cfg(test)]
@@ -290,6 +277,13 @@ impl<Profile: ExecutionProfile> FunctionTables<Profile> {
         id: UtfCodepointFunctionId,
     ) -> &ExecutionFunction<Profile, ExecutionUtfCodepointFunctionBody<Profile>> {
         &self.value_returns.utf_codepoint_functions[id.0]
+    }
+
+    pub(in crate::plan::execution) fn parameter_function(
+        &self,
+        id: ParameterFunctionId,
+    ) -> &ExecutionFunction<Profile, ExecutionParameterFunctionBody<Profile>> {
+        &self.value_returns.parameter_functions[id.0]
     }
 
     pub(in crate::plan::execution) fn custom_function(
@@ -446,6 +440,13 @@ impl<Profile: ExecutionProfile> FunctionTables<Profile> {
         &self.function_returns.utf_codepoint_function_functions[id.0]
     }
 
+    pub(in crate::plan::execution) fn parameter_function_function(
+        &self,
+        id: ParameterFunctionFunctionId,
+    ) -> &ExecutionFunction<Profile, ExecutionParameterFunctionFunctionBody<Profile>> {
+        &self.function_returns.parameter_function_functions[id.0]
+    }
+
     pub(in crate::plan::execution) fn custom_function_function(
         &self,
         id: &CustomFunctionFunctionId,
@@ -503,9 +504,7 @@ impl<Profile: ExecutionProfile> FunctionTables<Profile> {
             ProfiledListFunctionFunctionId::Parameter { id, .. } => {
                 &self.function_returns.parameter_list_function_functions[id.0]
             }
-            ProfiledListFunctionFunctionId::ParameterList { id, .. } => {
-                &self.function_returns.parameter_list_list_function_functions[id.0]
-            }
+
             ProfiledListFunctionFunctionId::Int { id, .. } => {
                 &self.function_returns.int_list_function_functions[id.0]
             }

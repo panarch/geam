@@ -1879,7 +1879,7 @@ fn stored_pattern_shape(
     ));
     context
         .representations
-        .representation(&shape)
+        .inhabitation(&shape)
         .into_representability()
 }
 
@@ -1897,6 +1897,8 @@ mod tests {
         ListAssertTail, ListLocal, PanicExpr, PanicSite, ParamLocal, TotalBindingPattern,
         TypeParameterId, ValueShape, ValueType,
     };
+    use crate::runtime::run_main;
+    use crate::{ExecutionPlan, Value, compile_typed_module, plan_module};
 
     #[test]
     fn bool_assertion_preserves_a_diverging_condition() {
@@ -1919,6 +1921,60 @@ mod tests {
     }
 
     #[test]
+    fn actual_empty_fields_make_nonempty_list_and_custom_assertions_fail() {
+        use miette::Diagnostic;
+
+        for (source, failed_value) in [
+            (
+                r#"
+pub type Empty
+pub fn main() {
+  let values: List(Empty) = []
+  let assert [_, ..] = values
+  42
+}
+"#,
+                "failed value: List(geam/main/Empty)([])",
+            ),
+            (
+                r#"
+pub type Empty
+pub type Option(a) { Some(a) None }
+pub fn main() {
+  let value: Option(Empty) = None
+  let assert Some(_) = value
+  42
+}
+"#,
+                "failed value: geam/main/Option(geam/main/Empty)::None()",
+            ),
+        ] {
+            let module = compile_typed_module("main", "main.gleam", source).unwrap();
+            let plan = ExecutionPlan::from_module_plan(plan_module(module).unwrap());
+            let error = run_main(&plan, &mut Vec::new()).unwrap_err();
+            assert_eq!(
+                error.code().map(|code| code.to_string()),
+                Some("geam::let_assert".into())
+            );
+            assert_eq!(
+                error.help().map(|help| help.to_string()),
+                Some(failed_value.into())
+            );
+        }
+        let source = r#"
+pub type Empty
+fn nonempty(values: List(Empty)) { case values { [_, ..] -> True [] -> False } }
+pub fn main() { nonempty([]) }
+"#;
+        let module = compile_typed_module("main", "main.gleam", source).unwrap();
+        let plan = ExecutionPlan::from_module_plan(plan_module(module).unwrap());
+        assert_eq!(
+            run_main(&plan, &mut Vec::new()).unwrap(),
+            Value::Bool(false)
+        );
+    }
+
+    #[test]
     fn total_custom_match_accepts_only_complete_custom_patterns() {
         let name = CustomTypeName::new("geam".into(), "main".into(), "Empty".into());
         let type_ = CustomType::new(name, Vec::new());
@@ -1938,6 +1994,22 @@ mod tests {
             .map(|_| ()),
             None,
         );
+    }
+
+    #[test]
+    fn nested_custom_match_skips_a_constructor_with_actual_empty_fields() {
+        let source = r#"
+pub type Empty
+pub type Box(a) { Box(a) }
+pub type Choice(a) { First(Box(a)) Last }
+fn select(value: Choice(a)) {
+  case value { First(Box(_)) -> 1 Last -> 42 }
+}
+pub fn main() { let value: Choice(Empty) = Last select(value) }
+"#;
+        let typed = compile_typed_module("main", "main.gleam", source).unwrap();
+        let plan = ExecutionPlan::from_module_plan(plan_module(typed).unwrap());
+        assert_eq!(run_main(&plan, &mut Vec::new()), Ok(Value::Int(42.into())));
     }
 
     #[test]
@@ -2056,7 +2128,7 @@ pub fn main() { first(Stop, 42) }
 
     #[test]
     fn uninhabited_total_bindings_stop_custom_and_tuple_lowering() {
-        let parameter = TypeParameterId(0);
+        let parameter = TypeParameterId::new(0);
         let name = CustomTypeName::new("geam".into(), "main".into(), "Choice".into());
         let definition = CustomTypeDefinition::new(
             name.clone(),
@@ -2092,8 +2164,25 @@ pub fn main() { first(Stop, 42) }
             ValueShape::Parameter(parameter),
         );
         let field_pattern = TotalBindingPattern::bind(field_binding.clone());
-        let mut context =
-            crate::plan::execution::lowering::test_support::lowering_context(vec![definition]);
+        let never_name =
+            crate::plan::CustomTypeName::new("geam".into(), "main".into(), "Never".into());
+        let mut context = crate::plan::execution::lowering::test_support::lowering_context({
+            let mut definitions = vec![definition];
+            definitions.push(crate::plan::CustomTypeDefinition::new(
+                never_name.clone(),
+                crate::plan::CustomTypePublicity::Private,
+                false,
+                Vec::new(),
+                Vec::new(),
+            ));
+            definitions
+        });
+        context.substitution = crate::plan::execution::lowering::specialization::SpecializedTypeSubstitution::instantiate(
+            &crate::plan::module::TypeSubstitution::from_arguments(vec![crate::plan::ValueShape::Custom(
+                crate::plan::CustomValueShape::new(never_name, Vec::new(), crate::plan::CustomConstructorRefinement::Any),
+            )]),
+            &crate::plan::execution::lowering::specialization::SpecializedTypeSubstitution::empty(),
+        ).with_scope(0);
         let stored_custom =
             StoredValueShape::Custom(context.concrete_custom_value_shape(&source_shape));
 
@@ -2229,6 +2318,7 @@ pub fn main() {
                     cursor
                         .scope()
                         .list(super::super::local::list_local_key(&local))
+                        .erase()
                         .shape()
                         .clone()
                 }

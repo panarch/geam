@@ -15,6 +15,9 @@ pub struct BitArrayLocalId(pub usize);
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct UtfCodepointLocalId(pub usize);
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ParameterLocalId(pub usize);
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct CustomLocalId(pub usize);
 
@@ -100,6 +103,13 @@ impl Emit for UtfCodepointLocalId {
     fn emit(&self, output: &mut Rust) {
         let Self(field_0) = self;
         output.call("graph::UtfCodepointLocalId", &[field_0]);
+    }
+}
+
+impl Emit for ParameterLocalId {
+    fn emit(&self, output: &mut Rust) {
+        let Self(field_0) = self;
+        output.call("graph::ParameterLocalId", &[field_0]);
     }
 }
 

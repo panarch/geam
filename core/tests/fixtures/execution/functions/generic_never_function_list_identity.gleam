@@ -1,4 +1,6 @@
-fn diverge(_value: Int) -> value {
+pub type Empty
+
+fn diverge(_value: Int) -> Empty {
   panic as "unreached diverging function"
 }
 

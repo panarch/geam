@@ -407,11 +407,12 @@ mod tests {
         );
 
         assert_eq!(
-            crate::plan::LocalId::Generic(
-                GenericLocal::new(GenericLocalId(7), TypeParameterId(0),)
-            )
+            crate::plan::LocalId::Generic(GenericLocal::new(
+                GenericLocalId(7),
+                TypeParameterId::new(0),
+            ))
             .into_value_type(),
-            ValueType::Parameter(TypeParameterId(0)),
+            ValueType::Parameter(TypeParameterId::new(0)),
         );
         assert_eq!(
             crate::plan::LocalId::Int(crate::plan::IntLocalId(0)).into_value_type(),
@@ -444,11 +445,15 @@ mod tests {
         );
 
         assert_eq!(
-            crate::plan::LocalId::Generic(
-                GenericLocal::new(GenericLocalId(7), TypeParameterId(0),)
-            )
+            crate::plan::LocalId::Generic(GenericLocal::new(
+                GenericLocalId(7),
+                TypeParameterId::new(0),
+            ))
             .into_param_local(),
-            ParamLocal::generic(GenericLocal::new(GenericLocalId(7), TypeParameterId(0),)),
+            ParamLocal::generic(GenericLocal::new(
+                GenericLocalId(7),
+                TypeParameterId::new(0),
+            )),
         );
         assert_eq!(
             crate::plan::LocalId::Int(crate::plan::IntLocalId(0)).into_param_local(),

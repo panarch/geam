@@ -188,8 +188,14 @@ mod main {
     fn keep_function<Item>(
         function: geam_core::provider::FunctionValue<fn(Value<Item>) -> StringValue>,
     ) -> geam_core::provider::FunctionValue<fn(Value<Item>) -> StringValue> {
-        assert!(function.callback().is_none());
         function.clone()
+    }
+
+    #[geam_macros::function]
+    fn function_is_callable<Item>(
+        function: geam_core::provider::FunctionValue<fn(Value<Item>) -> StringValue>,
+    ) -> bool {
+        function.callback().is_some()
     }
 
     #[geam_macros::function]
@@ -378,13 +384,21 @@ fn rich(value: Int) -> Future(#(values.Status, Result(Int, String), Option(value
 fn invoke_twice(callback: fn(values.Status) -> Int, value: Int) -> Future(#(Int, Int))
 @external(erlang, "macro_consumer", "keep_function")
 fn keep_function(function: fn(item) -> String) -> fn(item) -> String
+@external(erlang, "macro_consumer", "function_is_callable")
+fn function_is_callable(function: fn(item) -> String) -> Bool
 @external(erlang, "macro_consumer", "invoke_function")
 fn invoke_function(function: fn(values.Status) -> Int, value: Int) -> Future(#(Int, Int))
 
+pub type Empty
+
 pub fn main() {
-  let label = "symbolic"
+  let label = "retained"
   let original = fn(_) { label }
   assert keep_function(original) == original
+  assert function_is_callable(original)
+  let symbolic = fn(_: Empty) { label }
+  assert keep_function(symbolic) == symbolic
+  assert !function_is_callable(symbolic)
   assert saved_text(saved("local")) == "local"
   assert saved_text(SavedOne(values.Empty)) == "empty"
   assert saved_text(SavedMany([])) == "many:0"

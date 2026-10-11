@@ -220,7 +220,7 @@ mod tests {
 
     #[test]
     fn converts_every_planned_expression_family() {
-        let parameter = TypeParameterId(0);
+        let parameter = TypeParameterId::new(0);
         let custom = CustomType::new(
             CustomTypeName::new("app".into(), "main".into(), "Boxed".into()),
             Vec::new(),

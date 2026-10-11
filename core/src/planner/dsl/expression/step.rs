@@ -269,23 +269,26 @@ mod tests {
             let_list_step(
                 16,
                 "generic_values",
-                list(Vec::<Expr>::new(), ValueType::Parameter(TypeParameterId(0))),
+                list(
+                    Vec::<Expr>::new(),
+                    ValueType::Parameter(TypeParameterId::new(0))
+                ),
             ),
             Step::let_list_expr(
                 "generic_values".into(),
                 ListLocalExpr::Generic {
                     local: GenericListLocalId(16),
-                    parameter: TypeParameterId(0),
+                    parameter: TypeParameterId::new(0),
                     value: ListExpr::from(list(
                         Vec::<Expr>::new(),
-                        ValueType::Parameter(TypeParameterId(0)),
+                        ValueType::Parameter(TypeParameterId::new(0)),
                     ))
                     .into_generic()
                     .expect("expected generic list"),
                 },
             ),
         );
-        let parameter = TypeParameterId(0);
+        let parameter = TypeParameterId::new(0);
         assert_eq!(
             let_list_step(
                 17,

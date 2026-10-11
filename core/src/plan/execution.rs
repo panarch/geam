@@ -34,9 +34,9 @@ use self::function::{
     FunctionFunctionFunctionId, FunctionListFunctionId, GenericFunctionFunctionId,
     IntFunctionFunctionId, IntFunctionId, IntListFunctionId, ListListFunctionId,
     NeverFunctionFunctionId, NilFunctionFunctionId, NilFunctionId, NilListFunctionId,
-    ParameterListFunctionId, ParameterListListFunctionId, ProfiledListFunctionFunctionId,
-    StringFunctionFunctionId, StringListFunctionId, TupleFunctionFunctionId, TupleFunctionId,
-    TupleListFunctionId, UtfCodepointFunctionFunctionId, UtfCodepointListFunctionId,
+    ParameterListFunctionId, ProfiledListFunctionFunctionId, StringFunctionFunctionId,
+    StringListFunctionId, TupleFunctionFunctionId, TupleFunctionId, TupleListFunctionId,
+    UtfCodepointFunctionFunctionId, UtfCodepointListFunctionId,
 };
 use self::function::{
     ExecutionGraphProfile, ExecutionProfile, FunctionLabelSource, FunctionTables,
@@ -601,16 +601,6 @@ impl ExecutionPlan {
     #[cfg(test)]
     pub(crate) fn parameter_list_function_id(&self, index: usize) -> ParameterListFunctionId {
         self.program.functions.parameter_list_function_id(index)
-    }
-
-    #[cfg(test)]
-    pub(crate) fn parameter_list_list_function_id(
-        &self,
-        index: usize,
-    ) -> ParameterListListFunctionId {
-        self.program
-            .functions
-            .parameter_list_list_function_id(index)
     }
 
     #[cfg(test)]

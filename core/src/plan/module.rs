@@ -174,22 +174,46 @@ pub(crate) type LibraryEntryParts<External> = (
 pub(crate) trait LibraryProfile: Clone {
     type Callable: Clone;
 
-    fn callable_type(value: &Self::Callable) -> &super::FunctionType;
+    fn callable_type(value: &Self::Callable) -> super::FunctionType;
 }
 
 impl LibraryProfile for super::ExternalType {
-    type Callable = super::FunctionType;
+    type Callable = LibraryCallableType;
 
-    fn callable_type(value: &Self::Callable) -> &super::FunctionType {
-        value
+    fn callable_type(value: &Self::Callable) -> super::FunctionType {
+        value.function_type()
     }
 }
 
 impl LibraryProfile for std::convert::Infallible {
     type Callable = Self;
 
-    fn callable_type(value: &Self) -> &super::FunctionType {
+    fn callable_type(value: &Self) -> super::FunctionType {
         match *value {}
+    }
+}
+
+/// A Rust embedding callable keeps the admitted return family until lowering.
+#[derive(Clone)]
+pub(crate) struct LibraryCallableType {
+    arguments: Vec<super::ValueType>,
+    return_: Box<LibraryValueType>,
+}
+
+impl LibraryCallableType {
+    pub(crate) fn new(arguments: Vec<super::ValueType>, return_: LibraryValueType) -> Self {
+        Self {
+            arguments,
+            return_: Box::new(return_),
+        }
+    }
+
+    pub(crate) fn function_type(&self) -> super::FunctionType {
+        super::FunctionType::new(self.arguments.clone(), self.return_.value_type())
+    }
+
+    pub(in crate::plan) fn return_(&self) -> &LibraryValueType {
+        &self.return_
     }
 }
 
@@ -251,7 +275,7 @@ impl LibraryValueType {
             Self::Nil => ValueType::Nil,
             Self::Tuple(elements) => ValueType::Tuple(elements.clone()),
             Self::List(item) => ValueType::List(Box::new(item.value_type())),
-            Self::Function(type_) => ValueType::Function(Box::new(type_.clone())),
+            Self::Function(type_) => ValueType::Function(Box::new(type_.function_type())),
         }
     }
 }

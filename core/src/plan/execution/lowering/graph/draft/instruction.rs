@@ -1,21 +1,21 @@
 use super::{
     DraftBitArray, DraftBool, DraftBoolTest, DraftCustom, DraftExternal, DraftFloat, DraftFunction,
-    DraftInt, DraftList, DraftNil, DraftOperand, DraftStoredList, DraftString, DraftTuple,
-    DraftUse, DraftUtfCodepoint, DraftValueRef,
+    DraftInt, DraftList, DraftNil, DraftOperand, DraftParameter, DraftStoredList, DraftString,
+    DraftTuple, DraftUse, DraftUtfCodepoint, DraftValueRef,
 };
 use crate::plan::execution::constant::ConstantId;
 use crate::plan::execution::function::{
     BitArrayFunctionId, BoolFunctionId, CustomFunctionId, ExternalFunctionId, FloatFunctionId,
     FunctionFunctionId, GenericCallableId, IntFunctionId, NeverFunctionId, NilFunctionId,
-    RuntimeListFunctionId, StringFunctionId, TupleFunctionId, UtfCodepointFunctionId,
+    ParameterFunctionId, RuntimeListFunctionId, StringFunctionId, TupleFunctionId,
+    UtfCodepointFunctionId,
 };
 use crate::plan::execution::graph::FunctionLocal;
 use crate::plan::execution::graph::{Endianness, FloatBitSize, StringEncoding};
 use crate::plan::execution::type_::{
     BitArrayListTypeId, BoolListTypeId, CustomConstructorId, CustomListTypeId, ExternalListTypeId,
     FloatListTypeId, FunctionListTypeId, IntListTypeId, ListListTypeId, NilListTypeId,
-    ParameterListListTypeId, ParameterListTypeId, StringListTypeId, TupleListTypeId,
-    UtfCodepointListTypeId,
+    ParameterListTypeId, StringListTypeId, TupleListTypeId, UtfCodepointListTypeId,
 };
 
 pub(in crate::plan::execution::lowering) enum DraftInstructionKind {
@@ -24,6 +24,7 @@ pub(in crate::plan::execution::lowering) enum DraftInstructionKind {
     String(DraftStringInstruction),
     BitArray(DraftBitArrayInstruction),
     UtfCodepoint(DraftUtfCodepointInstruction),
+    Parameter(DraftParameterInstruction),
     Custom(DraftCustomInstruction),
     External(DraftExternalInstruction),
     Bool(DraftBoolInstruction),
@@ -271,6 +272,31 @@ pub(in crate::plan::execution::lowering) enum DraftUtfCodepointInstruction {
     },
 }
 
+pub(in crate::plan::execution::lowering) enum DraftParameterInstruction {
+    Call {
+        function: ParameterFunctionId,
+        args: Vec<DraftValueRef>,
+        site: crate::plan::HostCallSite,
+    },
+    FunctionCall {
+        function: DraftFunction,
+        args: Vec<DraftValueRef>,
+        site: crate::plan::HostCallSite,
+    },
+    TupleIndex {
+        tuple: DraftTuple,
+        index: usize,
+    },
+    CustomField {
+        source: DraftCustom,
+        index: usize,
+    },
+    ListIndex {
+        list: DraftList,
+        index: usize,
+    },
+}
+
 pub(in crate::plan::execution::lowering) enum DraftCustomInstruction {
     Construct {
         constructor: CustomConstructorId,
@@ -409,7 +435,15 @@ pub(in crate::plan::execution::lowering) enum DraftTupleInstruction {
 }
 
 pub(in crate::plan::execution::lowering) enum DraftParameterListInstruction {
-    Empty,
+    Value(Vec<DraftParameter>),
+    Spread {
+        elements: Vec<DraftParameter>,
+        tail: DraftList,
+    },
+    DropFirst {
+        list: DraftList,
+        count: usize,
+    },
     Constant(ConstantId<crate::plan::execution::graph::ParameterListLocalId>),
     Call {
         function: crate::plan::execution::function::ParameterListFunctionId,
@@ -472,14 +506,6 @@ pub(in crate::plan::execution::lowering) enum DraftTypedListInstruction<Element,
 
 pub(in crate::plan::execution::lowering) enum DraftListInstruction {
     Parameter(ParameterListTypeId, DraftParameterListInstruction),
-    ParameterList(
-        ParameterListListTypeId,
-        DraftTypedListInstruction<
-            DraftList,
-            crate::plan::execution::graph::ParameterListListLocalId,
-            crate::plan::execution::function::ParameterListListFunctionId,
-        >,
-    ),
     Int(
         IntListTypeId,
         DraftTypedListInstruction<
@@ -619,6 +645,7 @@ pub(in crate::plan::execution::lowering) enum DraftFunctionTarget {
     String(StringFunctionId),
     BitArray(BitArrayFunctionId),
     UtfCodepoint(UtfCodepointFunctionId),
+    Parameter(ParameterFunctionId),
     Custom(CustomFunctionId),
     External(ExternalFunctionId),
     Bool(BoolFunctionId),
@@ -817,6 +844,24 @@ impl DraftUtfCodepointInstruction {
     }
 }
 
+impl DraftParameterInstruction {
+    pub(in crate::plan::execution::lowering::graph) fn uses(
+        &self,
+        values: &mut Vec<impl DraftUse>,
+    ) {
+        match self {
+            Self::Call { args, .. } => push_operands(args, values),
+            Self::FunctionCall { function, args, .. } => {
+                function.push_operand(values);
+                push_operands(args, values);
+            }
+            Self::TupleIndex { tuple, .. } => tuple.push_operand(values),
+            Self::CustomField { source, .. } => source.push_operand(values),
+            Self::ListIndex { list, .. } => list.push_operand(values),
+        }
+    }
+}
+
 impl DraftCustomInstruction {
     pub(in crate::plan::execution::lowering::graph) fn uses(
         &self,
@@ -920,7 +965,13 @@ impl DraftParameterListInstruction {
         values: &mut Vec<impl DraftUse>,
     ) {
         match self {
-            Self::Empty | Self::Constant(_) => {}
+            Self::Value(elements) => push_operands(elements, values),
+            Self::Spread { elements, tail } => {
+                push_operands(elements, values);
+                tail.push_operand(values);
+            }
+            Self::DropFirst { list, .. } => list.push_operand(values),
+            Self::Constant(_) => {}
             Self::Call { args, .. } => push_operands(args, values),
             Self::FunctionCall { function, args, .. } => {
                 function.push_operand(values);
@@ -965,7 +1016,7 @@ impl DraftListInstruction {
     ) {
         match self {
             Self::Parameter(_, instruction) => instruction.uses(values),
-            Self::ParameterList(_, instruction) => instruction.uses(values),
+
             Self::Int(_, instruction) => instruction.uses(values),
             Self::String(_, instruction) => instruction.uses(values),
             Self::BitArray(_, instruction) => instruction.uses(values),

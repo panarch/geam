@@ -223,7 +223,7 @@ mod tests {
 
     #[test]
     fn function_block_helpers_preserve_return_family() {
-        let parameter = TypeParameterId(0);
+        let parameter = TypeParameterId::new(0);
         let generic_type = GenericFunctionType::new(Vec::new(), parameter);
         let generic_shape = generic_type.shape();
         let generic = GenericFunctionExpr::reference(

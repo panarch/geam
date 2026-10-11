@@ -7,8 +7,8 @@ use crate::runtime::evaluated::{
     EvaluatedBitArrayFunction, EvaluatedBoolFunction, EvaluatedCapture, EvaluatedCustomFunction,
     EvaluatedCustomValue, EvaluatedExternalFunction, EvaluatedFloatFunction,
     EvaluatedFunctionFunction, EvaluatedFunctionValue, EvaluatedIntFunction, EvaluatedListFunction,
-    EvaluatedNeverFunction, EvaluatedNilFunction, EvaluatedStringFunction, EvaluatedTupleFunction,
-    EvaluatedUtfCodepointFunction, EvaluatedValue,
+    EvaluatedNeverFunction, EvaluatedNilFunction, EvaluatedParameterFunction,
+    EvaluatedStringFunction, EvaluatedTupleFunction, EvaluatedUtfCodepointFunction, EvaluatedValue,
 };
 use crate::runtime::graph::RetainedValues;
 use crate::runtime::{ExecutableRuntimePlan, StoredRuntimeFunction};
@@ -21,6 +21,7 @@ pub(in crate::runtime) enum InvocableFunctionValue {
     String(EvaluatedStringFunction),
     BitArray(EvaluatedBitArrayFunction),
     UtfCodepoint(EvaluatedUtfCodepointFunction),
+    Parameter(EvaluatedParameterFunction),
     Custom(EvaluatedCustomFunction),
     External(EvaluatedExternalFunction),
     Bool(EvaluatedBoolFunction),
@@ -72,6 +73,7 @@ impl InvocableFunctionValue {
                 C::UtfCodepoint(id) => {
                     Self::UtfCodepoint(creation.instantiate(id, captures, type_))
                 }
+                C::Parameter(id) => Self::Parameter(creation.instantiate(id, captures, type_)),
                 C::Bool(id) => Self::Bool(creation.instantiate(id, captures, type_)),
                 C::Nil(id) => Self::Nil(creation.instantiate(id, captures, type_)),
                 C::List(id) => Self::List(creation.instantiate(id, captures, type_)),
@@ -99,6 +101,7 @@ impl InvocableFunctionValue {
             Self::String(function) => function.into(),
             Self::BitArray(function) => function.into(),
             Self::UtfCodepoint(function) => function.into(),
+            Self::Parameter(function) => function.into(),
             Self::Custom(function) => function.into(),
             Self::External(function) => function.into(),
             Self::Bool(function) => function.into(),
@@ -144,6 +147,9 @@ pub(in crate::runtime) fn prepare_callable<'plan, Plan: ExecutableRuntimePlan>(
         InvocableFunctionValue::UtfCodepoint(function) => {
             source!(function, EvaluatedValue::UtfCodepoint)
         }
+        InvocableFunctionValue::Parameter(function) => {
+            source!(function, EvaluatedValue::Parameter)
+        }
         InvocableFunctionValue::Custom(function) => match function {
             EvaluatedCustomFunction::Function(function) => {
                 source!(function, EvaluatedValue::Custom)
@@ -171,7 +177,6 @@ pub(in crate::runtime) fn prepare_callable<'plan, Plan: ExecutableRuntimePlan>(
                 RuntimeListFunctionId::External(id) => list!(id, External),
                 RuntimeListFunctionId::Core(id) => match id {
                     ListFunctionId::Parameter(id) => list!(id, Parameter),
-                    ListFunctionId::ParameterList(id) => list!(id, ParameterList),
                     ListFunctionId::Int(id) => list!(id, Int),
                     ListFunctionId::Float(id) => list!(id, Float),
                     ListFunctionId::String(id) => list!(id, String),
@@ -204,6 +209,9 @@ pub(in crate::runtime) fn prepare_callable<'plan, Plan: ExecutableRuntimePlan>(
                         ProfiledFunctionFunctionId::String(id) => returned_function!(id, inputs),
                         ProfiledFunctionFunctionId::BitArray(id) => returned_function!(id, inputs),
                         ProfiledFunctionFunctionId::UtfCodepoint(id) => {
+                            returned_function!(id, inputs)
+                        }
+                        ProfiledFunctionFunctionId::Parameter(id) => {
                             returned_function!(id, inputs)
                         }
                         ProfiledFunctionFunctionId::Custom(id) => returned_function!(id, inputs),
@@ -306,7 +314,7 @@ mod tests {
     #[test]
     fn non_returning_callbacks_preserve_their_source_failure_without_a_result_storage() {
         let error = invoke_non_returning_entry(
-            "pub fn main() { fn(_value: Int) { panic as \"callback stopped\" } }",
+            "pub type Never pub fn main() -> fn(Int) -> Never { fn(_value: Int) { panic as \"callback stopped\" } }",
         );
         assert_eq!(error.to_string(), "panic: callback stopped");
     }
@@ -465,6 +473,8 @@ pub fn run() {
             "fn produce(_) { fn(value) { value } } fn consume(callback) { callback(42) }",
             "fn produce(_) { fn(value) { value } } fn consume(_) { 42 }",
             "fn produce(_) { fn() { panic } } fn consume(_) { 42 }",
+            "pub type Empty fn produce(_) -> fn(Int) -> Empty { fn(_) { panic } } fn consume(_) { 42 }",
+            "pub type Empty fn produce(_) -> fn(Empty) -> Int { fn(_) { 7 } } fn consume(_) { 42 }",
             "fn produce(_) { let captured = 40 fn() { captured + 2 } } fn consume(callback) { callback() }",
             "fn produce(_) { fn() { 1.5 } } fn consume(callback) { let assert 1.5 = callback() 42 }",
             "fn produce(_) { fn() { \"text\" } } fn consume(callback) { let assert \"text\" = callback() 42 }",
@@ -511,8 +521,7 @@ pub fn run() {{
                         [ModuleSource::new("library", "library.gleam", &source)],
                     ),
                 ],
-                HostProviderSet::from_providers(WorkComponent::providers::<Profile>().unwrap())
-                    .unwrap(),
+                HostProviderSet::from_providers(WorkComponent::providers::<Profile>().unwrap()).unwrap(),
             )
             .expect(&source);
             let (bindings, run) = HostedModuleBuilder::new(typed)
@@ -534,5 +543,94 @@ pub fn run() {{
             .unwrap().try_into_value().unwrap();
             assert!(echo.is_empty());
         }
+    }
+
+    #[test]
+    fn deferred_native_parameters_keep_their_binding_through_nested_callbacks() {
+        use crate::host::native::{NativeCall, NativeRules};
+        use crate::{
+            HostCallCompletion, HostCallError, HostTypeIndex0, HostTypeList, HostTypeListEnd,
+            HostTypeParameter, HostValue,
+        };
+
+        type Input = HostTypeParameter<1>;
+        type Output = HostTypeParameter<0>;
+        type One<Type> = HostTypeList<Type, HostTypeListEnd>;
+        let source = r#"
+import fixture/work as future
+
+@external(erlang, "fixture", "coerce") fn coerce(value: b) -> a
+fn produce(_) -> a {
+  let original = coerce(42)
+  let first = fn() { original }
+  let viewed: fn() -> a = coerce(first)
+  let second = fn() { viewed() }
+  second()
+}
+fn consume(value: a) { let assert True = value == value 42 }
+
+pub fn run() {
+  let returned = future.map(future.ready(Nil), produce)
+  future.map(returned, consume)
+}
+"#;
+        let mut providers = WorkComponent::providers::<Profile>().unwrap();
+        providers.push(
+            HostProviderModule::new("application", "library")
+                .unwrap()
+                .with_native_function::<WorkComponent, (Input,), Output, One<Output>, _>(
+                    "coerce",
+                    NativeRules::default().retained_views::<One<Input>>(),
+                    |mut call: NativeCall<'_, Profile, WorkComponent, Output, One<Output>>,
+                     value: HostValue<'_, Input>| {
+                        let source = call.source::<Input>(value);
+                        let result = call
+                            .convert::<HostTypeIndex0>(&source)
+                            .expect("declared parameter conversion");
+                        Ok::<HostCallCompletion<'_, Output>, HostCallError>(call.finish(result))
+                    },
+                )
+                .unwrap(),
+        );
+        let typed = crate::compile_typed_host_program(
+            "application",
+            "library",
+            [
+                PackageSource::new(
+                    "work_fixture",
+                    Vec::<String>::new(),
+                    [ModuleSource::new(
+                        "fixture/work",
+                        "fixture/work.gleam",
+                        WorkComponent::SOURCE,
+                    )],
+                ),
+                PackageSource::new(
+                    "application",
+                    ["work_fixture"],
+                    [ModuleSource::new("library", "library.gleam", source)],
+                ),
+            ],
+            HostProviderSet::from_providers(providers).unwrap(),
+        )
+        .unwrap();
+        let (bindings, run) = HostedModuleBuilder::new(typed)
+            .unwrap()
+            .function(FunctionDeclaration::<(), WorkType<BigInt>>::new("run"))
+            .unwrap();
+        let mut module = bindings.seal().unwrap();
+        let host = TestHost::default();
+        let mut echo = Vec::new();
+        host.block_on(
+            module.with_execution(&host, &mut (), &mut echo, async |scope| {
+                let work = scope.call(&run, ()).await.unwrap();
+                let completed = scope.observe(&work).await.unwrap();
+                assert_eq!(completed.read(Clone::clone), BigInt::from(42));
+            }),
+        )
+        .unwrap()
+        .try_into_value()
+        .unwrap();
+        assert!(echo.is_empty());
     }
 }

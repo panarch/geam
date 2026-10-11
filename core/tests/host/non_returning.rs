@@ -445,15 +445,16 @@ pub fn main() {
         .expect("non-returning provider should seal without return storage");
     let expected_explanation = r#"
 module main
-main never#0
+main parameter#0
 
-function never#0
+function parameter#0
   entry b0 params=[] captures=[]
   block b0 params=[]
-    %function.never#0:shape#1(fn() -> param#0) = function[Never] reference never#1
-    never_call %function.never#0 args=[]
+    %function.parameter#0:shape#1(fn() -> param#0) = function[Parameter] reference parameter#1
+    %parameter#0:shape#0(param#0) = parameter.function_call %function.parameter#0 args=[]
+    return %parameter#0
 
-function never#1
+function parameter#1
   host application::main.stop signature=fn() -> param#0
 "#
     .trim();

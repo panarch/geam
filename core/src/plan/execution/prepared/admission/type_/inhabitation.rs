@@ -121,7 +121,7 @@ impl Types<'_> {
         known: &mut HashSet<CustomKey>,
     ) -> bool {
         match shape {
-            ValueShapeDescriptor::Parameter(_) => false,
+            ValueShapeDescriptor::Parameter(id) => id.scope().is_some(),
             ValueShapeDescriptor::Tuple(items) => {
                 for item in items.iter() {
                     if !self.shape_inhabited(&self.shapes.shapes[item.index()], active, known) {
@@ -213,7 +213,9 @@ impl Types<'_> {
     ) -> bool {
         match template {
             // Unbound parameters denote symbolic values, not a runtime payload.
-            TypeMetadata::Parameter(id) => arguments.get(id.0).copied().unwrap_or(false),
+            TypeMetadata::Parameter(id) => {
+                id.scope().is_some() || arguments.get(id.index()).copied().unwrap_or(false)
+            }
             TypeMetadata::Tuple(items) => {
                 for item in items.iter() {
                     if !self.template_inhabited(item, arguments, active, known) {
@@ -318,9 +320,9 @@ mod tests {
             "src/example.gleam",
             r#"
 pub type Empty { Again(Empty) }
-fn identity(value: a) { value }
+fn identity(value: Empty) { value }
 fn from_empty(value: Empty) -> Int { from_empty(value) }
-fn never() -> a { panic as "never" }
+fn never() -> Empty { panic as "never" }
 fn add(value: Int) { value + 1 }
 pub fn main() { #(identity, from_empty, never, add) }
 "#,
@@ -407,9 +409,10 @@ pub type Choice(a) { First(a) Last }
 pub type Pair(a) { Pair(a, a) }
 pub type TupleBox(a) { TupleBox(#(a, Int)) }
 fn empty(value: Empty) { value }
+fn empty_tuple() -> #(Empty, Int) { panic }
 fn tuple(value: #(a, Int)) { value }
 pub fn main() {
-  #(Box(42), First(42), Last, Pair(Box(42), Box(42)), TupleBox(#(42, 0)), empty, tuple)
+  #(Box(42), First(42), Last, Pair(Box(42), Box(42)), TupleBox(#(42, 0)), empty, empty_tuple, tuple)
 }
 "#;
         let typed = crate::compile_typed_module("example", "src/example.gleam", source).unwrap();
@@ -432,7 +435,7 @@ pub fn main() {
                 .type_
                 .clone()
         };
-        let parameter = TypeMetadata::Parameter(crate::plan::TypeParameterId(0));
+        let parameter = TypeMetadata::Parameter(crate::plan::TypeParameterId::new(0));
         let mut boxed = nominal("Box");
         boxed.arguments = vec![parameter.clone()].into();
         let mut choice = nominal("Choice");
@@ -529,7 +532,20 @@ pub fn main() {
                 _ => false,
             })
             .unwrap();
-        assert!(!types.inhabited(types.shape(ValueShapeId(symbolic_tuple)).unwrap()));
+        assert!(types.inhabited(types.shape(ValueShapeId(symbolic_tuple)).unwrap()));
+        let empty_tuple = common
+            .value_shapes
+            .shapes
+            .iter()
+            .position(|shape| match shape {
+                ValueShapeDescriptor::Tuple(items) => items.iter().any(|item| {
+                    matches!(types.shape_type(*item).unwrap(), ValueType::Custom(custom)
+                        if common.custom_types.types[custom.index()].type_.name.as_str() == "Empty")
+                }),
+                _ => false,
+            })
+            .unwrap();
+        assert!(!types.inhabited(types.shape(ValueShapeId(empty_tuple)).unwrap()));
         let last =
             common
                 .value_shapes

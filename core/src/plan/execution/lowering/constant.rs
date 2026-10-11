@@ -31,7 +31,6 @@ enum ConstantFamily {
     Nil,
     Tuple,
     ParameterList,
-    ParameterListList,
     IntList,
     StringList,
     BitArrayList,
@@ -138,15 +137,6 @@ impl LoweredConstantValue for execution::graph::ParameterListLocalId {
         table: &mut ConstantTableBuilder<Graph>,
     ) -> &mut Vec<ProfiledConstantProgram<Self, Graph>> {
         &mut table.parameter_lists
-    }
-}
-
-impl LoweredConstantValue for execution::graph::ParameterListListLocalId {
-    const FAMILY: ConstantFamily = ConstantFamily::ParameterListList;
-    fn programs_mut<Graph: execution::function::ExecutionGraphProfile>(
-        table: &mut ConstantTableBuilder<Graph>,
-    ) -> &mut Vec<ProfiledConstantProgram<Self, Graph>> {
-        &mut table.parameter_list_lists
     }
 }
 
@@ -330,10 +320,6 @@ impl ConstantLowering {
         );
         outcome = outcome.zip_with(
             self.seal_plain_family::<execution::graph::ParameterListLocalId>(&mut sealed),
-            |(), ()| (),
-        );
-        outcome = outcome.zip_with(
-            self.seal_plain_family::<execution::graph::ParameterListListLocalId>(&mut sealed),
             |(), ()| (),
         );
         outcome = outcome.zip_with(
@@ -732,27 +718,6 @@ impl LoweringContext {
         )
     }
 
-    pub(super) fn parameter_list_list_constant(
-        &mut self,
-        reference: &crate::plan::ConstantParameterListListInstantiation,
-        _parameter: crate::plan::TypeParameterId,
-    ) -> specialization::Representability<
-        execution::constant::ConstantId<execution::graph::ParameterListListLocalId>,
-    > {
-        let instantiation = reference.clone();
-        self.lower_constant(
-            crate::plan::ConstantInstantiation::from_list(
-                crate::plan::ConstantListInstantiation::ParameterList(instantiation.clone()),
-            ),
-            |templates| templates.materialize_parameter_list_list(&instantiation),
-            |expression, cursor, graph, context| {
-                graph::parameter_list_list_expr(expression, cursor, graph, context).map(|flow| {
-                    flow.map(|value| graph::DraftParameterListList::new(value.into_list()))
-                })
-            },
-        )
-    }
-
     pub(super) fn list_list_constant(
         &mut self,
         reference: &crate::plan::ConstantListListInstantiation,
@@ -908,16 +873,6 @@ impl LoweringContext {
         execution::constant::ConstantId<execution::graph::TupleListLocalId>,
     > {
         self.lower_generic_list_constant(reference, graph::DraftTupleList::new)
-    }
-
-    pub(super) fn generic_parameter_list_list_constant(
-        &mut self,
-        reference: &crate::plan::ConstantGenericListInstantiation,
-        _parameter: crate::plan::TypeParameterId,
-    ) -> specialization::Representability<
-        execution::constant::ConstantId<execution::graph::ParameterListListLocalId>,
-    > {
-        self.lower_generic_list_constant(reference, graph::DraftParameterListList::new)
     }
 
     pub(super) fn generic_list_list_constant(
@@ -1123,6 +1078,20 @@ impl LoweringContext {
             reference,
             shape,
             graph::generic_utf_codepoint_function_expr,
+        )
+    }
+
+    pub(super) fn generic_parameter_function_constant(
+        &mut self,
+        reference: &crate::plan::ConstantGenericFunctionInstantiation,
+        shape: &SpecializedFunctionShape,
+    ) -> specialization::Representability<
+        execution::constant::ConstantId<execution::graph::FunctionLocal>,
+    > {
+        self.generic_typed_function_constant(
+            reference,
+            shape,
+            graph::generic_parameter_function_expr,
         )
     }
 
@@ -1743,10 +1712,9 @@ mod tests {
         ExternalFunctionLocalId, ExternalFunctionTarget, ExternalListLocalId, FloatListLocalId,
         FloatLocalId, FunctionListLocalId, FunctionLocal, IntInstruction, IntListLocalId,
         IntLocalId, ListListLocalId, NilListLocalId, NilLocalId, ParamLocal, ParamSlot,
-        ParameterListListLocalId, ParameterListLocalId, ProfiledBlock, ProfiledBlockGraph,
-        ProfiledInstruction, ProfiledInstructionKind, SourceStop, SourceStopKind,
-        StringListLocalId, StringLocalId, Terminator, TupleListLocalId, TupleLocalId,
-        UtfCodepointListLocalId,
+        ParameterListLocalId, ProfiledBlock, ProfiledBlockGraph, ProfiledInstruction,
+        ProfiledInstructionKind, SourceStop, SourceStopKind, StringListLocalId, StringLocalId,
+        Terminator, TupleListLocalId, TupleLocalId, UtfCodepointListLocalId,
     };
     use crate::plan::execution::lowering::specialization::SpecializationKey;
     use crate::plan::execution::type_::{
@@ -1804,7 +1772,6 @@ mod tests {
                 family::<NilLocalId>(),
                 family::<TupleLocalId>(),
                 family::<ParameterListLocalId>(),
-                family::<ParameterListListLocalId>(),
                 family::<IntListLocalId>(),
                 family::<StringListLocalId>(),
                 family::<BitArrayListLocalId>(),
@@ -1829,7 +1796,6 @@ mod tests {
                 ConstantFamily::Nil,
                 ConstantFamily::Tuple,
                 ConstantFamily::ParameterList,
-                ConstantFamily::ParameterListList,
                 ConstantFamily::IntList,
                 ConstantFamily::StringList,
                 ConstantFamily::BitArrayList,
@@ -1911,6 +1877,32 @@ fn selected(_value: Int) -> Never { panic as "never" }
 const selected_constant = selected
 pub fn main() { selected_constant }
 "#,
+            r#"
+pub type Empty
+fn identity(value) { value }
+const selected = identity
+pub fn main() -> fn(Empty) -> Empty { selected }
+"#,
+            r#"
+pub type Empty
+fn stop(_value) { panic as "never" }
+const selected = stop
+pub fn main() -> fn(Int) -> Empty { selected }
+"#,
+            r#"
+pub type Empty
+fn identity(value) { value }
+const selected = identity
+fn produce(_anchor: List(a)) -> fn(a) -> a { selected }
+pub fn main() -> fn(Empty) -> Empty { produce([]) }
+"#,
+            r#"
+pub type Empty
+fn stop(_value: Int) { panic as "never" }
+const selected = stop
+fn produce(_anchor: List(a)) -> fn(Int) -> a { selected }
+pub fn main() -> fn(Int) -> Empty { produce([]) }
+"#,
         ];
         let plans = sources.map(execution_plan);
 
@@ -1924,6 +1916,22 @@ pub fn main() { selected_constant }
         );
         assert_eq!(
             returned_never_function_constant(&plans[2]),
+            crate::plan::execution::graph::NeverFunctionLocalId(0)
+        );
+        assert_eq!(
+            returned_generic_function_constant(&plans[3]),
+            crate::plan::execution::graph::GenericFunctionLocalId(0)
+        );
+        assert_eq!(
+            returned_never_function_constant(&plans[4]),
+            crate::plan::execution::graph::NeverFunctionLocalId(0)
+        );
+        assert_eq!(
+            returned_generic_function_constant(&plans[5]),
+            crate::plan::execution::graph::GenericFunctionLocalId(0)
+        );
+        assert_eq!(
+            returned_never_function_constant(&plans[6]),
             crate::plan::execution::graph::NeverFunctionLocalId(0)
         );
     }

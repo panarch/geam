@@ -381,7 +381,7 @@ mod tests {
 
     #[test]
     fn function_value_conversions_preserve_return_family() {
-        let parameter = TypeParameterId(0);
+        let parameter = TypeParameterId::new(0);
         let generic = generic_function_ref(0, Vec::<ParamLocal>::new(), parameter);
         assert_eq!(
             FunctionReturn::from(generic_function_ref(0, Vec::<ParamLocal>::new(), parameter,)),

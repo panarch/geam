@@ -309,7 +309,7 @@ mod tests {
 
     #[test]
     fn generic_function_value_calls_preserve_parameter_returns() {
-        let parameter = TypeParameterId(0);
+        let parameter = TypeParameterId::new(0);
         let type_ = GenericFunctionType::new(vec![ValueShape::Int], parameter);
         let function = GenericFunctionExpr::panic(
             PanicExpr::panic_at(None, PanicSite::unknown()),
@@ -373,7 +373,7 @@ pub fn main() {
             plan_module(compile(source)).expect("unresolved diverging function call should plan");
 
         assert_eq!(plan.main_function().steps().len(), 2);
-        let function_type = GenericFunctionType::new(Vec::new(), TypeParameterId(0));
+        let function_type = GenericFunctionType::new(Vec::new(), TypeParameterId::new(0));
         assert_eq!(
             plan.main_function().steps()[1],
             Step::evaluate(Expr::generic(GenericExpr::function_call_at(
@@ -773,7 +773,7 @@ pub fn main() {
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::CallShape {
                     reason: InvalidCallShapeReason::FunctionValueReturnType {
-                        expected: ValueType::Parameter(TypeParameterId(0)),
+                        expected: ValueType::Parameter(TypeParameterId::new(0)),
                         actual: ValueType::Int,
                     },
                 },
@@ -1295,7 +1295,7 @@ pub fn main() {
         let cases = vec![
             (
                 int_function(),
-                ValueShape::Parameter(crate::plan::TypeParameterId(0)),
+                ValueShape::Parameter(crate::plan::TypeParameterId::new(0)),
             ),
             (
                 int_function(),

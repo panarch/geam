@@ -33,7 +33,6 @@ where
         nils,
         tuples,
         parameter_lists,
-        parameter_list_lists,
         int_lists,
         string_lists,
         bit_array_lists,
@@ -57,7 +56,6 @@ where
     table("nils", nils, context)?;
     table("tuples", tuples, context)?;
     table("parameter_lists", parameter_lists, context)?;
-    table("parameter_list_lists", parameter_list_lists, context)?;
     table("int_lists", int_lists, context)?;
     table("string_lists", string_lists, context)?;
     table("bit_array_lists", bit_array_lists, context)?;
@@ -336,11 +334,6 @@ mod tests {
             }),
             ("parameter_lists", "const saved = []", |table| {
                 owned_mut(&mut table.parameter_lists)[0].block_graph.entry = BlockId(99)
-            }),
-            ("parameter_list_lists", "const saved = [[]]", |table| {
-                owned_mut(&mut table.parameter_list_lists)[0]
-                    .block_graph
-                    .entry = BlockId(99)
             }),
             ("int_lists", "const saved = [42]", |table| {
                 owned_mut(&mut table.int_lists)[0].block_graph.entry = BlockId(99)

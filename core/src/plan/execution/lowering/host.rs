@@ -332,7 +332,8 @@ impl HostedEntries for MainEntry {
             .signature()
             .shape()
             .return_shape();
-        let value_shape = SpecializedValueShape::instantiate(return_shape, key.substitution());
+        let substitution = context.scoped_substitution(&key);
+        let value_shape = SpecializedValueShape::instantiate(return_shape, &substitution);
         let return_ = context.representations.inhabitation(&value_shape);
         Ok(context.reserve_main(key, return_))
     }
@@ -424,7 +425,7 @@ mod tests {
     };
     use crate::plan::{
         ExternalType, ExternalTypeName, FunctionType, LibraryEntry, LibraryValueType,
-        LibraryVariant, TypeParameterId, ValueType,
+        LibraryVariant, ValueType,
     };
     use crate::planner::plan_host_library_program;
     use crate::work_fixture::WorkComponent;
@@ -814,9 +815,9 @@ pub fn run() {{ {body} }}
     fn generic_return_specializations_follow_existing_inhabitation() {
         use crate::plan::execution::host::HostFunctionCompletion;
         for (return_type, completion) in [
-            ("a", HostFunctionCompletion::Uninhabited),
-            ("#(a, Int)", HostFunctionCompletion::Uninhabited),
-            ("Required(a)", HostFunctionCompletion::Uninhabited),
+            ("a", HostFunctionCompletion::Value),
+            ("#(a, Int)", HostFunctionCompletion::Value),
+            ("Required(a)", HostFunctionCompletion::Value),
             ("Never", HostFunctionCompletion::Uninhabited),
             ("List(a)", HostFunctionCompletion::Value),
             ("Optional(a)", HostFunctionCompletion::Value),
@@ -977,7 +978,8 @@ pub fn run() { ready(1, "two") }
         let source = r#"
 @external(erlang, "native", "accept")
 fn accept(callback: fn(value) -> Int) -> Int
-fn generic(_value) { 1 }
+pub type Never
+fn generic(_value: Never) { 1 }
 pub fn run() { accept(generic) }
 "#;
         let value = HostProviderModule::new("application", "library")
@@ -1005,7 +1007,14 @@ pub fn run() { accept(generic) }
                 error.reason(),
                 &HostSpecializationErrorReason::UninhabitedCallbackArguments {
                     callback: FunctionType::new(
-                        vec![ValueType::Parameter(TypeParameterId(0))],
+                        vec![ValueType::Custom(crate::plan::CustomType::new(
+                            crate::plan::CustomTypeName::new(
+                                "application".into(),
+                                "library".into(),
+                                "Never".into()
+                            ),
+                            Vec::new()
+                        ))],
                         ValueType::Int,
                     ),
                 }

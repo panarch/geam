@@ -118,7 +118,7 @@ mod tests {
     #[test]
     fn displays_the_uninhabited_native_capture_with_its_specialization() {
         let signature = FunctionType::new(vec![ValueType::Int], ValueType::Bool);
-        let capture = ValueType::Parameter(crate::plan::TypeParameterId(0));
+        let capture = ValueType::Parameter(crate::plan::TypeParameterId::new(0));
         let error = HostSpecializationError {
             package: "application".into(),
             module: "pricing".into(),
@@ -146,7 +146,7 @@ mod tests {
     #[test]
     fn exposes_the_uninhabited_callback_specialization() {
         let callback = FunctionType::new(
-            vec![ValueType::Parameter(crate::plan::TypeParameterId(0))],
+            vec![ValueType::Parameter(crate::plan::TypeParameterId::new(0))],
             ValueType::Int,
         );
         let signature = FunctionType::new(

@@ -144,7 +144,8 @@ mod tests {
         };
         let symbolic = r#"
 import host/function
-fn generic(_value) { 1 }
+pub type Never
+fn generic(_value: Never) { 1 }
 pub fn main() { function.accept(generic) }
 "#;
         let prepared = bindings(symbolic).0.prepare().err().unwrap();
@@ -157,7 +158,14 @@ pub fn main() { function.accept(generic) }
             prepared.reason(),
             &HostSpecializationErrorReason::UninhabitedCallbackArguments {
                 callback: crate::FunctionType::new(
-                    vec![crate::ValueType::Parameter(crate::plan::TypeParameterId(0))],
+                    vec![crate::ValueType::Custom(crate::CustomType::new(
+                        crate::CustomTypeName::new(
+                            "application".into(),
+                            "main".into(),
+                            "Never".into()
+                        ),
+                        Vec::new(),
+                    ))],
                     crate::ValueType::Int,
                 ),
             },

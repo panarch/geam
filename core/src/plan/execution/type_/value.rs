@@ -93,7 +93,7 @@ mod explain_tests {
     fn writes_primitive_and_recursive_value_types() {
         let cases = [
             (
-                ValueType::Parameter(crate::plan::TypeParameterId(0)),
+                ValueType::Parameter(crate::plan::TypeParameterId::new(0)),
                 "param#0",
             ),
             (ValueType::Int, "Int"),

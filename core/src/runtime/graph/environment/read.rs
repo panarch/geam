@@ -17,6 +17,9 @@ impl BlockEnvironment {
             ParamLocal::UtfCodepoint(local) => {
                 EvaluatedValueRef::UtfCodepoint(self.values.utf_codepoints[local.0])
             }
+            ParamLocal::Parameter { local, .. } => {
+                EvaluatedValueRef::Parameter(&self.values.parameters[local.0])
+            }
             ParamLocal::Custom(local) => {
                 EvaluatedValueRef::Custom(&self.values.customs[local.id().0])
             }
@@ -43,6 +46,9 @@ impl BlockEnvironment {
             ),
             ParamLocal::UtfCodepointFunction { local, .. } => EvaluatedValueRef::Function(
                 EvaluatedFunctionRef::UtfCodepoint(self.utf_codepoint_function(*local)),
+            ),
+            ParamLocal::ParameterFunction { local, .. } => EvaluatedValueRef::Function(
+                EvaluatedFunctionRef::Parameter(self.parameter_function(*local)),
             ),
             ParamLocal::BoolFunction { local, .. } => {
                 EvaluatedValueRef::Function(EvaluatedFunctionRef::Bool(self.bool_function(*local)))
@@ -81,10 +87,10 @@ impl BlockEnvironment {
 
     pub(in crate::runtime::graph) fn list_len(&self, local: &ListLocal) -> usize {
         match local {
-            ListLocal::Parameter { .. } => 0,
-            ListLocal::ParameterList { local, .. } => {
-                self.values.parameter_list_lists[local.0].len()
+            ListLocal::Parameter { local, .. } => {
+                self.values.parameter_lists[local.0].values().len()
             }
+
             ListLocal::Int { local, .. } => self.values.int_lists[local.0].values().len(),
             ListLocal::String { local, .. } => self.values.string_lists[local.0].values().len(),
             ListLocal::BitArray { local, .. } => {
@@ -107,11 +113,11 @@ impl BlockEnvironment {
     fn list_value_ref(&self, local: &ListLocal) -> EvaluatedValueRef<'_> {
         let handle = match local {
             ListLocal::Parameter { local, .. } => {
-                return EvaluatedValueRef::ParameterList(self.values.parameter_lists[local.0]);
+                return EvaluatedValueRef::ParameterList(
+                    self.values.parameter_lists[local.0].clone(),
+                );
             }
-            ListLocal::ParameterList { local, .. } => {
-                StoredListValueRef::ParameterList(&self.values.parameter_list_lists[local.0])
-            }
+
             ListLocal::Int { local, .. } => {
                 StoredListValueRef::Int(&self.values.int_lists[local.0])
             }
@@ -157,9 +163,7 @@ impl BlockEnvironment {
             ListFunctionLocal::Parameter { local, .. } => {
                 EvaluatedFunctionRef::List(&self.values.parameter_list_functions[local.0])
             }
-            ListFunctionLocal::ParameterList { local, .. } => {
-                EvaluatedFunctionRef::List(&self.values.parameter_list_list_functions[local.0])
-            }
+
             ListFunctionLocal::Int { local, .. } => {
                 EvaluatedFunctionRef::List(&self.values.int_list_functions[local.0])
             }

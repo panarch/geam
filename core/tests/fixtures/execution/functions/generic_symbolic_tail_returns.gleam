@@ -1,78 +1,80 @@
+pub type Empty
+
 pub type Boxed(value) {
   Boxed(value)
 }
 
-fn identity(value) {
+fn identity(value: Empty) {
   value
 }
 
-fn boxed(value) {
+fn boxed(value: Empty) {
   Boxed(value)
 }
 
-fn listed(value) {
+fn listed(value: Empty) {
   [value]
 }
 
-fn nested_function(value) {
-  fn(_input) { value }
+fn nested_function(value: Empty) {
+  fn(_input: Empty) { value }
 }
 
-fn int_function(_input) {
+fn int_function(_input: Empty) {
   1
 }
 
-fn float_function(_input) {
+fn float_function(_input: Empty) {
   1.0
 }
 
-fn string_function(_input) {
+fn string_function(_input: Empty) {
   "one"
 }
 
-fn bit_array_function(_input) {
+fn bit_array_function(_input: Empty) {
   <<1>>
 }
 
-fn utf_codepoint_function(_input) {
+fn utf_codepoint_function(_input: Empty) {
   let assert <<value:utf8_codepoint>> = <<65>>
   value
 }
 
-fn bool_function(_input) {
+fn bool_function(_input: Empty) {
   True
 }
 
-fn nil_function(_input) {
+fn nil_function(_input: Empty) {
   Nil
 }
 
-fn tuple_function(_input) {
+fn tuple_function(_input: Empty) {
   #(1)
 }
 
-fn string_list_function(_input) {
+fn string_list_function(_input: Empty) {
   ["one"]
 }
 
-fn bit_array_list_function(_input) {
+fn bit_array_list_function(_input: Empty) {
   [<<1>>]
 }
 
-fn utf_codepoint_list_function(_input) {
+fn utf_codepoint_list_function(_input: Empty) {
   let assert <<value:utf8_codepoint>> = <<65>>
   [value]
 }
 
-fn float_list_function(_input) {
+fn float_list_function(_input: Empty) {
   [1.0]
 }
 
-fn bool_list_function(_input) {
+fn bool_list_function(_input: Empty) {
   [True]
 }
 
-fn nil_list_function(_input) {
+fn nil_list_function(_input: Empty) {
   [Nil]
 }
 

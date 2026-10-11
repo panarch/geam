@@ -407,9 +407,10 @@ pub fn main() { retain(42) }
             HostProviderSet::from_providers([module]).unwrap()
         };
         let source = r#"
+pub type Never
 @external(erlang, "native", "produce")
 fn produce() -> a
-pub fn main() { let _ = produce() 42 }
+pub fn main() { let _: Never = produce() 42 }
 "#;
         let (_, values, nevers) = lowered(source, hosts(false));
         assert!(values.is_empty());

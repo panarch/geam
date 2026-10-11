@@ -1,4 +1,4 @@
-use geam_core::embedding::{FunctionDeclaration, HostedModuleBuilder};
+use geam_core::embedding::{CallError, FunctionDeclaration, HostedModuleBuilder};
 use geam_core::host::{HostComponentProfile, HostFutureStore, HostProfile, HostProviderSet};
 use geam_core::planner::InvalidTypedAstReason;
 use geam_core::{EchoOutput, EchoSink, PackageSource};
@@ -98,6 +98,7 @@ mod explain {
         function_return_control_flow,
         generic_instructions,
         list_instructions,
+        never_calls,
         pattern_details,
         return_topology,
         source_stops,
@@ -566,6 +567,7 @@ mod functions {
         generic_materialized_capture_families,
         generic_returned_closure_captures,
         generic_symbolic_tail_returns,
+        symbolic_factory_return,
         generic_uninhabited_custom_case,
         generic_uninhabited_parameter_function_value,
         generic_uninhabited_custom_function_list_handoff,
@@ -812,6 +814,7 @@ mod execution_errors {
 
     mod functions {
         execution_error_cases!("functions";
+            generic_empty_list_item_failure,
             generic_unresolved_argument,
             custom_function_binding_failure,
             generic_unresolved_discarded_value,
@@ -1331,6 +1334,60 @@ impl HostComponentProfile<work_fixture::WorkComponent> for TransferFixtureProfil
     }
 }
 
+#[test]
+fn native_parameter_transport_preserves_projections_lists_and_callback_identity() {
+    use geam_core::host::native::{NativeCall, NativeRules};
+    use geam_core::{
+        HostCallCompletion, HostCallError, HostProvider, HostProviderModule, HostTypeIndex0,
+        HostTypeList, HostTypeListEnd, HostTypeParameter, HostValue, HostedExecution,
+        compile_typed_host_program, plan_host_program,
+    };
+
+    struct Provider;
+    impl HostProvider<TransferFixtureProfile> for Provider {
+        type State = ();
+        fn project(state: &mut ()) -> &mut () {
+            state
+        }
+    }
+    type Input = HostTypeParameter<1>;
+    type Output = HostTypeParameter<0>;
+    type Targets = HostTypeList<Output, HostTypeListEnd>;
+    let provider = HostProviderModule::new("geam", "main")
+        .unwrap()
+        .with_native_function::<Provider, (Input,), Output, Targets, _>(
+            "coerce",
+            NativeRules::default(),
+            |mut call: NativeCall<'_, TransferFixtureProfile, Provider, Output, Targets>,
+             value: HostValue<'_, Input>| {
+                let source = call.source::<Input>(value);
+                let returned = call.convert::<HostTypeIndex0>(&source).unwrap();
+                Ok::<HostCallCompletion<'_, Output>, HostCallError>(call.finish(returned))
+            },
+        )
+        .unwrap();
+    let source = include_str!("fixtures/execution/functions/native_parameter_transport.gleam");
+    let typed = compile_typed_host_program(
+        "geam",
+        "main",
+        [PackageSource::new(
+            "geam",
+            Vec::<String>::new(),
+            [ModuleSource::new("main", "src/main.gleam", source)],
+        )],
+        HostProviderSet::from_providers([provider]).unwrap(),
+    )
+    .unwrap();
+    let mut execution =
+        HostedExecution::try_from_module_plan(plan_host_program(typed).unwrap()).unwrap();
+    let mut echoes = Vec::new();
+    assert_eq!(
+        execution_fixture::run(&mut execution, &mut (), &mut echoes),
+        Ok(Value::Int(42.into())),
+    );
+    assert!(echoes.is_empty());
+}
+
 fn assert_transfer_fixture(modules: Vec<ModuleSource>) {
     // Echo observes every return family through the public typed Nil entry.
     let modules = modules
@@ -1379,7 +1436,7 @@ fn assert_transfer_fixture(modules: Vec<ModuleSource>) {
         .expect("controlled execution")
         .try_into_value()
         .unwrap()
-        .map_err(geam_core::embedding::CallError::into_materialized);
+        .map_err(CallError::into_materialized);
     assert_eq!(
         echo.effects,
         expected_echo
@@ -1396,9 +1453,16 @@ fn assert_transfer_fixture(modules: Vec<ModuleSource>) {
             );
         }
         Err(error) => {
+            // Independent entry selections assign their own sealed binding scopes.
+            // Their source diagnostic is portable; raw execution binding ids are not.
             assert_eq!(
-                result,
-                Err(geam_core::embedding::CallError::from(error).into_materialized())
+                result.err().and_then(|error| match error {
+                    CallError::Execution(error) => {
+                        Some(render_execution_error(&error))
+                    }
+                    _ => None,
+                }),
+                Some(render_execution_error(&error.into_materialized()))
             );
             assert_eq!(echo.result, None);
         }
@@ -1545,7 +1609,7 @@ fn expected_error_text(src: &str) -> String {
     panic!("fixture should include `// @geam:expect-error`");
 }
 
-fn render_execution_error(error: &ExecutionError) -> String {
+fn render_execution_error(error: &dyn miette::Diagnostic) -> String {
     let handler = GraphicalReportHandler::new_themed(GraphicalTheme::none())
         .with_links(false)
         .with_urls(false)
@@ -1565,6 +1629,7 @@ fn render_execution_error(error: &ExecutionError) -> String {
 
 fn render_value(value: &Value) -> String {
     match value {
+        Value::Parameter(value) => format!("Parameter({value:?})"),
         Value::Int(value) => format!("Int({value})"),
         Value::Float(value) => format!("Float({value:?})"),
         Value::String(value) => format!("String({value:?})"),

@@ -45,9 +45,7 @@ pub(super) enum TypeError {
         index: usize,
         stored: usize,
     },
-    ParameterListItem {
-        index: usize,
-    },
+
     ConstructorOwner {
         type_index: usize,
         index: usize,
@@ -494,13 +492,7 @@ impl<'data> Types<'data> {
                 )?;
                 Self::function_roots(function, stack);
             }
-            ListStorageTypeId::ParameterList(item) => {
-                let inner = self.lists.types.get(item.item_type.list_type.index());
-                if inner != Some(&ListStorageTypeId::Parameter(item.item_type)) {
-                    return Err(TypeError::ParameterListItem { index: id.index() });
-                }
-                stack.push(TypeRef::List(item.item_type.list_type));
-            }
+
             ListStorageTypeId::List(item) => stack.push(TypeRef::List(item.item_type)),
             ListStorageTypeId::Custom(item) => {
                 self.customs
@@ -661,9 +653,7 @@ impl<'data> Types<'data> {
                 &self.lists.function_items[a.item_type.0] == b
             }
             (ListStorageTypeId::List(a), ValueType::List(b)) => a.item_type == *b,
-            (ListStorageTypeId::ParameterList(a), ValueType::List(b)) => {
-                a.item_type.list_type == *b
-            }
+
             (ListStorageTypeId::Custom(a), ValueType::Custom(b)) => a.item_type == *b,
             (ListStorageTypeId::External(a), ValueType::External(b)) => a.item_type == *b,
             _ => false,
@@ -738,9 +728,7 @@ impl<'data> Types<'data> {
             (TypeMetadata::List(a), ListStorageTypeId::List(b)) => {
                 self.metadata_matches_list_item(a, b.item_type)
             }
-            (TypeMetadata::List(a), ListStorageTypeId::ParameterList(b)) => {
-                self.metadata_matches_list_item(a, b.item_type.list_type)
-            }
+
             (TypeMetadata::Custom(a), ListStorageTypeId::Custom(b)) => {
                 a == &self.customs.types[b.item_type.index()].type_
             }
@@ -763,11 +751,11 @@ mod tests {
     use crate::plan::execution::type_::list::{FunctionItemTypeId, TupleItemTypeId};
     use crate::plan::execution::type_::{
         CustomListTypeId, CustomTypeId, CustomValueShapeId, ExternalListTypeId, ExternalTypeId,
-        FunctionListTypeId, FunctionMetadata, IntListTypeId, ListListTypeId,
-        ParameterListListTypeId, ParameterListTypeId, TupleListTypeId,
+        FunctionListTypeId, FunctionMetadata, IntListTypeId, ListListTypeId, TupleListTypeId,
     };
 
     static LISTS: ListTypeTable = ListTypeTable {
+        parameter_lifetimes: crate::plan::execution::storage::Table::Static(&[false; 0]),
         lifetimes: Table::Static(&[]),
         types: Table::Static(&[]),
         tuple_items: Table::Static(&[]),
@@ -1052,16 +1040,6 @@ pub fn main() { #([Box(42)], [Box(fn(value: Int) { value + 1 })]) }
                 TypeError::MissingFunctionItem { index: 8 },
             ),
             (
-                ListStorageTypeId::ParameterList(ParameterListListTypeId {
-                    list_type: ListTypeId(0),
-                    item_type: ParameterListTypeId {
-                        list_type: ListTypeId(1),
-                        item: crate::plan::TypeParameterId(0),
-                    },
-                }),
-                TypeError::ParameterListItem { index: 0 },
-            ),
-            (
                 ListStorageTypeId::Custom(CustomListTypeId {
                     list_type: ListTypeId(0),
                     item_type: CustomTypeId(7),
@@ -1304,6 +1282,7 @@ pub fn main() { #([Box(42)], [Box(fn(value: Int) { value + 1 })]) }
     #[test]
     fn list_shapes_must_preserve_the_storage_item_family() {
         let lists = ListTypeTable {
+            parameter_lifetimes: crate::plan::execution::storage::Table::Static(&[false; 1]),
             lifetimes: Table::Static(&[crate::HostValueLifetime::LoadedOwner]),
             types: vec![ListStorageTypeId::Int(IntListTypeId {
                 list_type: ListTypeId(0),

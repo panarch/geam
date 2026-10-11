@@ -30,6 +30,9 @@ pub(super) fn admit<'data>(
         FunctionCapture::UtfCodepoint { target, source } => {
             capture_values(types, target, source, expected, index, locals)
         }
+        FunctionCapture::Parameter { target, source } => {
+            capture_values(types, target, source, expected, index, locals)
+        }
         FunctionCapture::Custom { target, source } => {
             capture_values(types, target, source, expected, index, locals)
         }
@@ -48,9 +51,7 @@ pub(super) fn admit<'data>(
         FunctionCapture::ParameterList { target, source } => {
             capture_values(types, target, source, expected, index, locals)
         }
-        FunctionCapture::ParameterListList { target, source } => {
-            capture_values(types, target, source, expected, index, locals)
-        }
+
         FunctionCapture::IntList { target, source } => {
             capture_values(types, target, source, expected, index, locals)
         }
@@ -100,6 +101,9 @@ pub(super) fn admit<'data>(
             capture_values(types, target, source, expected, index, locals)
         }
         FunctionCapture::UtfCodepointFunction { target, source } => {
+            capture_values(types, target, source, expected, index, locals)
+        }
+        FunctionCapture::ParameterFunction { target, source } => {
             capture_values(types, target, source, expected, index, locals)
         }
         FunctionCapture::GenericFunction { target, source } => {
@@ -276,10 +280,12 @@ mod tests {
         use crate::plan::execution::prepared::admission::call::Target;
 
         let source = r#"
+pub type Empty
 pub type Box(a) { Box(a) }
 fn capture(value) { echo 0 fn() { echo value 42 } }
 fn unchanged(value) { value }
-fn stop(_value: Int) -> a { panic }
+fn stop(_value: Int) -> Empty { panic }
+fn symbolic(_value: Empty) { 42 }
 fn codepoint() { let assert <<value:utf8_codepoint>> = <<65>> value }
 pub fn main() {
   let _ = #(capture(42), capture(1.5), capture("text"), capture(True), capture(Nil),
@@ -290,13 +296,14 @@ pub fn main() {
   let _ = #(capture(fn() { 42 }), capture(fn() { 1.5 }), capture(fn() { "text" }),
     capture(fn() { True }), capture(fn() { Nil }), capture(fn() { <<1>> }),
     capture(fn() { codepoint() }), capture(fn() { #(1, True) }),
-    capture(fn() { Box(7) }), capture(unchanged), capture(stop))
+    capture(fn() { Box(7) }), capture(unchanged), capture(stop), capture(symbolic))
   let _ = #(capture(fn() { [42] }), capture(fn() { [1.5] }), capture(fn() { ["text"] }),
     capture(fn() { [True] }), capture(fn() { [Nil] }), capture(fn() { [<<1>>] }),
     capture(fn() { [codepoint()] }), capture(fn() { [#(1, True)] }),
     capture(fn() { [Box(7)] }), capture(fn() { [] }), capture(fn() { [[]] }),
     capture(fn() { [[42]] }), capture(fn() { [unchanged] }))
   let _ = capture(fn() { unchanged })
+  let _ = fn(value: a) { capture(value) }
   42
 }
 "#;
@@ -390,7 +397,7 @@ pub fn main() {
                 }
             }
         }
-        assert_eq!(checked, 47);
+        assert_eq!(checked, 49);
     }
 
     #[test]

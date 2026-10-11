@@ -6,14 +6,15 @@ use crate::plan::execution::prepared::rust::{Emit, Rust};
 use crate::plan::execution::type_::{
     BitArrayListTypeId, BoolListTypeId, CustomListTypeId, ExternalListTypeId, FloatListTypeId,
     FunctionListTypeId, FunctionType, IntListTypeId, ListListTypeId, NilListTypeId,
-    ParameterListListTypeId, ParameterListTypeId, StringListTypeId, TupleListTypeId,
-    UtfCodepointListTypeId,
+    ParameterListTypeId, StringListTypeId, TupleListTypeId, UtfCodepointListTypeId,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ProfiledFunctionFunctionId<
     Graph: ExecutionGraphProfile,
     Symbolic = GenericFunctionFunctionId,
+    Parameter = ParameterFunctionFunctionId,
+    ListParameter = ParameterListFunctionFunctionId,
 > {
     Generic(Symbolic),
     Never(NeverFunctionFunctionId),
@@ -22,12 +23,13 @@ pub enum ProfiledFunctionFunctionId<
     String(StringFunctionFunctionId),
     BitArray(BitArrayFunctionFunctionId),
     UtfCodepoint(UtfCodepointFunctionFunctionId),
+    Parameter(Parameter),
     Custom(CustomFunctionFunctionId),
     External(Graph::ExternalFunctionFunctionId),
     Bool(BoolFunctionFunctionId),
     Nil(NilFunctionFunctionId),
     Tuple(TupleFunctionFunctionId),
-    List(ProfiledListFunctionFunctionId<Graph>),
+    List(ProfiledListFunctionFunctionId<Graph, ListParameter>),
     Function(FunctionFunctionFunctionId),
 }
 
@@ -47,6 +49,9 @@ pub struct BitArrayFunctionFunctionId(pub usize);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct UtfCodepointFunctionFunctionId(pub usize);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ParameterFunctionFunctionId(pub usize);
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GenericFunctionFunctionId {
@@ -97,9 +102,6 @@ pub struct UtfCodepointListFunctionFunctionId(pub usize);
 pub struct ParameterListFunctionFunctionId(pub usize);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct ParameterListListFunctionFunctionId(pub usize);
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CustomListFunctionFunctionId(pub usize);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -124,16 +126,14 @@ pub struct ListListFunctionFunctionId(pub usize);
 pub struct FunctionListFunctionFunctionId(pub usize);
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ProfiledListFunctionFunctionId<Graph: ExecutionGraphProfile> {
+pub enum ProfiledListFunctionFunctionId<
+    Graph: ExecutionGraphProfile,
+    Parameter = ParameterListFunctionFunctionId,
+> {
     Parameter {
-        id: ParameterListFunctionFunctionId,
+        id: Parameter,
         type_: FunctionType,
         list_type: ParameterListTypeId,
-    },
-    ParameterList {
-        id: ParameterListListFunctionFunctionId,
-        type_: FunctionType,
-        list_type: ParameterListListTypeId,
     },
     Int {
         id: IntListFunctionFunctionId,
@@ -308,7 +308,14 @@ impl FunctionFunctionFunctionId {
     }
 }
 
-impl<Graph: ExecutionGraphProfile> ProfiledFunctionFunctionId<Graph, std::convert::Infallible> {
+impl<Graph: ExecutionGraphProfile>
+    ProfiledFunctionFunctionId<
+        Graph,
+        std::convert::Infallible,
+        std::convert::Infallible,
+        std::convert::Infallible,
+    >
+{
     pub(in crate::plan::execution::function) fn value_target(
         &self,
     ) -> ProfiledFunctionFunctionId<Graph> {
@@ -320,13 +327,130 @@ impl<Graph: ExecutionGraphProfile> ProfiledFunctionFunctionId<Graph, std::conver
             Self::String(id) => ProfiledFunctionFunctionId::String(*id),
             Self::BitArray(id) => ProfiledFunctionFunctionId::BitArray(*id),
             Self::UtfCodepoint(id) => ProfiledFunctionFunctionId::UtfCodepoint(*id),
+            Self::Parameter(id) => match *id {},
             Self::Custom(id) => ProfiledFunctionFunctionId::Custom(id.clone()),
             Self::External(id) => ProfiledFunctionFunctionId::External(id.clone()),
             Self::Bool(id) => ProfiledFunctionFunctionId::Bool(*id),
             Self::Nil(id) => ProfiledFunctionFunctionId::Nil(*id),
             Self::Tuple(id) => ProfiledFunctionFunctionId::Tuple(*id),
-            Self::List(id) => ProfiledFunctionFunctionId::List(id.clone()),
+            Self::List(id) => ProfiledFunctionFunctionId::List(id.value_target()),
             Self::Function(id) => ProfiledFunctionFunctionId::Function(id.clone()),
+        }
+    }
+}
+
+impl<Graph: ExecutionGraphProfile> ProfiledListFunctionFunctionId<Graph, std::convert::Infallible> {
+    pub(crate) fn value_target(&self) -> ProfiledListFunctionFunctionId<Graph> {
+        match self {
+            Self::Parameter { id, .. } => match *id {},
+            Self::Int {
+                id,
+                type_,
+                list_type,
+            } => ProfiledListFunctionFunctionId::Int {
+                id: *id,
+                type_: type_.clone(),
+                list_type: *list_type,
+            },
+            Self::String {
+                id,
+                type_,
+                list_type,
+            } => ProfiledListFunctionFunctionId::String {
+                id: *id,
+                type_: type_.clone(),
+                list_type: *list_type,
+            },
+            Self::BitArray {
+                id,
+                type_,
+                list_type,
+            } => ProfiledListFunctionFunctionId::BitArray {
+                id: *id,
+                type_: type_.clone(),
+                list_type: *list_type,
+            },
+            Self::UtfCodepoint {
+                id,
+                type_,
+                list_type,
+            } => ProfiledListFunctionFunctionId::UtfCodepoint {
+                id: *id,
+                type_: type_.clone(),
+                list_type: *list_type,
+            },
+            Self::Custom {
+                id,
+                type_,
+                list_type,
+            } => ProfiledListFunctionFunctionId::Custom {
+                id: *id,
+                type_: type_.clone(),
+                list_type: *list_type,
+            },
+            Self::External {
+                id,
+                type_,
+                list_type,
+            } => ProfiledListFunctionFunctionId::External {
+                id: id.clone(),
+                type_: type_.clone(),
+                list_type: *list_type,
+            },
+            Self::Float {
+                id,
+                type_,
+                list_type,
+            } => ProfiledListFunctionFunctionId::Float {
+                id: *id,
+                type_: type_.clone(),
+                list_type: *list_type,
+            },
+            Self::Bool {
+                id,
+                type_,
+                list_type,
+            } => ProfiledListFunctionFunctionId::Bool {
+                id: *id,
+                type_: type_.clone(),
+                list_type: *list_type,
+            },
+            Self::Nil {
+                id,
+                type_,
+                list_type,
+            } => ProfiledListFunctionFunctionId::Nil {
+                id: *id,
+                type_: type_.clone(),
+                list_type: *list_type,
+            },
+            Self::Tuple {
+                id,
+                type_,
+                list_type,
+            } => ProfiledListFunctionFunctionId::Tuple {
+                id: *id,
+                type_: type_.clone(),
+                list_type: *list_type,
+            },
+            Self::List {
+                id,
+                type_,
+                list_type,
+            } => ProfiledListFunctionFunctionId::List {
+                id: *id,
+                type_: type_.clone(),
+                list_type: *list_type,
+            },
+            Self::Function {
+                id,
+                type_,
+                list_type,
+            } => ProfiledListFunctionFunctionId::Function {
+                id: *id,
+                type_: type_.clone(),
+                list_type: *list_type,
+            },
         }
     }
 }
@@ -370,11 +494,10 @@ impl<Graph: ExecutionGraphProfile> ProfiledFunctionFunctionId<Graph> {
 }
 
 #[cfg(test)]
-impl<Graph: ExecutionGraphProfile> ProfiledListFunctionFunctionId<Graph> {
+impl<Graph: ExecutionGraphProfile, Parameter> ProfiledListFunctionFunctionId<Graph, Parameter> {
     pub(crate) fn type_(&self) -> &FunctionType {
         match self {
             Self::Parameter { type_, .. }
-            | Self::ParameterList { type_, .. }
             | Self::Int { type_, .. }
             | Self::String { type_, .. }
             | Self::BitArray { type_, .. }
@@ -405,6 +528,7 @@ where
             Self::String(id) => FunctionLabel::new("function.string", id.0),
             Self::BitArray(id) => FunctionLabel::new("function.bit_array", id.0),
             Self::UtfCodepoint(id) => FunctionLabel::new("function.utf_codepoint", id.0),
+            Self::Parameter(id) => FunctionLabel::new("function.parameter", id.0),
             Self::Custom(id) => FunctionLabel::new("function.custom", id.index()),
             Self::External(id) => id.function_label(),
             Self::Bool(id) => FunctionLabel::new("function.bool", id.0),
@@ -423,9 +547,7 @@ where
     fn function_label(&self) -> FunctionLabel {
         match self {
             Self::Parameter { id, .. } => FunctionLabel::new("function.list.parameter", id.0),
-            Self::ParameterList { id, .. } => {
-                FunctionLabel::new("function.list.parameter_list", id.0)
-            }
+
             Self::Int { id, .. } => FunctionLabel::new("function.list.int", id.0),
             Self::String { id, .. } => FunctionLabel::new("function.list.string", id.0),
             Self::BitArray { id, .. } => FunctionLabel::new("function.list.bit_array", id.0),
@@ -444,11 +566,11 @@ where
     }
 }
 
-impl<Graph: ExecutionGraphProfile, Symbolic: Emit> Emit
-    for ProfiledFunctionFunctionId<Graph, Symbolic>
+impl<Graph: ExecutionGraphProfile, Symbolic: Emit, Parameter: Emit, ListParameter: Emit> Emit
+    for ProfiledFunctionFunctionId<Graph, Symbolic, Parameter, ListParameter>
 where
     Graph::ExternalFunctionFunctionId: Emit,
-    ProfiledListFunctionFunctionId<Graph>: Emit,
+    ProfiledListFunctionFunctionId<Graph, ListParameter>: Emit,
 {
     fn emit(&self, output: &mut Rust) {
         match self {
@@ -472,6 +594,10 @@ where
             }
             Self::UtfCodepoint(field_0) => output.call(
                 "function::ProfiledFunctionFunctionId::UtfCodepoint",
+                &[field_0],
+            ),
+            Self::Parameter(field_0) => output.call(
+                "function::ProfiledFunctionFunctionId::Parameter",
                 &[field_0],
             ),
             Self::Custom(field_0) => {
@@ -531,6 +657,13 @@ impl Emit for UtfCodepointFunctionFunctionId {
     fn emit(&self, output: &mut Rust) {
         let Self(field_0) = self;
         output.call("function::UtfCodepointFunctionFunctionId", &[field_0]);
+    }
+}
+
+impl Emit for ParameterFunctionFunctionId {
+    fn emit(&self, output: &mut Rust) {
+        let Self(field_0) = self;
+        output.call("function::ParameterFunctionFunctionId", &[field_0]);
     }
 }
 
@@ -630,13 +763,6 @@ impl Emit for ParameterListFunctionFunctionId {
     }
 }
 
-impl Emit for ParameterListListFunctionFunctionId {
-    fn emit(&self, output: &mut Rust) {
-        let Self(field_0) = self;
-        output.call("function::ParameterListListFunctionFunctionId", &[field_0]);
-    }
-}
-
 impl Emit for CustomListFunctionFunctionId {
     fn emit(&self, output: &mut Rust) {
         let Self(field_0) = self;
@@ -693,7 +819,8 @@ impl Emit for FunctionListFunctionFunctionId {
     }
 }
 
-impl<Graph: ExecutionGraphProfile> Emit for ProfiledListFunctionFunctionId<Graph>
+impl<Graph: ExecutionGraphProfile, Parameter: Emit> Emit
+    for ProfiledListFunctionFunctionId<Graph, Parameter>
 where
     Graph::ExternalListFunctionFunctionId: Emit,
 {
@@ -707,14 +834,7 @@ where
                 "function::ProfiledListFunctionFunctionId::Parameter",
                 &[("id", id), ("type_", type_), ("list_type", list_type)],
             ),
-            Self::ParameterList {
-                id,
-                type_,
-                list_type,
-            } => output.structure(
-                "function::ProfiledListFunctionFunctionId::ParameterList",
-                &[("id", id), ("type_", type_), ("list_type", list_type)],
-            ),
+
             Self::Int {
                 id,
                 type_,
@@ -834,11 +954,10 @@ mod emission_tests {
         FloatListFunctionFunctionId, FunctionFunctionFunctionId, FunctionListFunctionFunctionId,
         GenericFunctionFunctionId, IntFunctionFunctionId, IntListFunctionFunctionId,
         ListListFunctionFunctionId, NeverFunctionFunctionId, NilFunctionFunctionId,
-        NilListFunctionFunctionId, ParameterListFunctionFunctionId,
-        ParameterListListFunctionFunctionId, ProfiledFunctionFunctionId,
-        ProfiledListFunctionFunctionId, StringFunctionFunctionId, StringListFunctionFunctionId,
-        TupleFunctionFunctionId, TupleListFunctionFunctionId, UtfCodepointFunctionFunctionId,
-        UtfCodepointListFunctionFunctionId,
+        NilListFunctionFunctionId, ParameterFunctionFunctionId, ParameterListFunctionFunctionId,
+        ProfiledFunctionFunctionId, ProfiledListFunctionFunctionId, StringFunctionFunctionId,
+        StringListFunctionFunctionId, TupleFunctionFunctionId, TupleListFunctionFunctionId,
+        UtfCodepointFunctionFunctionId, UtfCodepointListFunctionFunctionId,
     };
     use crate::plan::execution::function::HostedExecutionGraph;
     use crate::plan::execution::prepared::rust::Rust;
@@ -848,15 +967,16 @@ mod emission_tests {
         CustomValueShape, CustomValueShapeId, ExternalFunctionType, ExternalListTypeId,
         ExternalTypeId, FloatListTypeId, FunctionFunctionType, FunctionListTypeId, FunctionShape,
         FunctionType, GenericFunctionType, IntListTypeId, ListListTypeId, ListTypeId,
-        NilListTypeId, ParameterListListTypeId, ParameterListTypeId, StringListTypeId,
-        TupleListTypeId, UtfCodepointListTypeId, ValueShapeId, ValueType,
+        NilListTypeId, ParameterListTypeId, StringListTypeId, TupleListTypeId,
+        UtfCodepointListTypeId, ValueShapeId, ValueType,
     };
+    use std::convert::Infallible;
 
     #[test]
     fn emits_function_return_ids_with_symbolic_and_nominal_contracts() {
         let symbolic = FunctionType::new(
             Vec::new(),
-            ValueType::Parameter(crate::plan::TypeParameterId(0)),
+            ValueType::Parameter(crate::plan::TypeParameterId::new(0)),
         );
         let inner = FunctionType::new(Vec::new(), ValueType::Int);
         let (generic, expected): (ProfiledFunctionFunctionId<HostedExecutionGraph>, &str) = (
@@ -886,7 +1006,9 @@ data::function::ProfiledFunctionFunctionId::Generic(data::function::GenericFunct
 })"#.trim_start_matches('\n'),
             );
         assert_eq!(Rust::expression(&generic), expected);
-        let cases: [(ProfiledFunctionFunctionId<HostedExecutionGraph, std::convert::Infallible>, &str); 13] = [
+        type AdmittedFunction =
+            ProfiledFunctionFunctionId<HostedExecutionGraph, Infallible, Infallible, Infallible>;
+        let cases: [(AdmittedFunction, &str); 13] = [
             (
                 ProfiledFunctionFunctionId::Int(IntFunctionFunctionId(2)),
                 "data::function::ProfiledFunctionFunctionId::Int(data::function::IntFunctionFunctionId(2))",
@@ -1050,7 +1172,44 @@ data::function::ProfiledFunctionFunctionId::Function(data::function::FunctionFun
 
     #[test]
     fn emits_function_returning_list_ids_with_all_item_families() {
-        let cases: [(ProfiledListFunctionFunctionId<HostedExecutionGraph>, &str); 14] = [
+        let parameter = ProfiledFunctionFunctionId::<HostedExecutionGraph>::Parameter(
+            ParameterFunctionFunctionId(7),
+        );
+        assert_eq!(
+            Rust::expression(&parameter),
+            "data::function::ProfiledFunctionFunctionId::Parameter(data::function::ParameterFunctionFunctionId(7))"
+        );
+        let (parameter_list, expected): (
+            ProfiledListFunctionFunctionId<HostedExecutionGraph>,
+            &str,
+        ) = (
+            ProfiledListFunctionFunctionId::Parameter {
+                id: ParameterListFunctionFunctionId(2),
+                type_: FunctionType::new(Vec::new(), ValueType::List(ListTypeId(3))),
+                list_type: ParameterListTypeId::new(
+                    ListTypeId(3),
+                    crate::plan::TypeParameterId::new(4),
+                ),
+            },
+            r#"
+data::function::ProfiledListFunctionFunctionId::Parameter {
+    id: data::function::ParameterListFunctionFunctionId(2),
+    type_: data::type_::FunctionType {
+        arguments: data::Storage::Static(&[]),
+        return_: data::Storage::Static(&data::type_::ValueType::List(data::type_::ListTypeId(3))),
+    },
+    list_type: data::type_::ParameterListTypeId {
+        list_type: data::type_::ListTypeId(3),
+        item: data::type_::parameter_id(4),
+    },
+}"#
+            .trim_start_matches('\n'),
+        );
+        assert_eq!(Rust::expression(&parameter_list), expected);
+        let cases: [(
+            ProfiledListFunctionFunctionId<HostedExecutionGraph, Infallible>,
+            &str,
+        ); 12] = [
             (
                 ProfiledListFunctionFunctionId::Int {
                     id: IntListFunctionFunctionId(2),
@@ -1185,55 +1344,6 @@ data::function::ProfiledListFunctionFunctionId::Nil {
                 .trim_start_matches('\n'),
             ),
             (
-                ProfiledListFunctionFunctionId::Parameter {
-                    id: ParameterListFunctionFunctionId(2),
-                    type_: FunctionType::new(Vec::new(), ValueType::List(ListTypeId(3))),
-                    list_type: ParameterListTypeId::new(
-                        ListTypeId(3),
-                        crate::plan::TypeParameterId(4),
-                    ),
-                },
-                r#"
-data::function::ProfiledListFunctionFunctionId::Parameter {
-    id: data::function::ParameterListFunctionFunctionId(2),
-    type_: data::type_::FunctionType {
-        arguments: data::Storage::Static(&[]),
-        return_: data::Storage::Static(&data::type_::ValueType::List(data::type_::ListTypeId(3))),
-    },
-    list_type: data::type_::ParameterListTypeId {
-        list_type: data::type_::ListTypeId(3),
-        item: data::type_::parameter_id(4),
-    },
-}"#
-                .trim_start_matches('\n'),
-            ),
-            (
-                ProfiledListFunctionFunctionId::ParameterList {
-                    id: ParameterListListFunctionFunctionId(2),
-                    type_: FunctionType::new(Vec::new(), ValueType::List(ListTypeId(3))),
-                    list_type: ParameterListListTypeId::new(
-                        ListTypeId(3),
-                        ParameterListTypeId::new(ListTypeId(4), crate::plan::TypeParameterId(5)),
-                    ),
-                },
-                r#"
-data::function::ProfiledListFunctionFunctionId::ParameterList {
-    id: data::function::ParameterListListFunctionFunctionId(2),
-    type_: data::type_::FunctionType {
-        arguments: data::Storage::Static(&[]),
-        return_: data::Storage::Static(&data::type_::ValueType::List(data::type_::ListTypeId(3))),
-    },
-    list_type: data::type_::ParameterListListTypeId {
-        list_type: data::type_::ListTypeId(3),
-        item_type: data::type_::ParameterListTypeId {
-            list_type: data::type_::ListTypeId(4),
-            item: data::type_::parameter_id(5),
-        },
-    },
-}"#
-                .trim_start_matches('\n'),
-            ),
-            (
                 ProfiledListFunctionFunctionId::Custom {
                     id: CustomListFunctionFunctionId(2),
                     type_: FunctionType::new(Vec::new(), ValueType::List(ListTypeId(3))),
@@ -1342,6 +1452,7 @@ data::function::ProfiledListFunctionFunctionId::Function {
         ];
         for (id, expected) in cases {
             assert_eq!(Rust::expression(&id), expected);
+            assert_eq!(Rust::expression(&id.value_target()), expected);
         }
     }
 }
@@ -1359,11 +1470,19 @@ mod explain_tests {
     fn labels_function_return_families() {
         let cases = [
             (
-                "pub fn main() -> fn(value) -> value { fn(value) { value } }",
+                "pub type Empty pub fn main() -> fn(Empty) -> Int { fn(_) { 1 } }",
                 "function.generic#0",
             ),
             (
+                "pub fn main() -> fn(value) -> value { fn(value) { value } }",
+                "function.parameter#0",
+            ),
+            (
                 "pub fn main() -> fn() -> value { fn() { panic } }",
+                "function.parameter#0",
+            ),
+            (
+                "pub type Never pub fn main() -> fn() -> Never { fn() { panic } }",
                 "function.never#0",
             ),
             (
@@ -1426,7 +1545,7 @@ mod explain_tests {
             ),
             (
                 "pub fn main() -> fn() -> List(List(value)) { fn() { [[]] } }",
-                "function.list.parameter_list#0",
+                "function.list.list#0",
             ),
             (
                 "pub fn main() -> fn() -> List(Int) { fn() { [] } }",
@@ -1509,8 +1628,7 @@ mod tests {
         FunctionFunctionId, FunctionListFunctionFunctionId, IntFunctionFunctionId,
         IntListFunctionFunctionId, ListFunctionFunctionId, ListListFunctionFunctionId,
         NeverFunctionFunctionId, NilListFunctionFunctionId, ParameterListFunctionFunctionId,
-        ParameterListListFunctionFunctionId, StringListFunctionFunctionId,
-        TupleListFunctionFunctionId, UtfCodepointFunctionFunctionId,
+        StringListFunctionFunctionId, TupleListFunctionFunctionId, UtfCodepointFunctionFunctionId,
     };
     use crate::plan::execution::function::{
         CoreRuntimeFunctionId, FunctionLabelSource, ProfiledFunctionFunctionId,
@@ -1531,7 +1649,7 @@ mod tests {
         let parameter_plan = execution_plan("pub fn main() -> List(value) { [] }");
         let parameter = parameter_plan.parameter_list_function_id(0).type_id();
         let nested_plan = execution_plan("pub fn main() -> List(List(value)) { [] }");
-        let nested = nested_plan.parameter_list_list_function_id(0).type_id();
+        let nested = nested_plan.list_list_function_id(0).type_id();
         let function_type = crate::plan::execution::type_::FunctionType::new(
             Vec::new(),
             crate::plan::execution::type_::ValueType::Nil,
@@ -1541,8 +1659,8 @@ mod tests {
             type_: function_type.clone(),
             list_type: parameter,
         };
-        let nested_function = ListFunctionFunctionId::ParameterList {
-            id: ParameterListListFunctionFunctionId(0),
+        let nested_function = ListFunctionFunctionId::List {
+            id: ListListFunctionFunctionId(0),
             type_: function_type.clone(),
             list_type: nested,
         };
@@ -1559,7 +1677,9 @@ mod tests {
     fn never_function_function_id_projection_is_typed() {
         let function_type = crate::plan::execution::type_::FunctionType::new(
             Vec::new(),
-            crate::plan::execution::type_::ValueType::Parameter(crate::plan::TypeParameterId(0)),
+            crate::plan::execution::type_::ValueType::Parameter(crate::plan::TypeParameterId::new(
+                0,
+            )),
         );
         let type_ = crate::plan::execution::type_::GenericFunctionType::from_shapes(
             function_type.clone(),
@@ -1582,7 +1702,9 @@ mod tests {
     fn generic_function_function_id_projection_is_typed() {
         let function_type = crate::plan::execution::type_::FunctionType::new(
             Vec::new(),
-            crate::plan::execution::type_::ValueType::Parameter(crate::plan::TypeParameterId(0)),
+            crate::plan::execution::type_::ValueType::Parameter(crate::plan::TypeParameterId::new(
+                0,
+            )),
         );
         let type_ = crate::plan::execution::type_::GenericFunctionType::from_shapes(
             function_type.clone(),

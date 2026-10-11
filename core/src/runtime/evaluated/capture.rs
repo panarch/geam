@@ -6,16 +6,16 @@ use super::{
     EvaluatedBitArrayFunction, EvaluatedBoolFunction, EvaluatedCustomFunction,
     EvaluatedExternalFunction, EvaluatedFloatFunction, EvaluatedFunctionFunction,
     EvaluatedGenericFunction, EvaluatedIntFunction, EvaluatedListFunction, EvaluatedNeverFunction,
-    EvaluatedNilFunction, EvaluatedStringFunction, EvaluatedTupleFunction,
-    EvaluatedUtfCodepointFunction,
+    EvaluatedNilFunction, EvaluatedParameterFunction, EvaluatedStringFunction,
+    EvaluatedTupleFunction, EvaluatedUtfCodepointFunction,
 };
 use crate::plan::execution::graph::{
     BitArrayFunctionLocalId, BitArrayLocalId, BoolFunctionLocalId, BoolLocalId,
     CustomFunctionLocal, CustomLocal, ExternalFunctionLocal, ExternalLocal, FloatFunctionLocalId,
     FloatLocalId, FunctionFunctionLocal, GenericFunctionLocal, IntFunctionLocalId, IntLocalId,
-    ListFunctionLocal, NeverFunctionLocal, NilFunctionLocalId, NilLocalId, StringFunctionLocalId,
-    StringLocalId, TupleFunctionLocalId, TupleLocalId, UtfCodepointFunctionLocalId,
-    UtfCodepointLocalId,
+    ListFunctionLocal, NeverFunctionLocal, NilFunctionLocalId, NilLocalId,
+    ParameterFunctionLocalId, ParameterLocalId, StringFunctionLocalId, StringLocalId,
+    TupleFunctionLocalId, TupleLocalId, UtfCodepointFunctionLocalId, UtfCodepointLocalId,
 };
 use crate::runtime::state::list::ExternalListValueId;
 
@@ -45,6 +45,10 @@ pub(in crate::runtime) enum EvaluatedCaptureKind {
     UtfCodepoint {
         local: UtfCodepointLocalId,
         value: char,
+    },
+    Parameter {
+        local: ParameterLocalId,
+        value: crate::ParameterValue,
     },
     Custom {
         local: CustomLocal,
@@ -85,6 +89,10 @@ pub(in crate::runtime) enum EvaluatedCaptureKind {
     UtfCodepointFunction {
         local: UtfCodepointFunctionLocalId,
         value: EvaluatedUtfCodepointFunction,
+    },
+    ParameterFunction {
+        local: ParameterFunctionLocalId,
+        value: EvaluatedParameterFunction,
     },
     CustomFunction {
         local: CustomFunctionLocal,
@@ -129,10 +137,6 @@ pub(in crate::runtime) enum EvaluatedListCapture {
     Parameter {
         local: crate::plan::execution::graph::ParameterListLocalId,
         value: crate::runtime::state::list::ParameterListValueId,
-    },
-    ParameterList {
-        local: crate::plan::execution::graph::ParameterListListLocalId,
-        value: crate::runtime::state::list::ParameterListListValueId,
     },
     Int {
         local: crate::plan::execution::graph::IntListLocalId,
@@ -201,6 +205,7 @@ impl EvaluatedCapture {
             Capture::String { value, .. } => EvaluatedValue::String(value),
             Capture::BitArray { value, .. } => EvaluatedValue::BitArray(value),
             Capture::UtfCodepoint { value, .. } => EvaluatedValue::UtfCodepoint(value),
+            Capture::Parameter { value, .. } => EvaluatedValue::Parameter(value),
             Capture::Custom { value, .. } => EvaluatedValue::Custom(value),
             Capture::External { value, .. } => EvaluatedValue::External(value),
             Capture::Bool { value, .. } => EvaluatedValue::Bool(value),
@@ -212,6 +217,7 @@ impl EvaluatedCapture {
             Capture::StringFunction { value, .. } => EvaluatedValue::Function(value.into()),
             Capture::BitArrayFunction { value, .. } => EvaluatedValue::Function(value.into()),
             Capture::UtfCodepointFunction { value, .. } => EvaluatedValue::Function(value.into()),
+            Capture::ParameterFunction { value, .. } => EvaluatedValue::Function(value.into()),
             Capture::CustomFunction { value, .. } => EvaluatedValue::Function(value.into()),
             Capture::ExternalFunction { value, .. } => EvaluatedValue::Function(value.into()),
             Capture::BoolFunction { value, .. } => EvaluatedValue::Function(value.into()),
@@ -242,6 +248,13 @@ impl EvaluatedCapture {
 
     pub(in crate::runtime) fn utf_codepoint(local: UtfCodepointLocalId, value: char) -> Self {
         Self::from_kind(EvaluatedCaptureKind::UtfCodepoint { local, value })
+    }
+
+    pub(in crate::runtime) fn parameter(
+        local: ParameterLocalId,
+        value: crate::ParameterValue,
+    ) -> Self {
+        Self::from_kind(EvaluatedCaptureKind::Parameter { local, value })
     }
 
     pub(in crate::runtime) fn custom(local: CustomLocal, value: EvaluatedCustomValue) -> Self {
@@ -304,6 +317,13 @@ impl EvaluatedCapture {
         value: EvaluatedUtfCodepointFunction,
     ) -> Self {
         Self::from_kind(EvaluatedCaptureKind::UtfCodepointFunction { local, value })
+    }
+
+    pub(in crate::runtime) fn parameter_function(
+        local: ParameterFunctionLocalId,
+        value: EvaluatedParameterFunction,
+    ) -> Self {
+        Self::from_kind(EvaluatedCaptureKind::ParameterFunction { local, value })
     }
 
     pub(in crate::runtime) fn custom_function(
@@ -375,7 +395,7 @@ impl EvaluatedListCapture {
         use crate::runtime::state::list::ListValueId;
         let value = match self {
             Self::Parameter { value, .. } => ListValueId::Parameter(value),
-            Self::ParameterList { value, .. } => ListValueId::ParameterList(value),
+
             Self::Int { value, .. } => ListValueId::Int(value),
             Self::String { value, .. } => ListValueId::String(value),
             Self::BitArray { value, .. } => ListValueId::BitArray(value),
@@ -401,6 +421,59 @@ mod tests {
 
     use crate::runtime::evaluated::EvaluatedIntFunction;
     use crate::runtime::state::RuntimeState;
+
+    #[test]
+    fn parameter_capture_preserves_its_slot_binding_and_native_payload() {
+        use crate::plan::execution::graph::ParameterLocalId;
+        use crate::plan::execution::runtime::RuntimeExecutionPlan;
+        use crate::runtime::{EvaluatedValue, NativeValues, RuntimeListStorage};
+
+        let plan = crate::runtime::plan_src("pub fn main() -> List(a) { [] }");
+        let storage = RuntimeListStorage::default();
+        let native = NativeValues::new(&storage, plan.value_metadata());
+        let binding = plan.parameter_list_function_id(0).type_id().item;
+        let payload = native.parameter(binding, &native.integer(42.into()), false);
+        let capture = EvaluatedCapture::parameter(ParameterLocalId(3), payload.clone());
+        assert_eq!(
+            capture.kind(),
+            &EvaluatedCaptureKind::Parameter {
+                local: ParameterLocalId(3),
+                value: payload.clone(),
+            }
+        );
+        assert_eq!(capture.into_value(), EvaluatedValue::Parameter(payload));
+    }
+
+    #[test]
+    fn parameter_function_capture_retains_the_original_callable_binding() {
+        use crate::plan::TypeParameterId;
+        use crate::plan::execution::function::ParameterFunctionId;
+        use crate::plan::execution::graph::ParameterFunctionLocalId;
+        use crate::plan::execution::type_::{FunctionType, ValueType};
+        use crate::runtime::evaluated::{
+            EvaluatedParameterFunction, EvaluatedValue, EvaluatedValueRef,
+        };
+        let binding = ValueType::Parameter(TypeParameterId::scoped(0, 0));
+        let function = EvaluatedParameterFunction::reference(
+            ParameterFunctionId(0),
+            Default::default(),
+            FunctionType::new(vec![binding.clone()], binding),
+        );
+        let capture =
+            EvaluatedCapture::parameter_function(ParameterFunctionLocalId(3), function.clone());
+        assert_eq!(
+            capture.kind(),
+            &EvaluatedCaptureKind::ParameterFunction {
+                local: ParameterFunctionLocalId(3),
+                value: function.clone(),
+            }
+        );
+        let value = capture.into_value();
+        assert_eq!(value, EvaluatedValue::Function(function.clone().into()));
+        let retained = EvaluatedValueRef::from(&value).retain();
+        drop(value);
+        assert_eq!(retained, EvaluatedValue::Function(function.into()));
+    }
 
     #[test]
     fn capture_constructors_preserve_scalar_list_and_function_kinds() {

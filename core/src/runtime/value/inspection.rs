@@ -32,6 +32,7 @@ impl Display for ValueInspection<'_> {
 
 fn write_value(output: &mut String, value: &Value) {
     match value {
+        Value::Parameter(value) => output.push_str(&value.inspection()),
         Value::Int(value) => output.push_str(&value.to_string()),
         Value::Float(value) => output.push_str(&format!("{value:?}")),
         Value::String(value) => output.push_str(&format!("{value:?}")),

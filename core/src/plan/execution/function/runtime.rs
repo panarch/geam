@@ -1,7 +1,7 @@
 use super::{
     BitArrayFunctionId, BoolFunctionId, CustomFunctionId, ExecutionGraphProfile, FloatFunctionId,
     FunctionLabelSource, HostedExecutionGraph, IntFunctionId, NeverFunctionId, NilFunctionId,
-    StringFunctionId, TupleFunctionId, UtfCodepointFunctionId,
+    ParameterFunctionId, StringFunctionId, TupleFunctionId, UtfCodepointFunctionId,
 };
 use crate::plan::execution::explain::FunctionLabel;
 use crate::plan::execution::graph::ExternalFunctionCallTarget;
@@ -49,6 +49,7 @@ pub enum ProfiledCoreRuntimeFunctionId<Graph: ExecutionGraphProfile> {
     String(StringFunctionId),
     BitArray(BitArrayFunctionId),
     UtfCodepoint(UtfCodepointFunctionId),
+    Parameter(ParameterFunctionId),
     Custom(CustomFunctionId),
     Bool(BoolFunctionId),
     Nil(NilFunctionId),
@@ -64,10 +65,17 @@ pub enum ProfiledCoreRuntimeFunctionId<Graph: ExecutionGraphProfile> {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum RuntimeFunctionFunctionTarget<Symbolic = super::GenericFunctionFunctionId> {
-    Core(super::ProfiledFunctionFunctionId<Infallible, Symbolic>),
+pub enum RuntimeFunctionFunctionTarget<
+    Symbolic = super::GenericFunctionFunctionId,
+    Parameter = super::ParameterFunctionFunctionId,
+    ListParameter = super::ParameterListFunctionFunctionId,
+> {
+    Core(super::ProfiledFunctionFunctionId<Infallible, Symbolic, Parameter, ListParameter>),
     External(ExternalFunctionCallTarget),
 }
+
+pub(crate) type LibraryFunctionFunctionTarget =
+    RuntimeFunctionFunctionTarget<Infallible, Infallible, Infallible>;
 
 pub(crate) type RuntimeFunctionId = ProfiledRuntimeFunctionId<HostedExecutionGraph>;
 pub(crate) type CoreRuntimeFunctionId = ProfiledCoreRuntimeFunctionId<HostedExecutionGraph>;
@@ -93,6 +101,7 @@ pub enum FunctionReturnFamily {
     String,
     BitArray,
     UtfCodepoint,
+    Parameter,
     Custom,
     External,
     Bool,
@@ -112,6 +121,7 @@ impl std::fmt::Display for FunctionReturnFamily {
             Self::String => "String",
             Self::BitArray => "BitArray",
             Self::UtfCodepoint => "UtfCodepoint",
+            Self::Parameter => "Parameter",
             Self::Custom => "Custom",
             Self::External => "External",
             Self::Bool => "Bool",
@@ -153,6 +163,7 @@ where
             Self::String(id) => FunctionLabel::new("string", id.0),
             Self::BitArray(id) => FunctionLabel::new("bit_array", id.0),
             Self::UtfCodepoint(id) => FunctionLabel::new("utf_codepoint", id.0),
+            Self::Parameter(id) => FunctionLabel::new("parameter", id.0),
             Self::Custom(id) => FunctionLabel::new("custom", id.index()),
             Self::Bool(id) => FunctionLabel::new("bool", id.0),
             Self::Nil(id) => FunctionLabel::new("nil", id.0),
@@ -178,7 +189,7 @@ impl RuntimeFunctionFunctionTarget {
     }
 }
 
-impl RuntimeFunctionFunctionTarget<Infallible> {
+impl LibraryFunctionFunctionTarget {
     pub(super) fn value_target(&self) -> RuntimeFunctionFunctionTarget {
         match self {
             Self::Core(id) => RuntimeFunctionFunctionTarget::Core(id.value_target()),
@@ -249,6 +260,10 @@ where
                 "function::ProfiledCoreRuntimeFunctionId::UtfCodepoint",
                 &[field_0],
             ),
+            Self::Parameter(field_0) => output.call(
+                "function::ProfiledCoreRuntimeFunctionId::Parameter",
+                &[field_0],
+            ),
             Self::Custom(field_0) => output.call(
                 "function::ProfiledCoreRuntimeFunctionId::Custom",
                 &[field_0],
@@ -274,7 +289,9 @@ where
     }
 }
 
-impl<Symbolic: Emit> Emit for RuntimeFunctionFunctionTarget<Symbolic> {
+impl<Symbolic: Emit, Parameter: Emit, ListParameter: Emit> Emit
+    for RuntimeFunctionFunctionTarget<Symbolic, Parameter, ListParameter>
+{
     fn emit(&self, output: &mut Rust) {
         match self {
             Self::Core(field_0) => {
@@ -298,6 +315,7 @@ impl Emit for FunctionReturnFamily {
             Self::String => output.path("function::FunctionReturnFamily::String"),
             Self::BitArray => output.path("function::FunctionReturnFamily::BitArray"),
             Self::UtfCodepoint => output.path("function::FunctionReturnFamily::UtfCodepoint"),
+            Self::Parameter => output.path("function::FunctionReturnFamily::Parameter"),
             Self::Custom => output.path("function::FunctionReturnFamily::Custom"),
             Self::External => output.path("function::FunctionReturnFamily::External"),
             Self::Bool => output.path("function::FunctionReturnFamily::Bool"),
@@ -318,8 +336,9 @@ mod emission_tests {
     use crate::plan::execution::function::{
         BitArrayFunctionId, BoolFunctionId, CustomFunctionId, ExternalFunctionId, FloatFunctionId,
         HostedExecutionGraph, IntFunctionFunctionId, IntFunctionId, IntListFunctionId,
-        ListFunctionId, NeverFunctionId, NilFunctionId, ProfiledFunctionFunctionId,
-        ProfiledListFunctionId, StringFunctionId, TupleFunctionId, UtfCodepointFunctionId,
+        ListFunctionId, NeverFunctionId, NilFunctionId, ParameterFunctionId,
+        ProfiledFunctionFunctionId, ProfiledListFunctionId, StringFunctionId, TupleFunctionId,
+        UtfCodepointFunctionId,
     };
     use crate::plan::execution::prepared::rust::Rust;
     use crate::plan::execution::type_::{
@@ -329,10 +348,14 @@ mod emission_tests {
 
     #[test]
     fn emits_runtime_entry_ids_without_erasing_return_contracts() {
-        let cases: [(ProfiledCoreRuntimeFunctionId<HostedExecutionGraph>, &str); 12] = [
+        let cases: [(ProfiledCoreRuntimeFunctionId<HostedExecutionGraph>, &str); 13] = [
             (
                 ProfiledCoreRuntimeFunctionId::Never(NeverFunctionId(2)),
                 "data::function::ProfiledCoreRuntimeFunctionId::Never(data::function::NeverFunctionId(2))",
+            ),
+            (
+                ProfiledCoreRuntimeFunctionId::Parameter(ParameterFunctionId(2)),
+                "data::function::ProfiledCoreRuntimeFunctionId::Parameter(data::function::ParameterFunctionId(2))",
             ),
             (
                 ProfiledCoreRuntimeFunctionId::Int(IntFunctionId(2)),
@@ -527,7 +550,11 @@ mod explain_tests {
     #[test]
     fn labels_runtime_function_families() {
         let cases = [
-            ("pub fn main() -> value { main() }", "never#0"),
+            ("pub fn main() -> value { main() }", "parameter#0"),
+            (
+                "pub type Empty {} pub fn main() -> Empty { panic }",
+                "never#0",
+            ),
             ("pub fn main() { 1 }", "int#0"),
             ("pub fn main() { 1.0 }", "float#0"),
             ("pub fn main() { \"one\" }", "string#0"),

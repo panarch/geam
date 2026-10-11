@@ -418,8 +418,8 @@ mod tests {
         assert_eq!(
             constructions[0].substitution().arguments(),
             &[
-                ValueShape::Parameter(TypeParameterId(1)),
-                ValueShape::Parameter(TypeParameterId(0)),
+                ValueShape::Parameter(TypeParameterId::new(1)),
+                ValueShape::Parameter(TypeParameterId::new(0)),
             ]
         );
 
@@ -503,7 +503,7 @@ mod tests {
         assert_eq!(
             expand.substitution().arguments(),
             &[ValueShape::List(Box::new(ValueShape::Parameter(
-                TypeParameterId(0)
+                TypeParameterId::new(0)
             ))),]
         );
         assert_eq!(reset.template(), native[0].id());

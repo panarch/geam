@@ -4,11 +4,11 @@ use crate::plan::execution::lowering::graph::{
     DraftBitArray, DraftBitArrayList, DraftBool, DraftBoolList, DraftCursor, DraftCustom,
     DraftCustomList, DraftExternal, DraftExternalList, DraftFloat, DraftFloatList, DraftFlow,
     DraftFunction, DraftFunctionList, DraftGraph, DraftGraphValue, DraftInt, DraftIntList,
-    DraftList, DraftListList, DraftNil, DraftNilList, DraftString, DraftStringList, DraftTuple,
-    DraftTupleList, DraftUtfCodepoint, DraftUtfCodepointList, DraftValueRef,
+    DraftList, DraftListList, DraftNil, DraftNilList, DraftParameter, DraftString, DraftStringList,
+    DraftTuple, DraftTupleList, DraftUtfCodepoint, DraftUtfCodepointList, DraftValueRef,
 };
 use crate::plan::execution::lowering::specialization::{
-    Representability, SpecializedValueShape, StorageRepresentation, StoredValueShape,
+    Representability, SpecializedValueShape, StoredValueShape,
 };
 use crate::plan::{execution, module};
 
@@ -184,16 +184,13 @@ fn generic_list_operation(
             context.specialized_tuple_list_type(item),
             typed_generic_list_operation(operation),
         ),
-        SpecializedValueShape::List(item) => match item.storage_representation() {
-            StorageRepresentation::Parameter(parameter) => I::ParameterList(
-                context.parameter_list_list_type(parameter),
-                typed_generic_list_operation(operation),
-            ),
-            StorageRepresentation::Stored(item) => I::List(
+        SpecializedValueShape::List(item) => {
+            let item = item.storage_shape();
+            I::List(
                 context.specialized_stored_list_list_type(&item),
                 typed_generic_list_operation(operation),
-            ),
-        },
+            )
+        }
         SpecializedValueShape::Function(item) => I::Function(
             context.specialized_function_list_type(item),
             typed_generic_list_operation(operation),
@@ -267,14 +264,7 @@ pub(super) fn generic_direct_call(
                         site: site.clone(),
                     },
                 ),
-                execution::function::ListFunctionId::ParameterList(function) => I::ParameterList(
-                    function.type_id(),
-                    T::Call {
-                        function,
-                        args,
-                        site: site.clone(),
-                    },
-                ),
+
                 execution::function::ListFunctionId::Int(function) => I::Int(
                     function.type_id(),
                     T::Call {
@@ -466,265 +456,19 @@ pub(in crate::plan::execution::lowering) fn generic_list_expr(
     context: &mut super::super::LoweringContext,
 ) -> Lowered<DraftList> {
     let item = context.concrete_parameter(expression.item().parameter());
-    match item.storage_representation() {
-        StorageRepresentation::Parameter(parameter) => {
-            parameter_list_kind(expression.kind(), parameter, cursor, graph, context)
-        }
-        StorageRepresentation::Stored(item) => {
-            stored_generic_list_kind(expression.kind(), &item, cursor, graph, context)
-        }
-    }
-}
-
-fn parameter_list_kind(
-    kind: &module::TypedListExprKind<module::GenericListItem>,
-    parameter: crate::plan::TypeParameterId,
-    cursor: DraftCursor,
-    graph: &mut DraftGraph,
-    context: &mut super::super::LoweringContext,
-) -> Lowered<DraftList> {
-    use super::super::instruction::{
-        DraftListInstruction as I, DraftParameterListInstruction as P,
-    };
-    use module::TypedListExprKind as E;
-
-    let item = SpecializedValueShape::Parameter(parameter);
-    let result_shape = StoredValueShape::List(Box::new(item.clone()));
-    let list_type = context.parameter_list_type(parameter);
-    match kind {
-        E::Value(elements) => match elements.as_slice() {
-            [] => {
-                let mut cursor = cursor;
-                let value =
-                    graph.list_instruction(&mut cursor, item, I::Parameter(list_type, P::Empty));
-                Representability::Inhabited(DraftFlow::value(cursor, value))
-            }
-            [first, ..] => {
-                generic::never_expr(first, cursor, graph, context).map(|()| DraftFlow::Diverged)
-            }
-        },
-        E::Constant(constant) => context
-            .generic_parameter_list_constant(constant, parameter)
-            .map(|id| {
-                let mut cursor = cursor;
-                let value = graph.list_instruction(
-                    &mut cursor,
-                    item,
-                    I::Parameter(
-                        list_type,
-                        P::Constant(execution::constant::ConstantId::new(id.index())),
-                    ),
-                );
-                DraftFlow::value(cursor, value)
-            }),
-        E::Spread { elements, tail: _ } => {
-            generic::never_expr(elements.first(), cursor, graph, context)
-                .map(|()| DraftFlow::Diverged)
-        }
-        E::LocalGet { local, name: _ } => {
-            let value = cursor.scope().list(super::super::local::LocalKey::new(
-                super::super::local::LocalKind::GenericList,
-                local.0,
-            ));
-            Representability::Inhabited(DraftFlow::value(cursor, value))
-        }
-        E::Call {
-            function,
-            args,
-            site,
-        } => call_args(args, cursor, graph, context).and_then(|flow| {
-            flow.and_then(|mut cursor, args| {
-                context
-                    .parameter_list_function_id(function, parameter)
-                    .map(|function| {
-                        let value = graph.list_instruction(
-                            &mut cursor,
-                            item,
-                            I::Parameter(
-                                list_type,
-                                P::Call {
-                                    function,
-                                    args,
-                                    site: site.clone(),
-                                },
-                            ),
-                        );
-                        DraftFlow::value(cursor, value)
-                    })
-            })
-        }),
-        E::FunctionCall {
-            function: value,
-            args,
-            site,
-        } => function::list_function_expr(value, cursor, graph, context).and_then(|flow| {
-            flow.and_then(|cursor, function| {
-                call_args(args, cursor, graph, context).map(|flow| {
-                    flow.map_cursor(|cursor, args| {
-                        graph.list_instruction(
-                            cursor,
-                            item,
-                            I::Parameter(
-                                list_type,
-                                P::FunctionCall {
-                                    function: function.value().clone(),
-                                    args,
-                                    site: site.clone(),
-                                },
-                            ),
-                        )
-                    })
-                })
-            })
-        }),
-        E::TupleIndex {
-            tuple: source,
-            index,
-        } => tuple::tuple_expr(source, cursor, graph, context).map(|flow| {
-            flow.map_cursor(|cursor, tuple| {
-                graph.list_instruction(
-                    cursor,
-                    item,
-                    I::Parameter(
-                        list_type,
-                        P::TupleIndex {
-                            tuple,
-                            index: *index,
-                        },
-                    ),
-                )
-            })
-        }),
-        E::CustomField(access) => {
-            custom::custom_expr(access.source(), cursor, graph, context).map(|flow| {
-                flow.map_cursor(|cursor, source| {
-                    graph.list_instruction(
-                        cursor,
-                        item,
-                        I::Parameter(
-                            list_type,
-                            P::CustomField {
-                                source,
-                                index: access.index(),
-                            },
-                        ),
-                    )
-                })
-            })
-        }
-        E::ListIndex(source) => {
-            let index = source.index();
-            parameter_list_list_expr(source.list(), cursor, graph, context).map(|flow| match flow {
-                DraftFlow::Diverged => DraftFlow::Diverged,
-                DraftFlow::Value {
-                    mut cursor,
-                    value: list,
-                } => {
-                    let value = graph.list_instruction(
-                        &mut cursor,
-                        item,
-                        I::Parameter(
-                            list_type,
-                            P::ListIndex {
-                                list: list.into_list(),
-                                index,
-                            },
-                        ),
-                    );
-                    DraftFlow::value(cursor, value)
-                }
-            })
-        }
-        E::DropFirst { list, count } => {
-            parameter_list_kind(list, parameter, cursor, graph, context).map(|flow| {
-                flow.map_cursor(|cursor, list| {
-                    drop_first(&item, list, *count, cursor, graph, context)
-                })
-            })
-        }
-        E::Panic(value) => panic_expr(value, cursor, graph, context).map(|_| DraftFlow::Diverged),
-        E::BoolCase {
-            subject,
-            true_,
-            false_,
-        } => super::bool_case(
-            subject,
-            cursor,
-            super::case_lowering(graph, context, result_shape),
-            |cursor, graph, context| parameter_list_kind(true_, parameter, cursor, graph, context),
-            |cursor, graph, context| parameter_list_kind(false_, parameter, cursor, graph, context),
-            DraftList::from_ref,
-        ),
-        E::IntCase {
-            subject,
-            clauses,
-            fallback,
-        } => super::int_case(
-            subject,
-            clauses,
-            fallback,
-            cursor,
-            super::case_lowering(graph, context, result_shape),
-            |branch, cursor, graph, context| {
-                parameter_list_kind(branch, parameter, cursor, graph, context)
-            },
-            DraftList::from_ref,
-        ),
-        E::StringCase {
-            subject,
-            clauses,
-            fallback,
-        } => super::string_case(
-            subject,
-            clauses,
-            fallback,
-            cursor,
-            super::case_lowering(graph, context, result_shape),
-            |branch, cursor, graph, context| {
-                parameter_list_kind(branch, parameter, cursor, graph, context)
-            },
-            DraftList::from_ref,
-        ),
-        E::FloatCase {
-            subject,
-            clauses,
-            fallback,
-        } => super::float_case(
-            subject,
-            clauses,
-            fallback,
-            cursor,
-            super::case_lowering(graph, context, result_shape),
-            |branch, cursor, graph, context| {
-                parameter_list_kind(branch, parameter, cursor, graph, context)
-            },
-            DraftList::from_ref,
-        ),
-        E::Block { steps, return_ } => super::super::step::steps(steps, cursor, graph, context)
-            .and_then(|flow| {
-                flow.and_then(|cursor, ()| {
-                    parameter_list_kind(return_, parameter, cursor, graph, context)
-                })
-            }),
+    {
+        let item = item.storage_shape();
+        stored_generic_list_kind(expression.kind(), &item, cursor, graph, context)
     }
 }
 
 fn generic_elements(
     elements: &[module::GenericExpr],
-    item: &StoredValueShape,
     cursor: DraftCursor,
     graph: &mut DraftGraph,
     context: &mut super::super::LoweringContext,
 ) -> Lowered<Vec<DraftValueRef>> {
-    lower_element_sequence(
-        elements,
-        cursor,
-        graph,
-        context,
-        |element, cursor, graph, context| {
-            generic::stored_expr(element, item, cursor, graph, context)
-        },
-    )
+    lower_element_sequence(elements, cursor, graph, context, generic::generic_expr)
 }
 
 fn typed_generic_list_value(
@@ -761,6 +505,15 @@ fn typed_generic_list_value(
                     .collect(),
             ),
         ),
+        StoredValueShape::Parameter(parameter) => I::Parameter(
+            context.parameter_list_type(*parameter),
+            super::super::instruction::DraftParameterListInstruction::Value(
+                elements
+                    .into_iter()
+                    .map(DraftParameter::from_owned)
+                    .collect(),
+            ),
+        ),
         StoredValueShape::Custom(item) => I::Custom(
             context.specialized_custom_list_type(item),
             T::Value(elements.into_iter().map(DraftCustom::from_owned).collect()),
@@ -790,12 +543,9 @@ fn typed_generic_list_value(
             context.specialized_tuple_list_type(item),
             T::Value(elements.into_iter().map(DraftTuple::from_owned).collect()),
         ),
-        StoredValueShape::List(inner) => match inner.storage_representation() {
-            StorageRepresentation::Parameter(parameter) => I::ParameterList(
-                context.parameter_list_list_type(parameter),
-                T::Value(elements.into_iter().map(DraftList::from_owned).collect()),
-            ),
-            StorageRepresentation::Stored(inner) => I::List(
+        StoredValueShape::List(inner) => {
+            let inner = inner.storage_shape();
+            I::List(
                 context.specialized_stored_list_list_type(&inner),
                 T::Value(
                     elements
@@ -803,8 +553,8 @@ fn typed_generic_list_value(
                         .map(|value| draft_stored_list(&inner, value))
                         .collect(),
                 ),
-            ),
-        },
+            )
+        }
         StoredValueShape::Function(item) => I::Function(
             context.specialized_function_list_type(item),
             T::Value(
@@ -860,6 +610,16 @@ fn typed_generic_list_spread(
                 tail,
             },
         ),
+        StoredValueShape::Parameter(parameter) => I::Parameter(
+            context.parameter_list_type(*parameter),
+            super::super::instruction::DraftParameterListInstruction::Spread {
+                elements: elements
+                    .into_iter()
+                    .map(DraftParameter::from_owned)
+                    .collect(),
+                tail,
+            },
+        ),
         StoredValueShape::Custom(item) => I::Custom(
             context.specialized_custom_list_type(item),
             T::Spread {
@@ -905,15 +665,9 @@ fn typed_generic_list_spread(
                 tail,
             },
         ),
-        StoredValueShape::List(inner) => match inner.storage_representation() {
-            StorageRepresentation::Parameter(parameter) => I::ParameterList(
-                context.parameter_list_list_type(parameter),
-                T::Spread {
-                    elements: elements.into_iter().map(DraftList::from_owned).collect(),
-                    tail,
-                },
-            ),
-            StorageRepresentation::Stored(inner) => I::List(
+        StoredValueShape::List(inner) => {
+            let inner = inner.storage_shape();
+            I::List(
                 context.specialized_stored_list_list_type(&inner),
                 T::Spread {
                     elements: elements
@@ -922,8 +676,8 @@ fn typed_generic_list_spread(
                         .collect(),
                     tail,
                 },
-            ),
-        },
+            )
+        }
         StoredValueShape::Function(item) => I::Function(
             context.specialized_function_list_type(item),
             T::Spread {
@@ -945,18 +699,14 @@ fn draft_stored_list(item: &StoredValueShape, value: DraftValueRef) -> DraftStor
         StoredValueShape::UtfCodepoint => {
             DraftStoredList::UtfCodepoint(DraftList::from_owned(value))
         }
+        StoredValueShape::Parameter(_) => DraftStoredList::Parameter(DraftList::from_owned(value)),
         StoredValueShape::Custom(_) => DraftStoredList::Custom(DraftList::from_owned(value)),
         StoredValueShape::External(_) => DraftStoredList::External(DraftList::from_owned(value)),
         StoredValueShape::Float => DraftStoredList::Float(DraftList::from_owned(value)),
         StoredValueShape::Bool => DraftStoredList::Bool(DraftList::from_owned(value)),
         StoredValueShape::Nil => DraftStoredList::Nil(DraftList::from_owned(value)),
         StoredValueShape::Tuple(_) => DraftStoredList::Tuple(DraftList::from_owned(value)),
-        StoredValueShape::List(item) => match item.as_ref() {
-            SpecializedValueShape::Parameter(_) => {
-                DraftStoredList::ParameterList(DraftList::from_owned(value))
-            }
-            _ => DraftStoredList::List(DraftList::from_owned(value)),
-        },
+        StoredValueShape::List(_) => DraftStoredList::List(DraftList::from_owned(value)),
         StoredValueShape::Function(_) => DraftStoredList::Function(DraftList::from_owned(value)),
     }
 }
@@ -969,13 +719,13 @@ pub(in crate::plan::execution::lowering) fn drop_first(
     graph: &mut DraftGraph,
     context: &mut super::super::LoweringContext,
 ) -> DraftList {
-    match item.storage_representation() {
-        StorageRepresentation::Parameter(_) => list,
-        StorageRepresentation::Stored(stored) => graph.list_instruction(
+    {
+        let stored = item.storage_shape();
+        graph.list_instruction(
             cursor,
             item.clone(),
             typed_generic_list_drop_first(&stored, list, count, context),
-        ),
+        )
     }
 }
 
@@ -999,6 +749,10 @@ fn typed_generic_list_drop_first(
             context.utf_codepoint_list_type(),
             T::DropFirst { list, count },
         ),
+        StoredValueShape::Parameter(parameter) => I::Parameter(
+            context.parameter_list_type(*parameter),
+            super::super::instruction::DraftParameterListInstruction::DropFirst { list, count },
+        ),
         StoredValueShape::Custom(item) => I::Custom(
             context.specialized_custom_list_type(item),
             T::DropFirst { list, count },
@@ -1016,16 +770,13 @@ fn typed_generic_list_drop_first(
             context.specialized_tuple_list_type(item),
             T::DropFirst { list, count },
         ),
-        StoredValueShape::List(inner) => match inner.storage_representation() {
-            StorageRepresentation::Parameter(parameter) => I::ParameterList(
-                context.parameter_list_list_type(parameter),
-                T::DropFirst { list, count },
-            ),
-            StorageRepresentation::Stored(inner) => I::List(
+        StoredValueShape::List(inner) => {
+            let inner = inner.storage_shape();
+            I::List(
                 context.specialized_stored_list_list_type(&inner),
                 T::DropFirst { list, count },
-            ),
-        },
+            )
+        }
         StoredValueShape::Function(item) => I::Function(
             context.specialized_function_list_type(item),
             T::DropFirst { list, count },
@@ -1076,6 +827,19 @@ fn stored_generic_list_constant(
                     I::UtfCodepoint(
                         type_id,
                         T::Constant(execution::constant::ConstantId::new(id.index())),
+                    )
+                })
+        }
+        StoredValueShape::Parameter(parameter) => {
+            let type_id = context.parameter_list_type(*parameter);
+            context
+                .generic_parameter_list_constant(constant, *parameter)
+                .map(|id| {
+                    I::Parameter(
+                        type_id,
+                        super::super::instruction::DraftParameterListInstruction::Constant(
+                            execution::constant::ConstantId::new(id.index()),
+                        ),
                     )
                 })
         }
@@ -1139,30 +903,18 @@ fn stored_generic_list_constant(
                     )
                 })
         }
-        StoredValueShape::List(inner) => match inner.storage_representation() {
-            StorageRepresentation::Parameter(parameter) => {
-                let type_id = context.parameter_list_list_type(parameter);
-                context
-                    .generic_parameter_list_list_constant(constant, parameter)
-                    .map(|id| {
-                        I::ParameterList(
-                            type_id,
-                            T::Constant(execution::constant::ConstantId::new(id.index())),
-                        )
-                    })
-            }
-            StorageRepresentation::Stored(inner) => {
-                let type_id = context.specialized_stored_list_list_type(&inner);
-                context
-                    .generic_list_list_constant(constant, &inner)
-                    .map(|id| {
-                        I::List(
-                            type_id,
-                            T::Constant(execution::constant::ConstantId::new(id.index())),
-                        )
-                    })
-            }
-        },
+        StoredValueShape::List(inner) => {
+            let inner = inner.storage_shape();
+            let type_id = context.specialized_stored_list_list_type(&inner);
+            context
+                .generic_list_list_constant(constant, &inner)
+                .map(|id| {
+                    I::List(
+                        type_id,
+                        T::Constant(execution::constant::ConstantId::new(id.index())),
+                    )
+                })
+        }
         StoredValueShape::Function(shape) => {
             let type_id = context.specialized_function_list_type(shape);
             context
@@ -1189,17 +941,15 @@ fn stored_generic_list_kind(
     let item_shape = item.to_specialized();
     let result_shape = StoredValueShape::List(Box::new(item_shape.clone()));
     match kind {
-        E::Value(elements) => {
-            generic_elements(elements, item, cursor, graph, context).map(|flow| {
-                flow.map_cursor(|cursor, elements| {
-                    graph.list_instruction(
-                        cursor,
-                        item_shape.clone(),
-                        typed_generic_list_value(item, elements, context),
-                    )
-                })
+        E::Value(elements) => generic_elements(elements, cursor, graph, context).map(|flow| {
+            flow.map_cursor(|cursor, elements| {
+                graph.list_instruction(
+                    cursor,
+                    item_shape.clone(),
+                    typed_generic_list_value(item, elements, context),
+                )
             })
-        }
+        }),
         E::Constant(constant) => {
             stored_generic_list_constant(item, constant, context).map(|kind| {
                 let mut cursor = cursor;
@@ -1207,7 +957,7 @@ fn stored_generic_list_kind(
                 DraftFlow::value(cursor, value)
             })
         }
-        E::Spread { elements, tail } => generic_elements(elements, item, cursor, graph, context)
+        E::Spread { elements, tail } => generic_elements(elements, cursor, graph, context)
             .and_then(|flow| {
                 flow.and_then(|cursor, elements| {
                     stored_generic_list_kind(tail, item, cursor, graph, context).map(|flow| {
@@ -1369,23 +1119,16 @@ pub(in crate::plan::execution::lowering) fn parameter_list_list_expr(
     context: &mut super::super::LoweringContext,
 ) -> Lowered<DraftStoredList> {
     let item = context.concrete_parameter(expression.item().parameter());
-    match item.storage_representation() {
-        StorageRepresentation::Parameter(parameter) => parameter_list_list_kind(
-            expression.kind(),
-            &SpecializedValueShape::Parameter(parameter),
-            cursor,
-            graph,
-            context,
-        )
-        .map(|flow| flow.map(DraftStoredList::ParameterList)),
-        StorageRepresentation::Stored(item) => parameter_list_list_kind(
+    {
+        let item = item.storage_shape();
+        parameter_list_list_kind(
             expression.kind(),
             &item.to_specialized(),
             cursor,
             graph,
             context,
         )
-        .map(|flow| flow.map(DraftStoredList::List)),
+        .map(|flow| flow.map(DraftStoredList::List))
     }
 }
 
@@ -1414,29 +1157,17 @@ fn parameter_list_list_constant(
 ) -> Representability<super::super::instruction::DraftListInstruction> {
     use super::super::instruction::{DraftListInstruction as I, DraftTypedListInstruction as T};
 
-    match inner.storage_representation() {
-        StorageRepresentation::Parameter(parameter) => {
-            let type_id = context.parameter_list_list_type(parameter);
-            context
-                .parameter_list_list_constant(constant, parameter)
-                .map(|id| {
-                    I::ParameterList(
-                        type_id,
-                        T::Constant(execution::constant::ConstantId::new(id.index())),
-                    )
-                })
-        }
-        StorageRepresentation::Stored(inner) => {
-            let type_id = context.specialized_stored_list_list_type(&inner);
-            context
-                .parameter_list_list_as_stored_constant(constant, &inner)
-                .map(|id| {
-                    I::List(
-                        type_id,
-                        T::Constant(execution::constant::ConstantId::new(id.index())),
-                    )
-                })
-        }
+    {
+        let inner = inner.storage_shape();
+        let type_id = context.specialized_stored_list_list_type(&inner);
+        context
+            .parameter_list_list_as_stored_constant(constant, &inner)
+            .map(|id| {
+                I::List(
+                    type_id,
+                    T::Constant(execution::constant::ConstantId::new(id.index())),
+                )
+            })
     }
 }
 
@@ -2670,6 +2401,68 @@ mod tests {
         }
     }
 
+    #[test]
+    fn generic_empty_list_items_propagate_source_failure_before_the_tail() {
+        for item_type in ["Empty", "#(Empty, Int)", "Wrapper(Empty)"] {
+            for construction in ["[stop()]", "[stop(), ..tail()]"] {
+                let source = format!(
+                    r#"
+pub type Empty
+pub type Wrapper(a) {{ Wrapper(a) }}
+fn stop() -> a {{ panic as "body" }}
+fn tail() -> List(a) {{ echo "tail" [] }}
+fn stopped_list() -> List(a) {{ {construction} }}
+pub fn main() {{
+  let values: List({item_type}) = stopped_list()
+  values
+}}
+"#,
+                );
+                let typed = crate::compile_typed_module("main", "main.gleam", &source).unwrap();
+                let plan =
+                    crate::ExecutionPlan::from_module_plan(crate::plan_module(typed).unwrap());
+                let mut echo = Vec::new();
+                assert_eq!(
+                    crate::run_main(&plan, &mut echo).unwrap_err().to_string(),
+                    "panic: body",
+                    "item type {item_type}, construction {construction}",
+                );
+                assert_eq!(echo, Vec::new());
+            }
+        }
+    }
+
+    #[test]
+    fn generic_lists_preserve_empty_only_storage_and_inhabited_items() {
+        use crate::ListValue;
+
+        let source = r#"
+pub type Empty
+fn empty() -> List(a) { [] }
+pub fn main() {
+  let values: List(Empty) = empty()
+  values
+}
+"#;
+        let typed = crate::compile_typed_module("main", "main.gleam", source).unwrap();
+        let plan = crate::ExecutionPlan::from_module_plan(crate::plan_module(typed).unwrap());
+        assert_eq!(
+            crate::run_main(&plan, &mut Vec::new()).unwrap(),
+            Value::List(ListValue::empty(ValueType::Custom(CustomType::new(
+                CustomTypeName::new("geam".into(), "main".into(), "Empty".into()),
+                Vec::new(),
+            )))),
+        );
+
+        let source = "fn one(value: a) -> List(a) { [value] } pub fn main() { one(42) }";
+        let typed = crate::compile_typed_module("main", "main.gleam", source).unwrap();
+        let plan = crate::ExecutionPlan::from_module_plan(crate::plan_module(typed).unwrap());
+        assert_eq!(
+            crate::run_main(&plan, &mut Vec::new()).unwrap(),
+            Value::List(ListValue::int(vec![42.into()])),
+        );
+    }
+
     struct ListFamily {
         item_type: &'static str,
         item: &'static str,
@@ -2925,7 +2718,7 @@ pub fn main() {
 
     #[test]
     fn planner_generated_nested_list_projections_stop_before_every_list_family_output() {
-        let parameter = TypeParameterId(0);
+        let parameter = TypeParameterId::new(0);
         let custom_name = CustomTypeName::new("geam".into(), "main".into(), "Marker".into());
         let custom_type = CustomType::new(custom_name.clone(), Vec::new());
         let custom_definition = CustomTypeDefinition::new(

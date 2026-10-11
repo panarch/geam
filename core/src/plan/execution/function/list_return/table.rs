@@ -4,12 +4,11 @@ use super::{
     ExecutionCustomListFunctionBody, ExecutionExternalListFunctionBody,
     ExecutionFloatListFunctionBody, ExecutionFunctionListFunctionBody,
     ExecutionIntListFunctionBody, ExecutionListListFunctionBody, ExecutionNilListFunctionBody,
-    ExecutionParameterListFunctionBody, ExecutionParameterListListFunctionBody,
-    ExecutionStringListFunctionBody, ExecutionTupleListFunctionBody,
-    ExecutionUtfCodepointListFunctionBody, ExternalListFunctionId, FloatListFunctionId,
-    FunctionListFunctionId, IntListFunctionId, ListListFunctionId, NilListFunctionId,
-    ParameterListFunctionId, ParameterListListFunctionId, StringListFunctionId,
-    TupleListFunctionId, UtfCodepointListFunctionId,
+    ExecutionParameterListFunctionBody, ExecutionStringListFunctionBody,
+    ExecutionTupleListFunctionBody, ExecutionUtfCodepointListFunctionBody, ExternalListFunctionId,
+    FloatListFunctionId, FunctionListFunctionId, IntListFunctionId, ListListFunctionId,
+    NilListFunctionId, ParameterListFunctionId, StringListFunctionId, TupleListFunctionId,
+    UtfCodepointListFunctionId,
 };
 use crate::plan::execution::explain::{Explain, ExplainContext};
 use crate::plan::execution::function::{ExecutionFunction, ExecutionProfile, write_table};
@@ -61,10 +60,6 @@ pub struct ListFunctionTables<Profile: ExecutionProfile> {
     pub tuple_list_functions: Table<(
         TupleListFunctionId,
         ExecutionFunction<Profile, ExecutionTupleListFunctionBody<Profile>>,
-    )>,
-    pub parameter_list_list_functions: Table<(
-        ParameterListListFunctionId,
-        ExecutionFunction<Profile, ExecutionParameterListListFunctionBody<Profile>>,
     )>,
     pub list_list_functions: Table<(
         ListListFunctionId,
@@ -151,13 +146,7 @@ impl Explain for ListFunctionTables<Infallible> {
                 .iter()
                 .map(|(_, function)| function),
         );
-        write_table(
-            context,
-            "list.parameter_list",
-            self.parameter_list_list_functions
-                .iter()
-                .map(|(_, function)| function),
-        );
+
         write_table(
             context,
             "list.list",
@@ -222,10 +211,6 @@ where
         ExecutionFunction<Profile, ExecutionTupleListFunctionBody<Profile>>,
     )>: Emit,
     Table<(
-        ParameterListListFunctionId,
-        ExecutionFunction<Profile, ExecutionParameterListListFunctionBody<Profile>>,
-    )>: Emit,
-    Table<(
         ListListFunctionId,
         ExecutionFunction<Profile, ExecutionListListFunctionBody<Profile>>,
     )>: Emit,
@@ -247,7 +232,6 @@ where
             bool_list_functions,
             nil_list_functions,
             tuple_list_functions,
-            parameter_list_list_functions,
             list_list_functions,
             function_list_functions,
         } = self;
@@ -265,10 +249,6 @@ where
                 ("bool_list_functions", bool_list_functions),
                 ("nil_list_functions", nil_list_functions),
                 ("tuple_list_functions", tuple_list_functions),
-                (
-                    "parameter_list_list_functions",
-                    parameter_list_list_functions,
-                ),
                 ("list_list_functions", list_list_functions),
                 ("function_list_functions", function_list_functions),
             ],

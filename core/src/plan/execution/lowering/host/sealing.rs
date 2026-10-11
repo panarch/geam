@@ -612,7 +612,8 @@ pub fn main() {
 @external(erlang, "host", "accept_list")
 fn accept_list(values: List(fn(value) -> Int)) -> Int
 
-fn generic(_value) {
+pub type Never
+fn generic(_value: Never) {
   1
 }
 
@@ -642,7 +643,14 @@ pub fn main() {
             error.reason(),
             &HostSpecializationErrorReason::UninhabitedCallbackArguments {
                 callback: FunctionType::new(
-                    vec![ValueType::Parameter(TypeParameterId(0))],
+                    vec![ValueType::Custom(crate::plan::CustomType::new(
+                        crate::plan::CustomTypeName::new(
+                            "application".into(),
+                            "main".into(),
+                            "Never".into()
+                        ),
+                        Vec::new()
+                    ))],
                     ValueType::Int,
                 ),
             },
@@ -670,7 +678,8 @@ pub fn main() {
         let source = r#"
 @external(erlang, "native", "retain")
 fn retain(callback: fn(a) -> Int) -> Int
-fn generic(_value) { 1 }
+pub type Never
+fn generic(_value: Never) { 1 }
 pub fn main() { retain(generic) }
 "#;
         let module = HostProviderModule::new("application", "main").unwrap()
@@ -695,7 +704,14 @@ pub fn main() { retain(generic) }
             error.reason(),
             &HostSpecializationErrorReason::UninhabitedCallbackArguments {
                 callback: FunctionType::new(
-                    vec![ValueType::Parameter(TypeParameterId(0))],
+                    vec![ValueType::Custom(crate::plan::CustomType::new(
+                        crate::plan::CustomTypeName::new(
+                            "application".into(),
+                            "main".into(),
+                            "Never".into()
+                        ),
+                        Vec::new()
+                    ))],
                     ValueType::Int
                 ),
             }
@@ -730,7 +746,7 @@ pub fn main() { retain(generic) }
             return_: Box::new(HostTypeDescriptor::Int),
         };
         let expected = FunctionType::new(
-            vec![ValueType::Parameter(TypeParameterId(0))],
+            vec![ValueType::Parameter(TypeParameterId::new(0))],
             ValueType::Int,
         );
         let mut tuple_search = CallbackSearch {

@@ -28,6 +28,9 @@ impl BlockValues {
             EvaluatedValue::UtfCodepoint(value) => {
                 push_column(&mut self.utf_codepoints, value, StorageFamily::UtfCodepoint)
             }
+            EvaluatedValue::Parameter(value) => {
+                push_column(&mut self.parameters, value, StorageFamily::Parameter)
+            }
             EvaluatedValue::Custom(value) => {
                 push_column(&mut self.customs, value, StorageFamily::Custom)
             }
@@ -90,11 +93,7 @@ impl BlockValues {
             ListValueId::Tuple(value) => {
                 push_column(&mut self.tuple_lists, value, StorageFamily::TupleList)
             }
-            ListValueId::ParameterList(value) => push_column(
-                &mut self.parameter_list_lists,
-                value,
-                StorageFamily::ParameterListList,
-            ),
+
             ListValueId::List(value) => {
                 push_column(&mut self.list_lists, value, StorageFamily::ListList)
             }
@@ -138,6 +137,11 @@ impl BlockValues {
                 &mut self.utf_codepoint_functions,
                 value,
                 StorageFamily::UtfCodepointFunction,
+            ),
+            EvaluatedFunctionValueKind::Parameter(value) => push_column(
+                &mut self.parameter_functions,
+                value,
+                StorageFamily::ParameterFunction,
             ),
             EvaluatedFunctionValueKind::Custom(value) => push_column(
                 &mut self.custom_functions,
@@ -186,11 +190,7 @@ impl BlockValues {
                     value,
                     StorageFamily::ParameterListFunction,
                 ),
-                ListFunctionId::ParameterList(_) => push_column(
-                    &mut self.parameter_list_list_functions,
-                    value,
-                    StorageFamily::ParameterListListFunction,
-                ),
+
                 ListFunctionId::Int(_) => push_column(
                     &mut self.int_list_functions,
                     value,

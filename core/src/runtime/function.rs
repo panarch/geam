@@ -16,6 +16,6 @@ pub(in crate::runtime) use list::run_list;
 pub(in crate::runtime) use main::prepare_main;
 pub(in crate::runtime) use returning_function::run_core_function;
 pub(in crate::runtime) use value::{
-    run_bit_array, run_bool, run_custom, run_float, run_int, run_never, run_nil, run_string,
-    run_tuple, run_utf_codepoint,
+    run_bit_array, run_bool, run_custom, run_float, run_int, run_never, run_nil, run_parameter,
+    run_string, run_tuple, run_utf_codepoint,
 };

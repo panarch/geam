@@ -40,14 +40,13 @@ impl RetainedValues {
                 StorageFamily::String => rearrange(&mut self.values.strings, route),
                 StorageFamily::BitArray => rearrange(&mut self.values.bit_arrays, route),
                 StorageFamily::UtfCodepoint => rearrange(&mut self.values.utf_codepoints, route),
+                StorageFamily::Parameter => rearrange(&mut self.values.parameters, route),
                 StorageFamily::Custom => rearrange(&mut self.values.customs, route),
                 StorageFamily::External => rearrange(&mut self.values.externals, route),
                 StorageFamily::Bool => rearrange(&mut self.values.bools, route),
                 StorageFamily::Tuple => rearrange(&mut self.values.tuples, route),
                 StorageFamily::ParameterList => rearrange(&mut self.values.parameter_lists, route),
-                StorageFamily::ParameterListList => {
-                    rearrange(&mut self.values.parameter_list_lists, route)
-                }
+
                 StorageFamily::IntList => rearrange(&mut self.values.int_lists, route),
                 StorageFamily::StringList => rearrange(&mut self.values.string_lists, route),
                 StorageFamily::BitArrayList => rearrange(&mut self.values.bit_array_lists, route),
@@ -73,6 +72,9 @@ impl RetainedValues {
                 StorageFamily::UtfCodepointFunction => {
                     rearrange(&mut self.values.utf_codepoint_functions, route)
                 }
+                StorageFamily::ParameterFunction => {
+                    rearrange(&mut self.values.parameter_functions, route)
+                }
                 StorageFamily::CustomFunction => {
                     rearrange(&mut self.values.custom_functions, route)
                 }
@@ -89,9 +91,7 @@ impl RetainedValues {
                 StorageFamily::ParameterListFunction => {
                     rearrange(&mut self.values.parameter_list_functions, route)
                 }
-                StorageFamily::ParameterListListFunction => {
-                    rearrange(&mut self.values.parameter_list_list_functions, route)
-                }
+
                 StorageFamily::IntListFunction => {
                     rearrange(&mut self.values.int_list_functions, route)
                 }

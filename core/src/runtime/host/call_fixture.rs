@@ -243,6 +243,7 @@ impl HostCallRuntime<TestHostProfile> for TestHostCallRuntime<'_> {
             HostScopedValue::String(_) => token(HostValueFamily::String),
             HostScopedValue::BitArray(_) => token(HostValueFamily::BitArray),
             HostScopedValue::UtfCodepoint(_) => token(HostValueFamily::UtfCodepoint),
+            HostScopedValue::Parameter(_) => token(HostValueFamily::Parameter),
             HostScopedValue::Bool(_) => token(HostValueFamily::Bool),
             HostScopedValue::Nil => token(HostValueFamily::Nil),
             HostScopedValue::List(_) => token(HostValueFamily::List),
@@ -589,6 +590,23 @@ mod tests {
         assert_eq!(runtime.state.counter, 0);
         drop(runtime);
         assert!(!unit.is_active());
+    }
+
+    #[test]
+    fn fixture_parameter_completion_preserves_the_native_payload_and_token_family() {
+        let plan = crate::runtime::plan_src("pub fn main() -> List(a) { [] }");
+        let lists = crate::runtime::RuntimeListStorage::default();
+        let native = crate::runtime::NativeValues::new(&lists, plan.value_metadata());
+        let binding = plan.parameter_list_function_id(0).type_id().item;
+        let parameter = native.parameter(binding, &native.integer(42.into()), false);
+        let mut state = TestRunState::default();
+        let mut runtime = TestHostCallRuntime::new(&mut state, RetainedValues::empty());
+        let token = runtime.complete(HostScopedValue::Parameter(parameter.clone()));
+        assert_eq!(token, super::token(HostValueFamily::Parameter));
+        assert_eq!(
+            runtime.completed(),
+            Some(&HostScopedValue::Parameter(parameter))
+        );
     }
 
     #[test]

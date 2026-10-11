@@ -370,6 +370,42 @@ mod tests {
         }
     }
 
+    #[test]
+    fn custom_callback_stops_before_evaluating_its_arguments_when_the_callee_panics() {
+        let source = r#"
+pub type Box { Box(Int) }
+pub fn main() {
+  let result = { let function: fn(Int) -> Box = panic as "callee" function }(panic as "argument")
+  result
+}
+"#;
+        let typed = crate::compile_typed_module("main", "main.gleam", source).unwrap();
+        let plan = crate::ExecutionPlan::from_module_plan(crate::plan_module(typed).unwrap());
+        assert_eq!(
+            crate::run_main(&plan, &mut Vec::new())
+                .unwrap_err()
+                .to_string(),
+            "panic: callee"
+        );
+    }
+
+    #[test]
+    fn custom_callback_stops_at_a_diverging_argument_before_entering_its_body() {
+        let source = r#"
+pub type Box { Box(Int) }
+fn create(_value: Int) -> Box { panic as "wrong body" }
+pub fn main() { let callback = create callback(panic as "argument") }
+"#;
+        let typed = crate::compile_typed_module("main", "main.gleam", source).unwrap();
+        let plan = crate::ExecutionPlan::from_module_plan(crate::plan_module(typed).unwrap());
+        assert_eq!(
+            crate::run_main(&plan, &mut Vec::new())
+                .unwrap_err()
+                .to_string(),
+            "panic: argument",
+        );
+    }
+
     fn run(expression: &str) -> String {
         let source = format!(
             r#"

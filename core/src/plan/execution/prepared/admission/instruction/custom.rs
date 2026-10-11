@@ -132,7 +132,7 @@ pub fn main() { #(widen(Chosen(42)), widen(Refused("caught"))) }
                     .unwrap(),
             ),
         };
-        let parameter = TypeParameterId(0);
+        let parameter = TypeParameterId::new(0);
         let parameter_shape = ValueShapeId(shapes.len());
         shapes.push(ValueShapeDescriptor::Parameter(parameter));
         shape_types.push(ValueType::Parameter(parameter));

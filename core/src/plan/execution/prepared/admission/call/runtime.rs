@@ -31,7 +31,9 @@ impl Target for ExternalFunctionCallTarget {
     }
 }
 
-impl<Symbolic: Target> Target for function::RuntimeFunctionFunctionTarget<Symbolic> {
+impl<Symbolic: Target, Parameter: Target, ListParameter: Target> Target
+    for function::RuntimeFunctionFunctionTarget<Symbolic, Parameter, ListParameter>
+{
     fn resolve<'data>(
         &self,
         catalog: &Catalog<'data>,
@@ -79,6 +81,7 @@ where
             Self::String(id) => id.resolve(catalog, types),
             Self::BitArray(id) => id.resolve(catalog, types),
             Self::UtfCodepoint(id) => id.resolve(catalog, types),
+            Self::Parameter(id) => id.resolve(catalog, types),
             Self::Custom(id) => id.resolve(catalog, types),
             Self::Bool(id) => id.resolve(catalog, types),
             Self::Nil(id) => id.resolve(catalog, types),
@@ -268,7 +271,11 @@ mod tests {
             (FunctionTableFamily::IntFunction, "fn() { 42 }"),
         ];
         for (family, expression) in cases {
-            let source = format!("pub type Box(a) {{ Box(a) }} pub fn main() {{ {expression} }}");
+            let source = if family == FunctionTableFamily::Never {
+                "pub type Never pub fn main() -> Never { panic }".to_string()
+            } else {
+                format!("pub type Box(a) {{ Box(a) }} pub fn main() {{ {expression} }}")
+            };
             let typed =
                 crate::compile_typed_module("example", "src/example.gleam", &source).unwrap();
             let plan = crate::ExecutionPlan::from_module_plan(crate::plan_module(typed).unwrap());

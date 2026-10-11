@@ -54,6 +54,9 @@ fn seal_plain_core_runtime_function_id(
         ProfiledCoreRuntimeFunctionId::UtfCodepoint(function) => {
             Representability::Inhabited(ProfiledCoreRuntimeFunctionId::UtfCodepoint(function))
         }
+        ProfiledCoreRuntimeFunctionId::Parameter(function) => {
+            Representability::Inhabited(ProfiledCoreRuntimeFunctionId::Parameter(function))
+        }
         ProfiledCoreRuntimeFunctionId::Custom(function) => {
             Representability::Inhabited(ProfiledCoreRuntimeFunctionId::Custom(function))
         }
@@ -111,6 +114,9 @@ fn seal_plain_instruction_kind(
         }
         ProfiledInstructionKind::UtfCodepoint(instruction) => {
             Representability::Inhabited(ProfiledInstructionKind::UtfCodepoint(instruction))
+        }
+        ProfiledInstructionKind::Parameter(instruction) => {
+            Representability::Inhabited(ProfiledInstructionKind::Parameter(instruction))
         }
         ProfiledInstructionKind::Custom(instruction) => {
             Representability::Inhabited(ProfiledInstructionKind::Custom(instruction))

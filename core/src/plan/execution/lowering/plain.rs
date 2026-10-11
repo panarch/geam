@@ -275,10 +275,9 @@ fn reserve_plain_entry(
                 .signature()
                 .shape()
                 .return_shape();
-            let value_shape = specialization::SpecializedValueShape::instantiate(
-                return_shape,
-                key.substitution(),
-            );
+            let substitution = context.scoped_substitution(&key);
+            let value_shape =
+                specialization::SpecializedValueShape::instantiate(return_shape, &substitution);
             let return_ = context.representations.inhabitation(&value_shape);
             let id = context.reserve_main(key.clone(), return_);
             ReservedPlainEntry::Main { key, id }

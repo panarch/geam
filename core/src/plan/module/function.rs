@@ -2839,7 +2839,7 @@ mod tests {
 
     #[test]
     fn return_expr_value_type_preserves_parametric_and_compound_families() {
-        let parameter = TypeParameterId(0);
+        let parameter = TypeParameterId::new(0);
         let custom = custom_type();
         let external = external_type("Token");
         let external_shape = ExternalValueShape::any(external.clone());
@@ -2982,7 +2982,7 @@ mod tests {
 
     #[test]
     fn param_local_value_type() {
-        let parameter = TypeParameterId(0);
+        let parameter = TypeParameterId::new(0);
         let generic = ParamLocal::generic(GenericLocal::new(GenericLocalId(0), parameter));
         assert_eq!(generic.value_type(), ValueType::Parameter(parameter));
         assert_eq!(generic.value_shape(), ValueShape::Parameter(parameter));
@@ -3171,7 +3171,7 @@ mod tests {
 
     #[test]
     fn list_return_expr_preserves_item_family() {
-        let parameter = crate::plan::TypeParameterId(0);
+        let parameter = crate::plan::TypeParameterId::new(0);
         let generic = ListExpr::value(Vec::new(), ValueType::Parameter(parameter));
         assert_eq!(
             ListReturn::expr(generic.clone()),
@@ -3308,7 +3308,7 @@ mod tests {
             },
         );
 
-        let parameter = TypeParameterId(0);
+        let parameter = TypeParameterId::new(0);
         let parameter_nested = ListExpr::value(
             Vec::new(),
             ValueType::List(Box::new(ValueType::Parameter(parameter))),
@@ -3359,7 +3359,7 @@ mod tests {
             )
         }
 
-        let parameter = crate::plan::TypeParameterId(0);
+        let parameter = crate::plan::TypeParameterId::new(0);
         let function = tail_call_function(ValueType::Parameter(parameter));
         assert_eq!(
             ListReturn::tail_call(
@@ -3471,7 +3471,7 @@ mod tests {
             },
         );
 
-        let parameter = TypeParameterId(0);
+        let parameter = TypeParameterId::new(0);
         let parameter_list_type = Box::new(ValueType::Parameter(parameter));
         let function = tail_call_function(ValueType::List(parameter_list_type.clone()));
         assert_eq!(
@@ -3747,7 +3747,7 @@ mod tests {
     #[test]
     fn list_return_case_helpers_preserve_all_item_families() {
         let item_types = vec![
-            ValueType::Parameter(crate::plan::TypeParameterId(0)),
+            ValueType::Parameter(crate::plan::TypeParameterId::new(0)),
             ValueType::Int,
             ValueType::Float,
             ValueType::String,
@@ -3758,7 +3758,7 @@ mod tests {
             ValueType::Bool,
             ValueType::Nil,
             ValueType::Tuple(vec![ValueType::Int]),
-            ValueType::List(Box::new(ValueType::Parameter(TypeParameterId(1)))),
+            ValueType::List(Box::new(ValueType::Parameter(TypeParameterId::new(1)))),
             ValueType::List(Box::new(ValueType::String)),
             ValueType::Function(Box::new(FunctionType::new(Vec::new(), ValueType::Bool))),
         ];
@@ -3820,7 +3820,7 @@ mod tests {
         }
 
         let item_types = vec![
-            ValueType::Parameter(crate::plan::TypeParameterId(0)),
+            ValueType::Parameter(crate::plan::TypeParameterId::new(0)),
             ValueType::Int,
             ValueType::Float,
             ValueType::String,
@@ -3831,7 +3831,7 @@ mod tests {
             ValueType::Bool,
             ValueType::Nil,
             ValueType::Tuple(vec![ValueType::Int]),
-            ValueType::List(Box::new(ValueType::Parameter(TypeParameterId(1)))),
+            ValueType::List(Box::new(ValueType::Parameter(TypeParameterId::new(1)))),
             ValueType::List(Box::new(ValueType::String)),
             ValueType::Function(Box::new(FunctionType::new(Vec::new(), ValueType::Bool))),
         ];

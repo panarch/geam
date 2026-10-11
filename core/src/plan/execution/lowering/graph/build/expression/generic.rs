@@ -17,7 +17,7 @@ pub(in crate::plan::execution::lowering) fn generic_expr(
     let shape = context.concrete_parameter(expression.parameter());
     match context
         .representations
-        .representation(&shape)
+        .inhabitation(&shape)
         .into_representability()
     {
         Representability::Uninhabited => {
@@ -254,6 +254,20 @@ fn direct_call(
                 DraftFlow::value(cursor, value.erase())
             })
         }
+        StoredValueShape::Parameter(parameter) => {
+            context.parameter_function_id(function).map(|function| {
+                let value = graph.parameter_instruction(
+                    &mut cursor,
+                    *parameter,
+                    super::super::instruction::DraftParameterInstruction::Call {
+                        function,
+                        args,
+                        site: site.clone(),
+                    },
+                );
+                DraftFlow::value(cursor, value.erase())
+            })
+        }
         StoredValueShape::Custom(shape) => {
             context.custom_function_id(function, shape).map(|function| {
                 let value = graph.custom_instruction(
@@ -406,6 +420,18 @@ fn function_call(
             );
             DraftFlow::value(cursor, value.erase())
         }
+        StoredValueShape::Parameter(parameter) => {
+            let value = graph.parameter_instruction(
+                &mut cursor,
+                *parameter,
+                super::super::instruction::DraftParameterInstruction::FunctionCall {
+                    function,
+                    args,
+                    site: site.clone(),
+                },
+            );
+            DraftFlow::value(cursor, value.erase())
+        }
         StoredValueShape::Custom(shape) => {
             let value = graph.custom_instruction(
                 &mut cursor,
@@ -545,6 +571,16 @@ pub(in crate::plan::execution::lowering) fn tuple_index(
                 },
             )
             .erase(),
+        StoredValueShape::Parameter(parameter) => graph
+            .parameter_instruction(
+                &mut cursor,
+                *parameter,
+                super::super::instruction::DraftParameterInstruction::TupleIndex {
+                    tuple: source,
+                    index,
+                },
+            )
+            .erase(),
         StoredValueShape::Custom(shape) => graph
             .custom_instruction(
                 &mut cursor,
@@ -652,6 +688,13 @@ pub(in crate::plan::execution::lowering) fn custom_field(
                 },
             )
             .erase(),
+        StoredValueShape::Parameter(parameter) => graph
+            .parameter_instruction(
+                &mut cursor,
+                *parameter,
+                super::super::instruction::DraftParameterInstruction::CustomField { source, index },
+            )
+            .erase(),
         StoredValueShape::Custom(shape) => graph
             .custom_instruction(
                 &mut cursor,
@@ -748,6 +791,16 @@ pub(in crate::plan::execution::lowering) fn list_index(
             .utf_codepoint_instruction(
                 &mut cursor,
                 super::super::instruction::DraftUtfCodepointInstruction::ListIndex {
+                    list: source,
+                    index,
+                },
+            )
+            .erase(),
+        StoredValueShape::Parameter(parameter) => graph
+            .parameter_instruction(
+                &mut cursor,
+                *parameter,
+                super::super::instruction::DraftParameterInstruction::ListIndex {
                     list: source,
                     index,
                 },
@@ -1606,6 +1659,154 @@ mod tests {
     }
 
     #[test]
+    fn generic_calls_specialized_to_actual_empty_keep_the_first_source_failure() {
+        for (body, expected) in [
+            ("stop()", "panic: body"),
+            (
+                "let function: fn(Int) -> Empty = ignore function(panic as \"argument\")",
+                "panic: argument",
+            ),
+            ("let _ = 42 stop()", "panic: body"),
+            ("let value: Empty = stop() echo value value", "panic: body"),
+            ("factory()()", "panic: body"),
+            ("nested_factory()()", "panic: body"),
+            ("choose_factory(False)()", "panic: body"),
+            ("choose(True)()", "panic: body"),
+            ("invoke_factory(factory)", "panic: body"),
+            ("discard_factory(factory)", "panic: body"),
+            ("select_factory(factory, False)", "panic: body"),
+            ("invoke_empty_factory(empty_factory)", "panic: argument"),
+            ("let boxed = fail_box() boxed.value", "panic: container"),
+            ("fail_box().value", "panic: container"),
+            (
+                "let function = box_from_int function(panic as \"argument\").value",
+                "panic: argument",
+            ),
+            (
+                "{ let function: fn() -> Box = panic as \"function\" function }().value",
+                "panic: function",
+            ),
+        ] {
+            let source = format!(
+                r#"
+pub type Empty
+pub type Box {{ Box(value: Empty) }}
+fn stop() -> a {{ panic as "body" }}
+fn ignore(_value: Int) -> a {{ panic as "body" }}
+fn factory() -> fn() -> a {{ stop }}
+fn nested_factory() -> fn() -> a {{ factory() }}
+fn choose_factory(flag: Bool) -> fn() -> a {{ case flag {{ True -> factory() False -> factory() }} }}
+fn choose(flag: Bool) -> fn() -> a {{ case flag {{ True -> stop False -> stop }} }}
+fn invoke_factory(make: fn() -> fn() -> a) -> a {{ make()() }}
+fn discard_factory(make: fn() -> fn() -> a) -> a {{ let _ = make() stop() }}
+fn select_factory(make: fn() -> fn() -> a, flag: Bool) -> a {{
+  let function = case flag {{ True -> make() False -> make() }}
+  function()
+}}
+fn empty_input(_value: Empty) -> a {{ panic as "body" }}
+fn empty_factory() -> fn(Empty) -> a {{ empty_input }}
+fn invoke_empty_factory(make: fn() -> fn(Empty) -> a) -> a {{ make()(panic as "argument") }}
+fn fail_box() -> Box {{ panic as "container" }}
+fn box_from_int(_value: Int) -> Box {{ panic as "body" }}
+pub fn main() -> Empty {{ {body} }}
+"#
+            );
+            let typed = crate::compile_typed_module("main", "main.gleam", &source).unwrap();
+            let plan = crate::ExecutionPlan::from_module_plan(crate::plan_module(typed).unwrap());
+            assert_eq!(
+                crate::run_main(&plan, &mut Vec::new())
+                    .unwrap_err()
+                    .to_string(),
+                expected
+            );
+        }
+    }
+
+    #[test]
+    fn generic_symbolic_callback_evaluates_its_factory_before_the_empty_argument() {
+        let source = r#"
+pub type Empty
+fn empty_input(_value: Empty) -> value { panic as "body" }
+fn factory() -> fn(Empty) -> value { echo "factory" empty_input }
+fn invoke(make: fn() -> fn(Empty) -> a) -> a { make()(panic as "argument") }
+pub fn main() -> value { invoke(factory) }
+"#;
+        let typed = crate::compile_typed_module("main", "main.gleam", source).unwrap();
+        let plan = crate::ExecutionPlan::from_module_plan(crate::plan_module(typed).unwrap());
+        let mut echo = Vec::new();
+        assert_eq!(
+            crate::run_main(&plan, &mut echo).unwrap_err().to_string(),
+            "panic: argument",
+        );
+        assert_eq!(
+            echo.iter().map(ToString::to_string).collect::<Vec<_>>(),
+            ["main::factory@112..126\n\"factory\""],
+        );
+    }
+
+    #[test]
+    fn empty_tuple_arguments_stop_before_the_callee_and_generic_blocks_keep_echo() {
+        for (source, expected, expected_echo) in [
+            (
+                r#"
+pub type Empty
+fn ignored(_tuple: #(Empty, Int)) { 42 }
+pub fn main() { ignored(#(panic as "tuple argument", 42)) }
+"#,
+                "panic: tuple argument",
+                Vec::<String>::new(),
+            ),
+            (
+                "pub type Empty fn stop() -> a { panic as \"body\" } pub fn main() -> Empty { echo 42 stop() }",
+                "panic: body",
+                vec!["main::main@75..82\n42".to_owned()],
+            ),
+        ] {
+            let typed = crate::compile_typed_module("main", "main.gleam", source).unwrap();
+            let plan = crate::ExecutionPlan::from_module_plan(crate::plan_module(typed).unwrap());
+            let mut echo = Vec::new();
+            assert_eq!(
+                crate::run_main(&plan, &mut echo).unwrap_err().to_string(),
+                expected
+            );
+            assert_eq!(
+                echo.iter().map(ToString::to_string).collect::<Vec<_>>(),
+                expected_echo
+            );
+        }
+    }
+
+    #[test]
+    fn generic_empty_callbacks_preserve_argument_failure_without_invoking_the_body() {
+        for source in [
+            r#"
+pub type Empty
+fn stopped(_value: Int) -> a { panic as "body" }
+fn call(function: fn(Int) -> a) -> a { function(panic as "argument") }
+pub fn main() -> Empty { call(stopped) }
+"#,
+            r#"
+pub type Empty
+fn stopped(_value: Int) -> fn() -> Empty { panic as "body" }
+fn call(function: fn(Int) -> fn() -> Empty) {
+  let result = function(panic as "argument")
+  result
+}
+pub fn main() { call(stopped) }
+"#,
+        ] {
+            let typed = crate::compile_typed_module("main", "main.gleam", source).unwrap();
+            let plan = crate::ExecutionPlan::from_module_plan(crate::plan_module(typed).unwrap());
+            assert_eq!(
+                crate::run_main(&plan, &mut Vec::new())
+                    .unwrap_err()
+                    .to_string(),
+                "panic: argument"
+            );
+        }
+    }
+
+    #[test]
     fn generic_family_specialization_executes_every_stored_shape() {
         let source = include_str!(
             "../../../../../../../tests/fixtures/execution/functions/generic_family_specialization.gleam"
@@ -1656,7 +1857,7 @@ mod tests {
 
     #[test]
     fn uninhabited_generic_owners_preserve_only_reachable_source_stops() {
-        let parameter = TypeParameterId(0);
+        let parameter = TypeParameterId::new(0);
         let custom_name = plan::CustomTypeName::new("geam".into(), "main".into(), "Boxed".into());
         let custom_definition = plan::CustomTypeDefinition::new(
             custom_name.clone(),
@@ -1672,9 +1873,25 @@ mod tests {
                 )],
             )],
         );
-        let mut context = crate::plan::execution::lowering::test_support::lowering_context(vec![
-            custom_definition,
-        ]);
+        let never_name =
+            crate::plan::CustomTypeName::new("geam".into(), "main".into(), "Never".into());
+        let mut context = crate::plan::execution::lowering::test_support::lowering_context({
+            let mut definitions = vec![custom_definition];
+            definitions.push(crate::plan::CustomTypeDefinition::new(
+                never_name.clone(),
+                crate::plan::CustomTypePublicity::Private,
+                false,
+                Vec::new(),
+                Vec::new(),
+            ));
+            definitions
+        });
+        context.substitution = crate::plan::execution::lowering::specialization::SpecializedTypeSubstitution::instantiate(
+            &crate::plan::module::TypeSubstitution::from_arguments(vec![crate::plan::ValueShape::Custom(
+                crate::plan::CustomValueShape::new(never_name, Vec::new(), crate::plan::CustomConstructorRefinement::Any),
+            )]),
+            &crate::plan::execution::lowering::specialization::SpecializedTypeSubstitution::empty(),
+        ).with_scope(0);
         let local = plan::GenericExpr::local_get(
             plan::GenericLocal::new(plan::GenericLocalId(0), parameter),
             "value".into(),
@@ -1744,6 +1961,21 @@ mod tests {
             parameter,
             plan::CustomFieldAccess::new(custom_source, 0, None),
         );
+        let custom_source_stop = plan::GenericExpr::custom_field(
+            parameter,
+            plan::CustomFieldAccess::new(
+                plan::CustomExpr::panic_shape(
+                    panic(),
+                    plan::CustomValueShape::new(
+                        custom_name,
+                        vec![ValueShape::Parameter(parameter)],
+                        plan::CustomConstructorRefinement::Exact(0),
+                    ),
+                ),
+                0,
+                None,
+            ),
+        );
         let diverging_block = plan::GenericExpr::block(
             vec![plan::Step::evaluate(plan::Expr::generic(
                 plan::GenericExpr::panic(parameter, panic()),
@@ -1799,11 +2031,26 @@ mod tests {
             never_expr(&diverging_block, cursor, &mut graph, &mut context),
             Representability::Inhabited(()),
         );
+        for expression in [
+            custom_source_stop,
+            plan::GenericExpr::block(
+                vec![plan::Step::evaluate(plan::Expr::int(plan::IntExpr::value(
+                    42.into(),
+                )))],
+                plan::GenericExpr::panic(parameter, panic()),
+            ),
+        ] {
+            let cursor = graph.empty_block(Default::default());
+            assert_eq!(
+                never_expr(&expression, cursor, &mut graph, &mut context),
+                Representability::Inhabited(()),
+            );
+        }
     }
 
     #[test]
     fn compound_uninhabited_values_lower_only_their_reachable_prefix() {
-        let parameter = TypeParameterId(0);
+        let parameter = TypeParameterId::new(0);
         let custom_name = plan::CustomTypeName::new("geam".into(), "main".into(), "Boxed".into());
         let custom_definition = plan::CustomTypeDefinition::new(
             custom_name.clone(),
@@ -1819,9 +2066,25 @@ mod tests {
                 )],
             )],
         );
-        let mut context = crate::plan::execution::lowering::test_support::lowering_context(vec![
-            custom_definition,
-        ]);
+        let never_name =
+            crate::plan::CustomTypeName::new("geam".into(), "main".into(), "Never".into());
+        let mut context = crate::plan::execution::lowering::test_support::lowering_context({
+            let mut definitions = vec![custom_definition];
+            definitions.push(crate::plan::CustomTypeDefinition::new(
+                never_name.clone(),
+                crate::plan::CustomTypePublicity::Private,
+                false,
+                Vec::new(),
+                Vec::new(),
+            ));
+            definitions
+        });
+        context.substitution = crate::plan::execution::lowering::specialization::SpecializedTypeSubstitution::instantiate(
+            &crate::plan::module::TypeSubstitution::from_arguments(vec![crate::plan::ValueShape::Custom(
+                crate::plan::CustomValueShape::new(never_name, Vec::new(), crate::plan::CustomConstructorRefinement::Any),
+            )]),
+            &crate::plan::execution::lowering::specialization::SpecializedTypeSubstitution::empty(),
+        ).with_scope(0);
         let panic = || plan::PanicExpr::panic_at(None, plan::PanicSite::unknown());
         let diverging_step = plan::Step::evaluate(plan::Expr::generic(plan::GenericExpr::panic(
             parameter,
@@ -1930,7 +2193,7 @@ mod tests {
 
     #[test]
     fn uninhabited_generic_cases_preserve_subject_and_branch_order() {
-        let parameter = TypeParameterId(0);
+        let parameter = TypeParameterId::new(0);
         let mut context =
             crate::plan::execution::lowering::test_support::lowering_context(Vec::new());
         let local = plan::GenericExpr::local_get(
@@ -2100,16 +2363,31 @@ mod tests {
 
     #[test]
     fn stored_generic_operations_stop_at_each_source_owner() {
-        let parameter = TypeParameterId(0);
+        let parameter = TypeParameterId::new(0);
         let boxed_name = plan::CustomTypeName::new("geam".into(), "main".into(), "Boxed".into());
         let boxed_int_shape = plan::CustomValueShape::new(
             boxed_name.clone(),
             vec![ValueShape::Int],
             plan::CustomConstructorRefinement::Exact(0),
         );
+        let never_name = plan::CustomTypeName::new("geam".into(), "main".into(), "Never".into());
         let mut context = crate::plan::execution::lowering::test_support::lowering_context(vec![
             boxed_definition(boxed_name),
+            plan::CustomTypeDefinition::new(
+                never_name.clone(),
+                plan::CustomTypePublicity::Private,
+                false,
+                Vec::new(),
+                Vec::new(),
+            ),
         ]);
+        context.substitution = crate::plan::execution::lowering::specialization::SpecializedTypeSubstitution::instantiate(
+            &plan::TypeSubstitution::from_arguments(vec![
+                ValueShape::Int,
+                ValueShape::Custom(plan::CustomValueShape::any(plan::CustomType::new(never_name, Vec::new()))),
+            ]),
+            &crate::plan::execution::lowering::specialization::SpecializedTypeSubstitution::empty(),
+        ).with_scope(0);
         let generic_panic = || plan::GenericExpr::panic(parameter, source_stop());
         let expressions = [
             plan::GenericExpr::call(
@@ -2204,7 +2482,7 @@ mod tests {
             plan::TupleExpr::local_get(
                 plan::TupleLocalId(0),
                 "tuple".into(),
-                vec![ValueType::Parameter(TypeParameterId(1))],
+                vec![ValueType::Parameter(TypeParameterId::new(1))],
             ),
             0,
         );
@@ -2223,7 +2501,7 @@ mod tests {
 
     #[test]
     fn uninhabited_generic_projections_and_field_prefixes_preserve_reachability() {
-        let parameter = TypeParameterId(0);
+        let parameter = TypeParameterId::new(0);
         let boxed_name = plan::CustomTypeName::new("geam".into(), "main".into(), "Boxed".into());
         let boxed_int = plan::CustomType::new(boxed_name.clone(), vec![ValueType::Int]);
         let constructor = plan::CustomConstructor::new(
@@ -2237,9 +2515,25 @@ mod tests {
             vec![plan::Expr::int(plan::IntExpr::value(1.into()))],
         )
         .expect("one field should construct Boxed(Int)");
-        let mut context = crate::plan::execution::lowering::test_support::lowering_context(vec![
-            boxed_definition(boxed_name),
-        ]);
+        let never_name =
+            crate::plan::CustomTypeName::new("geam".into(), "main".into(), "Never".into());
+        let mut context = crate::plan::execution::lowering::test_support::lowering_context({
+            let mut definitions = vec![boxed_definition(boxed_name)];
+            definitions.push(crate::plan::CustomTypeDefinition::new(
+                never_name.clone(),
+                crate::plan::CustomTypePublicity::Private,
+                false,
+                Vec::new(),
+                Vec::new(),
+            ));
+            definitions
+        });
+        context.substitution = crate::plan::execution::lowering::specialization::SpecializedTypeSubstitution::instantiate(
+            &crate::plan::module::TypeSubstitution::from_arguments(vec![crate::plan::ValueShape::Custom(
+                crate::plan::CustomValueShape::new(never_name, Vec::new(), crate::plan::CustomConstructorRefinement::Any),
+            )]),
+            &crate::plan::execution::lowering::specialization::SpecializedTypeSubstitution::empty(),
+        ).with_scope(0);
         let tuple_projection = plan::GenericExpr::tuple_index(
             parameter,
             plan::TupleExpr::value(
@@ -2327,7 +2621,7 @@ mod tests {
 
     #[test]
     fn uninhabited_tuple_and_custom_projections_stop_or_erase_at_their_source() {
-        let parameter = TypeParameterId(0);
+        let parameter = TypeParameterId::new(0);
         let boxed_name = plan::CustomTypeName::new("geam".into(), "main".into(), "Boxed".into());
         let boxed_parameter_shape = plan::CustomValueShape::new(
             boxed_name.clone(),
@@ -2345,9 +2639,25 @@ mod tests {
             vec![plan::Expr::int(plan::IntExpr::value(1.into()))],
         )
         .expect("one field should construct Boxed(Int)");
-        let mut context = crate::plan::execution::lowering::test_support::lowering_context(vec![
-            boxed_definition(boxed_name),
-        ]);
+        let never_name =
+            crate::plan::CustomTypeName::new("geam".into(), "main".into(), "Never".into());
+        let mut context = crate::plan::execution::lowering::test_support::lowering_context({
+            let mut definitions = vec![boxed_definition(boxed_name)];
+            definitions.push(crate::plan::CustomTypeDefinition::new(
+                never_name.clone(),
+                crate::plan::CustomTypePublicity::Private,
+                false,
+                Vec::new(),
+                Vec::new(),
+            ));
+            definitions
+        });
+        context.substitution = crate::plan::execution::lowering::specialization::SpecializedTypeSubstitution::instantiate(
+            &crate::plan::module::TypeSubstitution::from_arguments(vec![crate::plan::ValueShape::Custom(
+                crate::plan::CustomValueShape::new(never_name, Vec::new(), crate::plan::CustomConstructorRefinement::Any),
+            )]),
+            &crate::plan::execution::lowering::specialization::SpecializedTypeSubstitution::empty(),
+        ).with_scope(0);
         let tuple_type = vec![ValueType::Parameter(parameter)];
         let tuple_function_type =
             plan::FunctionType::new(Vec::new(), ValueType::Tuple(tuple_type.clone()));
@@ -2392,6 +2702,20 @@ mod tests {
         ];
         let (mut graph, _) = DraftGraphBuilder::<DraftValueRef, ()>::new(Vec::new(), Vec::new());
 
+        let cursor = graph.empty_block(Default::default());
+        assert_eq!(
+            diverging_values(
+                &[plan::Expr::generic(plan::GenericExpr::panic(
+                    parameter,
+                    source_stop()
+                ))],
+                0,
+                cursor,
+                &mut graph,
+                &mut context,
+            ),
+            Representability::Inhabited(()),
+        );
         for (index, expression) in tuple_expressions.into_iter().enumerate() {
             let cursor = graph.empty_block(Default::default());
             assert_eq!(
@@ -2430,16 +2754,32 @@ mod tests {
 
     #[test]
     fn uninhabited_tuple_and_custom_cases_preserve_every_subject_path() {
-        let parameter = TypeParameterId(0);
+        let parameter = TypeParameterId::new(0);
         let boxed_name = plan::CustomTypeName::new("geam".into(), "main".into(), "Boxed".into());
         let boxed_shape = plan::CustomValueShape::new(
             boxed_name.clone(),
             vec![ValueShape::Parameter(parameter)],
             plan::CustomConstructorRefinement::Exact(0),
         );
-        let mut context = crate::plan::execution::lowering::test_support::lowering_context(vec![
-            boxed_definition(boxed_name),
-        ]);
+        let never_name =
+            crate::plan::CustomTypeName::new("geam".into(), "main".into(), "Never".into());
+        let mut context = crate::plan::execution::lowering::test_support::lowering_context({
+            let mut definitions = vec![boxed_definition(boxed_name)];
+            definitions.push(crate::plan::CustomTypeDefinition::new(
+                never_name.clone(),
+                crate::plan::CustomTypePublicity::Private,
+                false,
+                Vec::new(),
+                Vec::new(),
+            ));
+            definitions
+        });
+        context.substitution = crate::plan::execution::lowering::specialization::SpecializedTypeSubstitution::instantiate(
+            &crate::plan::module::TypeSubstitution::from_arguments(vec![crate::plan::ValueShape::Custom(
+                crate::plan::CustomValueShape::new(never_name, Vec::new(), crate::plan::CustomConstructorRefinement::Any),
+            )]),
+            &crate::plan::execution::lowering::specialization::SpecializedTypeSubstitution::empty(),
+        ).with_scope(0);
         let tuple_local = || {
             plan::TupleExpr::local_get(
                 plan::TupleLocalId(0),

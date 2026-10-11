@@ -443,7 +443,7 @@ pub fn main() { identity(1) }
                 reason: InvalidTypedAstReason::CallShape {
                     reason: InvalidCallShapeReason::FunctionInstantiationReturnShape {
                         expected: ValueType::Int,
-                        actual: ValueType::Parameter(crate::plan::TypeParameterId(0)),
+                        actual: ValueType::Parameter(crate::plan::TypeParameterId::new(0)),
                     },
                 },
             }),

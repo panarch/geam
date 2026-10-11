@@ -73,6 +73,7 @@ where
             Kind::String(value) => self.string(value, output, locals),
             Kind::BitArray(value) => self.bit_array(value, output, locals),
             Kind::UtfCodepoint(value) => self.utf_codepoint(value, output, locals),
+            Kind::Parameter(value) => self.parameter(value, output, locals),
             Kind::Custom(value) => self.custom(value, output, locals),
             Kind::External(value) => self.external(value.instruction_ref(), output, locals),
             Kind::ExternalList(value) => self.typed_list(
@@ -402,6 +403,173 @@ pub fn main() { calculate(native(20)) }
                 .unwrap(),
             crate::Value::Int(41.into())
         );
+    }
+
+    #[test]
+    fn hosted_parameter_instructions_preserve_projection_origins_and_reject_bad_outputs() {
+        use crate::plan::execution::graph::{ParameterInstruction, ProfiledInstructionKind};
+        use crate::plan::execution::prepared::admission::{
+            local::Address,
+            place::{Projection, projected_input},
+        };
+        use crate::{
+            HostCall, HostCallCompletion, HostCallError, HostProvider, HostProviderModule,
+            HostProviderSet, HostTypeParameter, HostValue, HostedExecution, ModuleSource,
+            PackageSource, StatelessHostProfile,
+        };
+
+        struct Provider;
+        impl HostProvider<StatelessHostProfile> for Provider {
+            type State = ();
+
+            fn project(state: &mut ()) -> &mut () {
+                state
+            }
+        }
+        type Item = HostTypeParameter<0>;
+        fn identity<'call>(
+            mut call: HostCall<'call, StatelessHostProfile, Provider, Item>,
+            value: HostValue<'call, Item>,
+        ) -> Result<HostCallCompletion<'call, Item>, HostCallError> {
+            assert_eq!(call.state(), &());
+            Ok(call.return_value(value))
+        }
+        let source = r#"
+pub type Box(a) { Box(value: a) }
+@external(erlang, "native", "identity") fn identity(value: a) -> a
+fn identity_list(values: List(a)) { values }
+fn project(value: a, values: List(a), callback: fn() -> a) {
+  let first = identity(value)
+  let indirect = callback()
+  let tuple = #(first)
+  let boxed = Box(tuple.0)
+  let _ = 42
+  case identity_list([boxed.value, indirect, ..values]) {
+    [head, .._] if head == first -> head
+    _ -> first
+  }
+}
+pub fn main() { let _ = project project(42, [42], fn() { 42 }) }
+"#;
+        let typed = crate::compile_typed_host_program(
+            "app",
+            "main",
+            [PackageSource::new(
+                "app",
+                Vec::<String>::new(),
+                [ModuleSource::new("main", "main.gleam", source)],
+            )],
+            HostProviderSet::<StatelessHostProfile>::from_providers([HostProviderModule::new(
+                "app", "main",
+            )
+            .unwrap()
+            .with_scoped_function::<Provider, (Item,), Item, _>("identity", identity)
+            .unwrap()])
+            .unwrap(),
+        )
+        .unwrap();
+        let mut execution =
+            HostedExecution::try_from_module_plan(crate::plan_host_program(typed).unwrap())
+                .unwrap();
+        let (plan, _, _) = execution.parts_mut();
+        let common = &plan.program.common;
+        let types = Types::admit(
+            &common.list_types,
+            &common.custom_types,
+            &common.external_types,
+            &common.value_shapes,
+        )
+        .unwrap();
+        let catalog =
+            Catalog::admit(&common.function_parameters, &plan.program.functions, &types).unwrap();
+        let sources = Sources::admit(common.root, &common.modules).unwrap();
+        let context = Instructions {
+            types: &types,
+            catalog: &catalog,
+            sources: &sources,
+            constants: &common.constants,
+        };
+        let int_shape = ValueShapeId(
+            common
+                .value_shapes
+                .shape_types
+                .iter()
+                .position(|type_| type_ == &ValueType::Int)
+                .unwrap(),
+        );
+        let mut seen = [false; 5];
+        for function in plan
+            .program
+            .functions
+            .value_returns
+            .parameter_functions
+            .iter()
+        {
+            if let ValueFunctionEntry::Graph(function) = function {
+                for block in function.body().block_graph().blocks() {
+                    let mut locals = Locals::default();
+                    for parameter in block.params() {
+                        locals.define(parameter, &types).unwrap();
+                    }
+                    for instruction in block.instructions() {
+                        assert_eq!(context.check(instruction, &locals), Ok(()));
+                        if let Some(value) = instruction.value()
+                            && let ProfiledInstructionKind::Parameter(parameter) = &value.kind
+                        {
+                            let projected = match parameter {
+                                ParameterInstruction::Call { .. } => {
+                                    seen[0] = true;
+                                    None
+                                }
+                                ParameterInstruction::FunctionCall { .. } => {
+                                    seen[1] = true;
+                                    None
+                                }
+                                ParameterInstruction::TupleIndex { tuple, index } => {
+                                    seen[2] = true;
+                                    Some((Address::from(*tuple), Projection::Tuple(*index)))
+                                }
+                                ParameterInstruction::CustomField { source, index } => {
+                                    seen[3] = true;
+                                    Some((Address::from(source.id), Projection::Custom(*index)))
+                                }
+                                ParameterInstruction::ListIndex { list, index } => {
+                                    seen[4] = true;
+                                    Some((Address::from(*list), Projection::List(*index)))
+                                }
+                            };
+                            assert_eq!(projected_input(&value.kind), projected);
+                            assert_eq!(
+                                context.parameter(
+                                    parameter,
+                                    &ParamSlot::new(ParamLocal::Int(IntLocalId(0)), int_shape),
+                                    &locals
+                                ),
+                                Err(InstructionError::OutputType)
+                            );
+                            let mut missing = value.output.clone();
+                            missing.shape = ValueShapeId(999);
+                            assert_eq!(
+                                context.parameter(parameter, &missing, &locals),
+                                Err(InstructionError::Type(TypeError::MissingShape {
+                                    index: 999
+                                }))
+                            );
+                        }
+                        for output in instruction.outputs() {
+                            locals.define(output, &types).unwrap();
+                        }
+                    }
+                }
+            }
+        }
+        assert_eq!(seen, [true; 5]);
+        let mut echo = Vec::new();
+        assert_eq!(
+            crate::execution_fixture::run(&mut execution, &mut (), &mut echo).unwrap(),
+            crate::Value::Int(42.into()),
+        );
+        assert!(echo.is_empty());
     }
 
     #[test]

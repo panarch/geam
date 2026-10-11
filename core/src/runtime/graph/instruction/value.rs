@@ -6,13 +6,13 @@ use crate::plan::HostCallSite;
 use crate::plan::execution::constant::ConstantId;
 use crate::plan::execution::function::{
     BitArrayFunctionId, BoolFunctionId, CustomFunctionId, FloatFunctionId, IntFunctionId,
-    NilFunctionId, StringFunctionId, TupleFunctionId, UtfCodepointFunctionId,
+    NilFunctionId, ParameterFunctionId, StringFunctionId, TupleFunctionId, UtfCodepointFunctionId,
 };
 use crate::plan::execution::graph::{
     BitArrayInstruction, BitArrayLocalId, BoolInstruction, BoolLocalId, CustomInstruction,
     CustomLocal, FloatInstruction, FloatLocalId, IntInstruction, IntLocalId, NilInstruction,
-    NilLocalId, StringInstruction, StringLocalId, TupleInstruction, TupleLocalId,
-    UtfCodepointInstruction,
+    NilLocalId, ParameterInstruction, StringInstruction, StringLocalId, TupleInstruction,
+    TupleLocalId, UtfCodepointInstruction,
 };
 use crate::plan::execution::runtime::RuntimeExecutionPlan;
 use crate::plan::execution::type_::ValueType;
@@ -467,6 +467,89 @@ where
     }
 }
 
+pub(in crate::runtime) fn parameter<'call, Plan, State>(
+    plan: &Plan,
+    state: &State,
+    environment: &'call BlockEnvironment,
+    instruction: &'call ParameterInstruction,
+    expected: &ValueType,
+) -> InstructionOutcomeWithoutConstant<
+    'call,
+    crate::ParameterValue,
+    ParameterFunctionId,
+    State::Error,
+>
+where
+    Plan: RuntimeExecutionPlan,
+    State: RuntimeGraphState,
+{
+    use InstructionOutcomeWithoutConstant as V;
+    use ParameterInstruction as I;
+
+    match instruction {
+        I::Call {
+            function,
+            args,
+            site,
+        } => V::Call {
+            function: *function,
+            site,
+            inputs: CallInputs {
+                args,
+                captures: None,
+            },
+        },
+        I::FunctionCall {
+            function,
+            args,
+            site,
+        } => {
+            let function = environment.parameter_function(*function);
+            V::Call {
+                function: function.runtime_id(),
+                site,
+                inputs: CallInputs {
+                    args,
+                    captures: Some(function.capture_frame()),
+                },
+            }
+        }
+        I::TupleIndex { tuple, index } => tuple_projection(
+            plan,
+            environment,
+            *tuple,
+            *index,
+            expected,
+            |value| match value {
+                EvaluatedValue::Parameter(value) => Some(value.clone()),
+                _ => None,
+            },
+        )
+        .map_or_else(V::Error, V::Ready),
+        I::CustomField { source, index } => custom_projection(
+            plan,
+            environment,
+            source,
+            *index,
+            expected,
+            |value| match value {
+                EvaluatedValue::Parameter(value) => Some(value.clone()),
+                _ => None,
+            },
+        )
+        .map_or_else(V::Error, V::Ready),
+        I::ListIndex { list, index } => list_element(
+            plan,
+            expected,
+            *index,
+            state
+                .lists()
+                .parameter_values(environment.parameter_list_ref(*list)),
+        )
+        .map_or_else(V::Error, V::Ready),
+    }
+}
+
 pub(in crate::runtime) fn custom<'call, Plan, State>(
     plan: &Plan,
     state: &State,
@@ -899,8 +982,11 @@ where
 #[cfg(test)]
 mod tests {
     use super::super::super::environment::{BlockEnvironment, RetainedValues};
-    use super::{ensure_list_index, list_element, tuple_projection};
+    use super::{
+        InstructionOutcomeWithoutConstant, ensure_list_index, list_element, tuple_projection,
+    };
     use crate::StringValue;
+    use crate::plan::execution::function::ParameterFunctionId;
     use crate::plan::execution::graph::TupleLocalId;
     use crate::plan::execution::type_::ValueType as ExecutionValueType;
     use crate::plan::{
@@ -916,7 +1002,7 @@ mod tests {
     use crate::runtime::state::list::ListSequence;
     use crate::runtime::{
         EvaluatedBitArray, EvaluatedCustomValue, EvaluatedFunctionValue, EvaluatedValue,
-        ExecutionError, InvariantError, Value, run_src,
+        ExecutionError, InvariantError, ParameterValue, Value, run_src,
     };
 
     fn string_value(value: &EvaluatedValue) -> Option<StringValue> {
@@ -1642,6 +1728,148 @@ pub fn main() -> {return_type} {{ {expression} }}
     }
 
     #[test]
+    fn parameter_projections_reject_concrete_fields_without_changing_the_sealed_binding() {
+        use super::parameter;
+        use crate::plan::TypeParameterId;
+        use crate::plan::execution::function::{FunctionBodyOwner, TupleFunctionId};
+        use crate::plan::execution::graph::{ParamLocal, ParameterInstruction};
+        use crate::plan::execution::runtime::RuntimeExecutionPlan;
+        use crate::plan::execution::type_::{ListStorageTypeId, ListTypeId, ParameterListTypeId};
+        use crate::runtime::plan_src;
+        use crate::runtime::{NativeValues, state::RuntimeState};
+
+        let source = "pub type Box(a) { Box(a) } fn consume(value: a) -> #(Box(a), List(a)) { let _ = 42 #(Box(value), []) } pub fn main() { consume }";
+        let plan = plan_src(source);
+        let binding = TypeParameterId::scoped(0, 0);
+        assert_eq!(
+            plan.list_storage_type(ListTypeId(0)),
+            ListStorageTypeId::Parameter(ParameterListTypeId {
+                list_type: ListTypeId(0),
+                item: binding
+            })
+        );
+        let expected = ExecutionValueType::Parameter(binding);
+        let custom = plan
+            .tuple_function(TupleFunctionId(0))
+            .body()
+            .function_body()
+            .block_graph()
+            .blocks()
+            .flat_map(|block| block.instructions())
+            .find_map(
+                |instruction| match instruction.value().unwrap().output().local {
+                    ParamLocal::Custom(local) => Some(local),
+                    _ => None,
+                },
+            )
+            .unwrap();
+        let constructor =
+            RuntimeExecutionPlan::custom_constructor_id(&plan, custom.shape.type_id, 0);
+        let mut echo = Vec::new();
+        let state = RuntimeState::new(&mut echo);
+        let values = NativeValues::new(state.lists(), plan.value_metadata());
+        let payload = values.parameter(binding, &values.string("payload".into()), false);
+        for (value, instruction, expected_error) in [
+            (
+                EvaluatedValue::Custom(EvaluatedCustomValue::from_fields(
+                    constructor,
+                    vec![EvaluatedValue::Parameter(payload.clone())].into(),
+                )),
+                ParameterInstruction::CustomField {
+                    source: custom,
+                    index: 0,
+                },
+                None,
+            ),
+            (
+                EvaluatedValue::Tuple(vec![EvaluatedValue::Parameter(payload.clone())]),
+                ParameterInstruction::TupleIndex {
+                    tuple: TupleLocalId(0),
+                    index: 0,
+                },
+                None,
+            ),
+            (
+                EvaluatedValue::Tuple(vec![EvaluatedValue::Int(42.into())]),
+                ParameterInstruction::TupleIndex {
+                    tuple: TupleLocalId(0),
+                    index: 0,
+                },
+                Some(
+                    InvariantError::TupleIndexFamilyMismatch {
+                        expected: ValueType::Parameter(binding),
+                        actual: ValueType::Int,
+                    }
+                    .into(),
+                ),
+            ),
+            (
+                EvaluatedValue::Custom(EvaluatedCustomValue::from_fields(
+                    constructor,
+                    vec![EvaluatedValue::Int(42.into())].into(),
+                )),
+                ParameterInstruction::CustomField {
+                    source: custom,
+                    index: 0,
+                },
+                Some(
+                    InvariantError::CustomFieldFamilyMismatch {
+                        custom_type: plan.custom_value_type(constructor.type_id()),
+                        constructor: "Box".into(),
+                        field_index: 0,
+                        expected: ValueType::Parameter(binding),
+                        actual: ValueType::Int,
+                    }
+                    .into(),
+                ),
+            ),
+        ] {
+            // The concrete fields deliberately break only the approved projection invariant.
+            let mut values = RetainedValues::empty();
+            values.push_evaluated(value);
+            let environment = BlockEnvironment::from_retained(values);
+            let outcome = parameter(&plan, &state, &environment, &instruction, &expected);
+            assert_eq!(
+                projected_parameter_result(outcome),
+                expected_error.map_or_else(|| Ok(payload.clone()), Err),
+            );
+        }
+    }
+
+    #[test]
+    #[should_panic(expected = "field projection must not invoke a function")]
+    fn parameter_projection_fixture_rejects_a_call_outcome() {
+        use super::CallInputs;
+        use crate::plan::HostCallSite;
+        use crate::plan::execution::graph::ParamLocal;
+
+        let site = HostCallSite::unknown();
+        let args = Vec::<ParamLocal>::new();
+        let outcome = InstructionOutcomeWithoutConstant::Call {
+            function: ParameterFunctionId(0),
+            site: &site,
+            inputs: CallInputs {
+                args: &args,
+                captures: None,
+            },
+        };
+        let _: Result<ParameterValue, ExecutionError<crate::PanicValue>> =
+            projected_parameter_result(outcome);
+    }
+
+    fn projected_parameter_result<Error>(
+        outcome: InstructionOutcomeWithoutConstant<'_, ParameterValue, ParameterFunctionId, Error>,
+    ) -> Result<ParameterValue, Error> {
+        match outcome {
+            InstructionOutcomeWithoutConstant::Ready(value) => Ok(value),
+            InstructionOutcomeWithoutConstant::Error(error) => Err(error),
+            InstructionOutcomeWithoutConstant::Call { .. } => {
+                panic!("field projection must not invoke a function");
+            }
+        }
+    }
+
+    #[test]
     fn custom_field_and_tuple_projections_report_every_exact_family_mismatch() {
         let inner_type = CustomType::new(inner_name(), Vec::new());
         let int_function = FunctionType::new(Vec::new(), ValueType::Int);
@@ -1895,7 +2123,7 @@ pub fn main() -> {return_type} {{ {expression} }}
     fn custom_type_template(type_: &ValueType) -> CustomTypeTemplate {
         match type_ {
             ValueType::Parameter(parameter) => {
-                CustomTypeTemplate::Parameter(crate::plan::CustomTypeParameterId(parameter.0))
+                CustomTypeTemplate::Parameter(crate::plan::CustomTypeParameterId(parameter.index()))
             }
             ValueType::Int => CustomTypeTemplate::Int,
             ValueType::Float => CustomTypeTemplate::Float,
@@ -1938,7 +2166,7 @@ pub fn main() -> {return_type} {{ {expression} }}
     #[test]
     fn custom_type_template_preserves_parameter_identity() {
         assert_eq!(
-            custom_type_template(&ValueType::Parameter(crate::plan::TypeParameterId(3))),
+            custom_type_template(&ValueType::Parameter(crate::plan::TypeParameterId::new(3))),
             CustomTypeTemplate::Parameter(crate::plan::CustomTypeParameterId(3)),
         );
         let name =

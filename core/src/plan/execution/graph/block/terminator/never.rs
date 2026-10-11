@@ -110,7 +110,7 @@ mod emission_tests {
         );
         let signature = FunctionType::new(
             Vec::new(),
-            ValueType::Parameter(crate::plan::TypeParameterId(0)),
+            ValueType::Parameter(crate::plan::TypeParameterId::new(0)),
         );
         let function = NeverCallTarget::Value(NeverFunctionLocal {
             id: NeverFunctionLocalId(3),
@@ -174,7 +174,8 @@ mod explain_tests {
     #[test]
     fn writes_direct_never_call() {
         let source = r#"
-fn stop(value: Int) -> value { panic }
+pub type Never
+fn stop(value: Int) -> Never { panic }
 
 pub fn main() -> Int {
   let _ = stop(1)
@@ -189,7 +190,8 @@ pub fn main() -> Int {
     #[test]
     fn writes_function_value_never_call() {
         let source = r#"
-fn stop(value: Int) -> value { panic }
+pub type Never
+fn stop(value: Int) -> Never { panic }
 
 pub fn main() -> Int {
   let function = stop
@@ -214,7 +216,8 @@ pub fn main() -> Int {
     #[should_panic(expected = "source should lower one Never call")]
     fn never_call_uniqueness_guard_is_visible() {
         let source = r#"
-fn stop() -> value { panic }
+pub type Never
+fn stop() -> Never { panic }
 
 pub fn main() -> Int {
   let _ = stop()

@@ -1,0 +1,5 @@
+name = "native_generic_results_embedding"
+version = "0.1.0"
+
+[dependencies]
+native_generic_results_fixture = { path = "../../project" }

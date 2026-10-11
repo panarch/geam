@@ -141,7 +141,7 @@ pub fn run() -> Int {
   let assert [saved] = identity(fn() { callbacks })()
   let assert True = saved(41) == 42
   let assert True = identity(fn() { callback })()(41) == 42
-  let _ = #(generic(), never())
+  let _ = #(generic(), never(), generic_empty(), never_empty())
   let assert True = capture(20)(22) == 42
   let assert True = countdown(8) == 42
   let assert Box([_, ..tail]) as original = Box([0, 42])
@@ -194,4 +194,22 @@ fn integer_comparisons() {
   let assert False = negative >= wide
   let assert True = wide == 340282366920938463463374607431768211456
   True
+}
+
+type Empty {}
+
+fn symbolic_identity(value: Empty) {
+  value
+}
+
+fn generic_empty() {
+  symbolic_identity
+}
+
+fn stop_empty(_value: Int) -> Empty {
+  panic as "prepared empty stop"
+}
+
+fn never_empty() {
+  stop_empty
 }

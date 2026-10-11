@@ -212,7 +212,7 @@ mod tests {
 
     #[test]
     fn generic_function_returns_preserve_tail_cases_and_block() {
-        let parameter = TypeParameterId(0);
+        let parameter = TypeParameterId::new(0);
         let type_ = GenericFunctionType::new(Vec::new(), parameter);
         let shape = type_.shape();
         let reference = GenericFunctionExpr::reference(

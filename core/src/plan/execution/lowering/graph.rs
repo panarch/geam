@@ -15,10 +15,10 @@ pub(super) use build::{
     generic_expr, generic_external_function_expr, generic_float_function_expr,
     generic_function_expr, generic_function_function_expr, generic_int_function_expr,
     generic_list_expr, generic_list_function_expr, generic_never_function_expr,
-    generic_nil_function_expr, generic_string_function_expr, generic_tuple_function_expr,
-    generic_utf_codepoint_function_expr, int_expr, int_function_expr, int_list_expr,
-    list_function_expr, list_list_expr, never_expr, nil_expr, nil_function_expr, nil_list_expr,
-    parameter_list_list_expr, string_expr, string_function_expr, string_list_expr,
+    generic_nil_function_expr, generic_parameter_function_expr, generic_string_function_expr,
+    generic_tuple_function_expr, generic_utf_codepoint_function_expr, int_expr, int_function_expr,
+    int_list_expr, list_function_expr, list_list_expr, never_expr, nil_expr, nil_function_expr,
+    nil_list_expr, parameter_list_list_expr, string_expr, string_function_expr, string_list_expr,
     symbolic_bit_array_function_expr, symbolic_bool_function_expr,
     symbolic_custom_function_expr_kind, symbolic_external_function_expr_kind,
     symbolic_float_function_expr, symbolic_function_function_expr_kind,
@@ -36,9 +36,10 @@ pub(super) use draft::{
     DraftFlow, DraftFunction, DraftFunctionFunction, DraftFunctionList, DraftFunctionValue,
     DraftGenericFunction, DraftGraph, DraftGraphValue, DraftInt, DraftIntFunction, DraftIntList,
     DraftList, DraftListFunction, DraftListList, DraftNeverFunction, DraftNil, DraftNilFunction,
-    DraftNilList, DraftParameterList, DraftParameterListList, DraftString, DraftStringFunction,
-    DraftStringList, DraftTuple, DraftTupleFunction, DraftTupleList, DraftUtfCodepoint,
-    DraftUtfCodepointFunction, DraftUtfCodepointList, DraftValueRef, LoweredFunctionGraph,
+    DraftNilList, DraftParameter, DraftParameterFunction, DraftParameterList, DraftString,
+    DraftStringFunction, DraftStringList, DraftTuple, DraftTupleFunction, DraftTupleList,
+    DraftUtfCodepoint, DraftUtfCodepointFunction, DraftUtfCodepointList, DraftValueRef,
+    LoweredFunctionGraph,
 };
 pub(super) use freeze::FreezeGraphValue;
 pub(super) use profile::{seal_plain_block_graph, seal_plain_runtime_function_id};
