@@ -202,7 +202,7 @@ impl<'graph, Graph: ExecutionGraphProfile> CallCodegen<'graph, Graph> {
     pub(super) fn write_code(&self, source: &mut Code) {
         for (index, group) in self.groups.iter().enumerate() {
             source.open(&format!(
-                "const CALL_GROUP_{index}: [data::compiled::calls::CallStart; {}] = {{\n",
+                "static CALL_GROUP_{index}: [data::compiled::calls::CallStart; {}] = {{\n",
                 group.entries.len()
             ));
             let codegen = CallGroupCodegen::new(
@@ -800,7 +800,7 @@ impl<'codegen, 'graph, Graph: ExecutionGraphProfile> CallGroupCodegen<'codegen, 
         numeric: &CompiledShape<'_, Graph>,
     ) {
         source.open(&format!("fn {}_numeric(progress: data::compiled::CompiledProgress, values: &data::compiled::numeric::NumericValues) -> FunctionStep {{\n", function_name(function.target)));
-        source.open(&format!("const STATES: [fn(&data::compiled::numeric::NumericValues) -> FunctionState; {}] = [\n", numeric.checkpoints.len()));
+        source.open(&format!("static STATES: [fn(&data::compiled::numeric::NumericValues) -> FunctionState; {}] = [\n", numeric.checkpoints.len()));
         for checkpoint in &numeric.checkpoints {
             let point = function.shape.starts[&checkpoint.block.index()] + checkpoint.instruction;
             let assignments = (0..checkpoint.ints)
@@ -822,7 +822,7 @@ impl<'codegen, 'graph, Graph: ExecutionGraphProfile> CallGroupCodegen<'codegen, 
             ));
         }
         source.close("];\n");
-        source.open(&format!("const RETURNS: [fn(&data::compiled::numeric::NumericValues) -> FunctionStep; {}] = [\n", function.kernel_returns.len()));
+        source.open(&format!("static RETURNS: [fn(&data::compiled::numeric::NumericValues) -> FunctionStep; {}] = [\n", function.kernel_returns.len()));
         for local in &function.kernel_returns {
             let value = local.value_expression();
             source.push_str(&format!(
@@ -835,7 +835,7 @@ impl<'codegen, 'graph, Graph: ExecutionGraphProfile> CallGroupCodegen<'codegen, 
         source.push_str("data::compiled::CompiledProgress::Yield(point) => FunctionStep::Yield(STATES[point](values)),\n");
         source.open("data::compiled::CompiledProgress::Interpreted(point) => {\n");
         source.open(&format!(
-            "const POINTS: [data::compiled::CompiledCheckpoint; {}] = [\n",
+            "static POINTS: [data::compiled::CompiledCheckpoint; {}] = [\n",
             numeric.checkpoints.len()
         ));
         for checkpoint in &numeric.checkpoints {
@@ -1907,6 +1907,128 @@ mod tests {
         BitArrayListTypeId, FloatListTypeId, IntListTypeId, ListTypeId, NilListTypeId,
         StringListTypeId, ValueShapeId,
     };
+
+    #[test]
+    fn numeric_call_tables_emit_exact_typed_static_storage() {
+        let source = r#"
+fn numeric(value: Int, accepted: Bool) -> Bool {
+  let next = value + 1
+  case next { 0 -> accepted _ -> False }
+}
+pub fn main() { let calculate = numeric calculate(-1, True) }
+"#;
+        let typed = crate::compile_typed_module("example", "src/example.gleam", source).unwrap();
+        let plan = crate::ExecutionPlan::from_module_plan(crate::plan_module(typed).unwrap());
+        let codegen = CallCodegen::new(
+            &plan.program.functions,
+            &plan.program.common.custom_types,
+            &plan.program.common.value_shapes,
+        );
+        let function = codegen
+            .functions
+            .iter()
+            .find(|function| function.target == CallTarget::Bool(BoolFunctionId(1)))
+            .unwrap();
+        let kernel = function.kernel.as_ref().unwrap();
+        let group = CallGroupCodegen::new(
+            codegen.functions.iter().collect(),
+            Vec::new(),
+            BTreeSet::new(),
+        );
+        let mut generated = Code::default();
+        group.write_numeric(&mut generated, function, kernel);
+        assert_eq!(
+            generated.as_str(),
+            r#"fn calls_bool_1_numeric(progress: data::compiled::CompiledProgress, values: &data::compiled::numeric::NumericValues) -> FunctionStep {
+    static STATES: [fn(&data::compiled::numeric::NumericValues) -> FunctionState; 5] = [
+        |values| FunctionState::Bool1Point0 { int0: values.ints[0], bool0: values.bools[0] },
+        |values| FunctionState::Bool1Point1 { int0: values.ints[0], int1: values.ints[1], bool0: values.bools[0] },
+        |values| FunctionState::Bool1Point2 { bool0: values.bools[0] },
+        |_values| FunctionState::Bool1Point3 {  },
+        |values| FunctionState::Bool1Point4 { bool0: values.bools[0] },
+    ];
+    static RETURNS: [fn(&data::compiled::numeric::NumericValues) -> FunctionStep; 2] = [
+        |values| FunctionStep::Bool { value: values.bools[0] },
+        |values| FunctionStep::Bool { value: values.bools[0] },
+    ];
+    match progress {
+        data::compiled::CompiledProgress::Yield(point) => FunctionStep::Yield(STATES[point](values)),
+        data::compiled::CompiledProgress::Interpreted(point) => {
+            static POINTS: [data::compiled::CompiledCheckpoint; 5] = [
+                data::compiled::CompiledCheckpoint {
+                    block: data::graph::BlockId(0),
+                    instruction: 0,
+                    ints: 1,
+                    bools: 1,
+                    bit_arrays: 0,
+                    int_lists: 0,
+                    strings: 0,
+                    customs: 0,
+                    custom_lists: 0,
+                    int_functions: 0,
+                    bool_functions: 0,
+                },
+                data::compiled::CompiledCheckpoint {
+                    block: data::graph::BlockId(0),
+                    instruction: 1,
+                    ints: 2,
+                    bools: 1,
+                    bit_arrays: 0,
+                    int_lists: 0,
+                    strings: 0,
+                    customs: 0,
+                    custom_lists: 0,
+                    int_functions: 0,
+                    bool_functions: 0,
+                },
+                data::compiled::CompiledCheckpoint {
+                    block: data::graph::BlockId(1),
+                    instruction: 0,
+                    ints: 0,
+                    bools: 1,
+                    bit_arrays: 0,
+                    int_lists: 0,
+                    strings: 0,
+                    customs: 0,
+                    custom_lists: 0,
+                    int_functions: 0,
+                    bool_functions: 0,
+                },
+                data::compiled::CompiledCheckpoint {
+                    block: data::graph::BlockId(2),
+                    instruction: 0,
+                    ints: 0,
+                    bools: 0,
+                    bit_arrays: 0,
+                    int_lists: 0,
+                    strings: 0,
+                    customs: 0,
+                    custom_lists: 0,
+                    int_functions: 0,
+                    bool_functions: 0,
+                },
+                data::compiled::CompiledCheckpoint {
+                    block: data::graph::BlockId(2),
+                    instruction: 1,
+                    ints: 0,
+                    bools: 1,
+                    bit_arrays: 0,
+                    int_lists: 0,
+                    strings: 0,
+                    customs: 0,
+                    custom_lists: 0,
+                    int_functions: 0,
+                    bool_functions: 0,
+                },
+            ];
+            FunctionStep::Canonical { target: data::compiled::CallTarget::Bool(data::function::BoolFunctionId(1)), point: POINTS[point], values: Box::new(CallValues { ints: values.ints.iter().copied().map(Into::into).collect(), bools: values.bools.clone(), ..CallValues::default() }) }
+        },
+        data::compiled::CompiledProgress::Complete(exit) => RETURNS[exit.0](values),
+    }
+}
+"#,
+        );
+    }
 
     #[test]
     fn primitive_list_emission_preserves_counts_borrows_and_owned_elements() {
