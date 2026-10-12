@@ -139,7 +139,7 @@ impl<Graph: ExecutionGraphProfile> CallGroupCodegen<'_, '_, Graph> {
         let column = if strings { "strings" } else { "bit_arrays" };
         source.open(&format!("fn {}_kernel(progress: data::compiled::CompiledProgress, mut values: Box<{values_type}>, ops: &mut CallOps<'_>) -> FunctionStep {{\n", function_name(function.target)));
         source.open(&format!(
-            "const RETURNS: [fn(&mut {values_type}) -> FunctionStep; {}] = [\n",
+            "static RETURNS: [fn(&mut {values_type}) -> FunctionStep; {}] = [\n",
             function.kernel_returns.len()
         ));
         for local in &function.kernel_returns {
@@ -168,7 +168,7 @@ impl<Graph: ExecutionGraphProfile> CallGroupCodegen<'_, '_, Graph> {
         ));
         source.open("data::compiled::CompiledProgress::Interpreted(point) => {\n");
         source.open(&format!(
-            "const POINTS: [data::compiled::CompiledCheckpoint; {}] = [\n",
+            "static POINTS: [data::compiled::CompiledCheckpoint; {}] = [\n",
             kernel.checkpoints.len()
         ));
         for checkpoint in &kernel.checkpoints {
@@ -218,8 +218,243 @@ fn kernel_name<Graph: ExecutionGraphProfile>(
 
 #[cfg(test)]
 mod tests {
+    use super::super::{CallCodegen, CallGroupCodegen, CallTarget, Code};
     use super::KernelReturn;
+    use crate::plan::execution::function::BoolFunctionId;
     use crate::plan::execution::graph::{BitArrayLocalId, BoolLocalId, IntLocalId, StringLocalId};
+    use std::collections::BTreeSet;
+
+    #[test]
+    fn string_call_tables_emit_exact_typed_static_storage() {
+        let source = r#"
+fn prefix(value: String, accepted: Bool) -> Bool {
+  case value { "pre" <> _ -> accepted _ -> False }
+}
+pub fn main() { let calculate = prefix calculate("prefix", True) }
+"#;
+        let typed = crate::compile_typed_module("example", "src/example.gleam", source).unwrap();
+        let plan = crate::ExecutionPlan::from_module_plan(crate::plan_module(typed).unwrap());
+        let codegen = CallCodegen::new(
+            &plan.program.functions,
+            &plan.program.common.custom_types,
+            &plan.program.common.value_shapes,
+        );
+        let function = codegen
+            .functions
+            .iter()
+            .find(|function| function.target == CallTarget::Bool(BoolFunctionId(1)))
+            .unwrap();
+        let kernel = function.kernel.as_ref().unwrap();
+        let group = CallGroupCodegen::new(
+            codegen.functions.iter().collect(),
+            Vec::new(),
+            BTreeSet::new(),
+        );
+        let mut generated = Code::default();
+        group.write_kernel(&mut generated, function, kernel);
+        assert_eq!(
+            generated.as_str(),
+            r#"fn calls_bool_1_kernel(progress: data::compiled::CompiledProgress, mut values: Box<data::compiled::string::StringValues>, ops: &mut CallOps<'_>) -> FunctionStep {
+    static RETURNS: [fn(&mut data::compiled::string::StringValues) -> FunctionStep; 2] = [
+        |values| {
+            let value = values.bools[0];
+            values.release_inputs();
+            FunctionStep::Bool { value }
+        },
+        |values| {
+            let value = values.bools[0];
+            values.release_inputs();
+            FunctionStep::Bool { value }
+        },
+    ];
+    match progress {
+        data::compiled::CompiledProgress::Yield(point) => FunctionStep::Yield(FunctionState::Bool1Kernel { point, values }),
+        data::compiled::CompiledProgress::Interpreted(point) => {
+            static POINTS: [data::compiled::CompiledCheckpoint; 4] = [
+                data::compiled::CompiledCheckpoint {
+                    block: data::graph::BlockId(0),
+                    instruction: 0,
+                    ints: 0,
+                    bools: 1,
+                    bit_arrays: 0,
+                    int_lists: 0,
+                    strings: 1,
+                    customs: 0,
+                    custom_lists: 0,
+                    int_functions: 0,
+                    bool_functions: 0,
+                },
+                data::compiled::CompiledCheckpoint {
+                    block: data::graph::BlockId(1),
+                    instruction: 0,
+                    ints: 0,
+                    bools: 1,
+                    bit_arrays: 0,
+                    int_lists: 0,
+                    strings: 0,
+                    customs: 0,
+                    custom_lists: 0,
+                    int_functions: 0,
+                    bool_functions: 0,
+                },
+                data::compiled::CompiledCheckpoint {
+                    block: data::graph::BlockId(2),
+                    instruction: 0,
+                    ints: 0,
+                    bools: 0,
+                    bit_arrays: 0,
+                    int_lists: 0,
+                    strings: 0,
+                    customs: 0,
+                    custom_lists: 0,
+                    int_functions: 0,
+                    bool_functions: 0,
+                },
+                data::compiled::CompiledCheckpoint {
+                    block: data::graph::BlockId(2),
+                    instruction: 1,
+                    ints: 0,
+                    bools: 1,
+                    bit_arrays: 0,
+                    int_lists: 0,
+                    strings: 0,
+                    customs: 0,
+                    custom_lists: 0,
+                    int_functions: 0,
+                    bool_functions: 0,
+                },
+            ];
+            let strings = values.take_strings();
+            let step = FunctionStep::Canonical { target: data::compiled::CallTarget::Bool(data::function::BoolFunctionId(1)), point: POINTS[point], values: Box::new(CallValues { ints: values.ints.iter().copied().map(Into::into).collect(), bools: values.bools.clone(), strings, ..CallValues::default() }) };
+            ops.recycle_strings(values);
+            step
+        },
+        data::compiled::CompiledProgress::Complete(exit) => {
+            let step = RETURNS[exit.0](&mut values);
+            ops.recycle_strings(values);
+            step
+        },
+    }
+}
+"#,
+        );
+    }
+
+    #[test]
+    fn bit_array_call_tables_emit_exact_typed_static_storage() {
+        let source = r#"
+fn prefix(value: BitArray, accepted: Bool) -> Bool {
+  case value { <<0, _:bits>> -> accepted _ -> False }
+}
+pub fn main() { let calculate = prefix calculate(<<0, 1>>, True) }
+"#;
+        let typed = crate::compile_typed_module("example", "src/example.gleam", source).unwrap();
+        let plan = crate::ExecutionPlan::from_module_plan(crate::plan_module(typed).unwrap());
+        let codegen = CallCodegen::new(
+            &plan.program.functions,
+            &plan.program.common.custom_types,
+            &plan.program.common.value_shapes,
+        );
+        let function = codegen
+            .functions
+            .iter()
+            .find(|function| function.target == CallTarget::Bool(BoolFunctionId(1)))
+            .unwrap();
+        let kernel = function.kernel.as_ref().unwrap();
+        let group = CallGroupCodegen::new(
+            codegen.functions.iter().collect(),
+            Vec::new(),
+            BTreeSet::new(),
+        );
+        let mut generated = Code::default();
+        group.write_kernel(&mut generated, function, kernel);
+        assert_eq!(
+            generated.as_str(),
+            r#"fn calls_bool_1_kernel(progress: data::compiled::CompiledProgress, mut values: Box<data::compiled::bit_array::BitArrayValues>, ops: &mut CallOps<'_>) -> FunctionStep {
+    static RETURNS: [fn(&mut data::compiled::bit_array::BitArrayValues) -> FunctionStep; 2] = [
+        |values| {
+            let value = values.bools[0];
+            values.release_inputs();
+            FunctionStep::Bool { value }
+        },
+        |values| {
+            let value = values.bools[0];
+            values.release_inputs();
+            FunctionStep::Bool { value }
+        },
+    ];
+    match progress {
+        data::compiled::CompiledProgress::Yield(point) => FunctionStep::Yield(FunctionState::Bool1Kernel { point, values }),
+        data::compiled::CompiledProgress::Interpreted(point) => {
+            static POINTS: [data::compiled::CompiledCheckpoint; 4] = [
+                data::compiled::CompiledCheckpoint {
+                    block: data::graph::BlockId(0),
+                    instruction: 0,
+                    ints: 0,
+                    bools: 1,
+                    bit_arrays: 1,
+                    int_lists: 0,
+                    strings: 0,
+                    customs: 0,
+                    custom_lists: 0,
+                    int_functions: 0,
+                    bool_functions: 0,
+                },
+                data::compiled::CompiledCheckpoint {
+                    block: data::graph::BlockId(1),
+                    instruction: 0,
+                    ints: 0,
+                    bools: 1,
+                    bit_arrays: 0,
+                    int_lists: 0,
+                    strings: 0,
+                    customs: 0,
+                    custom_lists: 0,
+                    int_functions: 0,
+                    bool_functions: 0,
+                },
+                data::compiled::CompiledCheckpoint {
+                    block: data::graph::BlockId(2),
+                    instruction: 0,
+                    ints: 0,
+                    bools: 0,
+                    bit_arrays: 0,
+                    int_lists: 0,
+                    strings: 0,
+                    customs: 0,
+                    custom_lists: 0,
+                    int_functions: 0,
+                    bool_functions: 0,
+                },
+                data::compiled::CompiledCheckpoint {
+                    block: data::graph::BlockId(2),
+                    instruction: 1,
+                    ints: 0,
+                    bools: 1,
+                    bit_arrays: 0,
+                    int_lists: 0,
+                    strings: 0,
+                    customs: 0,
+                    custom_lists: 0,
+                    int_functions: 0,
+                    bool_functions: 0,
+                },
+            ];
+            let bit_arrays = values.take_bit_arrays();
+            let step = FunctionStep::Canonical { target: data::compiled::CallTarget::Bool(data::function::BoolFunctionId(1)), point: POINTS[point], values: Box::new(CallValues { ints: values.ints.iter().copied().map(Into::into).collect(), bools: values.bools.clone(), bit_arrays: bit_arrays.into_iter().map(CallBitArray::from).collect(), ..CallValues::default() }) };
+            ops.recycle_bit_arrays(values);
+            step
+        },
+        data::compiled::CompiledProgress::Complete(exit) => {
+            let step = RETURNS[exit.0](&mut values);
+            ops.recycle_bit_arrays(values);
+            step
+        },
+    }
+}
+"#,
+        );
+    }
 
     #[test]
     fn completed_kernel_values_read_the_exact_typed_storage_column() {

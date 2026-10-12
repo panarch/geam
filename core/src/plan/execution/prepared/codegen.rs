@@ -588,7 +588,7 @@ fn {name}(
         ));
         source.open(&format!(
             r#"
-const RESUME: [
+static RESUME: [
     fn(&mut {values}, {resume_operations}&mut usize) -> {resume};
     {checkpoints}
 ] = [
@@ -2903,7 +2903,7 @@ let (b1_i0, b1_v0,) = {branch};
         budget: &mut usize,
     ) -> data::compiled::CompiledProgress {
 
-        const RESUME: [
+        static RESUME: [
             fn(&mut data::compiled::numeric::NumericValues, &mut usize) -> CompiledResume;
             5
         ] = [
@@ -3189,7 +3189,7 @@ let (b1_i0, b1_v0,) = {branch};
         budget: &mut usize,
     ) -> data::compiled::CompiledProgress {
 
-        const RESUME: [
+        static RESUME: [
             fn(&mut data::compiled::numeric::NumericValues, &mut usize) -> CompiledResume;
             5
         ] = [
@@ -3815,7 +3815,7 @@ fn main(
     budget: &mut usize,
 ) -> data::compiled::CompiledProgress {
 
-    const RESUME: [
+    static RESUME: [
         fn(&mut data::compiled::numeric::NumericValues, &mut usize) -> CompiledResume;
         3
     ] = [

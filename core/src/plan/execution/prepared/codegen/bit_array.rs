@@ -543,7 +543,7 @@ fn walk(
     budget: &mut usize,
 ) -> data::compiled::CompiledProgress {
 
-    const RESUME: [
+    static RESUME: [
         fn(&mut data::compiled::bit_array::BitArrayValues, &mut usize) -> CompiledResume;
         13
     ] = [
@@ -1054,7 +1054,7 @@ fn selected(
     budget: &mut usize,
 ) -> data::compiled::CompiledProgress {
 
-    const RESUME: [
+    static RESUME: [
         fn(&mut data::compiled::bit_array::BitArrayValues, &mut usize) -> CompiledResume;
         11
     ] = [
