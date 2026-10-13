@@ -30,7 +30,33 @@ impl CallCaptureInputs<'_> {
                     local: target,
                     value,
                 } if *target == local => value.small().map(i128::from),
-                _ => None,
+                EvaluatedCaptureKind::Int { .. }
+                | EvaluatedCaptureKind::Float { .. }
+                | EvaluatedCaptureKind::String { .. }
+                | EvaluatedCaptureKind::BitArray { .. }
+                | EvaluatedCaptureKind::UtfCodepoint { .. }
+                | EvaluatedCaptureKind::Parameter { .. }
+                | EvaluatedCaptureKind::Custom { .. }
+                | EvaluatedCaptureKind::External { .. }
+                | EvaluatedCaptureKind::Bool { .. }
+                | EvaluatedCaptureKind::Nil { .. }
+                | EvaluatedCaptureKind::Tuple { .. }
+                | EvaluatedCaptureKind::List(_)
+                | EvaluatedCaptureKind::IntFunction { .. }
+                | EvaluatedCaptureKind::FloatFunction { .. }
+                | EvaluatedCaptureKind::StringFunction { .. }
+                | EvaluatedCaptureKind::BitArrayFunction { .. }
+                | EvaluatedCaptureKind::UtfCodepointFunction { .. }
+                | EvaluatedCaptureKind::ParameterFunction { .. }
+                | EvaluatedCaptureKind::CustomFunction { .. }
+                | EvaluatedCaptureKind::ExternalFunction { .. }
+                | EvaluatedCaptureKind::BoolFunction { .. }
+                | EvaluatedCaptureKind::NilFunction { .. }
+                | EvaluatedCaptureKind::TupleFunction { .. }
+                | EvaluatedCaptureKind::ListFunction { .. }
+                | EvaluatedCaptureKind::FunctionFunction { .. }
+                | EvaluatedCaptureKind::GenericFunction { .. }
+                | EvaluatedCaptureKind::NeverFunction { .. } => None,
             })
     }
 
@@ -43,7 +69,33 @@ impl CallCaptureInputs<'_> {
                     local: target,
                     value,
                 } if *target == local => Some(*value),
-                _ => None,
+                EvaluatedCaptureKind::Int { .. }
+                | EvaluatedCaptureKind::Float { .. }
+                | EvaluatedCaptureKind::String { .. }
+                | EvaluatedCaptureKind::BitArray { .. }
+                | EvaluatedCaptureKind::UtfCodepoint { .. }
+                | EvaluatedCaptureKind::Parameter { .. }
+                | EvaluatedCaptureKind::Custom { .. }
+                | EvaluatedCaptureKind::External { .. }
+                | EvaluatedCaptureKind::Bool { .. }
+                | EvaluatedCaptureKind::Nil { .. }
+                | EvaluatedCaptureKind::Tuple { .. }
+                | EvaluatedCaptureKind::List(_)
+                | EvaluatedCaptureKind::IntFunction { .. }
+                | EvaluatedCaptureKind::FloatFunction { .. }
+                | EvaluatedCaptureKind::StringFunction { .. }
+                | EvaluatedCaptureKind::BitArrayFunction { .. }
+                | EvaluatedCaptureKind::UtfCodepointFunction { .. }
+                | EvaluatedCaptureKind::ParameterFunction { .. }
+                | EvaluatedCaptureKind::CustomFunction { .. }
+                | EvaluatedCaptureKind::ExternalFunction { .. }
+                | EvaluatedCaptureKind::BoolFunction { .. }
+                | EvaluatedCaptureKind::NilFunction { .. }
+                | EvaluatedCaptureKind::TupleFunction { .. }
+                | EvaluatedCaptureKind::ListFunction { .. }
+                | EvaluatedCaptureKind::FunctionFunction { .. }
+                | EvaluatedCaptureKind::GenericFunction { .. }
+                | EvaluatedCaptureKind::NeverFunction { .. } => None,
             })
     }
 
@@ -56,7 +108,33 @@ impl CallCaptureInputs<'_> {
                     local: target,
                     value,
                 } if *target == local => Some(*value),
-                _ => None,
+                EvaluatedCaptureKind::Int { .. }
+                | EvaluatedCaptureKind::Float { .. }
+                | EvaluatedCaptureKind::String { .. }
+                | EvaluatedCaptureKind::BitArray { .. }
+                | EvaluatedCaptureKind::UtfCodepoint { .. }
+                | EvaluatedCaptureKind::Parameter { .. }
+                | EvaluatedCaptureKind::Custom { .. }
+                | EvaluatedCaptureKind::External { .. }
+                | EvaluatedCaptureKind::Bool { .. }
+                | EvaluatedCaptureKind::Nil { .. }
+                | EvaluatedCaptureKind::Tuple { .. }
+                | EvaluatedCaptureKind::List(_)
+                | EvaluatedCaptureKind::IntFunction { .. }
+                | EvaluatedCaptureKind::FloatFunction { .. }
+                | EvaluatedCaptureKind::StringFunction { .. }
+                | EvaluatedCaptureKind::BitArrayFunction { .. }
+                | EvaluatedCaptureKind::UtfCodepointFunction { .. }
+                | EvaluatedCaptureKind::ParameterFunction { .. }
+                | EvaluatedCaptureKind::CustomFunction { .. }
+                | EvaluatedCaptureKind::ExternalFunction { .. }
+                | EvaluatedCaptureKind::BoolFunction { .. }
+                | EvaluatedCaptureKind::NilFunction { .. }
+                | EvaluatedCaptureKind::TupleFunction { .. }
+                | EvaluatedCaptureKind::ListFunction { .. }
+                | EvaluatedCaptureKind::FunctionFunction { .. }
+                | EvaluatedCaptureKind::GenericFunction { .. }
+                | EvaluatedCaptureKind::NeverFunction { .. } => None,
             })
     }
 
@@ -69,7 +147,33 @@ impl CallCaptureInputs<'_> {
                     local: target,
                     value,
                 } if *target == local => Some(value.clone()),
-                _ => None,
+                EvaluatedCaptureKind::Int { .. }
+                | EvaluatedCaptureKind::Float { .. }
+                | EvaluatedCaptureKind::String { .. }
+                | EvaluatedCaptureKind::BitArray { .. }
+                | EvaluatedCaptureKind::UtfCodepoint { .. }
+                | EvaluatedCaptureKind::Parameter { .. }
+                | EvaluatedCaptureKind::Custom { .. }
+                | EvaluatedCaptureKind::External { .. }
+                | EvaluatedCaptureKind::Bool { .. }
+                | EvaluatedCaptureKind::Nil { .. }
+                | EvaluatedCaptureKind::Tuple { .. }
+                | EvaluatedCaptureKind::List(_)
+                | EvaluatedCaptureKind::IntFunction { .. }
+                | EvaluatedCaptureKind::FloatFunction { .. }
+                | EvaluatedCaptureKind::StringFunction { .. }
+                | EvaluatedCaptureKind::BitArrayFunction { .. }
+                | EvaluatedCaptureKind::UtfCodepointFunction { .. }
+                | EvaluatedCaptureKind::ParameterFunction { .. }
+                | EvaluatedCaptureKind::CustomFunction { .. }
+                | EvaluatedCaptureKind::ExternalFunction { .. }
+                | EvaluatedCaptureKind::BoolFunction { .. }
+                | EvaluatedCaptureKind::NilFunction { .. }
+                | EvaluatedCaptureKind::TupleFunction { .. }
+                | EvaluatedCaptureKind::ListFunction { .. }
+                | EvaluatedCaptureKind::FunctionFunction { .. }
+                | EvaluatedCaptureKind::GenericFunction { .. }
+                | EvaluatedCaptureKind::NeverFunction { .. } => None,
             })
     }
 
@@ -82,7 +186,33 @@ impl CallCaptureInputs<'_> {
                     local: target,
                     value,
                 } if *target == local => Some(CallBitArray(value.clone())),
-                _ => None,
+                EvaluatedCaptureKind::Int { .. }
+                | EvaluatedCaptureKind::Float { .. }
+                | EvaluatedCaptureKind::String { .. }
+                | EvaluatedCaptureKind::BitArray { .. }
+                | EvaluatedCaptureKind::UtfCodepoint { .. }
+                | EvaluatedCaptureKind::Parameter { .. }
+                | EvaluatedCaptureKind::Custom { .. }
+                | EvaluatedCaptureKind::External { .. }
+                | EvaluatedCaptureKind::Bool { .. }
+                | EvaluatedCaptureKind::Nil { .. }
+                | EvaluatedCaptureKind::Tuple { .. }
+                | EvaluatedCaptureKind::List(_)
+                | EvaluatedCaptureKind::IntFunction { .. }
+                | EvaluatedCaptureKind::FloatFunction { .. }
+                | EvaluatedCaptureKind::StringFunction { .. }
+                | EvaluatedCaptureKind::BitArrayFunction { .. }
+                | EvaluatedCaptureKind::UtfCodepointFunction { .. }
+                | EvaluatedCaptureKind::ParameterFunction { .. }
+                | EvaluatedCaptureKind::CustomFunction { .. }
+                | EvaluatedCaptureKind::ExternalFunction { .. }
+                | EvaluatedCaptureKind::BoolFunction { .. }
+                | EvaluatedCaptureKind::NilFunction { .. }
+                | EvaluatedCaptureKind::TupleFunction { .. }
+                | EvaluatedCaptureKind::ListFunction { .. }
+                | EvaluatedCaptureKind::FunctionFunction { .. }
+                | EvaluatedCaptureKind::GenericFunction { .. }
+                | EvaluatedCaptureKind::NeverFunction { .. } => None,
             })
     }
 
@@ -95,7 +225,33 @@ impl CallCaptureInputs<'_> {
                     local: target,
                     value,
                 } if *target == local => Some(*value),
-                _ => None,
+                EvaluatedCaptureKind::Int { .. }
+                | EvaluatedCaptureKind::Float { .. }
+                | EvaluatedCaptureKind::String { .. }
+                | EvaluatedCaptureKind::BitArray { .. }
+                | EvaluatedCaptureKind::UtfCodepoint { .. }
+                | EvaluatedCaptureKind::Parameter { .. }
+                | EvaluatedCaptureKind::Custom { .. }
+                | EvaluatedCaptureKind::External { .. }
+                | EvaluatedCaptureKind::Bool { .. }
+                | EvaluatedCaptureKind::Nil { .. }
+                | EvaluatedCaptureKind::Tuple { .. }
+                | EvaluatedCaptureKind::List(_)
+                | EvaluatedCaptureKind::IntFunction { .. }
+                | EvaluatedCaptureKind::FloatFunction { .. }
+                | EvaluatedCaptureKind::StringFunction { .. }
+                | EvaluatedCaptureKind::BitArrayFunction { .. }
+                | EvaluatedCaptureKind::UtfCodepointFunction { .. }
+                | EvaluatedCaptureKind::ParameterFunction { .. }
+                | EvaluatedCaptureKind::CustomFunction { .. }
+                | EvaluatedCaptureKind::ExternalFunction { .. }
+                | EvaluatedCaptureKind::BoolFunction { .. }
+                | EvaluatedCaptureKind::NilFunction { .. }
+                | EvaluatedCaptureKind::TupleFunction { .. }
+                | EvaluatedCaptureKind::ListFunction { .. }
+                | EvaluatedCaptureKind::FunctionFunction { .. }
+                | EvaluatedCaptureKind::GenericFunction { .. }
+                | EvaluatedCaptureKind::NeverFunction { .. } => None,
             })
     }
 
@@ -105,7 +261,33 @@ impl CallCaptureInputs<'_> {
             .iter()
             .find_map(|capture| match capture.kind() {
                 EvaluatedCaptureKind::Nil { local: target } if *target == local => Some(()),
-                _ => None,
+                EvaluatedCaptureKind::Int { .. }
+                | EvaluatedCaptureKind::Float { .. }
+                | EvaluatedCaptureKind::String { .. }
+                | EvaluatedCaptureKind::BitArray { .. }
+                | EvaluatedCaptureKind::UtfCodepoint { .. }
+                | EvaluatedCaptureKind::Parameter { .. }
+                | EvaluatedCaptureKind::Custom { .. }
+                | EvaluatedCaptureKind::External { .. }
+                | EvaluatedCaptureKind::Bool { .. }
+                | EvaluatedCaptureKind::Nil { .. }
+                | EvaluatedCaptureKind::Tuple { .. }
+                | EvaluatedCaptureKind::List(_)
+                | EvaluatedCaptureKind::IntFunction { .. }
+                | EvaluatedCaptureKind::FloatFunction { .. }
+                | EvaluatedCaptureKind::StringFunction { .. }
+                | EvaluatedCaptureKind::BitArrayFunction { .. }
+                | EvaluatedCaptureKind::UtfCodepointFunction { .. }
+                | EvaluatedCaptureKind::ParameterFunction { .. }
+                | EvaluatedCaptureKind::CustomFunction { .. }
+                | EvaluatedCaptureKind::ExternalFunction { .. }
+                | EvaluatedCaptureKind::BoolFunction { .. }
+                | EvaluatedCaptureKind::NilFunction { .. }
+                | EvaluatedCaptureKind::TupleFunction { .. }
+                | EvaluatedCaptureKind::ListFunction { .. }
+                | EvaluatedCaptureKind::FunctionFunction { .. }
+                | EvaluatedCaptureKind::GenericFunction { .. }
+                | EvaluatedCaptureKind::NeverFunction { .. } => None,
             })
     }
 
@@ -118,7 +300,33 @@ impl CallCaptureInputs<'_> {
                     local: target,
                     value,
                 }) if *target == local => Some(IntList(value.clone())),
-                _ => None,
+                EvaluatedCaptureKind::Int { .. }
+                | EvaluatedCaptureKind::Float { .. }
+                | EvaluatedCaptureKind::String { .. }
+                | EvaluatedCaptureKind::BitArray { .. }
+                | EvaluatedCaptureKind::UtfCodepoint { .. }
+                | EvaluatedCaptureKind::Parameter { .. }
+                | EvaluatedCaptureKind::Custom { .. }
+                | EvaluatedCaptureKind::External { .. }
+                | EvaluatedCaptureKind::Bool { .. }
+                | EvaluatedCaptureKind::Nil { .. }
+                | EvaluatedCaptureKind::Tuple { .. }
+                | EvaluatedCaptureKind::List(_)
+                | EvaluatedCaptureKind::IntFunction { .. }
+                | EvaluatedCaptureKind::FloatFunction { .. }
+                | EvaluatedCaptureKind::StringFunction { .. }
+                | EvaluatedCaptureKind::BitArrayFunction { .. }
+                | EvaluatedCaptureKind::UtfCodepointFunction { .. }
+                | EvaluatedCaptureKind::ParameterFunction { .. }
+                | EvaluatedCaptureKind::CustomFunction { .. }
+                | EvaluatedCaptureKind::ExternalFunction { .. }
+                | EvaluatedCaptureKind::BoolFunction { .. }
+                | EvaluatedCaptureKind::NilFunction { .. }
+                | EvaluatedCaptureKind::TupleFunction { .. }
+                | EvaluatedCaptureKind::ListFunction { .. }
+                | EvaluatedCaptureKind::FunctionFunction { .. }
+                | EvaluatedCaptureKind::GenericFunction { .. }
+                | EvaluatedCaptureKind::NeverFunction { .. } => None,
             })
     }
 
@@ -131,7 +339,33 @@ impl CallCaptureInputs<'_> {
                     local: target,
                     value,
                 } if *target == local => Some(IntCallable(value.clone())),
-                _ => None,
+                EvaluatedCaptureKind::Int { .. }
+                | EvaluatedCaptureKind::Float { .. }
+                | EvaluatedCaptureKind::String { .. }
+                | EvaluatedCaptureKind::BitArray { .. }
+                | EvaluatedCaptureKind::UtfCodepoint { .. }
+                | EvaluatedCaptureKind::Parameter { .. }
+                | EvaluatedCaptureKind::Custom { .. }
+                | EvaluatedCaptureKind::External { .. }
+                | EvaluatedCaptureKind::Bool { .. }
+                | EvaluatedCaptureKind::Nil { .. }
+                | EvaluatedCaptureKind::Tuple { .. }
+                | EvaluatedCaptureKind::List(_)
+                | EvaluatedCaptureKind::IntFunction { .. }
+                | EvaluatedCaptureKind::FloatFunction { .. }
+                | EvaluatedCaptureKind::StringFunction { .. }
+                | EvaluatedCaptureKind::BitArrayFunction { .. }
+                | EvaluatedCaptureKind::UtfCodepointFunction { .. }
+                | EvaluatedCaptureKind::ParameterFunction { .. }
+                | EvaluatedCaptureKind::CustomFunction { .. }
+                | EvaluatedCaptureKind::ExternalFunction { .. }
+                | EvaluatedCaptureKind::BoolFunction { .. }
+                | EvaluatedCaptureKind::NilFunction { .. }
+                | EvaluatedCaptureKind::TupleFunction { .. }
+                | EvaluatedCaptureKind::ListFunction { .. }
+                | EvaluatedCaptureKind::FunctionFunction { .. }
+                | EvaluatedCaptureKind::GenericFunction { .. }
+                | EvaluatedCaptureKind::NeverFunction { .. } => None,
             })
     }
 
@@ -144,7 +378,33 @@ impl CallCaptureInputs<'_> {
                     local: target,
                     value,
                 }) if *target == local => Some(BoolList(value.clone())),
-                _ => None,
+                EvaluatedCaptureKind::Int { .. }
+                | EvaluatedCaptureKind::Float { .. }
+                | EvaluatedCaptureKind::String { .. }
+                | EvaluatedCaptureKind::BitArray { .. }
+                | EvaluatedCaptureKind::UtfCodepoint { .. }
+                | EvaluatedCaptureKind::Parameter { .. }
+                | EvaluatedCaptureKind::Custom { .. }
+                | EvaluatedCaptureKind::External { .. }
+                | EvaluatedCaptureKind::Bool { .. }
+                | EvaluatedCaptureKind::Nil { .. }
+                | EvaluatedCaptureKind::Tuple { .. }
+                | EvaluatedCaptureKind::List(_)
+                | EvaluatedCaptureKind::IntFunction { .. }
+                | EvaluatedCaptureKind::FloatFunction { .. }
+                | EvaluatedCaptureKind::StringFunction { .. }
+                | EvaluatedCaptureKind::BitArrayFunction { .. }
+                | EvaluatedCaptureKind::UtfCodepointFunction { .. }
+                | EvaluatedCaptureKind::ParameterFunction { .. }
+                | EvaluatedCaptureKind::CustomFunction { .. }
+                | EvaluatedCaptureKind::ExternalFunction { .. }
+                | EvaluatedCaptureKind::BoolFunction { .. }
+                | EvaluatedCaptureKind::NilFunction { .. }
+                | EvaluatedCaptureKind::TupleFunction { .. }
+                | EvaluatedCaptureKind::ListFunction { .. }
+                | EvaluatedCaptureKind::FunctionFunction { .. }
+                | EvaluatedCaptureKind::GenericFunction { .. }
+                | EvaluatedCaptureKind::NeverFunction { .. } => None,
             })
     }
 
@@ -157,7 +417,33 @@ impl CallCaptureInputs<'_> {
                     local: target,
                     value,
                 } if *target == local => Some(BoolCallable(value.clone())),
-                _ => None,
+                EvaluatedCaptureKind::Int { .. }
+                | EvaluatedCaptureKind::Float { .. }
+                | EvaluatedCaptureKind::String { .. }
+                | EvaluatedCaptureKind::BitArray { .. }
+                | EvaluatedCaptureKind::UtfCodepoint { .. }
+                | EvaluatedCaptureKind::Parameter { .. }
+                | EvaluatedCaptureKind::Custom { .. }
+                | EvaluatedCaptureKind::External { .. }
+                | EvaluatedCaptureKind::Bool { .. }
+                | EvaluatedCaptureKind::Nil { .. }
+                | EvaluatedCaptureKind::Tuple { .. }
+                | EvaluatedCaptureKind::List(_)
+                | EvaluatedCaptureKind::IntFunction { .. }
+                | EvaluatedCaptureKind::FloatFunction { .. }
+                | EvaluatedCaptureKind::StringFunction { .. }
+                | EvaluatedCaptureKind::BitArrayFunction { .. }
+                | EvaluatedCaptureKind::UtfCodepointFunction { .. }
+                | EvaluatedCaptureKind::ParameterFunction { .. }
+                | EvaluatedCaptureKind::CustomFunction { .. }
+                | EvaluatedCaptureKind::ExternalFunction { .. }
+                | EvaluatedCaptureKind::BoolFunction { .. }
+                | EvaluatedCaptureKind::NilFunction { .. }
+                | EvaluatedCaptureKind::TupleFunction { .. }
+                | EvaluatedCaptureKind::ListFunction { .. }
+                | EvaluatedCaptureKind::FunctionFunction { .. }
+                | EvaluatedCaptureKind::GenericFunction { .. }
+                | EvaluatedCaptureKind::NeverFunction { .. } => None,
             })
     }
 
@@ -170,7 +456,33 @@ impl CallCaptureInputs<'_> {
                     local: target,
                     value,
                 }) if *target == local => Some(FloatList(value.clone())),
-                _ => None,
+                EvaluatedCaptureKind::Int { .. }
+                | EvaluatedCaptureKind::Float { .. }
+                | EvaluatedCaptureKind::String { .. }
+                | EvaluatedCaptureKind::BitArray { .. }
+                | EvaluatedCaptureKind::UtfCodepoint { .. }
+                | EvaluatedCaptureKind::Parameter { .. }
+                | EvaluatedCaptureKind::Custom { .. }
+                | EvaluatedCaptureKind::External { .. }
+                | EvaluatedCaptureKind::Bool { .. }
+                | EvaluatedCaptureKind::Nil { .. }
+                | EvaluatedCaptureKind::Tuple { .. }
+                | EvaluatedCaptureKind::List(_)
+                | EvaluatedCaptureKind::IntFunction { .. }
+                | EvaluatedCaptureKind::FloatFunction { .. }
+                | EvaluatedCaptureKind::StringFunction { .. }
+                | EvaluatedCaptureKind::BitArrayFunction { .. }
+                | EvaluatedCaptureKind::UtfCodepointFunction { .. }
+                | EvaluatedCaptureKind::ParameterFunction { .. }
+                | EvaluatedCaptureKind::CustomFunction { .. }
+                | EvaluatedCaptureKind::ExternalFunction { .. }
+                | EvaluatedCaptureKind::BoolFunction { .. }
+                | EvaluatedCaptureKind::NilFunction { .. }
+                | EvaluatedCaptureKind::TupleFunction { .. }
+                | EvaluatedCaptureKind::ListFunction { .. }
+                | EvaluatedCaptureKind::FunctionFunction { .. }
+                | EvaluatedCaptureKind::GenericFunction { .. }
+                | EvaluatedCaptureKind::NeverFunction { .. } => None,
             })
     }
 
@@ -183,7 +495,33 @@ impl CallCaptureInputs<'_> {
                     local: target,
                     value,
                 } if *target == local => Some(FloatCallable(value.clone())),
-                _ => None,
+                EvaluatedCaptureKind::Int { .. }
+                | EvaluatedCaptureKind::Float { .. }
+                | EvaluatedCaptureKind::String { .. }
+                | EvaluatedCaptureKind::BitArray { .. }
+                | EvaluatedCaptureKind::UtfCodepoint { .. }
+                | EvaluatedCaptureKind::Parameter { .. }
+                | EvaluatedCaptureKind::Custom { .. }
+                | EvaluatedCaptureKind::External { .. }
+                | EvaluatedCaptureKind::Bool { .. }
+                | EvaluatedCaptureKind::Nil { .. }
+                | EvaluatedCaptureKind::Tuple { .. }
+                | EvaluatedCaptureKind::List(_)
+                | EvaluatedCaptureKind::IntFunction { .. }
+                | EvaluatedCaptureKind::FloatFunction { .. }
+                | EvaluatedCaptureKind::StringFunction { .. }
+                | EvaluatedCaptureKind::BitArrayFunction { .. }
+                | EvaluatedCaptureKind::UtfCodepointFunction { .. }
+                | EvaluatedCaptureKind::ParameterFunction { .. }
+                | EvaluatedCaptureKind::CustomFunction { .. }
+                | EvaluatedCaptureKind::ExternalFunction { .. }
+                | EvaluatedCaptureKind::BoolFunction { .. }
+                | EvaluatedCaptureKind::NilFunction { .. }
+                | EvaluatedCaptureKind::TupleFunction { .. }
+                | EvaluatedCaptureKind::ListFunction { .. }
+                | EvaluatedCaptureKind::FunctionFunction { .. }
+                | EvaluatedCaptureKind::GenericFunction { .. }
+                | EvaluatedCaptureKind::NeverFunction { .. } => None,
             })
     }
 
@@ -196,7 +534,33 @@ impl CallCaptureInputs<'_> {
                     local: target,
                     value,
                 }) if *target == local => Some(StringList(value.clone())),
-                _ => None,
+                EvaluatedCaptureKind::Int { .. }
+                | EvaluatedCaptureKind::Float { .. }
+                | EvaluatedCaptureKind::String { .. }
+                | EvaluatedCaptureKind::BitArray { .. }
+                | EvaluatedCaptureKind::UtfCodepoint { .. }
+                | EvaluatedCaptureKind::Parameter { .. }
+                | EvaluatedCaptureKind::Custom { .. }
+                | EvaluatedCaptureKind::External { .. }
+                | EvaluatedCaptureKind::Bool { .. }
+                | EvaluatedCaptureKind::Nil { .. }
+                | EvaluatedCaptureKind::Tuple { .. }
+                | EvaluatedCaptureKind::List(_)
+                | EvaluatedCaptureKind::IntFunction { .. }
+                | EvaluatedCaptureKind::FloatFunction { .. }
+                | EvaluatedCaptureKind::StringFunction { .. }
+                | EvaluatedCaptureKind::BitArrayFunction { .. }
+                | EvaluatedCaptureKind::UtfCodepointFunction { .. }
+                | EvaluatedCaptureKind::ParameterFunction { .. }
+                | EvaluatedCaptureKind::CustomFunction { .. }
+                | EvaluatedCaptureKind::ExternalFunction { .. }
+                | EvaluatedCaptureKind::BoolFunction { .. }
+                | EvaluatedCaptureKind::NilFunction { .. }
+                | EvaluatedCaptureKind::TupleFunction { .. }
+                | EvaluatedCaptureKind::ListFunction { .. }
+                | EvaluatedCaptureKind::FunctionFunction { .. }
+                | EvaluatedCaptureKind::GenericFunction { .. }
+                | EvaluatedCaptureKind::NeverFunction { .. } => None,
             })
     }
 
@@ -209,7 +573,33 @@ impl CallCaptureInputs<'_> {
                     local: target,
                     value,
                 } if *target == local => Some(StringCallable(value.clone())),
-                _ => None,
+                EvaluatedCaptureKind::Int { .. }
+                | EvaluatedCaptureKind::Float { .. }
+                | EvaluatedCaptureKind::String { .. }
+                | EvaluatedCaptureKind::BitArray { .. }
+                | EvaluatedCaptureKind::UtfCodepoint { .. }
+                | EvaluatedCaptureKind::Parameter { .. }
+                | EvaluatedCaptureKind::Custom { .. }
+                | EvaluatedCaptureKind::External { .. }
+                | EvaluatedCaptureKind::Bool { .. }
+                | EvaluatedCaptureKind::Nil { .. }
+                | EvaluatedCaptureKind::Tuple { .. }
+                | EvaluatedCaptureKind::List(_)
+                | EvaluatedCaptureKind::IntFunction { .. }
+                | EvaluatedCaptureKind::FloatFunction { .. }
+                | EvaluatedCaptureKind::StringFunction { .. }
+                | EvaluatedCaptureKind::BitArrayFunction { .. }
+                | EvaluatedCaptureKind::UtfCodepointFunction { .. }
+                | EvaluatedCaptureKind::ParameterFunction { .. }
+                | EvaluatedCaptureKind::CustomFunction { .. }
+                | EvaluatedCaptureKind::ExternalFunction { .. }
+                | EvaluatedCaptureKind::BoolFunction { .. }
+                | EvaluatedCaptureKind::NilFunction { .. }
+                | EvaluatedCaptureKind::TupleFunction { .. }
+                | EvaluatedCaptureKind::ListFunction { .. }
+                | EvaluatedCaptureKind::FunctionFunction { .. }
+                | EvaluatedCaptureKind::GenericFunction { .. }
+                | EvaluatedCaptureKind::NeverFunction { .. } => None,
             })
     }
 
@@ -222,7 +612,33 @@ impl CallCaptureInputs<'_> {
                     local: target,
                     value,
                 }) if *target == local => Some(BitArrayList(value.clone())),
-                _ => None,
+                EvaluatedCaptureKind::Int { .. }
+                | EvaluatedCaptureKind::Float { .. }
+                | EvaluatedCaptureKind::String { .. }
+                | EvaluatedCaptureKind::BitArray { .. }
+                | EvaluatedCaptureKind::UtfCodepoint { .. }
+                | EvaluatedCaptureKind::Parameter { .. }
+                | EvaluatedCaptureKind::Custom { .. }
+                | EvaluatedCaptureKind::External { .. }
+                | EvaluatedCaptureKind::Bool { .. }
+                | EvaluatedCaptureKind::Nil { .. }
+                | EvaluatedCaptureKind::Tuple { .. }
+                | EvaluatedCaptureKind::List(_)
+                | EvaluatedCaptureKind::IntFunction { .. }
+                | EvaluatedCaptureKind::FloatFunction { .. }
+                | EvaluatedCaptureKind::StringFunction { .. }
+                | EvaluatedCaptureKind::BitArrayFunction { .. }
+                | EvaluatedCaptureKind::UtfCodepointFunction { .. }
+                | EvaluatedCaptureKind::ParameterFunction { .. }
+                | EvaluatedCaptureKind::CustomFunction { .. }
+                | EvaluatedCaptureKind::ExternalFunction { .. }
+                | EvaluatedCaptureKind::BoolFunction { .. }
+                | EvaluatedCaptureKind::NilFunction { .. }
+                | EvaluatedCaptureKind::TupleFunction { .. }
+                | EvaluatedCaptureKind::ListFunction { .. }
+                | EvaluatedCaptureKind::FunctionFunction { .. }
+                | EvaluatedCaptureKind::GenericFunction { .. }
+                | EvaluatedCaptureKind::NeverFunction { .. } => None,
             })
     }
 
@@ -235,7 +651,33 @@ impl CallCaptureInputs<'_> {
                     local: target,
                     value,
                 } if *target == local => Some(BitArrayCallable(value.clone())),
-                _ => None,
+                EvaluatedCaptureKind::Int { .. }
+                | EvaluatedCaptureKind::Float { .. }
+                | EvaluatedCaptureKind::String { .. }
+                | EvaluatedCaptureKind::BitArray { .. }
+                | EvaluatedCaptureKind::UtfCodepoint { .. }
+                | EvaluatedCaptureKind::Parameter { .. }
+                | EvaluatedCaptureKind::Custom { .. }
+                | EvaluatedCaptureKind::External { .. }
+                | EvaluatedCaptureKind::Bool { .. }
+                | EvaluatedCaptureKind::Nil { .. }
+                | EvaluatedCaptureKind::Tuple { .. }
+                | EvaluatedCaptureKind::List(_)
+                | EvaluatedCaptureKind::IntFunction { .. }
+                | EvaluatedCaptureKind::FloatFunction { .. }
+                | EvaluatedCaptureKind::StringFunction { .. }
+                | EvaluatedCaptureKind::BitArrayFunction { .. }
+                | EvaluatedCaptureKind::UtfCodepointFunction { .. }
+                | EvaluatedCaptureKind::ParameterFunction { .. }
+                | EvaluatedCaptureKind::CustomFunction { .. }
+                | EvaluatedCaptureKind::ExternalFunction { .. }
+                | EvaluatedCaptureKind::BoolFunction { .. }
+                | EvaluatedCaptureKind::NilFunction { .. }
+                | EvaluatedCaptureKind::TupleFunction { .. }
+                | EvaluatedCaptureKind::ListFunction { .. }
+                | EvaluatedCaptureKind::FunctionFunction { .. }
+                | EvaluatedCaptureKind::GenericFunction { .. }
+                | EvaluatedCaptureKind::NeverFunction { .. } => None,
             })
     }
 
@@ -248,7 +690,33 @@ impl CallCaptureInputs<'_> {
                     local: target,
                     value,
                 }) if *target == local => Some(UtfCodepointList(value.clone())),
-                _ => None,
+                EvaluatedCaptureKind::Int { .. }
+                | EvaluatedCaptureKind::Float { .. }
+                | EvaluatedCaptureKind::String { .. }
+                | EvaluatedCaptureKind::BitArray { .. }
+                | EvaluatedCaptureKind::UtfCodepoint { .. }
+                | EvaluatedCaptureKind::Parameter { .. }
+                | EvaluatedCaptureKind::Custom { .. }
+                | EvaluatedCaptureKind::External { .. }
+                | EvaluatedCaptureKind::Bool { .. }
+                | EvaluatedCaptureKind::Nil { .. }
+                | EvaluatedCaptureKind::Tuple { .. }
+                | EvaluatedCaptureKind::List(_)
+                | EvaluatedCaptureKind::IntFunction { .. }
+                | EvaluatedCaptureKind::FloatFunction { .. }
+                | EvaluatedCaptureKind::StringFunction { .. }
+                | EvaluatedCaptureKind::BitArrayFunction { .. }
+                | EvaluatedCaptureKind::UtfCodepointFunction { .. }
+                | EvaluatedCaptureKind::ParameterFunction { .. }
+                | EvaluatedCaptureKind::CustomFunction { .. }
+                | EvaluatedCaptureKind::ExternalFunction { .. }
+                | EvaluatedCaptureKind::BoolFunction { .. }
+                | EvaluatedCaptureKind::NilFunction { .. }
+                | EvaluatedCaptureKind::TupleFunction { .. }
+                | EvaluatedCaptureKind::ListFunction { .. }
+                | EvaluatedCaptureKind::FunctionFunction { .. }
+                | EvaluatedCaptureKind::GenericFunction { .. }
+                | EvaluatedCaptureKind::NeverFunction { .. } => None,
             })
     }
 
@@ -264,7 +732,33 @@ impl CallCaptureInputs<'_> {
                     local: target,
                     value,
                 } if *target == local => Some(UtfCodepointCallable(value.clone())),
-                _ => None,
+                EvaluatedCaptureKind::Int { .. }
+                | EvaluatedCaptureKind::Float { .. }
+                | EvaluatedCaptureKind::String { .. }
+                | EvaluatedCaptureKind::BitArray { .. }
+                | EvaluatedCaptureKind::UtfCodepoint { .. }
+                | EvaluatedCaptureKind::Parameter { .. }
+                | EvaluatedCaptureKind::Custom { .. }
+                | EvaluatedCaptureKind::External { .. }
+                | EvaluatedCaptureKind::Bool { .. }
+                | EvaluatedCaptureKind::Nil { .. }
+                | EvaluatedCaptureKind::Tuple { .. }
+                | EvaluatedCaptureKind::List(_)
+                | EvaluatedCaptureKind::IntFunction { .. }
+                | EvaluatedCaptureKind::FloatFunction { .. }
+                | EvaluatedCaptureKind::StringFunction { .. }
+                | EvaluatedCaptureKind::BitArrayFunction { .. }
+                | EvaluatedCaptureKind::UtfCodepointFunction { .. }
+                | EvaluatedCaptureKind::ParameterFunction { .. }
+                | EvaluatedCaptureKind::CustomFunction { .. }
+                | EvaluatedCaptureKind::ExternalFunction { .. }
+                | EvaluatedCaptureKind::BoolFunction { .. }
+                | EvaluatedCaptureKind::NilFunction { .. }
+                | EvaluatedCaptureKind::TupleFunction { .. }
+                | EvaluatedCaptureKind::ListFunction { .. }
+                | EvaluatedCaptureKind::FunctionFunction { .. }
+                | EvaluatedCaptureKind::GenericFunction { .. }
+                | EvaluatedCaptureKind::NeverFunction { .. } => None,
             })
     }
 
@@ -277,7 +771,33 @@ impl CallCaptureInputs<'_> {
                     local: target,
                     value,
                 }) if *target == local => Some(NilList(value.clone())),
-                _ => None,
+                EvaluatedCaptureKind::Int { .. }
+                | EvaluatedCaptureKind::Float { .. }
+                | EvaluatedCaptureKind::String { .. }
+                | EvaluatedCaptureKind::BitArray { .. }
+                | EvaluatedCaptureKind::UtfCodepoint { .. }
+                | EvaluatedCaptureKind::Parameter { .. }
+                | EvaluatedCaptureKind::Custom { .. }
+                | EvaluatedCaptureKind::External { .. }
+                | EvaluatedCaptureKind::Bool { .. }
+                | EvaluatedCaptureKind::Nil { .. }
+                | EvaluatedCaptureKind::Tuple { .. }
+                | EvaluatedCaptureKind::List(_)
+                | EvaluatedCaptureKind::IntFunction { .. }
+                | EvaluatedCaptureKind::FloatFunction { .. }
+                | EvaluatedCaptureKind::StringFunction { .. }
+                | EvaluatedCaptureKind::BitArrayFunction { .. }
+                | EvaluatedCaptureKind::UtfCodepointFunction { .. }
+                | EvaluatedCaptureKind::ParameterFunction { .. }
+                | EvaluatedCaptureKind::CustomFunction { .. }
+                | EvaluatedCaptureKind::ExternalFunction { .. }
+                | EvaluatedCaptureKind::BoolFunction { .. }
+                | EvaluatedCaptureKind::NilFunction { .. }
+                | EvaluatedCaptureKind::TupleFunction { .. }
+                | EvaluatedCaptureKind::ListFunction { .. }
+                | EvaluatedCaptureKind::FunctionFunction { .. }
+                | EvaluatedCaptureKind::GenericFunction { .. }
+                | EvaluatedCaptureKind::NeverFunction { .. } => None,
             })
     }
 
@@ -290,7 +810,33 @@ impl CallCaptureInputs<'_> {
                     local: target,
                     value,
                 } if *target == local => Some(NilCallable(value.clone())),
-                _ => None,
+                EvaluatedCaptureKind::Int { .. }
+                | EvaluatedCaptureKind::Float { .. }
+                | EvaluatedCaptureKind::String { .. }
+                | EvaluatedCaptureKind::BitArray { .. }
+                | EvaluatedCaptureKind::UtfCodepoint { .. }
+                | EvaluatedCaptureKind::Parameter { .. }
+                | EvaluatedCaptureKind::Custom { .. }
+                | EvaluatedCaptureKind::External { .. }
+                | EvaluatedCaptureKind::Bool { .. }
+                | EvaluatedCaptureKind::Nil { .. }
+                | EvaluatedCaptureKind::Tuple { .. }
+                | EvaluatedCaptureKind::List(_)
+                | EvaluatedCaptureKind::IntFunction { .. }
+                | EvaluatedCaptureKind::FloatFunction { .. }
+                | EvaluatedCaptureKind::StringFunction { .. }
+                | EvaluatedCaptureKind::BitArrayFunction { .. }
+                | EvaluatedCaptureKind::UtfCodepointFunction { .. }
+                | EvaluatedCaptureKind::ParameterFunction { .. }
+                | EvaluatedCaptureKind::CustomFunction { .. }
+                | EvaluatedCaptureKind::ExternalFunction { .. }
+                | EvaluatedCaptureKind::BoolFunction { .. }
+                | EvaluatedCaptureKind::NilFunction { .. }
+                | EvaluatedCaptureKind::TupleFunction { .. }
+                | EvaluatedCaptureKind::ListFunction { .. }
+                | EvaluatedCaptureKind::FunctionFunction { .. }
+                | EvaluatedCaptureKind::GenericFunction { .. }
+                | EvaluatedCaptureKind::NeverFunction { .. } => None,
             })
     }
 }

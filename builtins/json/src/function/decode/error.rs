@@ -23,10 +23,12 @@ impl DecodeFailure {
                 | JsonErrorType::InvalidUnicodeCodePoint
                 | JsonErrorType::LoneLeadingSurrogateInHexEscape,
             ) => Self::Sequence(unicode_sequence(input, error.index)),
-            _ => match input.get(error.index).copied() {
-                Some(byte) => Self::Byte(format!("0x{byte:02X}").into()),
-                None => Self::EndOfInput,
-            },
+            JiterErrorType::JsonError(_) | JiterErrorType::WrongType { .. } => {
+                match input.get(error.index).copied() {
+                    Some(byte) => Self::Byte(format!("0x{byte:02X}").into()),
+                    None => Self::EndOfInput,
+                }
+            }
         }
     }
 

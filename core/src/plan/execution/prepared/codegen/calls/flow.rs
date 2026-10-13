@@ -325,7 +325,13 @@ impl<Graph: ExecutionGraphProfile> CallGroupCodegen<'_, '_, Graph> {
                             super::CallContractTarget::Static(target) => {
                                 self.is_native(target, &call.args)
                             }
-                            _ => self
+                            super::CallContractTarget::IntValue(_)
+                            | super::CallContractTarget::BoolValue(_)
+                            | super::CallContractTarget::FloatValue(_)
+                            | super::CallContractTarget::StringValue(_)
+                            | super::CallContractTarget::BitArrayValue(_)
+                            | super::CallContractTarget::UtfCodepointValue(_)
+                            | super::CallContractTarget::NilValue(_) => self
                                 .entries
                                 .iter()
                                 .any(|entry| entry.matches(call_family(call), &call.args)),
@@ -336,7 +342,10 @@ impl<Graph: ExecutionGraphProfile> CallGroupCodegen<'_, '_, Graph> {
                         self.is_native(tail.target, &tail.args)
                     }
                     CallPoint::Create(_) => true,
-                    action => matches!(
+                    action @ (CallPoint::Scalar(_)
+                    | CallPoint::Terminator(_)
+                    | CallPoint::Return(_)
+                    | CallPoint::Interpreted) => matches!(
                         action,
                         CallPoint::Scalar(CallScalar::IntList(_))
                             | CallPoint::Scalar(CallScalar::List { .. })
@@ -494,7 +503,15 @@ impl<Graph: ExecutionGraphProfile> CallGroupCodegen<'_, '_, Graph> {
                         .iter()
                         .map(|output| format!("int{}", output.0))
                         .collect(),
-                    _ => Vec::new(),
+                    CallScalar::CompoundField { .. }
+                    | CallScalar::Nullary { .. }
+                    | CallScalar::Boolean(..)
+                    | CallScalar::IntList(_)
+                    | CallScalar::Float(..)
+                    | CallScalar::String(..)
+                    | CallScalar::Nil
+                    | CallScalar::List { .. }
+                    | CallScalar::Index { .. } => Vec::new(),
                 };
                 if !outputs.is_empty() {
                     let checks = outputs

@@ -305,7 +305,18 @@ pub fn main() {
             .iter()
             .position(|shape| match shape {
                 ValueShapeDescriptor::Function { arguments, .. } => arguments.len() == 2,
-                _ => false,
+                ValueShapeDescriptor::Parameter(_)
+                | ValueShapeDescriptor::Int
+                | ValueShapeDescriptor::Float
+                | ValueShapeDescriptor::String
+                | ValueShapeDescriptor::BitArray
+                | ValueShapeDescriptor::UtfCodepoint
+                | ValueShapeDescriptor::Bool
+                | ValueShapeDescriptor::Nil
+                | ValueShapeDescriptor::Tuple(_)
+                | ValueShapeDescriptor::List(_)
+                | ValueShapeDescriptor::Custom(_)
+                | ValueShapeDescriptor::External(_) => false,
             })
             .unwrap();
         assert!(!types.can_enter_field(ValueShapeId(binary), callback, &[choice]));

@@ -440,7 +440,32 @@ pub fn main() {
             .filter_map(
                 |instruction| match &instruction.value().unwrap().output().local {
                     ParamLocal::GenericFunction(local) => Some(local),
-                    _ => None,
+                    ParamLocal::Int(_)
+                    | ParamLocal::Float(_)
+                    | ParamLocal::String(_)
+                    | ParamLocal::BitArray(_)
+                    | ParamLocal::UtfCodepoint(_)
+                    | ParamLocal::Parameter { .. }
+                    | ParamLocal::Custom(_)
+                    | ParamLocal::External(_)
+                    | ParamLocal::Bool(_)
+                    | ParamLocal::Nil(_)
+                    | ParamLocal::Tuple { .. }
+                    | ParamLocal::List(_)
+                    | ParamLocal::IntFunction { .. }
+                    | ParamLocal::FloatFunction { .. }
+                    | ParamLocal::StringFunction { .. }
+                    | ParamLocal::BitArrayFunction { .. }
+                    | ParamLocal::UtfCodepointFunction { .. }
+                    | ParamLocal::ParameterFunction { .. }
+                    | ParamLocal::NeverFunction(_)
+                    | ParamLocal::CustomFunction(_)
+                    | ParamLocal::ExternalFunction(_)
+                    | ParamLocal::BoolFunction { .. }
+                    | ParamLocal::NilFunction { .. }
+                    | ParamLocal::TupleFunction { .. }
+                    | ParamLocal::ListFunction(_)
+                    | ParamLocal::FunctionFunction(_) => None,
                 },
             )
             .collect();

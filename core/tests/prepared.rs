@@ -2825,7 +2825,12 @@ fn numeric_switch_resumes_after_its_prefix_and_preserves_every_selected_arm() {
         .iter()
         .filter_map(|target| match &target.implementation {
             CompiledImplementation::Numeric(kernel) => Some(kernel),
-            _ => None,
+            CompiledImplementation::BitArray(_)
+            | CompiledImplementation::IntList(_)
+            | CompiledImplementation::CustomLoop(_)
+            | CompiledImplementation::String(_)
+            | CompiledImplementation::FunctionCalls(_)
+            | CompiledImplementation::NativeLoop(_) => None,
         })
         .collect::<Vec<_>>();
     assert_eq!(kernels.len(), 1);

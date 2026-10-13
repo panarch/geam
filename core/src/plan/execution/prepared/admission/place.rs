@@ -149,7 +149,15 @@ pub(super) fn binding_path(
                     pending.push((field, path));
                 }
             }
-            _ => {}
+            MatchPattern::Bind(_)
+            | MatchPattern::Discard
+            | MatchPattern::Int(_)
+            | MatchPattern::Float(_)
+            | MatchPattern::String(_)
+            | MatchPattern::Bool(_)
+            | MatchPattern::Nil
+            | MatchPattern::BitArray(_)
+            | MatchPattern::StringPrefix { .. } => {}
         }
     }
     None

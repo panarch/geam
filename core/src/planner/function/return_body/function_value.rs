@@ -115,7 +115,15 @@ fn generic_function_return(expression: GenericFunctionExpr) -> GenericFunctionRe
         GenericFunctionExprKind::Block { steps, return_ } => {
             ReturnBody::block(steps.clone(), generic_function_return((**return_).clone()))
         }
-        _ => ReturnBody::expr(expression),
+        GenericFunctionExprKind::Constant(_)
+        | GenericFunctionExprKind::Reference(_)
+        | GenericFunctionExprKind::Closure { .. }
+        | GenericFunctionExprKind::LocalGet { .. }
+        | GenericFunctionExprKind::FunctionCall { .. }
+        | GenericFunctionExprKind::TupleIndex { .. }
+        | GenericFunctionExprKind::CustomField(_)
+        | GenericFunctionExprKind::ListIndex { .. }
+        | GenericFunctionExprKind::Panic(_) => ReturnBody::expr(expression),
     }
 }
 
@@ -178,7 +186,15 @@ fn int_function_return(expression: IntFunctionExpr) -> IntFunctionReturn {
         IntFunctionExprKind::Block { steps, return_ } => {
             ReturnBody::block(steps.clone(), int_function_return((**return_).clone()))
         }
-        _ => ReturnBody::expr(expression),
+        IntFunctionExprKind::Constant(_)
+        | IntFunctionExprKind::Reference(_)
+        | IntFunctionExprKind::Closure { .. }
+        | IntFunctionExprKind::LocalGet { .. }
+        | IntFunctionExprKind::FunctionCall { .. }
+        | IntFunctionExprKind::TupleIndex { .. }
+        | IntFunctionExprKind::CustomField(_)
+        | IntFunctionExprKind::ListIndex { .. }
+        | IntFunctionExprKind::Panic(_) => ReturnBody::expr(expression),
     }
 }
 
@@ -241,7 +257,15 @@ fn string_function_return(expression: StringFunctionExpr) -> StringFunctionRetur
         StringFunctionExprKind::Block { steps, return_ } => {
             ReturnBody::block(steps.clone(), string_function_return((**return_).clone()))
         }
-        _ => ReturnBody::expr(expression),
+        StringFunctionExprKind::Constant(_)
+        | StringFunctionExprKind::Reference(_)
+        | StringFunctionExprKind::Closure { .. }
+        | StringFunctionExprKind::LocalGet { .. }
+        | StringFunctionExprKind::FunctionCall { .. }
+        | StringFunctionExprKind::TupleIndex { .. }
+        | StringFunctionExprKind::CustomField(_)
+        | StringFunctionExprKind::ListIndex { .. }
+        | StringFunctionExprKind::Panic(_) => ReturnBody::expr(expression),
     }
 }
 
@@ -305,7 +329,15 @@ fn bit_array_function_return(expression: BitArrayFunctionExpr) -> BitArrayFuncti
             steps.clone(),
             bit_array_function_return((**return_).clone()),
         ),
-        _ => ReturnBody::expr(expression),
+        BitArrayFunctionExprKind::Constant(_)
+        | BitArrayFunctionExprKind::Reference(_)
+        | BitArrayFunctionExprKind::Closure { .. }
+        | BitArrayFunctionExprKind::LocalGet { .. }
+        | BitArrayFunctionExprKind::FunctionCall { .. }
+        | BitArrayFunctionExprKind::TupleIndex { .. }
+        | BitArrayFunctionExprKind::CustomField(_)
+        | BitArrayFunctionExprKind::ListIndex { .. }
+        | BitArrayFunctionExprKind::Panic(_) => ReturnBody::expr(expression),
     }
 }
 
@@ -375,7 +407,15 @@ fn utf_codepoint_function_return(
             steps.clone(),
             utf_codepoint_function_return((**return_).clone()),
         ),
-        _ => ReturnBody::expr(expression),
+        UtfCodepointFunctionExprKind::Constant(_)
+        | UtfCodepointFunctionExprKind::Reference(_)
+        | UtfCodepointFunctionExprKind::Closure { .. }
+        | UtfCodepointFunctionExprKind::LocalGet { .. }
+        | UtfCodepointFunctionExprKind::FunctionCall { .. }
+        | UtfCodepointFunctionExprKind::TupleIndex { .. }
+        | UtfCodepointFunctionExprKind::CustomField(_)
+        | UtfCodepointFunctionExprKind::ListIndex { .. }
+        | UtfCodepointFunctionExprKind::Panic(_) => ReturnBody::expr(expression),
     }
 }
 
@@ -446,7 +486,15 @@ fn float_function_return(expression: FloatFunctionExpr) -> FloatFunctionReturn {
         FloatFunctionExprKind::Block { steps, return_ } => {
             ReturnBody::block(steps.clone(), float_function_return((**return_).clone()))
         }
-        _ => ReturnBody::expr(expression),
+        FloatFunctionExprKind::Constant(_)
+        | FloatFunctionExprKind::Reference(_)
+        | FloatFunctionExprKind::Closure { .. }
+        | FloatFunctionExprKind::LocalGet { .. }
+        | FloatFunctionExprKind::FunctionCall { .. }
+        | FloatFunctionExprKind::TupleIndex { .. }
+        | FloatFunctionExprKind::CustomField(_)
+        | FloatFunctionExprKind::ListIndex { .. }
+        | FloatFunctionExprKind::Panic(_) => ReturnBody::expr(expression),
     }
 }
 
@@ -509,7 +557,15 @@ fn bool_function_return(expression: BoolFunctionExpr) -> BoolFunctionReturn {
         BoolFunctionExprKind::Block { steps, return_ } => {
             ReturnBody::block(steps.clone(), bool_function_return((**return_).clone()))
         }
-        _ => ReturnBody::expr(expression),
+        BoolFunctionExprKind::Constant(_)
+        | BoolFunctionExprKind::Reference(_)
+        | BoolFunctionExprKind::Closure { .. }
+        | BoolFunctionExprKind::LocalGet { .. }
+        | BoolFunctionExprKind::FunctionCall { .. }
+        | BoolFunctionExprKind::TupleIndex { .. }
+        | BoolFunctionExprKind::CustomField(_)
+        | BoolFunctionExprKind::ListIndex { .. }
+        | BoolFunctionExprKind::Panic(_) => ReturnBody::expr(expression),
     }
 }
 
@@ -572,7 +628,15 @@ fn nil_function_return(expression: NilFunctionExpr) -> NilFunctionReturn {
         NilFunctionExprKind::Block { steps, return_ } => {
             ReturnBody::block(steps.clone(), nil_function_return((**return_).clone()))
         }
-        _ => ReturnBody::expr(expression),
+        NilFunctionExprKind::Constant(_)
+        | NilFunctionExprKind::Reference(_)
+        | NilFunctionExprKind::Closure { .. }
+        | NilFunctionExprKind::LocalGet { .. }
+        | NilFunctionExprKind::FunctionCall { .. }
+        | NilFunctionExprKind::TupleIndex { .. }
+        | NilFunctionExprKind::CustomField(_)
+        | NilFunctionExprKind::ListIndex { .. }
+        | NilFunctionExprKind::Panic(_) => ReturnBody::expr(expression),
     }
 }
 
@@ -635,7 +699,15 @@ fn tuple_function_return(expression: TupleFunctionExpr) -> TupleFunctionReturn {
         TupleFunctionExprKind::Block { steps, return_ } => {
             ReturnBody::block(steps.clone(), tuple_function_return((**return_).clone()))
         }
-        _ => ReturnBody::expr(expression),
+        TupleFunctionExprKind::Constant(_)
+        | TupleFunctionExprKind::Reference(_)
+        | TupleFunctionExprKind::Closure { .. }
+        | TupleFunctionExprKind::LocalGet { .. }
+        | TupleFunctionExprKind::FunctionCall { .. }
+        | TupleFunctionExprKind::TupleIndex { .. }
+        | TupleFunctionExprKind::CustomField(_)
+        | TupleFunctionExprKind::ListIndex { .. }
+        | TupleFunctionExprKind::Panic(_) => ReturnBody::expr(expression),
     }
 }
 
@@ -698,7 +770,15 @@ fn list_function_return(expression: ListFunctionExpr) -> ListFunctionReturn {
         ListFunctionExprKind::Block { steps, return_ } => {
             ReturnBody::block(steps.clone(), list_function_return((**return_).clone()))
         }
-        _ => ReturnBody::expr(expression),
+        ListFunctionExprKind::Constant(_)
+        | ListFunctionExprKind::Reference(_)
+        | ListFunctionExprKind::Closure { .. }
+        | ListFunctionExprKind::LocalGet { .. }
+        | ListFunctionExprKind::FunctionCall { .. }
+        | ListFunctionExprKind::TupleIndex { .. }
+        | ListFunctionExprKind::CustomField(_)
+        | ListFunctionExprKind::ListIndex { .. }
+        | ListFunctionExprKind::Panic(_) => ReturnBody::expr(expression),
     }
 }
 

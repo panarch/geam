@@ -118,7 +118,18 @@ fn anonymous_function_shape(
 ) -> Result<FunctionShape, PlanError> {
     match shape {
         ValueShape::Function(shape) => Ok(*shape),
-        actual => Err(PlanError::InvalidTypedAst {
+        actual @ (ValueShape::Parameter(_)
+        | ValueShape::Int
+        | ValueShape::Float
+        | ValueShape::String
+        | ValueShape::BitArray
+        | ValueShape::UtfCodepoint
+        | ValueShape::Bool
+        | ValueShape::Nil
+        | ValueShape::Tuple(_)
+        | ValueShape::List(_)
+        | ValueShape::Custom(_)
+        | ValueShape::External(_)) => Err(PlanError::InvalidTypedAst {
             reason: InvalidTypedAstReason::FunctionShape {
                 name,
                 reason: InvalidFunctionShapeReason::ExpressionType {

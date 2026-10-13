@@ -87,7 +87,33 @@ impl<'graph> CustomLoopInstruction<'graph> {
                             type_: type_.clone(),
                         })
                     }
-                    _ => None,
+                    ParamLocal::Int(_)
+                    | ParamLocal::Float(_)
+                    | ParamLocal::String(_)
+                    | ParamLocal::BitArray(_)
+                    | ParamLocal::UtfCodepoint(_)
+                    | ParamLocal::Parameter { .. }
+                    | ParamLocal::Custom(_)
+                    | ParamLocal::External(_)
+                    | ParamLocal::Bool(_)
+                    | ParamLocal::Nil(_)
+                    | ParamLocal::Tuple { .. }
+                    | ParamLocal::List(_)
+                    | ParamLocal::IntFunction { .. }
+                    | ParamLocal::FloatFunction { .. }
+                    | ParamLocal::StringFunction { .. }
+                    | ParamLocal::BitArrayFunction { .. }
+                    | ParamLocal::UtfCodepointFunction { .. }
+                    | ParamLocal::ParameterFunction { .. }
+                    | ParamLocal::GenericFunction(_)
+                    | ParamLocal::NeverFunction(_)
+                    | ParamLocal::CustomFunction(_)
+                    | ParamLocal::ExternalFunction(_)
+                    | ParamLocal::BoolFunction { .. }
+                    | ParamLocal::NilFunction { .. }
+                    | ParamLocal::TupleFunction { .. }
+                    | ParamLocal::ListFunction(_)
+                    | ParamLocal::FunctionFunction(_) => None,
                 })?;
                 if !args.iter().all(|arg| {
                     matches!(
@@ -116,7 +142,33 @@ impl<'graph> CustomLoopInstruction<'graph> {
                             type_: type_.clone(),
                         })
                     }
-                    _ => None,
+                    ParamLocal::Int(_)
+                    | ParamLocal::Float(_)
+                    | ParamLocal::String(_)
+                    | ParamLocal::BitArray(_)
+                    | ParamLocal::UtfCodepoint(_)
+                    | ParamLocal::Parameter { .. }
+                    | ParamLocal::Custom(_)
+                    | ParamLocal::External(_)
+                    | ParamLocal::Bool(_)
+                    | ParamLocal::Nil(_)
+                    | ParamLocal::Tuple { .. }
+                    | ParamLocal::List(_)
+                    | ParamLocal::IntFunction { .. }
+                    | ParamLocal::FloatFunction { .. }
+                    | ParamLocal::StringFunction { .. }
+                    | ParamLocal::BitArrayFunction { .. }
+                    | ParamLocal::UtfCodepointFunction { .. }
+                    | ParamLocal::ParameterFunction { .. }
+                    | ParamLocal::GenericFunction(_)
+                    | ParamLocal::NeverFunction(_)
+                    | ParamLocal::CustomFunction(_)
+                    | ParamLocal::ExternalFunction(_)
+                    | ParamLocal::BoolFunction { .. }
+                    | ParamLocal::NilFunction { .. }
+                    | ParamLocal::TupleFunction { .. }
+                    | ParamLocal::ListFunction(_)
+                    | ParamLocal::FunctionFunction(_) => None,
                 })?;
                 if !args.iter().all(|arg| {
                     matches!(

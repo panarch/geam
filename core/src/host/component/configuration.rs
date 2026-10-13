@@ -44,44 +44,50 @@ impl HostProviderConfiguration {
 
 impl HostProviderConfigurationValue {
     pub fn as_string(&self) -> Option<&EcoString> {
-        match self {
-            Self::String(value) => Some(value),
-            _ => None,
+        if let Self::String(value) = self {
+            Some(value)
+        } else {
+            None
         }
     }
 
     pub fn as_integer(&self) -> Option<i64> {
-        match self {
-            Self::Integer(value) => Some(*value),
-            _ => None,
+        if let Self::Integer(value) = self {
+            Some(*value)
+        } else {
+            None
         }
     }
 
     pub fn as_float(&self) -> Option<f64> {
-        match self {
-            Self::Float(value) => Some(*value),
-            _ => None,
+        if let Self::Float(value) = self {
+            Some(*value)
+        } else {
+            None
         }
     }
 
     pub fn as_bool(&self) -> Option<bool> {
-        match self {
-            Self::Bool(value) => Some(*value),
-            _ => None,
+        if let Self::Bool(value) = self {
+            Some(*value)
+        } else {
+            None
         }
     }
 
     pub fn as_array(&self) -> Option<&[Self]> {
-        match self {
-            Self::Array(value) => Some(value),
-            _ => None,
+        if let Self::Array(value) = self {
+            Some(value)
+        } else {
+            None
         }
     }
 
     pub fn as_table(&self) -> Option<&HostProviderConfiguration> {
-        match self {
-            Self::Table(value) => Some(value),
-            _ => None,
+        if let Self::Table(value) = self {
+            Some(value)
+        } else {
+            None
         }
     }
 }

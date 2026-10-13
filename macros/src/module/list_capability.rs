@@ -19,7 +19,11 @@ pub(super) fn has_profile(value: &StaticValueType, customs: &[CustomModel]) -> b
             has_profile(success, customs) || has_profile(failure, customs)
         }
         StaticValueType::Option { value } => has_profile(value, customs),
-        _ => false,
+        StaticValueType::Future(_)
+        | StaticValueType::Callback(_)
+        | StaticValueType::Scalar(_)
+        | StaticValueType::Declared { .. }
+        | StaticValueType::External { .. } => false,
     }
 }
 
@@ -194,7 +198,15 @@ pub(super) fn source_parameters<'model>(
 ) -> &'model [Ident] {
     match value {
         StaticValueType::Custom { index } => &customs[*index].parameters,
-        _ => &[],
+        StaticValueType::Future(_)
+        | StaticValueType::List(_)
+        | StaticValueType::Callback(_)
+        | StaticValueType::Scalar(_)
+        | StaticValueType::Declared { .. }
+        | StaticValueType::External { .. }
+        | StaticValueType::Tuple(_)
+        | StaticValueType::Result { .. }
+        | StaticValueType::Option { .. } => &[],
     }
 }
 

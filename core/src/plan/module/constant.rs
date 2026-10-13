@@ -3464,7 +3464,18 @@ impl ConstantValue {
                             ConstantValueKind::Custom(value) if actual.can_flow_to(&item_shape) => {
                                 Ok(value)
                             }
-                            _ => Err(constant_list_element_mismatch(&item_shape, actual)),
+                            ConstantValueKind::Int(_)
+                            | ConstantValueKind::Float(_)
+                            | ConstantValueKind::String(_)
+                            | ConstantValueKind::Bool(_)
+                            | ConstantValueKind::Nil(_)
+                            | ConstantValueKind::Tuple(_)
+                            | ConstantValueKind::List(_)
+                            | ConstantValueKind::BitArray(_)
+                            | ConstantValueKind::Custom(_)
+                            | ConstantValueKind::Function(_) => {
+                                Err(constant_list_element_mismatch(&item_shape, actual))
+                            }
                         }
                     },
                     |tail| {
@@ -3477,7 +3488,22 @@ impl ConstantValue {
                             {
                                 Ok(value)
                             }
-                            _ => Err(constant_list_tail_mismatch(&item_shape, actual)),
+                            ConstantListValue::Generic(_)
+                            | ConstantListValue::ParameterList(_)
+                            | ConstantListValue::Int(_)
+                            | ConstantListValue::String(_)
+                            | ConstantListValue::BitArray(_)
+                            | ConstantListValue::UtfCodepoint(_)
+                            | ConstantListValue::Custom(_)
+                            | ConstantListValue::External(_)
+                            | ConstantListValue::Float(_)
+                            | ConstantListValue::Bool(_)
+                            | ConstantListValue::Nil(_)
+                            | ConstantListValue::Tuple(_)
+                            | ConstantListValue::List(_)
+                            | ConstantListValue::Function(_) => {
+                                Err(constant_list_tail_mismatch(&item_shape, actual))
+                            }
                         }
                     },
                 )?,
@@ -3557,7 +3583,18 @@ impl ConstantValue {
                             ConstantValueKind::Tuple(value) if actual.can_flow_to(&item_shape) => {
                                 Ok(value)
                             }
-                            _ => Err(constant_list_element_mismatch(&item_shape, actual)),
+                            ConstantValueKind::Int(_)
+                            | ConstantValueKind::Float(_)
+                            | ConstantValueKind::String(_)
+                            | ConstantValueKind::Bool(_)
+                            | ConstantValueKind::Nil(_)
+                            | ConstantValueKind::Tuple(_)
+                            | ConstantValueKind::List(_)
+                            | ConstantValueKind::BitArray(_)
+                            | ConstantValueKind::Custom(_)
+                            | ConstantValueKind::Function(_) => {
+                                Err(constant_list_element_mismatch(&item_shape, actual))
+                            }
                         }
                     },
                     |tail| {
@@ -3570,117 +3607,182 @@ impl ConstantValue {
                             {
                                 Ok(value)
                             }
-                            _ => Err(constant_list_tail_mismatch(&item_shape, actual)),
+                            ConstantListValue::Generic(_)
+                            | ConstantListValue::ParameterList(_)
+                            | ConstantListValue::Int(_)
+                            | ConstantListValue::String(_)
+                            | ConstantListValue::BitArray(_)
+                            | ConstantListValue::UtfCodepoint(_)
+                            | ConstantListValue::Custom(_)
+                            | ConstantListValue::External(_)
+                            | ConstantListValue::Float(_)
+                            | ConstantListValue::Bool(_)
+                            | ConstantListValue::Nil(_)
+                            | ConstantListValue::Tuple(_)
+                            | ConstantListValue::List(_)
+                            | ConstantListValue::Function(_) => {
+                                Err(constant_list_tail_mismatch(&item_shape, actual))
+                            }
                         }
                     },
                 )?,
             ),
-            ValueShape::List(shape) => match shape.representation() {
-                crate::plan::ValueRepresentation::Uninhabited(parameter) => {
-                    ConstantListValue::parameter_list(
-                        parameter,
+            ValueShape::List(shape) => {
+                match shape.representation() {
+                    crate::plan::ValueRepresentation::Uninhabited(parameter) => {
+                        ConstantListValue::parameter_list(
+                            parameter,
+                            parts.try_map(
+                                |value| {
+                                    let actual = value.shape();
+                                    match value.kind {
+                                        ConstantValueKind::List(ConstantListValue::Generic(
+                                            value,
+                                        )) if actual.can_flow_to(&item_shape) => Ok(value),
+                                        ConstantValueKind::Int(_)
+                                        | ConstantValueKind::Float(_)
+                                        | ConstantValueKind::String(_)
+                                        | ConstantValueKind::Bool(_)
+                                        | ConstantValueKind::Nil(_)
+                                        | ConstantValueKind::Tuple(_)
+                                        | ConstantValueKind::List(_)
+                                        | ConstantValueKind::BitArray(_)
+                                        | ConstantValueKind::Custom(_)
+                                        | ConstantValueKind::Function(_) => {
+                                            Err(constant_list_element_mismatch(&item_shape, actual))
+                                        }
+                                    }
+                                },
+                                |tail| {
+                                    let actual = tail.shape();
+                                    match tail {
+                                        ConstantListValue::ParameterList(value)
+                                            if actual.can_flow_to(&ValueShape::List(Box::new(
+                                                item_shape.clone(),
+                                            ))) =>
+                                        {
+                                            Ok(value)
+                                        }
+                                        ConstantListValue::Generic(_)
+                                        | ConstantListValue::ParameterList(_)
+                                        | ConstantListValue::Int(_)
+                                        | ConstantListValue::String(_)
+                                        | ConstantListValue::BitArray(_)
+                                        | ConstantListValue::UtfCodepoint(_)
+                                        | ConstantListValue::Custom(_)
+                                        | ConstantListValue::External(_)
+                                        | ConstantListValue::Float(_)
+                                        | ConstantListValue::Bool(_)
+                                        | ConstantListValue::Nil(_)
+                                        | ConstantListValue::Tuple(_)
+                                        | ConstantListValue::List(_)
+                                        | ConstantListValue::Function(_) => {
+                                            Err(constant_list_tail_mismatch(&item_shape, actual))
+                                        }
+                                    }
+                                },
+                            )?,
+                        )
+                    }
+                    crate::plan::ValueRepresentation::Stored(shape) => ConstantListValue::list(
+                        shape,
                         parts.try_map(
                             |value| {
                                 let actual = value.shape();
-                                match value.kind {
-                                    ConstantValueKind::List(ConstantListValue::Generic(value))
-                                        if actual.can_flow_to(&item_shape) =>
-                                    {
-                                        Ok(value)
+                                let value = match value.kind {
+                                    ConstantValueKind::List(ConstantListValue::ParameterList(
+                                        value,
+                                    )) => ConstantStoredListValue::ParameterList(value),
+                                    ConstantValueKind::List(ConstantListValue::Int(value)) => {
+                                        ConstantStoredListValue::Int(value)
                                     }
-                                    _ => Err(constant_list_element_mismatch(&item_shape, actual)),
+                                    ConstantValueKind::List(ConstantListValue::String(value)) => {
+                                        ConstantStoredListValue::String(value)
+                                    }
+                                    ConstantValueKind::List(ConstantListValue::BitArray(value)) => {
+                                        ConstantStoredListValue::BitArray(value)
+                                    }
+                                    ConstantValueKind::List(ConstantListValue::UtfCodepoint(
+                                        value,
+                                    )) => ConstantStoredListValue::UtfCodepoint(value),
+                                    ConstantValueKind::List(ConstantListValue::Custom(value)) => {
+                                        ConstantStoredListValue::Custom(value)
+                                    }
+                                    ConstantValueKind::List(ConstantListValue::External(value)) => {
+                                        ConstantStoredListValue::External(value)
+                                    }
+                                    ConstantValueKind::List(ConstantListValue::Float(value)) => {
+                                        ConstantStoredListValue::Float(value)
+                                    }
+                                    ConstantValueKind::List(ConstantListValue::Bool(value)) => {
+                                        ConstantStoredListValue::Bool(value)
+                                    }
+                                    ConstantValueKind::List(ConstantListValue::Nil(value)) => {
+                                        ConstantStoredListValue::Nil(value)
+                                    }
+                                    ConstantValueKind::List(ConstantListValue::Tuple(value)) => {
+                                        ConstantStoredListValue::Tuple(value)
+                                    }
+                                    ConstantValueKind::List(ConstantListValue::List(value)) => {
+                                        ConstantStoredListValue::List(value)
+                                    }
+                                    ConstantValueKind::List(ConstantListValue::Function(value)) => {
+                                        ConstantStoredListValue::Function(value)
+                                    }
+                                    ConstantValueKind::Int(_)
+                                    | ConstantValueKind::Float(_)
+                                    | ConstantValueKind::String(_)
+                                    | ConstantValueKind::Bool(_)
+                                    | ConstantValueKind::Nil(_)
+                                    | ConstantValueKind::Tuple(_)
+                                    | ConstantValueKind::List(_)
+                                    | ConstantValueKind::BitArray(_)
+                                    | ConstantValueKind::Custom(_)
+                                    | ConstantValueKind::Function(_) => {
+                                        return Err(constant_list_element_mismatch(
+                                            &item_shape,
+                                            actual,
+                                        ));
+                                    }
+                                };
+                                if actual.can_flow_to(&item_shape) {
+                                    Ok(value)
+                                } else {
+                                    Err(constant_list_element_mismatch(&item_shape, actual))
                                 }
                             },
                             |tail| {
                                 let actual = tail.shape();
                                 match tail {
-                                    ConstantListValue::ParameterList(value)
+                                    ConstantListValue::List(value)
                                         if actual.can_flow_to(&ValueShape::List(Box::new(
                                             item_shape.clone(),
                                         ))) =>
                                     {
                                         Ok(value)
                                     }
-                                    _ => Err(constant_list_tail_mismatch(&item_shape, actual)),
+                                    ConstantListValue::Generic(_)
+                                    | ConstantListValue::ParameterList(_)
+                                    | ConstantListValue::Int(_)
+                                    | ConstantListValue::String(_)
+                                    | ConstantListValue::BitArray(_)
+                                    | ConstantListValue::UtfCodepoint(_)
+                                    | ConstantListValue::Custom(_)
+                                    | ConstantListValue::External(_)
+                                    | ConstantListValue::Float(_)
+                                    | ConstantListValue::Bool(_)
+                                    | ConstantListValue::Nil(_)
+                                    | ConstantListValue::Tuple(_)
+                                    | ConstantListValue::List(_)
+                                    | ConstantListValue::Function(_) => {
+                                        Err(constant_list_tail_mismatch(&item_shape, actual))
+                                    }
                                 }
                             },
                         )?,
-                    )
+                    ),
                 }
-                crate::plan::ValueRepresentation::Stored(shape) => ConstantListValue::list(
-                    shape,
-                    parts.try_map(
-                        |value| {
-                            let actual = value.shape();
-                            let value = match value.kind {
-                                ConstantValueKind::List(ConstantListValue::ParameterList(
-                                    value,
-                                )) => ConstantStoredListValue::ParameterList(value),
-                                ConstantValueKind::List(ConstantListValue::Int(value)) => {
-                                    ConstantStoredListValue::Int(value)
-                                }
-                                ConstantValueKind::List(ConstantListValue::String(value)) => {
-                                    ConstantStoredListValue::String(value)
-                                }
-                                ConstantValueKind::List(ConstantListValue::BitArray(value)) => {
-                                    ConstantStoredListValue::BitArray(value)
-                                }
-                                ConstantValueKind::List(ConstantListValue::UtfCodepoint(value)) => {
-                                    ConstantStoredListValue::UtfCodepoint(value)
-                                }
-                                ConstantValueKind::List(ConstantListValue::Custom(value)) => {
-                                    ConstantStoredListValue::Custom(value)
-                                }
-                                ConstantValueKind::List(ConstantListValue::External(value)) => {
-                                    ConstantStoredListValue::External(value)
-                                }
-                                ConstantValueKind::List(ConstantListValue::Float(value)) => {
-                                    ConstantStoredListValue::Float(value)
-                                }
-                                ConstantValueKind::List(ConstantListValue::Bool(value)) => {
-                                    ConstantStoredListValue::Bool(value)
-                                }
-                                ConstantValueKind::List(ConstantListValue::Nil(value)) => {
-                                    ConstantStoredListValue::Nil(value)
-                                }
-                                ConstantValueKind::List(ConstantListValue::Tuple(value)) => {
-                                    ConstantStoredListValue::Tuple(value)
-                                }
-                                ConstantValueKind::List(ConstantListValue::List(value)) => {
-                                    ConstantStoredListValue::List(value)
-                                }
-                                ConstantValueKind::List(ConstantListValue::Function(value)) => {
-                                    ConstantStoredListValue::Function(value)
-                                }
-                                _ => {
-                                    return Err(constant_list_element_mismatch(
-                                        &item_shape,
-                                        actual,
-                                    ));
-                                }
-                            };
-                            if actual.can_flow_to(&item_shape) {
-                                Ok(value)
-                            } else {
-                                Err(constant_list_element_mismatch(&item_shape, actual))
-                            }
-                        },
-                        |tail| {
-                            let actual = tail.shape();
-                            match tail {
-                                ConstantListValue::List(value)
-                                    if actual.can_flow_to(&ValueShape::List(Box::new(
-                                        item_shape.clone(),
-                                    ))) =>
-                                {
-                                    Ok(value)
-                                }
-                                _ => Err(constant_list_tail_mismatch(&item_shape, actual)),
-                            }
-                        },
-                    )?,
-                ),
-            },
+            }
             ValueShape::Function(shape) => ConstantListValue::function(
                 (**shape).clone(),
                 parts.try_map(
@@ -3692,7 +3794,18 @@ impl ConstantValue {
                             {
                                 Ok(value)
                             }
-                            _ => Err(constant_list_element_mismatch(&item_shape, actual)),
+                            ConstantValueKind::Int(_)
+                            | ConstantValueKind::Float(_)
+                            | ConstantValueKind::String(_)
+                            | ConstantValueKind::Bool(_)
+                            | ConstantValueKind::Nil(_)
+                            | ConstantValueKind::Tuple(_)
+                            | ConstantValueKind::List(_)
+                            | ConstantValueKind::BitArray(_)
+                            | ConstantValueKind::Custom(_)
+                            | ConstantValueKind::Function(_) => {
+                                Err(constant_list_element_mismatch(&item_shape, actual))
+                            }
                         }
                     },
                     |tail| {
@@ -3705,7 +3818,22 @@ impl ConstantValue {
                             {
                                 Ok(value)
                             }
-                            _ => Err(constant_list_tail_mismatch(&item_shape, actual)),
+                            ConstantListValue::Generic(_)
+                            | ConstantListValue::ParameterList(_)
+                            | ConstantListValue::Int(_)
+                            | ConstantListValue::String(_)
+                            | ConstantListValue::BitArray(_)
+                            | ConstantListValue::UtfCodepoint(_)
+                            | ConstantListValue::Custom(_)
+                            | ConstantListValue::External(_)
+                            | ConstantListValue::Float(_)
+                            | ConstantListValue::Bool(_)
+                            | ConstantListValue::Nil(_)
+                            | ConstantListValue::Tuple(_)
+                            | ConstantListValue::List(_)
+                            | ConstantListValue::Function(_) => {
+                                Err(constant_list_tail_mismatch(&item_shape, actual))
+                            }
                         }
                     },
                 )?,
@@ -3821,51 +3949,58 @@ impl ConstantValue {
     }
 
     pub(crate) fn into_int(self) -> Option<ConstantIntValue> {
-        match self.kind {
-            ConstantValueKind::Int(value) => Some(value),
-            _ => None,
+        if let ConstantValueKind::Int(value) = self.kind {
+            Some(value)
+        } else {
+            None
         }
     }
 
     pub(crate) fn into_float(self) -> Option<ConstantFloatValue> {
-        match self.kind {
-            ConstantValueKind::Float(value) => Some(value),
-            _ => None,
+        if let ConstantValueKind::Float(value) = self.kind {
+            Some(value)
+        } else {
+            None
         }
     }
 
     pub(crate) fn into_string(self) -> Option<ConstantStringValue> {
-        match self.kind {
-            ConstantValueKind::String(value) => Some(value),
-            _ => None,
+        if let ConstantValueKind::String(value) = self.kind {
+            Some(value)
+        } else {
+            None
         }
     }
 
     pub(crate) fn into_bit_array(self) -> Option<ConstantBitArrayValue> {
-        match self.kind {
-            ConstantValueKind::BitArray(value) => Some(value),
-            _ => None,
+        if let ConstantValueKind::BitArray(value) = self.kind {
+            Some(value)
+        } else {
+            None
         }
     }
 
     pub(crate) fn into_bool(self) -> Option<ConstantBoolValue> {
-        match self.kind {
-            ConstantValueKind::Bool(value) => Some(value),
-            _ => None,
+        if let ConstantValueKind::Bool(value) = self.kind {
+            Some(value)
+        } else {
+            None
         }
     }
 
     pub(crate) fn into_nil(self) -> Option<ConstantNilValue> {
-        match self.kind {
-            ConstantValueKind::Nil(value) => Some(value),
-            _ => None,
+        if let ConstantValueKind::Nil(value) = self.kind {
+            Some(value)
+        } else {
+            None
         }
     }
 
     fn into_list(self) -> Option<ConstantListValue> {
-        match self.kind {
-            ConstantValueKind::List(value) => Some(value),
-            _ => None,
+        if let ConstantValueKind::List(value) = self.kind {
+            Some(value)
+        } else {
+            None
         }
     }
 }

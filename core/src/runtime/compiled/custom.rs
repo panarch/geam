@@ -25,14 +25,38 @@ impl CustomInput {
     pub fn integer(&self, index: usize) -> Option<i128> {
         match &self.0.fields()[index] {
             EvaluatedValue::Int(value) => value.small().map(i128::from),
-            _ => None,
+            EvaluatedValue::Parameter(_)
+            | EvaluatedValue::Float(_)
+            | EvaluatedValue::String(_)
+            | EvaluatedValue::BitArray(_)
+            | EvaluatedValue::UtfCodepoint(_)
+            | EvaluatedValue::Custom(_)
+            | EvaluatedValue::External(_)
+            | EvaluatedValue::Bool(_)
+            | EvaluatedValue::Nil
+            | EvaluatedValue::Tuple(_)
+            | EvaluatedValue::ParameterList(_)
+            | EvaluatedValue::List(_)
+            | EvaluatedValue::Function(_) => None,
         }
     }
 
     pub fn boolean(&self, index: usize) -> Option<bool> {
         match &self.0.fields()[index] {
             EvaluatedValue::Bool(value) => Some(*value),
-            _ => None,
+            EvaluatedValue::Parameter(_)
+            | EvaluatedValue::Int(_)
+            | EvaluatedValue::Float(_)
+            | EvaluatedValue::String(_)
+            | EvaluatedValue::BitArray(_)
+            | EvaluatedValue::UtfCodepoint(_)
+            | EvaluatedValue::Custom(_)
+            | EvaluatedValue::External(_)
+            | EvaluatedValue::Nil
+            | EvaluatedValue::Tuple(_)
+            | EvaluatedValue::ParameterList(_)
+            | EvaluatedValue::List(_)
+            | EvaluatedValue::Function(_) => None,
         }
     }
 }

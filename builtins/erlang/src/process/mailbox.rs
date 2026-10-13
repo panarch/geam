@@ -687,7 +687,7 @@ mod tests {
         HostExternalSchema, HostExternalStorage, HostExternalStore, HostExternalType,
         HostFunctionType, HostFunctionValueType, HostProviderModule, HostProviderSet, HostTypeList,
     };
-    use geam_core::provider::advanced::NativeValue;
+    use geam_core::provider::advanced::{NativeKind, NativeValue};
     use geam_core::{
         HostedExecution, ModuleSource, PackageSource, compile_typed_host_program, plan_host_program,
     };
@@ -834,7 +834,7 @@ pub fn main() { prime() #(take(True), take(False)) }
                 Box::pin(async move {
                     let value = receive.wait(&context).await.unwrap().unwrap();
                     Ok(match value.kind() {
-                        geam_core::provider::advanced::NativeKind::Tuple => {
+                        NativeKind::Tuple => {
                             if record {
                                 assert_eq!(value.len(), Some(2));
                                 assert_eq!(
@@ -844,7 +844,15 @@ pub fn main() { prime() #(take(True), take(False)) }
                             }
                             value.index(1).unwrap_or(zero)
                         }
-                        _ => value,
+                        NativeKind::Int
+                        | NativeKind::Float
+                        | NativeKind::Binary
+                        | NativeKind::Symbol
+                        | NativeKind::List
+                        | NativeKind::Map
+                        | NativeKind::External
+                        | NativeKind::Opaque
+                        | NativeKind::Function => value,
                     })
                 })
             }))

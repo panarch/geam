@@ -1017,7 +1017,7 @@ pub(super) fn validate_function(
         .iter()
         .filter_map(|parameter| match parameter {
             FunctionParameter::Source(source) => Some(&source.syntax.ty),
-            _ => None,
+            FunctionParameter::Call(_) | FunctionParameter::Permission(_) => None,
         })
         .map(|type_| {
             if let Some(callback) = callback_type(
@@ -1750,7 +1750,23 @@ pub(super) fn function_uses_contextual_forms(
                                     .is_some_and(|input| &input.ident == name)
                         })
                     }
-                    _ => None,
+                    // syn::Type is non-exhaustive; the wildcard covers future syntax.
+                    Type::Array(_)
+                    | Type::BareFn(_)
+                    | Type::Group(_)
+                    | Type::ImplTrait(_)
+                    | Type::Infer(_)
+                    | Type::Macro(_)
+                    | Type::Never(_)
+                    | Type::Paren(_)
+                    | Type::Path(_)
+                    | Type::Ptr(_)
+                    | Type::Reference(_)
+                    | Type::Slice(_)
+                    | Type::TraitObject(_)
+                    | Type::Tuple(_)
+                    | Type::Verbatim(_)
+                    | _ => None,
                 };
                 // Only local declarations can be proven static here. A
                 // qualified producer may select another form for this profile.

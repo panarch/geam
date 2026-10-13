@@ -135,7 +135,17 @@ pub fn main() {
             .copied()
             .filter_map(|terminator| match terminator {
                 Terminator::Jump(jump) => Some(jump),
-                _ => None,
+                Terminator::BoolBranch(_)
+                | Terminator::TestBranch(_)
+                | Terminator::IntSwitch(_)
+                | Terminator::FloatSwitch(_)
+                | Terminator::StringSwitch(_)
+                | Terminator::Match(_)
+                | Terminator::Echo(_)
+                | Terminator::Exit(_)
+                | Terminator::SourceStop(_)
+                | Terminator::LetAssertPanic(_)
+                | Terminator::NeverCall(_) => None,
             })
             .collect::<Vec<_>>();
         jump_from_nodes(&jumps)

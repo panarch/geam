@@ -51,7 +51,15 @@ pub(super) fn establishes(
             MatchPattern::StringPrefix { prefix, .. } => {
                 return success && requirement.accepts_text(prefix.as_str());
             }
-            _ => return false,
+            MatchPattern::Bind(_)
+            | MatchPattern::Discard
+            | MatchPattern::Int(_)
+            | MatchPattern::Float(_)
+            | MatchPattern::Bool(_)
+            | MatchPattern::Nil
+            | MatchPattern::Tuple(_)
+            | MatchPattern::BitArray(_)
+            | MatchPattern::Custom { .. } => return false,
         }
     }
 }
@@ -159,7 +167,15 @@ pub(super) fn binding<'data>(
                     };
                 }
             }
-            _ => {}
+            MatchPattern::Bind(_)
+            | MatchPattern::Discard
+            | MatchPattern::Int(_)
+            | MatchPattern::Float(_)
+            | MatchPattern::String(_)
+            | MatchPattern::Bool(_)
+            | MatchPattern::Nil
+            | MatchPattern::BitArray(_)
+            | MatchPattern::StringPrefix { .. } => {}
         }
     }
     BindingProof::Unknown

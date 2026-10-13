@@ -134,7 +134,12 @@ pub(super) fn admit<'data, Profile: ExecutionProfile>(
             CompiledImplementation::BitArray(_)
             | CompiledImplementation::String(_)
             | CompiledImplementation::CustomLoop(_) => Err(Reason::Kernel),
-            _ => value_shape(body, implementation, custom_types),
+            CompiledImplementation::Numeric(_)
+            | CompiledImplementation::IntList(_)
+            | CompiledImplementation::FunctionCalls(_)
+            | CompiledImplementation::NativeLoop(_) => {
+                value_shape(body, implementation, custom_types)
+            }
         },
     )?;
     let ints = callbacks(
@@ -394,7 +399,12 @@ fn custom_shape<'body, Body: ExecutionFunctionBody>(
         CompiledImplementation::BitArray(_) => {
             CompiledShape::inspect_bits(body.function_body()).ok_or(Reason::UnsupportedGraph)
         }
-        _ => Err(Reason::Kernel),
+        CompiledImplementation::Numeric(_)
+        | CompiledImplementation::IntList(_)
+        | CompiledImplementation::CustomLoop(_)
+        | CompiledImplementation::String(_)
+        | CompiledImplementation::FunctionCalls(_)
+        | CompiledImplementation::NativeLoop(_) => Err(Reason::Kernel),
     }
 }
 

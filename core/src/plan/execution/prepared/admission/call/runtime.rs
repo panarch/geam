@@ -330,7 +330,7 @@ mod tests {
                     id,
                     return_type: FunctionType::new(Vec::new(), ValueType::Bool),
                 })),
-                _ => None,
+                Runtime::Core(_) | Runtime::External(_) => None,
             };
             assert_eq!(wrong.is_some(), expression != "42");
             let Some(wrong) = wrong else { continue };

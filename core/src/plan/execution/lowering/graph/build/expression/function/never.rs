@@ -27,7 +27,16 @@ pub(super) fn function_expr(
         module::FunctionExprKind::Custom(expression) => {
             custom_function_kind(expression.kind(), &shape, cursor, graph, context)
         }
-        _ => return Representability::Uninhabited,
+        module::FunctionExprKind::Int(_)
+        | module::FunctionExprKind::String(_)
+        | module::FunctionExprKind::BitArray(_)
+        | module::FunctionExprKind::UtfCodepoint(_)
+        | module::FunctionExprKind::External(_)
+        | module::FunctionExprKind::Float(_)
+        | module::FunctionExprKind::Bool(_)
+        | module::FunctionExprKind::Nil(_)
+        | module::FunctionExprKind::List(_)
+        | module::FunctionExprKind::Function(_) => return Representability::Uninhabited,
     };
     lowered.map(|flow| flow.map(|value| value.value().clone()))
 }

@@ -34,7 +34,13 @@ impl CallGroup {
                                 edges.insert(index);
                             }
                         }
-                        _ => {
+                        CallContractTarget::IntValue(_)
+                        | CallContractTarget::BoolValue(_)
+                        | CallContractTarget::FloatValue(_)
+                        | CallContractTarget::StringValue(_)
+                        | CallContractTarget::BitArrayValue(_)
+                        | CallContractTarget::UtfCodepointValue(_)
+                        | CallContractTarget::NilValue(_) => {
                             // Include every generated target allowed by this
                             // signature, even without a referring source creation.
                             edges.extend(functions.iter().enumerate().filter_map(
@@ -247,7 +253,15 @@ pub fn main() { #(as_bool(1), as_text(1), as_float(1), as_nil(1)) }
                             CallContractTarget::Static(target) => (callee.target == target
                                 && callee.matches_parameters(&call.args))
                             .then_some(index),
-                            _ => callee.accepts_call(call).then_some(index),
+                            CallContractTarget::IntValue(_)
+                            | CallContractTarget::BoolValue(_)
+                            | CallContractTarget::FloatValue(_)
+                            | CallContractTarget::StringValue(_)
+                            | CallContractTarget::BitArrayValue(_)
+                            | CallContractTarget::UtfCodepointValue(_)
+                            | CallContractTarget::NilValue(_) => {
+                                callee.accepts_call(call).then_some(index)
+                            }
                         })
                         .collect();
                     assert!(allowed.is_subset(&group.members));

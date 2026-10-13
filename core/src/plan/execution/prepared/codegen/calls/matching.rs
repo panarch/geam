@@ -55,7 +55,20 @@ impl FieldRead {
             CallLocal::Custom(local) => Self::Custom(local.local.shape.type_id),
             CallLocal::Nullary(local) => Self::Nullary(local.clone()),
             CallLocal::Tuple { type_, .. } => Self::Tuple(type_.clone()),
-            _ => return None,
+            CallLocal::IntList { .. }
+            | CallLocal::IntFunction { .. }
+            | CallLocal::BoolList { .. }
+            | CallLocal::BoolFunction { .. }
+            | CallLocal::FloatList { .. }
+            | CallLocal::FloatFunction { .. }
+            | CallLocal::StringList { .. }
+            | CallLocal::StringFunction { .. }
+            | CallLocal::BitArrayList { .. }
+            | CallLocal::BitArrayFunction { .. }
+            | CallLocal::UtfCodepointList { .. }
+            | CallLocal::UtfCodepointFunction { .. }
+            | CallLocal::NilList { .. }
+            | CallLocal::NilFunction { .. } => return None,
         })
     }
     pub(super) fn value_type(&self) -> ValueType {
@@ -132,7 +145,31 @@ impl<'graph> CompoundMatch<'graph> {
         let expected = match original.subject() {
             ParamLocal::Custom(local) => ValueType::Custom(local.shape.type_id),
             ParamLocal::Tuple { type_, .. } => ValueType::Tuple(type_.clone()),
-            _ => return None,
+            ParamLocal::Int(_)
+            | ParamLocal::Float(_)
+            | ParamLocal::String(_)
+            | ParamLocal::BitArray(_)
+            | ParamLocal::UtfCodepoint(_)
+            | ParamLocal::Parameter { .. }
+            | ParamLocal::External(_)
+            | ParamLocal::Bool(_)
+            | ParamLocal::Nil(_)
+            | ParamLocal::List(_)
+            | ParamLocal::IntFunction { .. }
+            | ParamLocal::FloatFunction { .. }
+            | ParamLocal::StringFunction { .. }
+            | ParamLocal::BitArrayFunction { .. }
+            | ParamLocal::UtfCodepointFunction { .. }
+            | ParamLocal::ParameterFunction { .. }
+            | ParamLocal::GenericFunction(_)
+            | ParamLocal::NeverFunction(_)
+            | ParamLocal::CustomFunction(_)
+            | ParamLocal::ExternalFunction(_)
+            | ParamLocal::BoolFunction { .. }
+            | ParamLocal::NilFunction { .. }
+            | ParamLocal::TupleFunction { .. }
+            | ParamLocal::ListFunction(_)
+            | ParamLocal::FunctionFunction(_) => return None,
         };
         if !supported_type(&expected) {
             return None;
@@ -221,7 +258,9 @@ impl CompoundPattern {
                 pattern: Box::new(Self::inspect(pattern, types)?),
                 binding: binding.index,
             },
-            _ => return None,
+            MatchPattern::List(_)
+            | MatchPattern::BitArray(_)
+            | MatchPattern::StringPrefix { .. } => return None,
         })
     }
 }
@@ -237,7 +276,10 @@ fn supported_type(type_: &ValueType) -> bool {
         | ValueType::BitArray
         | ValueType::Custom(_) => true,
         ValueType::Tuple(elements) => elements.iter().all(supported_type),
-        _ => false,
+        ValueType::Parameter(_)
+        | ValueType::List(_)
+        | ValueType::Function(_)
+        | ValueType::External(_) => false,
     }
 }
 
@@ -320,7 +362,24 @@ fn success_fields(parameters: &[CallLocal], arguments: &[CompoundArgument]) -> S
                     | CallLocal::UtfCodepoint(_)
                     | CallLocal::Nullary(_) => format!("binding{index}"),
                     _ if *remaining > 0 => format!("binding{index}.clone()"),
-                    _ => format!("binding{index}"),
+                    CallLocal::Custom(_)
+                    | CallLocal::Tuple { .. }
+                    | CallLocal::IntList { .. }
+                    | CallLocal::IntFunction { .. }
+                    | CallLocal::BoolList { .. }
+                    | CallLocal::BoolFunction { .. }
+                    | CallLocal::FloatList { .. }
+                    | CallLocal::FloatFunction { .. }
+                    | CallLocal::String(_)
+                    | CallLocal::StringList { .. }
+                    | CallLocal::StringFunction { .. }
+                    | CallLocal::BitArray(_)
+                    | CallLocal::BitArrayList { .. }
+                    | CallLocal::BitArrayFunction { .. }
+                    | CallLocal::UtfCodepointList { .. }
+                    | CallLocal::UtfCodepointFunction { .. }
+                    | CallLocal::NilList { .. }
+                    | CallLocal::NilFunction { .. } => format!("binding{index}"),
                 };
                 format!("{}: {value}", local_name(parameter))
             }

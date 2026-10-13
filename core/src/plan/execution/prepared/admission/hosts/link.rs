@@ -143,7 +143,9 @@ impl<'data, Profile: HostProfile> NativeFunctions<'data, Profile> {
                             custom_type: Box::new(name),
                         }));
                     }
-                    _ => {}
+                    HostCustomAccess::Declared
+                    | HostCustomAccess::Shared
+                    | HostCustomAccess::Retained => {}
                 }
             }
             Ok((*slot, implementations.implementation(*implementation)))

@@ -6,7 +6,9 @@ use crate::plan::execution::function::{
     ExecutionGraphProfile, FunctionReturnFamily, LibraryListFunctionId,
 };
 use crate::plan::execution::prepared::Export;
-use crate::plan::execution::type_::{FunctionMetadata, TypeMetadata};
+use crate::plan::execution::type_::{
+    FunctionMetadata, TypeMetadata, ValueType as ExecutionValueType,
+};
 use crate::plan::execution::{
     LibraryFunctionEntries, LibraryFunctionEntry, LibraryInputConstructions,
 };
@@ -245,7 +247,7 @@ fn main_matches<Graph: ExecutionGraphProfile>(
                 .is_some_and(|entry| &entry.function == id)
                 && types.matches(
                     &export.signature.return_,
-                    &crate::plan::execution::type_::ValueType::Tuple(return_type.clone()),
+                    &ExecutionValueType::Tuple(return_type.clone()),
                 )?
         }
         (TypeMetadata::Function(_), Runtime::Core(Core::Function { id, return_type })) => {
@@ -443,16 +445,27 @@ where
         types.function_type(&self.type_).map_err(CallError::Type)?;
         let function = self.function.resolve(catalog, types)?;
         match function.return_type {
-            crate::plan::execution::type_::ValueType::Function(type_) if *type_ == self.type_ => {
-                Ok(function)
-            }
-            _ => Err(CallError::ReturnType),
+            ExecutionValueType::Function(type_) if *type_ == self.type_ => Ok(function),
+            ExecutionValueType::Parameter(_)
+            | ExecutionValueType::Int
+            | ExecutionValueType::Float
+            | ExecutionValueType::String
+            | ExecutionValueType::BitArray
+            | ExecutionValueType::UtfCodepoint
+            | ExecutionValueType::Bool
+            | ExecutionValueType::Nil
+            | ExecutionValueType::Tuple(_)
+            | ExecutionValueType::List(_)
+            | ExecutionValueType::Function(_)
+            | ExecutionValueType::Custom(_)
+            | ExecutionValueType::External(_) => Err(CallError::ReturnType),
         }
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use super::ExecutionValueType;
     use super::{
         Catalog, EntryError, Export, ExportError, FunctionMetadata, FunctionReturnFamily,
         TypeError, TypeMetadata, Types, all, resolve,
@@ -1173,10 +1186,10 @@ mod tests {
                     crate::plan::execution::function::ProfiledCoreRuntimeFunctionId::Tuple {
                         id: entries.tuples[0].function,
                         return_type: vec![
-                            crate::plan::execution::type_::ValueType::List(
-                                crate::plan::execution::type_::ListTypeId(999),
-                            ),
-                            crate::plan::execution::type_::ValueType::Bool,
+                            ExecutionValueType::List(crate::plan::execution::type_::ListTypeId(
+                                999,
+                            )),
+                            ExecutionValueType::Bool,
                         ]
                         .into(),
                     },
@@ -1363,7 +1376,7 @@ pub fn main() { key() }
         assert_eq!(resolved.family, FunctionReturnFamily::External);
         assert_eq!(
             resolved.function.return_type,
-            &crate::plan::execution::type_::ValueType::External(ExternalTypeId(0))
+            &ExecutionValueType::External(ExternalTypeId(0))
         );
         assert!(std::ptr::eq(resolved.inputs, &entries.externals[0].inputs));
         assert_eq!(
@@ -1596,10 +1609,8 @@ pub fn result(value: Result(Int, String)) { value }
         let main = Runtime::Core(Core::Tuple {
             id: prepared.entries.tuples[0].function,
             return_type: vec![
-                crate::plan::execution::type_::ValueType::External(
-                    crate::plan::execution::type_::ExternalTypeId(99),
-                ),
-                crate::plan::execution::type_::ValueType::Bool,
+                ExecutionValueType::External(crate::plan::execution::type_::ExternalTypeId(99)),
+                ExecutionValueType::Bool,
             ]
             .into(),
         });
@@ -1769,7 +1780,18 @@ pub fn main() { value(Present(42)) }
                     .constructor
                     == CustomConstructorRefinement::Exact(0))
                 .then_some(ValueShapeId(index)),
-                _ => None,
+                ValueShapeDescriptor::Parameter(_)
+                | ValueShapeDescriptor::Int
+                | ValueShapeDescriptor::Float
+                | ValueShapeDescriptor::String
+                | ValueShapeDescriptor::BitArray
+                | ValueShapeDescriptor::UtfCodepoint
+                | ValueShapeDescriptor::Bool
+                | ValueShapeDescriptor::Nil
+                | ValueShapeDescriptor::Tuple(_)
+                | ValueShapeDescriptor::List(_)
+                | ValueShapeDescriptor::Function { .. }
+                | ValueShapeDescriptor::External(_) => None,
             })
             .unwrap();
         let narrow = super::Function {

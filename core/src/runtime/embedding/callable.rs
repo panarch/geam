@@ -164,7 +164,19 @@ pub fn main() { #(stop, identity, 42) }
             .into_iter()
             .filter_map(|value| match value {
                 EvaluatedValue::Function(function) => Some(function),
-                _ => None,
+                EvaluatedValue::Parameter(_)
+                | EvaluatedValue::Int(_)
+                | EvaluatedValue::Float(_)
+                | EvaluatedValue::String(_)
+                | EvaluatedValue::BitArray(_)
+                | EvaluatedValue::UtfCodepoint(_)
+                | EvaluatedValue::Custom(_)
+                | EvaluatedValue::External(_)
+                | EvaluatedValue::Bool(_)
+                | EvaluatedValue::Nil
+                | EvaluatedValue::Tuple(_)
+                | EvaluatedValue::ParameterList(_)
+                | EvaluatedValue::List(_) => None,
             })
             .collect::<Vec<_>>();
         assert_eq!(functions.len(), 2);

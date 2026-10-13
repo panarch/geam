@@ -96,7 +96,19 @@ where
             expected,
             |value| match value {
                 EvaluatedValue::Int(value) => Some(value.clone()),
-                _ => None,
+                EvaluatedValue::Parameter(_)
+                | EvaluatedValue::Float(_)
+                | EvaluatedValue::String(_)
+                | EvaluatedValue::BitArray(_)
+                | EvaluatedValue::UtfCodepoint(_)
+                | EvaluatedValue::Custom(_)
+                | EvaluatedValue::External(_)
+                | EvaluatedValue::Bool(_)
+                | EvaluatedValue::Nil
+                | EvaluatedValue::Tuple(_)
+                | EvaluatedValue::ParameterList(_)
+                | EvaluatedValue::List(_)
+                | EvaluatedValue::Function(_) => None,
             },
         )
         .map_or_else(V::Error, V::Ready),
@@ -108,7 +120,19 @@ where
             expected,
             |value| match value {
                 EvaluatedValue::Int(value) => Some(value.clone()),
-                _ => None,
+                EvaluatedValue::Parameter(_)
+                | EvaluatedValue::Float(_)
+                | EvaluatedValue::String(_)
+                | EvaluatedValue::BitArray(_)
+                | EvaluatedValue::UtfCodepoint(_)
+                | EvaluatedValue::Custom(_)
+                | EvaluatedValue::External(_)
+                | EvaluatedValue::Bool(_)
+                | EvaluatedValue::Nil
+                | EvaluatedValue::Tuple(_)
+                | EvaluatedValue::ParameterList(_)
+                | EvaluatedValue::List(_)
+                | EvaluatedValue::Function(_) => None,
             },
         )
         .map_or_else(V::Error, V::Ready),
@@ -180,7 +204,19 @@ where
             expected,
             |value| match value {
                 EvaluatedValue::Float(value) => Some(*value),
-                _ => None,
+                EvaluatedValue::Parameter(_)
+                | EvaluatedValue::Int(_)
+                | EvaluatedValue::String(_)
+                | EvaluatedValue::BitArray(_)
+                | EvaluatedValue::UtfCodepoint(_)
+                | EvaluatedValue::Custom(_)
+                | EvaluatedValue::External(_)
+                | EvaluatedValue::Bool(_)
+                | EvaluatedValue::Nil
+                | EvaluatedValue::Tuple(_)
+                | EvaluatedValue::ParameterList(_)
+                | EvaluatedValue::List(_)
+                | EvaluatedValue::Function(_) => None,
             },
         )
         .map_or_else(V::Error, V::Ready),
@@ -192,7 +228,19 @@ where
             expected,
             |value| match value {
                 EvaluatedValue::Float(value) => Some(*value),
-                _ => None,
+                EvaluatedValue::Parameter(_)
+                | EvaluatedValue::Int(_)
+                | EvaluatedValue::String(_)
+                | EvaluatedValue::BitArray(_)
+                | EvaluatedValue::UtfCodepoint(_)
+                | EvaluatedValue::Custom(_)
+                | EvaluatedValue::External(_)
+                | EvaluatedValue::Bool(_)
+                | EvaluatedValue::Nil
+                | EvaluatedValue::Tuple(_)
+                | EvaluatedValue::ParameterList(_)
+                | EvaluatedValue::List(_)
+                | EvaluatedValue::Function(_) => None,
             },
         )
         .map_or_else(V::Error, V::Ready),
@@ -271,7 +319,19 @@ where
             expected,
             |value| match value {
                 EvaluatedValue::String(value) => Some(value.clone()),
-                _ => None,
+                EvaluatedValue::Parameter(_)
+                | EvaluatedValue::Int(_)
+                | EvaluatedValue::Float(_)
+                | EvaluatedValue::BitArray(_)
+                | EvaluatedValue::UtfCodepoint(_)
+                | EvaluatedValue::Custom(_)
+                | EvaluatedValue::External(_)
+                | EvaluatedValue::Bool(_)
+                | EvaluatedValue::Nil
+                | EvaluatedValue::Tuple(_)
+                | EvaluatedValue::ParameterList(_)
+                | EvaluatedValue::List(_)
+                | EvaluatedValue::Function(_) => None,
             },
         )
         .map_or_else(V::Error, V::Ready),
@@ -283,7 +343,19 @@ where
             expected,
             |value| match value {
                 EvaluatedValue::String(value) => Some(value.clone()),
-                _ => None,
+                EvaluatedValue::Parameter(_)
+                | EvaluatedValue::Int(_)
+                | EvaluatedValue::Float(_)
+                | EvaluatedValue::BitArray(_)
+                | EvaluatedValue::UtfCodepoint(_)
+                | EvaluatedValue::Custom(_)
+                | EvaluatedValue::External(_)
+                | EvaluatedValue::Bool(_)
+                | EvaluatedValue::Nil
+                | EvaluatedValue::Tuple(_)
+                | EvaluatedValue::ParameterList(_)
+                | EvaluatedValue::List(_)
+                | EvaluatedValue::Function(_) => None,
             },
         )
         .map_or_else(V::Error, V::Ready),
@@ -361,7 +433,19 @@ where
             expected,
             |value| match value {
                 EvaluatedValue::BitArray(value) => Some(value.clone()),
-                _ => None,
+                EvaluatedValue::Parameter(_)
+                | EvaluatedValue::Int(_)
+                | EvaluatedValue::Float(_)
+                | EvaluatedValue::String(_)
+                | EvaluatedValue::UtfCodepoint(_)
+                | EvaluatedValue::Custom(_)
+                | EvaluatedValue::External(_)
+                | EvaluatedValue::Bool(_)
+                | EvaluatedValue::Nil
+                | EvaluatedValue::Tuple(_)
+                | EvaluatedValue::ParameterList(_)
+                | EvaluatedValue::List(_)
+                | EvaluatedValue::Function(_) => None,
             },
         )
         .map_or_else(V::Error, V::Ready),
@@ -373,7 +457,19 @@ where
             expected,
             |value| match value {
                 EvaluatedValue::BitArray(value) => Some(value.clone()),
-                _ => None,
+                EvaluatedValue::Parameter(_)
+                | EvaluatedValue::Int(_)
+                | EvaluatedValue::Float(_)
+                | EvaluatedValue::String(_)
+                | EvaluatedValue::UtfCodepoint(_)
+                | EvaluatedValue::Custom(_)
+                | EvaluatedValue::External(_)
+                | EvaluatedValue::Bool(_)
+                | EvaluatedValue::Nil
+                | EvaluatedValue::Tuple(_)
+                | EvaluatedValue::ParameterList(_)
+                | EvaluatedValue::List(_)
+                | EvaluatedValue::Function(_) => None,
             },
         )
         .map_or_else(V::Error, V::Ready),
@@ -439,7 +535,19 @@ where
             expected,
             |value| match value {
                 EvaluatedValue::UtfCodepoint(value) => Some(*value),
-                _ => None,
+                EvaluatedValue::Parameter(_)
+                | EvaluatedValue::Int(_)
+                | EvaluatedValue::Float(_)
+                | EvaluatedValue::String(_)
+                | EvaluatedValue::BitArray(_)
+                | EvaluatedValue::Custom(_)
+                | EvaluatedValue::External(_)
+                | EvaluatedValue::Bool(_)
+                | EvaluatedValue::Nil
+                | EvaluatedValue::Tuple(_)
+                | EvaluatedValue::ParameterList(_)
+                | EvaluatedValue::List(_)
+                | EvaluatedValue::Function(_) => None,
             },
         )
         .map_or_else(V::Error, V::Ready),
@@ -451,7 +559,19 @@ where
             expected,
             |value| match value {
                 EvaluatedValue::UtfCodepoint(value) => Some(*value),
-                _ => None,
+                EvaluatedValue::Parameter(_)
+                | EvaluatedValue::Int(_)
+                | EvaluatedValue::Float(_)
+                | EvaluatedValue::String(_)
+                | EvaluatedValue::BitArray(_)
+                | EvaluatedValue::Custom(_)
+                | EvaluatedValue::External(_)
+                | EvaluatedValue::Bool(_)
+                | EvaluatedValue::Nil
+                | EvaluatedValue::Tuple(_)
+                | EvaluatedValue::ParameterList(_)
+                | EvaluatedValue::List(_)
+                | EvaluatedValue::Function(_) => None,
             },
         )
         .map_or_else(V::Error, V::Ready),
@@ -522,7 +642,19 @@ where
             expected,
             |value| match value {
                 EvaluatedValue::Parameter(value) => Some(value.clone()),
-                _ => None,
+                EvaluatedValue::Int(_)
+                | EvaluatedValue::Float(_)
+                | EvaluatedValue::String(_)
+                | EvaluatedValue::BitArray(_)
+                | EvaluatedValue::UtfCodepoint(_)
+                | EvaluatedValue::Custom(_)
+                | EvaluatedValue::External(_)
+                | EvaluatedValue::Bool(_)
+                | EvaluatedValue::Nil
+                | EvaluatedValue::Tuple(_)
+                | EvaluatedValue::ParameterList(_)
+                | EvaluatedValue::List(_)
+                | EvaluatedValue::Function(_) => None,
             },
         )
         .map_or_else(V::Error, V::Ready),
@@ -534,7 +666,19 @@ where
             expected,
             |value| match value {
                 EvaluatedValue::Parameter(value) => Some(value.clone()),
-                _ => None,
+                EvaluatedValue::Int(_)
+                | EvaluatedValue::Float(_)
+                | EvaluatedValue::String(_)
+                | EvaluatedValue::BitArray(_)
+                | EvaluatedValue::UtfCodepoint(_)
+                | EvaluatedValue::Custom(_)
+                | EvaluatedValue::External(_)
+                | EvaluatedValue::Bool(_)
+                | EvaluatedValue::Nil
+                | EvaluatedValue::Tuple(_)
+                | EvaluatedValue::ParameterList(_)
+                | EvaluatedValue::List(_)
+                | EvaluatedValue::Function(_) => None,
             },
         )
         .map_or_else(V::Error, V::Ready),
@@ -616,7 +760,19 @@ where
             expected,
             |value| match value {
                 EvaluatedValue::Custom(value) => Some(value.clone()),
-                _ => None,
+                EvaluatedValue::Parameter(_)
+                | EvaluatedValue::Int(_)
+                | EvaluatedValue::Float(_)
+                | EvaluatedValue::String(_)
+                | EvaluatedValue::BitArray(_)
+                | EvaluatedValue::UtfCodepoint(_)
+                | EvaluatedValue::External(_)
+                | EvaluatedValue::Bool(_)
+                | EvaluatedValue::Nil
+                | EvaluatedValue::Tuple(_)
+                | EvaluatedValue::ParameterList(_)
+                | EvaluatedValue::List(_)
+                | EvaluatedValue::Function(_) => None,
             },
         )
         .map_or_else(V::Error, V::Ready),
@@ -628,7 +784,19 @@ where
             expected,
             |value| match value {
                 EvaluatedValue::Custom(value) => Some(value.clone()),
-                _ => None,
+                EvaluatedValue::Parameter(_)
+                | EvaluatedValue::Int(_)
+                | EvaluatedValue::Float(_)
+                | EvaluatedValue::String(_)
+                | EvaluatedValue::BitArray(_)
+                | EvaluatedValue::UtfCodepoint(_)
+                | EvaluatedValue::External(_)
+                | EvaluatedValue::Bool(_)
+                | EvaluatedValue::Nil
+                | EvaluatedValue::Tuple(_)
+                | EvaluatedValue::ParameterList(_)
+                | EvaluatedValue::List(_)
+                | EvaluatedValue::Function(_) => None,
             },
         )
         .map_or_else(V::Error, V::Ready),
@@ -696,7 +864,19 @@ where
             expected,
             |value| match value {
                 EvaluatedValue::Bool(value) => Some(*value),
-                _ => None,
+                EvaluatedValue::Parameter(_)
+                | EvaluatedValue::Int(_)
+                | EvaluatedValue::Float(_)
+                | EvaluatedValue::String(_)
+                | EvaluatedValue::BitArray(_)
+                | EvaluatedValue::UtfCodepoint(_)
+                | EvaluatedValue::Custom(_)
+                | EvaluatedValue::External(_)
+                | EvaluatedValue::Nil
+                | EvaluatedValue::Tuple(_)
+                | EvaluatedValue::ParameterList(_)
+                | EvaluatedValue::List(_)
+                | EvaluatedValue::Function(_) => None,
             },
         )
         .map_or_else(V::Error, V::Ready),
@@ -708,7 +888,19 @@ where
             expected,
             |value| match value {
                 EvaluatedValue::Bool(value) => Some(*value),
-                _ => None,
+                EvaluatedValue::Parameter(_)
+                | EvaluatedValue::Int(_)
+                | EvaluatedValue::Float(_)
+                | EvaluatedValue::String(_)
+                | EvaluatedValue::BitArray(_)
+                | EvaluatedValue::UtfCodepoint(_)
+                | EvaluatedValue::Custom(_)
+                | EvaluatedValue::External(_)
+                | EvaluatedValue::Nil
+                | EvaluatedValue::Tuple(_)
+                | EvaluatedValue::ParameterList(_)
+                | EvaluatedValue::List(_)
+                | EvaluatedValue::Function(_) => None,
             },
         )
         .map_or_else(V::Error, V::Ready),
@@ -841,7 +1033,19 @@ where
             expected,
             |value| match value {
                 EvaluatedValue::Tuple(value) => Some(value.clone()),
-                _ => None,
+                EvaluatedValue::Parameter(_)
+                | EvaluatedValue::Int(_)
+                | EvaluatedValue::Float(_)
+                | EvaluatedValue::String(_)
+                | EvaluatedValue::BitArray(_)
+                | EvaluatedValue::UtfCodepoint(_)
+                | EvaluatedValue::Custom(_)
+                | EvaluatedValue::External(_)
+                | EvaluatedValue::Bool(_)
+                | EvaluatedValue::Nil
+                | EvaluatedValue::ParameterList(_)
+                | EvaluatedValue::List(_)
+                | EvaluatedValue::Function(_) => None,
             },
         )
         .map_or_else(V::Error, V::Ready),
@@ -853,7 +1057,19 @@ where
             expected,
             |value| match value {
                 EvaluatedValue::Tuple(value) => Some(value.clone()),
-                _ => None,
+                EvaluatedValue::Parameter(_)
+                | EvaluatedValue::Int(_)
+                | EvaluatedValue::Float(_)
+                | EvaluatedValue::String(_)
+                | EvaluatedValue::BitArray(_)
+                | EvaluatedValue::UtfCodepoint(_)
+                | EvaluatedValue::Custom(_)
+                | EvaluatedValue::External(_)
+                | EvaluatedValue::Bool(_)
+                | EvaluatedValue::Nil
+                | EvaluatedValue::ParameterList(_)
+                | EvaluatedValue::List(_)
+                | EvaluatedValue::Function(_) => None,
             },
         )
         .map_or_else(V::Error, V::Ready),
@@ -1008,7 +1224,19 @@ mod tests {
     fn string_value(value: &EvaluatedValue) -> Option<StringValue> {
         match value {
             EvaluatedValue::String(value) => Some(value.clone()),
-            _ => None,
+            EvaluatedValue::Parameter(_)
+            | EvaluatedValue::Int(_)
+            | EvaluatedValue::Float(_)
+            | EvaluatedValue::BitArray(_)
+            | EvaluatedValue::UtfCodepoint(_)
+            | EvaluatedValue::Custom(_)
+            | EvaluatedValue::External(_)
+            | EvaluatedValue::Bool(_)
+            | EvaluatedValue::Nil
+            | EvaluatedValue::Tuple(_)
+            | EvaluatedValue::ParameterList(_)
+            | EvaluatedValue::List(_)
+            | EvaluatedValue::Function(_) => None,
         }
     }
 
@@ -1759,7 +1987,32 @@ pub fn main() -> {return_type} {{ {expression} }}
             .find_map(
                 |instruction| match instruction.value().unwrap().output().local {
                     ParamLocal::Custom(local) => Some(local),
-                    _ => None,
+                    ParamLocal::Int(_)
+                    | ParamLocal::Float(_)
+                    | ParamLocal::String(_)
+                    | ParamLocal::BitArray(_)
+                    | ParamLocal::UtfCodepoint(_)
+                    | ParamLocal::Parameter { .. }
+                    | ParamLocal::External(_)
+                    | ParamLocal::Bool(_)
+                    | ParamLocal::Nil(_)
+                    | ParamLocal::Tuple { .. }
+                    | ParamLocal::List(_)
+                    | ParamLocal::IntFunction { .. }
+                    | ParamLocal::FloatFunction { .. }
+                    | ParamLocal::StringFunction { .. }
+                    | ParamLocal::BitArrayFunction { .. }
+                    | ParamLocal::UtfCodepointFunction { .. }
+                    | ParamLocal::ParameterFunction { .. }
+                    | ParamLocal::GenericFunction(_)
+                    | ParamLocal::NeverFunction(_)
+                    | ParamLocal::CustomFunction(_)
+                    | ParamLocal::ExternalFunction(_)
+                    | ParamLocal::BoolFunction { .. }
+                    | ParamLocal::NilFunction { .. }
+                    | ParamLocal::TupleFunction { .. }
+                    | ParamLocal::ListFunction(_)
+                    | ParamLocal::FunctionFunction(_) => None,
                 },
             )
             .unwrap();
@@ -2053,7 +2306,16 @@ pub fn main() -> {return_type} {{ {expression} }}
                     )],
                 )
             }
-            _ => (
+            ValueType::Parameter(_)
+            | ValueType::Float
+            | ValueType::String
+            | ValueType::BitArray
+            | ValueType::UtfCodepoint
+            | ValueType::Bool
+            | ValueType::Nil
+            | ValueType::Tuple(_)
+            | ValueType::Custom(_)
+            | ValueType::External(_) => (
                 ValueType::Int,
                 Expr::int(IntExpr::value(1.into())),
                 Vec::new(),

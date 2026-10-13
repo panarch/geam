@@ -224,7 +224,9 @@ fn repository_path(parent: Option<&Utf8Path>, child: &Utf8Path) -> Option<Utf8Pa
             Utf8Component::Normal(name) => path.push(name),
             Utf8Component::CurDir => (),
             Utf8Component::ParentDir if path.pop() => (),
-            _ => return None,
+            Utf8Component::Prefix(_) | Utf8Component::RootDir | Utf8Component::ParentDir => {
+                return None;
+            }
         }
     }
     Some(path)
@@ -240,7 +242,7 @@ fn validate_package(
     }
     let root = match &package.source {
         ManifestPackageSource::Local { path } => project_root.join(path),
-        _ => project_root
+        ManifestPackageSource::Hex { .. } | ManifestPackageSource::Git { .. } => project_root
             .join("build/packages")
             .join(package.name.as_str()),
     };

@@ -389,7 +389,14 @@ pub fn main() { #(cycle, captured(7)) }
     fn completed(progress: Progress<'_, HostedProgram<StatelessHostProfile>>) -> CallInteger {
         match progress {
             Progress::CallComplete(CallOutput::Int(completed)) => completed,
-            _ => panic!("native workspace fixture must have completed"),
+            Progress::Continue(_)
+            | Progress::Host(_)
+            | Progress::GeneratedHost { .. }
+            | Progress::Complete(_)
+            | Progress::CallComplete(_)
+            | Progress::CallInterpreted { .. } => {
+                panic!("native workspace fixture must have completed")
+            }
         }
     }
 }

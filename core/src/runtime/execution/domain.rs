@@ -588,7 +588,11 @@ pub fn main() { #(cycle, captured(7), computed(7)) }
                                 .unwrap()
                                 .unwrap();
                         }
-                        progress => {
+                        progress @ (Progress::Continue(_)
+                        | Progress::GeneratedHost { .. }
+                        | Progress::Complete(_)
+                        | Progress::CallComplete(_)
+                        | Progress::CallInterpreted { .. }) => {
                             match crate::runtime::graph::tests::canonical_progress(progress) {
                                 crate::runtime::graph::tests::CanonicalProgress::Continue(next) => {
                                     execution = next
@@ -4618,7 +4622,18 @@ pub fn observe_failed() {
     fn tuple_return(value: &ValueType) -> Vec<ValueType> {
         match value {
             ValueType::Tuple(elements) => elements.clone(),
-            _ => panic!("fixture entry must return a tuple"),
+            ValueType::Parameter(_)
+            | ValueType::Int
+            | ValueType::Float
+            | ValueType::String
+            | ValueType::BitArray
+            | ValueType::UtfCodepoint
+            | ValueType::Bool
+            | ValueType::Nil
+            | ValueType::List(_)
+            | ValueType::Function(_)
+            | ValueType::Custom(_)
+            | ValueType::External(_) => panic!("fixture entry must return a tuple"),
         }
     }
 
@@ -4628,7 +4643,19 @@ pub fn observe_failed() {
         let values: &[_; N] = values.try_into().expect("fixture external tuple length");
         values.each_ref().map(|value| match value {
             EvaluatedValue::External(value) => value,
-            _ => panic!("fixture tuple must contain external values"),
+            EvaluatedValue::Parameter(_)
+            | EvaluatedValue::Int(_)
+            | EvaluatedValue::Float(_)
+            | EvaluatedValue::String(_)
+            | EvaluatedValue::BitArray(_)
+            | EvaluatedValue::UtfCodepoint(_)
+            | EvaluatedValue::Custom(_)
+            | EvaluatedValue::Bool(_)
+            | EvaluatedValue::Nil
+            | EvaluatedValue::Tuple(_)
+            | EvaluatedValue::ParameterList(_)
+            | EvaluatedValue::List(_)
+            | EvaluatedValue::Function(_) => panic!("fixture tuple must contain external values"),
         })
     }
 
@@ -4652,14 +4679,18 @@ pub fn observe_failed() {
     fn host_error(error: &crate::ExecutionError) -> &crate::HostError {
         match error {
             crate::ExecutionError::Host(error) => error,
-            _ => panic!("fixture must fail in a host provider"),
+            crate::ExecutionError::Panic(_) | crate::ExecutionError::Invariant(_) => {
+                panic!("fixture must fail in a host provider")
+            }
         }
     }
 
     fn source_panic(error: &crate::ExecutionError) -> &crate::Panic<crate::PanicValue> {
         match error {
             crate::ExecutionError::Panic(error) => error,
-            _ => panic!("fixture must stop with a source panic"),
+            crate::ExecutionError::Invariant(_) | crate::ExecutionError::Host(_) => {
+                panic!("fixture must stop with a source panic")
+            }
         }
     }
 
@@ -5016,7 +5047,7 @@ mod work_requests {
                     plan.host_value_function(function).metadata_handle(),
                 )))
             }
-            _ => None,
+            ExecutionFunctionRef::Graph(_) | ExecutionFunctionRef::Host(_) => None,
         }
     }
 
@@ -5571,14 +5602,18 @@ pub fn make() { #(fn(value: Int) {
     fn host_error(error: &crate::ExecutionError) -> &crate::HostError {
         match error {
             crate::ExecutionError::Host(error) => error,
-            _ => panic!("fixture must fail in a host provider"),
+            crate::ExecutionError::Panic(_) | crate::ExecutionError::Invariant(_) => {
+                panic!("fixture must fail in a host provider")
+            }
         }
     }
 
     fn source_panic(error: &crate::ExecutionError) -> &crate::Panic<crate::PanicValue> {
         match error {
             crate::ExecutionError::Panic(error) => error,
-            _ => panic!("fixture must stop with a source panic"),
+            crate::ExecutionError::Invariant(_) | crate::ExecutionError::Host(_) => {
+                panic!("fixture must stop with a source panic")
+            }
         }
     }
 
@@ -5831,7 +5866,13 @@ pub fn main() { let first = append("input") append(first) }
                         }
                         GeneratedNativePhase::Progress(CallProgress::Complete { output, execution })
                     }
-                    phase => phase,
+                    phase @ (GeneratedNativePhase::Progress(_)
+                    | GeneratedNativePhase::TupleInvoke { .. }
+                    | GeneratedNativePhase::TupleDeliver { .. }
+                    | GeneratedNativePhase::CustomInvoke { .. }
+                    | GeneratedNativePhase::CustomDeliver { .. }
+                    | GeneratedNativePhase::Invoke { .. }
+                    | GeneratedNativePhase::Deliver { .. }) => phase,
                 };
             };
             assert_eq!(grants, 7);
@@ -5864,7 +5905,15 @@ pub fn main() { let first = append("input") append(first) }
                     output: CallOutput::String(value),
                     ..
                 }) => value,
-                _ => panic!("a root tail Native must publish its delivered String completion"),
+                GeneratedNativePhase::Progress(_)
+                | GeneratedNativePhase::TupleInvoke { .. }
+                | GeneratedNativePhase::TupleDeliver { .. }
+                | GeneratedNativePhase::CustomInvoke { .. }
+                | GeneratedNativePhase::CustomDeliver { .. }
+                | GeneratedNativePhase::Invoke { .. }
+                | GeneratedNativePhase::Deliver { .. } => {
+                    panic!("a root tail Native must publish its delivered String completion")
+                }
             }
         }
 
@@ -6518,7 +6567,21 @@ mod compound_native_tests {
                         site,
                         ..
                     }) => strings.push((*function, site.clone())),
-                    _ => {}
+                    ProfiledInstructionKind::Int(_)
+                    | ProfiledInstructionKind::Float(_)
+                    | ProfiledInstructionKind::String(_)
+                    | ProfiledInstructionKind::BitArray(_)
+                    | ProfiledInstructionKind::UtfCodepoint(_)
+                    | ProfiledInstructionKind::Parameter(_)
+                    | ProfiledInstructionKind::Custom(_)
+                    | ProfiledInstructionKind::External(_)
+                    | ProfiledInstructionKind::ExternalList(_)
+                    | ProfiledInstructionKind::ExternalFunction(_)
+                    | ProfiledInstructionKind::Bool(_)
+                    | ProfiledInstructionKind::Nil(_)
+                    | ProfiledInstructionKind::Tuple(_)
+                    | ProfiledInstructionKind::List(_)
+                    | ProfiledInstructionKind::Function(_) => {}
                 }
             }
             assert_eq!((customs.len(), tuples.len(), strings.len()), (1, 1, 1));
@@ -6992,7 +7055,7 @@ pub fn main() { #(mark(), pair("input"), mirror("input")) }
                 };
                 let resume = match declined.phase {
                     GeneratedNativePhase::Progress(CallProgress::String { arguments, resume, .. }) => Some((arguments, resume)),
-                    phase => { drop(phase); None }
+                    phase @ (GeneratedNativePhase::Progress(_) | GeneratedNativePhase::TupleInvoke { .. } | GeneratedNativePhase::TupleDeliver { .. } | GeneratedNativePhase::CustomInvoke { .. } | GeneratedNativePhase::CustomDeliver { .. } | GeneratedNativePhase::Invoke { .. } | GeneratedNativePhase::Deliver { .. }) => { drop(phase); None }
                 };
                 assert_eq!(resume.is_some(), !native);
                 // The original canonical caller owns this invocation. Native

@@ -125,7 +125,18 @@ where
                     &parameter_list
                 }
                 EvaluatedValueRef::List(value) => value,
-                _ => return Ok(false),
+                EvaluatedValueRef::Int(_)
+                | EvaluatedValueRef::Float(_)
+                | EvaluatedValueRef::String(_)
+                | EvaluatedValueRef::BitArray(_)
+                | EvaluatedValueRef::UtfCodepoint(_)
+                | EvaluatedValueRef::Parameter(_)
+                | EvaluatedValueRef::Custom(_)
+                | EvaluatedValueRef::External(_)
+                | EvaluatedValueRef::Bool(_)
+                | EvaluatedValueRef::Nil
+                | EvaluatedValueRef::Tuple(_)
+                | EvaluatedValueRef::Function(_) => return Ok(false),
             };
             matches_list(plan, lists, environment, pattern, value, bindings)
         }
@@ -213,7 +224,17 @@ where
             Ok(true)
         }
         MatchPattern::Discard => Ok(true),
-        _ => matches(
+        MatchPattern::Int(_)
+        | MatchPattern::Float(_)
+        | MatchPattern::String(_)
+        | MatchPattern::Bool(_)
+        | MatchPattern::Nil
+        | MatchPattern::Tuple(_)
+        | MatchPattern::List(_)
+        | MatchPattern::BitArray(_)
+        | MatchPattern::Custom { .. }
+        | MatchPattern::StringPrefix { .. }
+        | MatchPattern::Alias { .. } => matches(
             plan,
             lists,
             environment,
@@ -2029,7 +2050,18 @@ pub fn main() {
     fn list_pattern(pattern: &MatchPattern) -> &MatchPatternList {
         match pattern {
             MatchPattern::List(pattern) => pattern,
-            _ => panic!("fixture pattern should be a list"),
+            MatchPattern::Bind(_)
+            | MatchPattern::Discard
+            | MatchPattern::Int(_)
+            | MatchPattern::Float(_)
+            | MatchPattern::String(_)
+            | MatchPattern::Bool(_)
+            | MatchPattern::Nil
+            | MatchPattern::Tuple(_)
+            | MatchPattern::BitArray(_)
+            | MatchPattern::Custom { .. }
+            | MatchPattern::StringPrefix { .. }
+            | MatchPattern::Alias { .. } => panic!("fixture pattern should be a list"),
         }
     }
 
@@ -2038,7 +2070,20 @@ pub fn main() {
     ) -> crate::plan::execution::type_::CustomConstructorId {
         match pattern {
             MatchPattern::Custom { constructor, .. } => *constructor,
-            _ => panic!("fixture pattern should be a custom constructor"),
+            MatchPattern::Bind(_)
+            | MatchPattern::Discard
+            | MatchPattern::Int(_)
+            | MatchPattern::Float(_)
+            | MatchPattern::String(_)
+            | MatchPattern::Bool(_)
+            | MatchPattern::Nil
+            | MatchPattern::Tuple(_)
+            | MatchPattern::List(_)
+            | MatchPattern::BitArray(_)
+            | MatchPattern::StringPrefix { .. }
+            | MatchPattern::Alias { .. } => {
+                panic!("fixture pattern should be a custom constructor")
+            }
         }
     }
 
@@ -2057,11 +2102,50 @@ pub fn main() {
                     MatchPattern::Custom {
                         constructor: inner, ..
                     } => (*outer, *inner),
-                    _ => panic!("fixture pattern should contain nested custom constructors"),
+                    MatchPattern::Bind(_)
+                    | MatchPattern::Discard
+                    | MatchPattern::Int(_)
+                    | MatchPattern::Float(_)
+                    | MatchPattern::String(_)
+                    | MatchPattern::Bool(_)
+                    | MatchPattern::Nil
+                    | MatchPattern::Tuple(_)
+                    | MatchPattern::List(_)
+                    | MatchPattern::BitArray(_)
+                    | MatchPattern::StringPrefix { .. }
+                    | MatchPattern::Alias { .. } => {
+                        panic!("fixture pattern should contain nested custom constructors")
+                    }
                 },
-                _ => panic!("fixture pattern should contain nested custom constructors"),
+                MatchPattern::Bind(_)
+                | MatchPattern::Discard
+                | MatchPattern::Int(_)
+                | MatchPattern::Float(_)
+                | MatchPattern::String(_)
+                | MatchPattern::Bool(_)
+                | MatchPattern::Nil
+                | MatchPattern::Tuple(_)
+                | MatchPattern::List(_)
+                | MatchPattern::BitArray(_)
+                | MatchPattern::StringPrefix { .. }
+                | MatchPattern::Alias { .. } => {
+                    panic!("fixture pattern should contain nested custom constructors")
+                }
             },
-            _ => panic!("fixture pattern should contain nested custom constructors"),
+            MatchPattern::Bind(_)
+            | MatchPattern::Discard
+            | MatchPattern::Int(_)
+            | MatchPattern::Float(_)
+            | MatchPattern::String(_)
+            | MatchPattern::Bool(_)
+            | MatchPattern::Nil
+            | MatchPattern::Tuple(_)
+            | MatchPattern::List(_)
+            | MatchPattern::BitArray(_)
+            | MatchPattern::Custom { .. }
+            | MatchPattern::StringPrefix { .. } => {
+                panic!("fixture pattern should contain nested custom constructors")
+            }
         }
     }
 
@@ -2079,9 +2163,8 @@ pub fn main() {
     }
 
     fn main_pattern(plan: &ExecutionPlan) -> &MatchPattern {
-        let main = match plan.main_runtime() {
-            RuntimeFunctionId::Core(CoreRuntimeFunctionId::Int(id)) => id,
-            _ => panic!("fixture main should return Int"),
+        let RuntimeFunctionId::Core(CoreRuntimeFunctionId::Int(main)) = plan.main_runtime() else {
+            panic!("fixture main should return Int");
         };
         plan.int_function(main)
             .body()

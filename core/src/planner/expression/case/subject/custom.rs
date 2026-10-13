@@ -7,7 +7,7 @@ use crate::planner::context::PlanContext;
 use crate::planner::error::PlanError;
 use crate::planner::pattern::{PlannedCustomBinding, plan_custom_subject_pattern};
 use ecow::EcoString;
-use gleam_compiler_core::ast::{TypedExpr, TypedPattern};
+use gleam_compiler_core::ast::{Pattern, TypedExpr, TypedPattern};
 use gleam_compiler_core::type_::Type;
 use std::sync::Arc;
 
@@ -69,7 +69,7 @@ fn plan_pattern(
     )?;
     let (pattern, mut whole_bindings) = strip_whole_aliases(pattern);
     match pattern {
-        gleam_compiler_core::ast::Pattern::Variable { name, .. } => {
+        Pattern::Variable { name, .. } => {
             whole_bindings.insert(0, name);
             Ok(PlannedCustomPattern {
                 pattern: OrderedCasePattern {
@@ -81,7 +81,7 @@ fn plan_pattern(
                 custom_binding: None,
             })
         }
-        gleam_compiler_core::ast::Pattern::Discard { .. } => Ok(PlannedCustomPattern {
+        Pattern::Discard { .. } => Ok(PlannedCustomPattern {
             pattern: OrderedCasePattern {
                 match_condition: BoolExpr::value(true),
                 branch_bindings: super::branch_bindings(&whole_bindings, Expr::custom(subject)),
@@ -90,7 +90,17 @@ fn plan_pattern(
             },
             custom_binding: None,
         }),
-        pattern => {
+        pattern @ (Pattern::Int { .. }
+        | Pattern::Float { .. }
+        | Pattern::String { .. }
+        | Pattern::BitArraySize(_)
+        | Pattern::Assign { .. }
+        | Pattern::List { .. }
+        | Pattern::Constructor { .. }
+        | Pattern::Tuple { .. }
+        | Pattern::BitArray { .. }
+        | Pattern::StringPrefix { .. }
+        | Pattern::Invalid { .. }) => {
             let pattern = plan_custom_subject_pattern(pattern, subject.shape().clone(), context)?;
             let binding_value = if whole_bindings.is_empty() {
                 Expr::custom(subject.clone())
@@ -120,12 +130,23 @@ struct PlannedCustomPattern {
 
 fn strip_whole_aliases(pattern: TypedPattern) -> (TypedPattern, Vec<EcoString>) {
     match pattern {
-        gleam_compiler_core::ast::Pattern::Assign { name, pattern, .. } => {
+        Pattern::Assign { name, pattern, .. } => {
             let (pattern, mut bindings) = strip_whole_aliases(*pattern);
             bindings.push(name);
             (pattern, bindings)
         }
-        pattern => (pattern, Vec::new()),
+        pattern @ (Pattern::Int { .. }
+        | Pattern::Float { .. }
+        | Pattern::String { .. }
+        | Pattern::Variable { .. }
+        | Pattern::BitArraySize(_)
+        | Pattern::Discard { .. }
+        | Pattern::List { .. }
+        | Pattern::Constructor { .. }
+        | Pattern::Tuple { .. }
+        | Pattern::BitArray { .. }
+        | Pattern::StringPrefix { .. }
+        | Pattern::Invalid { .. }) => (pattern, Vec::new()),
     }
 }
 
@@ -163,6 +184,7 @@ mod tests {
     use crate::planner::{
         InvalidCaseShapeReason, InvalidExpressionType, InvalidTypedAstReason, PlanError,
     };
+    use gleam_compiler_core::ast::Pattern;
     use gleam_compiler_core::type_::error::VariableOrigin;
     use num_bigint::BigInt;
     use std::collections::HashMap;
@@ -279,16 +301,16 @@ pub fn main() {
     #[test]
     fn whole_custom_pattern_aliases_preserve_inner_to_outer_binding_order() {
         let custom_type = custom_type();
-        let variable = gleam_compiler_core::ast::Pattern::Variable {
+        let variable = Pattern::Variable {
             location: dummy_span(),
             name: "value".into(),
             type_: custom_type,
             origin: VariableOrigin::generated(),
         };
-        let pattern = gleam_compiler_core::ast::Pattern::Assign {
+        let pattern = Pattern::Assign {
             location: dummy_span(),
             name: "outer".into(),
-            pattern: Box::new(gleam_compiler_core::ast::Pattern::Assign {
+            pattern: Box::new(Pattern::Assign {
                 location: dummy_span(),
                 name: "inner".into(),
                 pattern: Box::new(variable.clone()),
@@ -462,7 +484,7 @@ pub fn main() { 0 }
         let (_, _, clauses) = super::super::super::expect_case_statement_mut(
             &mut module.definitions.functions[0].body[0],
         );
-        clauses[0].pattern[0] = gleam_compiler_core::ast::Pattern::Discard {
+        clauses[0].pattern[0] = Pattern::Discard {
             name: "_".into(),
             location: dummy_span(),
             type_: gleam_compiler_core::type_::named(
@@ -499,7 +521,7 @@ pub fn main() { 0 }
         );
 
         let planned = super::plan_pattern(
-            gleam_compiler_core::ast::Pattern::Variable {
+            Pattern::Variable {
                 name: "bound".into(),
                 location: dummy_span(),
                 type_: custom_type(),
@@ -520,7 +542,7 @@ pub fn main() { 0 }
 
         assert_eq!(
             super::plan_pattern(
-                gleam_compiler_core::ast::Pattern::Discard {
+                Pattern::Discard {
                     name: "_".into(),
                     location: dummy_span(),
                     type_: gleam_compiler_core::type_::named(
@@ -542,13 +564,11 @@ pub fn main() { 0 }
         );
         assert_eq!(
             super::plan_pattern(
-                gleam_compiler_core::ast::Pattern::BitArraySize(
-                    gleam_compiler_core::ast::BitArraySize::Int {
-                        location: dummy_span(),
-                        value: "1".into(),
-                        int_value: BigInt::from(1),
-                    }
-                ),
+                Pattern::BitArraySize(gleam_compiler_core::ast::BitArraySize::Int {
+                    location: dummy_span(),
+                    value: "1".into(),
+                    int_value: BigInt::from(1),
+                }),
                 subject,
                 &mut context,
             )
@@ -600,7 +620,7 @@ pub fn main() { 0 }
         let (_, _, clauses) = super::super::super::expect_case_statement_mut(
             &mut invalid_pattern.definitions.functions[0].body[0],
         );
-        clauses[0].pattern[0] = gleam_compiler_core::ast::Pattern::Invalid {
+        clauses[0].pattern[0] = Pattern::Invalid {
             location: dummy_span(),
             type_: custom_type(),
         };

@@ -168,7 +168,17 @@ fn plan_segment(
         None => match value_type {
             ValueType::Int => SegmentKind::Int,
             ValueType::Float => SegmentKind::Float,
-            actual => {
+            actual @ (ValueType::Parameter(_)
+            | ValueType::String
+            | ValueType::BitArray
+            | ValueType::UtfCodepoint
+            | ValueType::Bool
+            | ValueType::Nil
+            | ValueType::Tuple(_)
+            | ValueType::List(_)
+            | ValueType::Function(_)
+            | ValueType::Custom(_)
+            | ValueType::External(_)) => {
                 return Err(PlanError::InvalidTypedAst {
                     reason: InvalidTypedAstReason::ExpressionShape {
                         kind: InvalidExpressionShapeKind::BitArrayImplicitKind { actual },
@@ -328,14 +338,46 @@ fn set_kind(kind: &mut Option<SegmentKind>, value: SegmentKind) -> Result<(), Pl
 fn typed_expr_int_literal(value: &TypedExpr) -> Option<BigInt> {
     match value {
         TypedExpr::Int { int_value, .. } => Some(int_value.clone()),
-        _ => None,
+        TypedExpr::Float { .. }
+        | TypedExpr::String { .. }
+        | TypedExpr::Block { .. }
+        | TypedExpr::Pipeline { .. }
+        | TypedExpr::Var { .. }
+        | TypedExpr::Fn { .. }
+        | TypedExpr::List { .. }
+        | TypedExpr::Call { .. }
+        | TypedExpr::BinOp { .. }
+        | TypedExpr::Case { .. }
+        | TypedExpr::RecordAccess { .. }
+        | TypedExpr::PositionalAccess { .. }
+        | TypedExpr::ModuleSelect { .. }
+        | TypedExpr::Tuple { .. }
+        | TypedExpr::TupleIndex { .. }
+        | TypedExpr::Todo { .. }
+        | TypedExpr::Panic { .. }
+        | TypedExpr::Echo { .. }
+        | TypedExpr::BitArray { .. }
+        | TypedExpr::RecordUpdate { .. }
+        | TypedExpr::NegateBool { .. }
+        | TypedExpr::NegateInt { .. }
+        | TypedExpr::Invalid { .. } => None,
     }
 }
 
 fn constant_int_literal(value: &Constant<Arc<Type>>) -> Option<BigInt> {
     match value {
         Constant::Int { int_value, .. } => Some(int_value.clone()),
-        _ => None,
+        Constant::Float { .. }
+        | Constant::String { .. }
+        | Constant::Tuple { .. }
+        | Constant::List { .. }
+        | Constant::Record { .. }
+        | Constant::RecordUpdate { .. }
+        | Constant::BitArray { .. }
+        | Constant::Var { .. }
+        | Constant::StringConcatenation { .. }
+        | Constant::Invalid { .. }
+        | Constant::Todo { .. } => None,
     }
 }
 

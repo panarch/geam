@@ -252,7 +252,8 @@ impl<Graph: ExecutionGraphProfile> CallGroupCodegen<'_, '_, Graph> {
         if self.has_canonical_step() {
             source.open("FunctionStep::Canonical { target, point, values } => {\n");
             source.open("match target {\n");
-            for family in self.return_families() {
+            let handled_families = self.return_families();
+            for &family in &handled_families {
                 let stack = format!("self.{}", family.return_stack());
                 source.open(&format!(
                     "data::compiled::CallTarget::{family}(function) => {{\n"
@@ -277,9 +278,15 @@ impl<Graph: ExecutionGraphProfile> CallGroupCodegen<'_, '_, Graph> {
                 ));
                 source.close("},\n");
             }
-            if self.return_families().len() < return_families().len() {
+            let other_targets = return_families()
+                .into_iter()
+                .filter(|family| !handled_families.contains(family))
+                .map(|family| format!("data::compiled::CallTarget::{family}(_)"))
+                .collect::<Vec<_>>()
+                .join("\n| ");
+            if !other_targets.is_empty() {
                 source.push_str(&format!(
-                    "_ => {handoff_prefix}{},\n",
+                    "{other_targets} => {handoff_prefix}{},\n",
                     progress("CallProgress::Interpreted { target, point, values }")
                 ));
             }
@@ -388,7 +395,21 @@ pub fn main() { #(forward("input"), 7) }
                     }
                     CallProgress::Interpreted { target, point, values }
                 },
-                _ => CallProgress::Interpreted { target, point, values },
+                data::compiled::CallTarget::Int(_)
+                | data::compiled::CallTarget::Bool(_)
+                | data::compiled::CallTarget::IntFunction(_)
+                | data::compiled::CallTarget::BoolFunction(_)
+                | data::compiled::CallTarget::Float(_)
+                | data::compiled::CallTarget::BitArray(_)
+                | data::compiled::CallTarget::UtfCodepoint(_)
+                | data::compiled::CallTarget::Nil(_)
+                | data::compiled::CallTarget::FloatFunction(_)
+                | data::compiled::CallTarget::StringFunction(_)
+                | data::compiled::CallTarget::BitArrayFunction(_)
+                | data::compiled::CallTarget::UtfCodepointFunction(_)
+                | data::compiled::CallTarget::NilFunction(_)
+                | data::compiled::CallTarget::Custom(_)
+                | data::compiled::CallTarget::Tuple(_) => CallProgress::Interpreted { target, point, values },
             }
         },
     }
@@ -449,7 +470,21 @@ pub fn main() -> Int {
                     }
                     CallProgress::Interpreted { target, point, values }
                 },
-                _ => CallProgress::Interpreted { target, point, values },
+                data::compiled::CallTarget::Bool(_)
+                | data::compiled::CallTarget::IntFunction(_)
+                | data::compiled::CallTarget::BoolFunction(_)
+                | data::compiled::CallTarget::Float(_)
+                | data::compiled::CallTarget::String(_)
+                | data::compiled::CallTarget::BitArray(_)
+                | data::compiled::CallTarget::UtfCodepoint(_)
+                | data::compiled::CallTarget::Nil(_)
+                | data::compiled::CallTarget::FloatFunction(_)
+                | data::compiled::CallTarget::StringFunction(_)
+                | data::compiled::CallTarget::BitArrayFunction(_)
+                | data::compiled::CallTarget::UtfCodepointFunction(_)
+                | data::compiled::CallTarget::NilFunction(_)
+                | data::compiled::CallTarget::Custom(_)
+                | data::compiled::CallTarget::Tuple(_) => CallProgress::Interpreted { target, point, values },
             }
         },
     }
@@ -516,7 +551,21 @@ pub fn main() -> String {
                     }
                     CallProgress::Interpreted { target, point, values }
                 },
-                _ => CallProgress::Interpreted { target, point, values },
+                data::compiled::CallTarget::Int(_)
+                | data::compiled::CallTarget::Bool(_)
+                | data::compiled::CallTarget::IntFunction(_)
+                | data::compiled::CallTarget::BoolFunction(_)
+                | data::compiled::CallTarget::Float(_)
+                | data::compiled::CallTarget::BitArray(_)
+                | data::compiled::CallTarget::UtfCodepoint(_)
+                | data::compiled::CallTarget::Nil(_)
+                | data::compiled::CallTarget::FloatFunction(_)
+                | data::compiled::CallTarget::StringFunction(_)
+                | data::compiled::CallTarget::BitArrayFunction(_)
+                | data::compiled::CallTarget::UtfCodepointFunction(_)
+                | data::compiled::CallTarget::NilFunction(_)
+                | data::compiled::CallTarget::Custom(_)
+                | data::compiled::CallTarget::Tuple(_) => CallProgress::Interpreted { target, point, values },
             }
         },
     }
@@ -648,7 +697,21 @@ enum FunctionStep {
                     }
                     CallProgress::Interpreted { target, point, values }
                 },
-                _ => CallProgress::Interpreted { target, point, values },
+                data::compiled::CallTarget::Int(_)
+                | data::compiled::CallTarget::IntFunction(_)
+                | data::compiled::CallTarget::BoolFunction(_)
+                | data::compiled::CallTarget::Float(_)
+                | data::compiled::CallTarget::String(_)
+                | data::compiled::CallTarget::BitArray(_)
+                | data::compiled::CallTarget::UtfCodepoint(_)
+                | data::compiled::CallTarget::Nil(_)
+                | data::compiled::CallTarget::FloatFunction(_)
+                | data::compiled::CallTarget::StringFunction(_)
+                | data::compiled::CallTarget::BitArrayFunction(_)
+                | data::compiled::CallTarget::UtfCodepointFunction(_)
+                | data::compiled::CallTarget::NilFunction(_)
+                | data::compiled::CallTarget::Custom(_)
+                | data::compiled::CallTarget::Tuple(_) => CallProgress::Interpreted { target, point, values },
             }
         },
     }
@@ -741,7 +804,21 @@ enum FunctionStep {
                         }
                         return Ok(Some(CallProgress::Interpreted { target, point, values }));
                     },
-                    _ => return Ok(Some(CallProgress::Interpreted { target, point, values })),
+                    data::compiled::CallTarget::Int(_)
+                    | data::compiled::CallTarget::IntFunction(_)
+                    | data::compiled::CallTarget::BoolFunction(_)
+                    | data::compiled::CallTarget::Float(_)
+                    | data::compiled::CallTarget::String(_)
+                    | data::compiled::CallTarget::BitArray(_)
+                    | data::compiled::CallTarget::UtfCodepoint(_)
+                    | data::compiled::CallTarget::Nil(_)
+                    | data::compiled::CallTarget::FloatFunction(_)
+                    | data::compiled::CallTarget::StringFunction(_)
+                    | data::compiled::CallTarget::BitArrayFunction(_)
+                    | data::compiled::CallTarget::UtfCodepointFunction(_)
+                    | data::compiled::CallTarget::NilFunction(_)
+                    | data::compiled::CallTarget::Custom(_)
+                    | data::compiled::CallTarget::Tuple(_) => return Ok(Some(CallProgress::Interpreted { target, point, values })),
                 }
             },
         }

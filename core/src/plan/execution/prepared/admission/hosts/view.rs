@@ -232,7 +232,20 @@ pub fn main() {
             .iter()
             .find_map(|node| match &node.kind {
                 NativeConversionKind::Function(candidates) => Some(candidates.to_vec()),
-                _ => None,
+                NativeConversionKind::Exact
+                | NativeConversionKind::Parameter(_)
+                | NativeConversionKind::Int
+                | NativeConversionKind::Float
+                | NativeConversionKind::String
+                | NativeConversionKind::BitArray
+                | NativeConversionKind::UtfCodepoint
+                | NativeConversionKind::Bool
+                | NativeConversionKind::Nil
+                | NativeConversionKind::Tuple(_)
+                | NativeConversionKind::List { .. }
+                | NativeConversionKind::Custom(_)
+                | NativeConversionKind::CustomView(_)
+                | NativeConversionKind::External { .. } => None,
             })
             .unwrap();
         let candidate = candidates[0].host;

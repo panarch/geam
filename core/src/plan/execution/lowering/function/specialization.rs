@@ -2973,7 +2973,19 @@ pub fn main() {
     fn returned_exit(terminator: &Terminator) -> BlockGraphExitId {
         match terminator {
             Terminator::Exit(exit) => *exit,
-            _ => panic!("function specialization fixture should return from its entry"),
+            Terminator::Jump(_)
+            | Terminator::BoolBranch(_)
+            | Terminator::TestBranch(_)
+            | Terminator::IntSwitch(_)
+            | Terminator::FloatSwitch(_)
+            | Terminator::StringSwitch(_)
+            | Terminator::Match(_)
+            | Terminator::Echo(_)
+            | Terminator::SourceStop(_)
+            | Terminator::LetAssertPanic(_)
+            | Terminator::NeverCall(_) => {
+                panic!("function specialization fixture should return from its entry")
+            }
         }
     }
 

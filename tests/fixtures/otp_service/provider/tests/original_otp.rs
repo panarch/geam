@@ -287,7 +287,7 @@ fn original_factory_requests_report_missing_names_and_exited_supervisors() {
                 error.function().to_string(),
                 error.failure().message().to_string(),
             )),
-            _ => None,
+            UnitExit::Completed | UnitExit::Cancelled | UnitExit::Failed(_) => None,
         })
         .collect::<Vec<_>>();
     assert_eq!(
@@ -348,7 +348,7 @@ fn malformed_mailbox_requests_fail_before_invoking_retained_callbacks() {
             UnitExit::Failed(geam::ExecutionError::Host(error)) => {
                 Some(error.failure().message().to_string())
             }
-            _ => None,
+            UnitExit::Completed | UnitExit::Cancelled | UnitExit::Failed(_) => None,
         })
         .collect::<Vec<_>>();
     assert_eq!(
@@ -386,7 +386,7 @@ fn restarting_callbacks_propagate_source_panics_and_release_linked_siblings() {
             UnitExit::Failed(geam::ExecutionError::Panic(panic)) => {
                 Some((panic.kind(), panic.message().clone()))
             }
-            _ => None,
+            UnitExit::Completed | UnitExit::Cancelled | UnitExit::Failed(_) => None,
         })
         .collect::<Vec<_>>();
     assert_eq!(
@@ -426,7 +426,7 @@ fn factory_count_rejects_a_non_integer_response_from_a_registered_peer() {
             UnitExit::Failed(geam::ExecutionError::Host(error)) => {
                 Some(error.failure().message().to_string())
             }
-            _ => None,
+            UnitExit::Completed | UnitExit::Cancelled | UnitExit::Failed(_) => None,
         })
         .collect::<Vec<_>>();
     assert_eq!(failures, ["factory count response is not an integer"]);
@@ -464,7 +464,7 @@ fn failed_startup_cleanup_propagates_clock_overflow_and_releases_started_childre
             UnitExit::Failed(geam::ExecutionError::Host(error)) => {
                 Some(error.failure().message().to_string())
             }
-            _ => None,
+            UnitExit::Completed | UnitExit::Cancelled | UnitExit::Failed(_) => None,
         })
         .collect::<Vec<_>>();
     assert_eq!(failures, ["shutdown timeout exceeds the host clock range"]);
@@ -491,7 +491,7 @@ fn original_supervisor_policies_callbacks_and_parent_exit_keep_their_failure_bou
             UnitExit::Failed(geam::ExecutionError::Host(error)) => {
                 Some(error.failure().message().to_string())
             }
-            _ => None,
+            UnitExit::Completed | UnitExit::Cancelled | UnitExit::Failed(_) => None,
         })
         .collect::<Vec<_>>();
     assert_eq!(
@@ -509,7 +509,7 @@ fn original_supervisor_policies_callbacks_and_parent_exit_keep_their_failure_bou
             UnitExit::Failed(geam::ExecutionError::Panic(panic)) => {
                 Some((panic.kind(), panic.message().clone()))
             }
-            _ => None,
+            UnitExit::Completed | UnitExit::Cancelled | UnitExit::Failed(_) => None,
         })
         .collect::<Vec<_>>();
     assert_eq!(
@@ -577,7 +577,7 @@ fn shutdown_propagates_clock_overflow_through_both_supervisors() {
             UnitExit::Failed(geam::ExecutionError::Host(error)) => {
                 Some(error.failure().message().to_string())
             }
-            _ => None,
+            UnitExit::Completed | UnitExit::Cancelled | UnitExit::Failed(_) => None,
         })
         .collect::<Vec<_>>();
     assert_eq!(

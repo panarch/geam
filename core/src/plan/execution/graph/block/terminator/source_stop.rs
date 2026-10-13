@@ -224,7 +224,17 @@ pub fn main() -> Int {
             .copied()
             .filter_map(|terminator| match terminator {
                 Terminator::SourceStop(stop) => Some(stop),
-                _ => None,
+                Terminator::Jump(_)
+                | Terminator::BoolBranch(_)
+                | Terminator::TestBranch(_)
+                | Terminator::IntSwitch(_)
+                | Terminator::FloatSwitch(_)
+                | Terminator::StringSwitch(_)
+                | Terminator::Match(_)
+                | Terminator::Echo(_)
+                | Terminator::Exit(_)
+                | Terminator::LetAssertPanic(_)
+                | Terminator::NeverCall(_) => None,
             })
             .collect::<Vec<_>>();
         source_stop_from_nodes(&stops)

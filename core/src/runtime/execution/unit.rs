@@ -533,7 +533,9 @@ fn invoke(callback: fn() -> Int) -> Int
             .iter()
             .filter_map(|event| match event {
                 Event::Started(id) => Some(*id),
-                _ => None,
+                Event::Completed(_) | Event::Cancelled(_) | Event::Failed(..) | Event::Closed => {
+                    None
+                }
             })
             .collect::<Vec<_>>();
         assert_eq!(ids.len(), 1);
@@ -577,7 +579,10 @@ fn invoke(callback: fn() -> Int) -> Int
                     .iter()
                     .filter_map(|event| match event {
                         Event::Started(id) => Some(*id),
-                        _ => None,
+                        Event::Completed(_)
+                        | Event::Cancelled(_)
+                        | Event::Failed(..)
+                        | Event::Closed => None,
                     })
                     .collect::<Vec<_>>();
                 assert_eq!(ids.len(), 3);
@@ -734,7 +739,10 @@ pub fn tag() { current() }
                             .iter()
                             .filter_map(|event| match event {
                                 Event::Started(id) => Some(*id),
-                                _ => None,
+                                Event::Completed(_)
+                                | Event::Cancelled(_)
+                                | Event::Failed(..)
+                                | Event::Closed => None,
                             })
                             .collect::<Vec<_>>();
                         assert_eq!(ids.len(), 3);
@@ -768,7 +776,10 @@ pub fn tag() { current() }
                 .iter()
                 .filter_map(|event| match event {
                     Event::Started(id) => Some(*id),
-                    _ => None,
+                    Event::Completed(_)
+                    | Event::Cancelled(_)
+                    | Event::Failed(..)
+                    | Event::Closed => None,
                 })
                 .collect::<Vec<_>>();
             assert_eq!(ids.len(), 3);
@@ -838,7 +849,10 @@ pub fn tag() { current() }
                 .iter()
                 .filter_map(|event| match event {
                     Event::Started(id) => Some(*id),
-                    _ => None,
+                    Event::Completed(_)
+                    | Event::Cancelled(_)
+                    | Event::Failed(..)
+                    | Event::Closed => None,
                 })
                 .collect::<Vec<_>>();
             assert_eq!(ids.len(), 1);

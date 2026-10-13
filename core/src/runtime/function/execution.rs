@@ -646,7 +646,9 @@ pub fn main() { exercise() source() }
                                 ExecutionFunctionRef::Graph(entry) if index == 1 => {
                                     Some(entry.body())
                                 }
-                                _ => None,
+                                ExecutionFunctionRef::Graph(_) | ExecutionFunctionRef::Host(_) => {
+                                    None
+                                }
                             }
                         })
                         .collect::<Vec<_>>();
@@ -1510,7 +1512,7 @@ pub fn main() { let _ = handoff exercise() True }
                             ExecutionFunctionRef::Host(HostedFunctionTarget::Value(target)) => {
                                 Some(plan.host_value_function(target).name())
                             }
-                            _ => None,
+                            ExecutionFunctionRef::Graph(_) | ExecutionFunctionRef::Host(_) => None,
                         })
                         .collect();
                     assert_eq!(natives, ["answer"]);

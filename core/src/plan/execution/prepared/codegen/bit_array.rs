@@ -154,12 +154,23 @@ fn inspect_pattern<'graph>(
                             unit: *unit,
                         });
                     }
-                    _ => return None,
+                    BitArrayPatternSegment::Int { .. }
+                    | BitArrayPatternSegment::Float { .. }
+                    | BitArrayPatternSegment::String { .. }
+                    | BitArrayPatternSegment::UtfCodepoint { .. } => return None,
                 }
             }
             Some(true)
         }
-        _ => None,
+        MatchPattern::Int(_)
+        | MatchPattern::Float(_)
+        | MatchPattern::String(_)
+        | MatchPattern::Bool(_)
+        | MatchPattern::Nil
+        | MatchPattern::Tuple(_)
+        | MatchPattern::List(_)
+        | MatchPattern::Custom { .. }
+        | MatchPattern::StringPrefix { .. } => None,
     }
 }
 
@@ -330,7 +341,10 @@ impl<Graph: ExecutionGraphProfile> FunctionCodegen<'_, '_, Graph> {
                 {
                     Some(format!("_matched_{index} > i128::from(i64::MAX)"))
                 }
-                _ => None,
+                BitArgument::Binding(_)
+                | BitArgument::Integer(_)
+                | BitArgument::Boolean(_)
+                | BitArgument::BitArray(_) => None,
             })
             .collect::<Vec<_>>();
         if !checks.is_empty() {
@@ -365,7 +379,7 @@ fn impossible_integer_literal(
     match pattern {
         BitArrayPatternValue::Literal(value) => i128::try_from(value.materialize()).is_err(),
         BitArrayPatternValue::Alias { pattern, .. } => impossible_integer_literal(pattern),
-        _ => false,
+        BitArrayPatternValue::Bind(_) | BitArrayPatternValue::Discard => false,
     }
 }
 
@@ -471,15 +485,90 @@ fn range_pattern(source: &mut Code, pattern: &BitArrayBindingPattern, value: &st
 fn edge_inputs(block: BlockId, edge: &Edge) -> String {
     let ints = edge.args().iter().filter_map(|local| match local {
         ParamLocal::Int(local) => Some(format!("b{}_i{}", block.0, local.0)),
-        _ => None,
+        ParamLocal::Float(_)
+        | ParamLocal::String(_)
+        | ParamLocal::BitArray(_)
+        | ParamLocal::UtfCodepoint(_)
+        | ParamLocal::Parameter { .. }
+        | ParamLocal::Custom(_)
+        | ParamLocal::External(_)
+        | ParamLocal::Bool(_)
+        | ParamLocal::Nil(_)
+        | ParamLocal::Tuple { .. }
+        | ParamLocal::List(_)
+        | ParamLocal::IntFunction { .. }
+        | ParamLocal::FloatFunction { .. }
+        | ParamLocal::StringFunction { .. }
+        | ParamLocal::BitArrayFunction { .. }
+        | ParamLocal::UtfCodepointFunction { .. }
+        | ParamLocal::ParameterFunction { .. }
+        | ParamLocal::GenericFunction(_)
+        | ParamLocal::NeverFunction(_)
+        | ParamLocal::CustomFunction(_)
+        | ParamLocal::ExternalFunction(_)
+        | ParamLocal::BoolFunction { .. }
+        | ParamLocal::NilFunction { .. }
+        | ParamLocal::TupleFunction { .. }
+        | ParamLocal::ListFunction(_)
+        | ParamLocal::FunctionFunction(_) => None,
     });
     let bools = edge.args().iter().filter_map(|local| match local {
         ParamLocal::Bool(local) => Some(format!("b{}_v{}", block.0, local.0)),
-        _ => None,
+        ParamLocal::Int(_)
+        | ParamLocal::Float(_)
+        | ParamLocal::String(_)
+        | ParamLocal::BitArray(_)
+        | ParamLocal::UtfCodepoint(_)
+        | ParamLocal::Parameter { .. }
+        | ParamLocal::Custom(_)
+        | ParamLocal::External(_)
+        | ParamLocal::Nil(_)
+        | ParamLocal::Tuple { .. }
+        | ParamLocal::List(_)
+        | ParamLocal::IntFunction { .. }
+        | ParamLocal::FloatFunction { .. }
+        | ParamLocal::StringFunction { .. }
+        | ParamLocal::BitArrayFunction { .. }
+        | ParamLocal::UtfCodepointFunction { .. }
+        | ParamLocal::ParameterFunction { .. }
+        | ParamLocal::GenericFunction(_)
+        | ParamLocal::NeverFunction(_)
+        | ParamLocal::CustomFunction(_)
+        | ParamLocal::ExternalFunction(_)
+        | ParamLocal::BoolFunction { .. }
+        | ParamLocal::NilFunction { .. }
+        | ParamLocal::TupleFunction { .. }
+        | ParamLocal::ListFunction(_)
+        | ParamLocal::FunctionFunction(_) => None,
     });
     let bits = edge.args().iter().filter_map(|local| match local {
         ParamLocal::BitArray(local) => Some(format!("b{}_b{}", block.0, local.0)),
-        _ => None,
+        ParamLocal::Int(_)
+        | ParamLocal::Float(_)
+        | ParamLocal::String(_)
+        | ParamLocal::UtfCodepoint(_)
+        | ParamLocal::Parameter { .. }
+        | ParamLocal::Custom(_)
+        | ParamLocal::External(_)
+        | ParamLocal::Bool(_)
+        | ParamLocal::Nil(_)
+        | ParamLocal::Tuple { .. }
+        | ParamLocal::List(_)
+        | ParamLocal::IntFunction { .. }
+        | ParamLocal::FloatFunction { .. }
+        | ParamLocal::StringFunction { .. }
+        | ParamLocal::BitArrayFunction { .. }
+        | ParamLocal::UtfCodepointFunction { .. }
+        | ParamLocal::ParameterFunction { .. }
+        | ParamLocal::GenericFunction(_)
+        | ParamLocal::NeverFunction(_)
+        | ParamLocal::CustomFunction(_)
+        | ParamLocal::ExternalFunction(_)
+        | ParamLocal::BoolFunction { .. }
+        | ParamLocal::NilFunction { .. }
+        | ParamLocal::TupleFunction { .. }
+        | ParamLocal::ListFunction(_)
+        | ParamLocal::FunctionFunction(_) => None,
     });
     tuple(ints.chain(bools).chain(bits))
 }
@@ -581,7 +670,17 @@ fn walk(
             .blocks()
             .filter_map(|block| match block.terminator() {
                 Terminator::Match(matcher) => BitArrayMatch::inspect(matcher),
-                _ => None,
+                Terminator::Jump(_)
+                | Terminator::BoolBranch(_)
+                | Terminator::TestBranch(_)
+                | Terminator::IntSwitch(_)
+                | Terminator::FloatSwitch(_)
+                | Terminator::StringSwitch(_)
+                | Terminator::Echo(_)
+                | Terminator::Exit(_)
+                | Terminator::SourceStop(_)
+                | Terminator::LetAssertPanic(_)
+                | Terminator::NeverCall(_) => None,
             })
             .collect::<Vec<_>>()
             .into_iter()
@@ -751,7 +850,17 @@ pub fn main() { choose(<<7>>, 1.0) }
             .blocks()
             .filter_map(|block| match block.terminator() {
                 Terminator::Match(matcher) => Some(matcher),
-                _ => None,
+                Terminator::Jump(_)
+                | Terminator::BoolBranch(_)
+                | Terminator::TestBranch(_)
+                | Terminator::IntSwitch(_)
+                | Terminator::FloatSwitch(_)
+                | Terminator::StringSwitch(_)
+                | Terminator::Echo(_)
+                | Terminator::Exit(_)
+                | Terminator::SourceStop(_)
+                | Terminator::LetAssertPanic(_)
+                | Terminator::NeverCall(_) => None,
             })
             .collect::<Vec<_>>();
         assert_eq!(matches.len(), 1);
@@ -783,7 +892,17 @@ pub fn main() { read(<<7:64>>, 3, True, <<1>>) }
             .blocks()
             .filter_map(|block| match block.terminator() {
                 Terminator::Match(matcher) => Some(matcher),
-                _ => None,
+                Terminator::Jump(_)
+                | Terminator::BoolBranch(_)
+                | Terminator::TestBranch(_)
+                | Terminator::IntSwitch(_)
+                | Terminator::FloatSwitch(_)
+                | Terminator::StringSwitch(_)
+                | Terminator::Echo(_)
+                | Terminator::Exit(_)
+                | Terminator::SourceStop(_)
+                | Terminator::LetAssertPanic(_)
+                | Terminator::NeverCall(_) => None,
             })
             .collect::<Vec<_>>();
         assert_eq!(matches.len(), 2);
@@ -817,7 +936,17 @@ pub fn main() { read(<<7:64>>, 3, True, <<1>>) }
             .blocks()
             .filter_map(|block| match block.terminator() {
                 Terminator::Match(matcher) => Some(matcher),
-                _ => None,
+                Terminator::Jump(_)
+                | Terminator::BoolBranch(_)
+                | Terminator::TestBranch(_)
+                | Terminator::IntSwitch(_)
+                | Terminator::FloatSwitch(_)
+                | Terminator::StringSwitch(_)
+                | Terminator::Echo(_)
+                | Terminator::Exit(_)
+                | Terminator::SourceStop(_)
+                | Terminator::LetAssertPanic(_)
+                | Terminator::NeverCall(_) => None,
             })
             .collect::<Vec<_>>();
         assert_eq!(matches.len(), 1);
@@ -959,7 +1088,17 @@ pub fn main() { read(<<7:64>>, 3, True, <<1>>) }
             .blocks()
             .filter_map(|block| match block.terminator() {
                 Terminator::Match(matcher) => Some(matcher.clone()),
-                _ => None,
+                Terminator::Jump(_)
+                | Terminator::BoolBranch(_)
+                | Terminator::TestBranch(_)
+                | Terminator::IntSwitch(_)
+                | Terminator::FloatSwitch(_)
+                | Terminator::StringSwitch(_)
+                | Terminator::Echo(_)
+                | Terminator::Exit(_)
+                | Terminator::SourceStop(_)
+                | Terminator::LetAssertPanic(_)
+                | Terminator::NeverCall(_) => None,
             })
             .collect::<Vec<_>>();
         assert_eq!(matches.len(), 1);

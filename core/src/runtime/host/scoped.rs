@@ -1352,6 +1352,7 @@ mod tests {
     use crate::host::HostCustomToken;
     use crate::host::test::{StatelessTestProvider, TestTypeParameter, stateless_identity};
     use crate::plan::execution::runtime::RuntimeExecutionPlan;
+    use crate::runtime::function::InvocableFunctionValue;
     use crate::runtime::state::list::{ListValueId, ParameterListValueId, RuntimeListStorage};
     use crate::runtime::{EvaluatedBitArray, EvaluatedCustomValue, EvaluatedValue};
     use crate::{
@@ -1812,8 +1813,22 @@ pub fn main() {
         value: &crate::runtime::function::InvocableFunctionValue,
     ) -> &crate::runtime::evaluated::EvaluatedIntFunction {
         match value {
-            crate::runtime::function::InvocableFunctionValue::Int(value) => value,
-            _ => panic!("fixture requires an Int callback"),
+            InvocableFunctionValue::Int(value) => value,
+            InvocableFunctionValue::Never(_)
+            | InvocableFunctionValue::Float(_)
+            | InvocableFunctionValue::String(_)
+            | InvocableFunctionValue::BitArray(_)
+            | InvocableFunctionValue::UtfCodepoint(_)
+            | InvocableFunctionValue::Parameter(_)
+            | InvocableFunctionValue::Custom(_)
+            | InvocableFunctionValue::External(_)
+            | InvocableFunctionValue::Bool(_)
+            | InvocableFunctionValue::Nil(_)
+            | InvocableFunctionValue::Tuple(_)
+            | InvocableFunctionValue::List(_)
+            | InvocableFunctionValue::Function(_) => {
+                panic!("fixture requires an Int callback")
+            }
         }
     }
 
@@ -1828,9 +1843,7 @@ pub fn main() {
                 crate::plan::execution::type_::ValueType::Nil,
             ),
         );
-        int_target(&crate::runtime::function::InvocableFunctionValue::Nil(
-            function,
-        ));
+        int_target(&InvocableFunctionValue::Nil(function));
     }
     #[test]
     fn generic_list_reconstruction_preserves_symbolic_and_invocable_function_values() {

@@ -120,7 +120,17 @@ impl<'graph> CustomMatch<'graph> {
                     let kind = match field.type_() {
                         ValueType::Int => ScalarKind::Integer,
                         ValueType::Bool => ScalarKind::Boolean,
-                        _ => return None,
+                        ValueType::Parameter(_)
+                        | ValueType::Float
+                        | ValueType::String
+                        | ValueType::BitArray
+                        | ValueType::UtfCodepoint
+                        | ValueType::Nil
+                        | ValueType::Tuple(_)
+                        | ValueType::List(_)
+                        | ValueType::Function(_)
+                        | ValueType::Custom(_)
+                        | ValueType::External(_) => return None,
                     };
                     let mut field = CustomFieldPattern {
                         kind,
@@ -131,7 +141,15 @@ impl<'graph> CustomMatch<'graph> {
                     self.fields.push(field);
                 }
             }
-            _ => return None,
+            MatchPattern::Int(_)
+            | MatchPattern::Float(_)
+            | MatchPattern::String(_)
+            | MatchPattern::Bool(_)
+            | MatchPattern::Nil
+            | MatchPattern::Tuple(_)
+            | MatchPattern::List(_)
+            | MatchPattern::BitArray(_)
+            | MatchPattern::StringPrefix { .. } => return None,
         }
         Some(())
     }
@@ -155,7 +173,16 @@ impl<'graph> CustomFieldPattern<'graph> {
                 self.pattern(pattern)?;
                 self.bindings.push(binding.index());
             }
-            _ => return None,
+            MatchPattern::Int(_)
+            | MatchPattern::Float(_)
+            | MatchPattern::String(_)
+            | MatchPattern::Bool(_)
+            | MatchPattern::Nil
+            | MatchPattern::Tuple(_)
+            | MatchPattern::List(_)
+            | MatchPattern::BitArray(_)
+            | MatchPattern::Custom { .. }
+            | MatchPattern::StringPrefix { .. } => return None,
         }
         Some(())
     }
@@ -337,7 +364,16 @@ pub fn main() { score(Item(7, True)) }
             .values()
             .filter_map(|block| match &block.terminator {
                 CompiledTerminator::Custom(view) => Some(view),
-                _ => None,
+                CompiledTerminator::Jump(_)
+                | CompiledTerminator::Boolean { .. }
+                | CompiledTerminator::Test { .. }
+                | CompiledTerminator::Switch { .. }
+                | CompiledTerminator::StringSwitch { .. }
+                | CompiledTerminator::StringMatch(_)
+                | CompiledTerminator::Exit(_)
+                | CompiledTerminator::BitArray(_)
+                | CompiledTerminator::Match(_)
+                | CompiledTerminator::Interpreted => None,
             })
             .collect::<Vec<_>>();
         assert_eq!(views.len(), 1);
@@ -405,7 +441,16 @@ pub fn main() { score(Item(7, True)) }
             .values()
             .filter_map(|block| match &block.terminator {
                 CompiledTerminator::Custom(view) => Some(view),
-                _ => None,
+                CompiledTerminator::Jump(_)
+                | CompiledTerminator::Boolean { .. }
+                | CompiledTerminator::Test { .. }
+                | CompiledTerminator::Switch { .. }
+                | CompiledTerminator::StringSwitch { .. }
+                | CompiledTerminator::StringMatch(_)
+                | CompiledTerminator::Exit(_)
+                | CompiledTerminator::BitArray(_)
+                | CompiledTerminator::Match(_)
+                | CompiledTerminator::Interpreted => None,
             })
             .collect::<Vec<_>>();
         assert_eq!(views.len(), 1);
@@ -576,7 +621,16 @@ pub fn main() { score(Item(7, True)) }
             .values()
             .filter_map(|block| match &block.terminator {
                 CompiledTerminator::Custom(view) => Some(view),
-                _ => None,
+                CompiledTerminator::Jump(_)
+                | CompiledTerminator::Boolean { .. }
+                | CompiledTerminator::Test { .. }
+                | CompiledTerminator::Switch { .. }
+                | CompiledTerminator::StringSwitch { .. }
+                | CompiledTerminator::StringMatch(_)
+                | CompiledTerminator::Exit(_)
+                | CompiledTerminator::BitArray(_)
+                | CompiledTerminator::Match(_)
+                | CompiledTerminator::Interpreted => None,
             })
             .collect::<Vec<_>>();
         assert_eq!(views.len(), 1);

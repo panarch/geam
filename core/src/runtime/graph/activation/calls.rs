@@ -848,7 +848,21 @@ pub fn main() { let _ = append("input") let _ = mark() let _ = pair("input") 42 
                 ProfiledInstructionKind::Custom(CustomInstruction::Call { function, .. }) => {
                     Some(*function)
                 }
-                _ => None,
+                ProfiledInstructionKind::Int(_)
+                | ProfiledInstructionKind::Float(_)
+                | ProfiledInstructionKind::String(_)
+                | ProfiledInstructionKind::BitArray(_)
+                | ProfiledInstructionKind::UtfCodepoint(_)
+                | ProfiledInstructionKind::Parameter(_)
+                | ProfiledInstructionKind::Custom(_)
+                | ProfiledInstructionKind::External(_)
+                | ProfiledInstructionKind::ExternalList(_)
+                | ProfiledInstructionKind::ExternalFunction(_)
+                | ProfiledInstructionKind::Bool(_)
+                | ProfiledInstructionKind::Nil(_)
+                | ProfiledInstructionKind::Tuple(_)
+                | ProfiledInstructionKind::List(_)
+                | ProfiledInstructionKind::Function(_) => None,
             })
             .unwrap();
         let frame = || CallFrame {
@@ -1202,7 +1216,21 @@ pub fn main() { let _ = append("input") let _ = mark() let _ = pair("input") 42 
                 ProfiledInstructionKind::Custom(CustomInstruction::Call {
                     function, site, ..
                 }) => Some((*function, site.clone())),
-                _ => None,
+                ProfiledInstructionKind::Int(_)
+                | ProfiledInstructionKind::Float(_)
+                | ProfiledInstructionKind::String(_)
+                | ProfiledInstructionKind::BitArray(_)
+                | ProfiledInstructionKind::UtfCodepoint(_)
+                | ProfiledInstructionKind::Parameter(_)
+                | ProfiledInstructionKind::Custom(_)
+                | ProfiledInstructionKind::External(_)
+                | ProfiledInstructionKind::ExternalList(_)
+                | ProfiledInstructionKind::ExternalFunction(_)
+                | ProfiledInstructionKind::Bool(_)
+                | ProfiledInstructionKind::Nil(_)
+                | ProfiledInstructionKind::Tuple(_)
+                | ProfiledInstructionKind::List(_)
+                | ProfiledInstructionKind::Function(_) => None,
             })
             .collect::<Vec<_>>();
         let tuple_calls = plain_root
@@ -1213,7 +1241,21 @@ pub fn main() { let _ = append("input") let _ = mark() let _ = pair("input") 42 
                 ProfiledInstructionKind::Tuple(TupleInstruction::Call {
                     function, site, ..
                 }) => Some((*function, site.clone())),
-                _ => None,
+                ProfiledInstructionKind::Int(_)
+                | ProfiledInstructionKind::Float(_)
+                | ProfiledInstructionKind::String(_)
+                | ProfiledInstructionKind::BitArray(_)
+                | ProfiledInstructionKind::UtfCodepoint(_)
+                | ProfiledInstructionKind::Parameter(_)
+                | ProfiledInstructionKind::Custom(_)
+                | ProfiledInstructionKind::External(_)
+                | ProfiledInstructionKind::ExternalList(_)
+                | ProfiledInstructionKind::ExternalFunction(_)
+                | ProfiledInstructionKind::Bool(_)
+                | ProfiledInstructionKind::Nil(_)
+                | ProfiledInstructionKind::Tuple(_)
+                | ProfiledInstructionKind::List(_)
+                | ProfiledInstructionKind::Function(_) => None,
             })
             .collect::<Vec<_>>();
         assert_eq!(custom_calls.len(), 1);
@@ -1352,7 +1394,19 @@ pub fn main() { let _ = append("input") let _ = mark() let _ = pair("input") 42 
     ) -> IntegerValue {
         match active {
             Activation::CallComplete(output) => IntLocalId::from_call_output(output).unwrap(),
-            _ => panic!("fixture generated Int activation must complete"),
+            Activation::Graph(_)
+            | Activation::Compiled { .. }
+            | Activation::CustomLoop(_)
+            | Activation::NativeLoop(_)
+            | Activation::NativeCalls(_)
+            | Activation::FunctionCalls { .. }
+            | Activation::GeneratedNative { .. }
+            | Activation::Host(_)
+            | Activation::Return(_)
+            | Activation::Complete(_)
+            | Activation::CallInterpreted { .. } => {
+                panic!("fixture generated Int activation must complete")
+            }
         }
     }
 
@@ -1362,7 +1416,12 @@ pub fn main() { let _ = append("input") let _ = mark() let _ = pair("input") 42 
         match progress {
             Progress::CallComplete(output) => Some(IntLocalId::from_call_output(output).unwrap()),
             Progress::Continue(_) => None,
-            _ => panic!("fixture generated Int progress must return its owned result"),
+            Progress::Host(_)
+            | Progress::GeneratedHost { .. }
+            | Progress::Complete(_)
+            | Progress::CallInterpreted { .. } => {
+                panic!("fixture generated Int progress must return its owned result")
+            }
         }
     }
 
@@ -1585,7 +1644,19 @@ pub fn main() { let _ = append("input") let _ = mark() let _ = pair("input") 42 
     ) -> (CallFrame<'plan, Plan>, Box<dyn CallExecution>) {
         match active {
             Activation::FunctionCalls { frame, execution } => (frame, execution),
-            _ => panic!("fixture must resume its generated execution"),
+            Activation::Graph(_)
+            | Activation::Compiled { .. }
+            | Activation::CustomLoop(_)
+            | Activation::NativeLoop(_)
+            | Activation::NativeCalls(_)
+            | Activation::GeneratedNative { .. }
+            | Activation::Host(_)
+            | Activation::Return(_)
+            | Activation::Complete(_)
+            | Activation::CallComplete(_)
+            | Activation::CallInterpreted { .. } => {
+                panic!("fixture must resume its generated execution")
+            }
         }
     }
 
@@ -1602,7 +1673,19 @@ pub fn main() { let _ = append("input") let _ = mark() let _ = pair("input") 42 
     ) -> *const crate::runtime::compiled::calls::GeneratedNativeState {
         match active {
             Activation::GeneratedNative { state, .. } => std::ptr::from_ref(&**state),
-            _ => panic!("fixture must retain its pending Native owner"),
+            Activation::Graph(_)
+            | Activation::Compiled { .. }
+            | Activation::CustomLoop(_)
+            | Activation::NativeLoop(_)
+            | Activation::NativeCalls(_)
+            | Activation::FunctionCalls { .. }
+            | Activation::Host(_)
+            | Activation::Return(_)
+            | Activation::Complete(_)
+            | Activation::CallComplete(_)
+            | Activation::CallInterpreted { .. } => {
+                panic!("fixture must retain its pending Native owner")
+            }
         }
     }
 
@@ -1683,7 +1766,21 @@ pub fn main() {
                 ProfiledInstructionKind::Custom(CustomInstruction::Call { function, .. }) => {
                     Some(*function)
                 }
-                _ => None,
+                ProfiledInstructionKind::Int(_)
+                | ProfiledInstructionKind::Float(_)
+                | ProfiledInstructionKind::String(_)
+                | ProfiledInstructionKind::BitArray(_)
+                | ProfiledInstructionKind::UtfCodepoint(_)
+                | ProfiledInstructionKind::Parameter(_)
+                | ProfiledInstructionKind::Custom(_)
+                | ProfiledInstructionKind::External(_)
+                | ProfiledInstructionKind::ExternalList(_)
+                | ProfiledInstructionKind::ExternalFunction(_)
+                | ProfiledInstructionKind::Bool(_)
+                | ProfiledInstructionKind::Nil(_)
+                | ProfiledInstructionKind::Tuple(_)
+                | ProfiledInstructionKind::List(_)
+                | ProfiledInstructionKind::Function(_) => None,
             })
             .collect::<Vec<_>>();
         assert_eq!(custom_functions.len(), 1);

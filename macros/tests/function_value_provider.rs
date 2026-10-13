@@ -317,7 +317,8 @@ pub fn main() { nested_strict(fn(_) { fn(_: Empty) { True } }) }"#,
     assert_eq!(error.function(), "nested_strict");
     let callback = match error.reason() {
         HostSpecializationErrorReason::UninhabitedCallbackArguments { callback } => Some(callback),
-        _ => None,
+        HostSpecializationErrorReason::UninhabitedCallableCapture { .. }
+        | HostSpecializationErrorReason::ConflictingNativeConversions { .. } => None,
     };
     let callback = callback.expect("nested strict input must remain rejected");
     assert_eq!(
@@ -354,11 +355,11 @@ pub fn main() { apply(body, 7) }"#
             .expect_err("projected callback must propagate its original failure");
         let panic = match &error {
             RunError::Execution(ExecutionError::Panic(panic)) => Some(panic),
-            _ => None,
+            RunError::Cancelled | RunError::Execution(_) | RunError::Driver(_) => None,
         };
         let failure = match &error {
             RunError::Execution(ExecutionError::Host(error)) => Some(error),
-            _ => None,
+            RunError::Cancelled | RunError::Execution(_) | RunError::Driver(_) => None,
         };
         if source_panic {
             let panic = panic.expect("source panic keeps its failure domain");

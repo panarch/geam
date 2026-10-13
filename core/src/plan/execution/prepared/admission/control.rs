@@ -83,7 +83,15 @@ impl<'data, Graph: ExecutionGraphProfile> Control<'_, 'data, Graph> {
                             test: &branch.test,
                             truth,
                         },
-                        _ => continue,
+                        Terminator::Jump(_)
+                        | Terminator::IntSwitch(_)
+                        | Terminator::FloatSwitch(_)
+                        | Terminator::StringSwitch(_)
+                        | Terminator::Echo(_)
+                        | Terminator::Exit(_)
+                        | Terminator::SourceStop(_)
+                        | Terminator::LetAssertPanic(_)
+                        | Terminator::NeverCall(_) => continue,
                     };
                     let id = BlockId(index);
                     if !control.guards.excludes(id, condition) && control.contradicts(id, condition)
@@ -133,7 +141,10 @@ impl<'data, Graph: ExecutionGraphProfile> Control<'_, 'data, Graph> {
                     .into_iter()
                     .all(|query| self.proves_query(query))
             }
-            _ => false,
+            Condition::Always
+            | Condition::Test { .. }
+            | Condition::Bool { .. }
+            | Condition::String { .. } => false,
         }
     }
 
@@ -334,7 +345,12 @@ impl<'data, Graph: ExecutionGraphProfile> Control<'_, 'data, Graph> {
                         }));
                         continue;
                     }
-                    _ => return false,
+                    BoolInstruction::Constant(_)
+                    | BoolInstruction::Call { .. }
+                    | BoolInstruction::FunctionCall { .. }
+                    | BoolInstruction::TupleIndex { .. }
+                    | BoolInstruction::CustomField { .. }
+                    | BoolInstruction::ListIndex { .. } => return false,
                 }
             }
             let Some(index) = parameter else { return false };
@@ -454,7 +470,7 @@ impl<'data, Graph: ExecutionGraphProfile> Control<'_, 'data, Graph> {
         let (test, truth) = match condition {
             Condition::Bool { subject, truth } => return Some((subject, truth)),
             Condition::Test { test, truth } => (test, truth),
-            _ => return None,
+            Condition::Always | Condition::Match { .. } | Condition::String { .. } => return None,
         };
         match test {
             BoolTest::Not(subject) => Some((*subject, !truth)),
@@ -475,7 +491,21 @@ impl<'data, Graph: ExecutionGraphProfile> Control<'_, 'data, Graph> {
                             ProfiledInstructionKind::Bool(BoolInstruction::Value(value)) => {
                                 Some(*value)
                             }
-                            _ => None,
+                            ProfiledInstructionKind::Int(_)
+                            | ProfiledInstructionKind::Float(_)
+                            | ProfiledInstructionKind::String(_)
+                            | ProfiledInstructionKind::BitArray(_)
+                            | ProfiledInstructionKind::UtfCodepoint(_)
+                            | ProfiledInstructionKind::Parameter(_)
+                            | ProfiledInstructionKind::Custom(_)
+                            | ProfiledInstructionKind::External(_)
+                            | ProfiledInstructionKind::ExternalList(_)
+                            | ProfiledInstructionKind::ExternalFunction(_)
+                            | ProfiledInstructionKind::Bool(_)
+                            | ProfiledInstructionKind::Nil(_)
+                            | ProfiledInstructionKind::Tuple(_)
+                            | ProfiledInstructionKind::List(_)
+                            | ProfiledInstructionKind::Function(_) => None,
                         })
                 };
                 if let Some(value) = literal(*left) {
@@ -484,7 +514,21 @@ impl<'data, Graph: ExecutionGraphProfile> Control<'_, 'data, Graph> {
                     literal(*right).map(|value| (*left, value == truth))
                 }
             }
-            _ => None,
+            BoolTest::EqualInt { .. }
+            | BoolTest::NotEqualInt { .. }
+            | BoolTest::LtInt { .. }
+            | BoolTest::LtEqInt { .. }
+            | BoolTest::GtInt { .. }
+            | BoolTest::GtEqInt { .. }
+            | BoolTest::LtFloat { .. }
+            | BoolTest::LtEqFloat { .. }
+            | BoolTest::GtFloat { .. }
+            | BoolTest::GtEqFloat { .. }
+            | BoolTest::Equal { .. }
+            | BoolTest::NotEqual { .. }
+            | BoolTest::StringStartsWith { .. }
+            | BoolTest::ListLengthEquals { .. }
+            | BoolTest::ListLengthAtLeast { .. } => None,
         }
     }
 
@@ -664,7 +708,18 @@ fn custom(pattern: &MatchPattern) -> Option<(usize, &[MatchPattern])> {
             constructor,
             fields,
         } => Some((constructor.index, fields)),
-        _ => None,
+        MatchPattern::Bind(_)
+        | MatchPattern::Discard
+        | MatchPattern::Int(_)
+        | MatchPattern::Float(_)
+        | MatchPattern::String(_)
+        | MatchPattern::Bool(_)
+        | MatchPattern::Nil
+        | MatchPattern::Tuple(_)
+        | MatchPattern::List(_)
+        | MatchPattern::BitArray(_)
+        | MatchPattern::StringPrefix { .. }
+        | MatchPattern::Alias { .. } => None,
     }
 }
 
@@ -677,7 +732,18 @@ pub(super) fn unaliased(pattern: &MatchPattern) -> Option<&MatchPattern> {
         }
         match current {
             MatchPattern::Alias { pattern, .. } => current = pattern,
-            _ => return Some(current),
+            MatchPattern::Bind(_)
+            | MatchPattern::Discard
+            | MatchPattern::Int(_)
+            | MatchPattern::Float(_)
+            | MatchPattern::String(_)
+            | MatchPattern::Bool(_)
+            | MatchPattern::Nil
+            | MatchPattern::Tuple(_)
+            | MatchPattern::List(_)
+            | MatchPattern::BitArray(_)
+            | MatchPattern::Custom { .. }
+            | MatchPattern::StringPrefix { .. } => return Some(current),
         }
     }
 }
@@ -706,7 +772,14 @@ pub(super) fn irrefutable(pattern: &MatchPattern) -> bool {
                 pending.extend(fields.iter().map(|field| (field, false)));
             }
             MatchPattern::Alias { pattern, .. } => pending.push((pattern, false)),
-            _ => return false,
+            MatchPattern::Int(_)
+            | MatchPattern::Float(_)
+            | MatchPattern::String(_)
+            | MatchPattern::Bool(_)
+            | MatchPattern::List(_)
+            | MatchPattern::BitArray(_)
+            | MatchPattern::Custom { .. }
+            | MatchPattern::StringPrefix { .. } => return false,
         }
     }
     true
@@ -766,7 +839,12 @@ fn pattern_requirements(
                 });
                 (fields, true)
             }
-            _ => return None,
+            MatchPattern::Int(_)
+            | MatchPattern::Float(_)
+            | MatchPattern::String(_)
+            | MatchPattern::List(_)
+            | MatchPattern::BitArray(_)
+            | MatchPattern::StringPrefix { .. } => return None,
         };
         for (index, field) in fields.iter().enumerate() {
             let mut child = place.clone();
@@ -902,7 +980,16 @@ pub fn main() { read(False, True, Some("value")) }
                                 test: &branch.test,
                                 truth: false,
                             },
-                            _ => return None,
+                            Terminator::Jump(_)
+                            | Terminator::BoolBranch(_)
+                            | Terminator::IntSwitch(_)
+                            | Terminator::FloatSwitch(_)
+                            | Terminator::StringSwitch(_)
+                            | Terminator::Echo(_)
+                            | Terminator::Exit(_)
+                            | Terminator::SourceStop(_)
+                            | Terminator::LetAssertPanic(_)
+                            | Terminator::NeverCall(_) => return None,
                         };
                         Some((index, control.guards.excludes(BlockId(index), condition)))
                     })
@@ -955,7 +1042,21 @@ pub fn main() { read(False, True) }
                 ProfiledInstructionKind::Bool(BoolInstruction::Test(test)) => {
                     Some((&instruction.output.local, test))
                 }
-                _ => None,
+                ProfiledInstructionKind::Int(_)
+                | ProfiledInstructionKind::Float(_)
+                | ProfiledInstructionKind::String(_)
+                | ProfiledInstructionKind::BitArray(_)
+                | ProfiledInstructionKind::UtfCodepoint(_)
+                | ProfiledInstructionKind::Parameter(_)
+                | ProfiledInstructionKind::Custom(_)
+                | ProfiledInstructionKind::External(_)
+                | ProfiledInstructionKind::ExternalList(_)
+                | ProfiledInstructionKind::ExternalFunction(_)
+                | ProfiledInstructionKind::Bool(_)
+                | ProfiledInstructionKind::Nil(_)
+                | ProfiledInstructionKind::Tuple(_)
+                | ProfiledInstructionKind::List(_)
+                | ProfiledInstructionKind::Function(_) => None,
             })
             .collect::<Vec<_>>();
         assert_eq!(comparisons.len(), 3);
@@ -1233,7 +1334,17 @@ pub fn main() { inspect(Error("failed")) }
             .iter()
             .filter_map(|block| match &block.terminator {
                 Terminator::Match(matcher) => Some(matcher),
-                _ => None,
+                Terminator::Jump(_)
+                | Terminator::BoolBranch(_)
+                | Terminator::TestBranch(_)
+                | Terminator::IntSwitch(_)
+                | Terminator::FloatSwitch(_)
+                | Terminator::StringSwitch(_)
+                | Terminator::Echo(_)
+                | Terminator::Exit(_)
+                | Terminator::SourceStop(_)
+                | Terminator::LetAssertPanic(_)
+                | Terminator::NeverCall(_) => None,
             })
             .collect::<Vec<_>>();
         assert_eq!(matchers.len(), 2);
@@ -1662,7 +1773,7 @@ pub fn main() {{ read(0, First(42)) }}
                 .flat_map(|block| block.params())
                 .filter_map(|slot| match &slot.local {
                     ParamLocal::Custom(local) => Some((slot, local)),
-                    _ => None,
+                    ParamLocal::Int(_) | ParamLocal::Float(_) | ParamLocal::String(_) | ParamLocal::BitArray(_) | ParamLocal::UtfCodepoint(_) | ParamLocal::Parameter { .. } | ParamLocal::External(_) | ParamLocal::Bool(_) | ParamLocal::Nil(_) | ParamLocal::Tuple { .. } | ParamLocal::List(_) | ParamLocal::IntFunction { .. } | ParamLocal::FloatFunction { .. } | ParamLocal::StringFunction { .. } | ParamLocal::BitArrayFunction { .. } | ParamLocal::UtfCodepointFunction { .. } | ParamLocal::ParameterFunction { .. } | ParamLocal::GenericFunction(_) | ParamLocal::NeverFunction(_) | ParamLocal::CustomFunction(_) | ParamLocal::ExternalFunction(_) | ParamLocal::BoolFunction { .. } | ParamLocal::NilFunction { .. } | ParamLocal::TupleFunction { .. } | ParamLocal::ListFunction(_) | ParamLocal::FunctionFunction(_) => None,
                 })
                 .find(|(slot, _)| matches!(types.shape(slot.shape), Ok(ValueShapeDescriptor::Custom(id)) if types.custom_shape_descriptor(*id).unwrap().constructor == CustomConstructorRefinement::Any))
                 .unwrap();
@@ -1827,7 +1938,11 @@ pub fn main() { #(widen(First(42)), Second(7)) }
                     );
                     match corruption {
                         Corruption::SourceCycle => source_instructions.push(instruction),
-                        _ => target_instructions.push(instruction),
+                        Corruption::MissingArgument
+                        | Corruption::MissingBinding
+                        | Corruption::TargetCycle
+                        | Corruption::GrowingBackEdge
+                        | Corruption::UnprovenBackEdge => target_instructions.push(instruction),
                     }
                 }
                 Corruption::GrowingBackEdge => {

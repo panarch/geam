@@ -1083,52 +1083,59 @@ impl ConstantListValue {
     }
 
     pub(super) fn into_int(self) -> Option<ConstantIntListValue> {
-        match self {
-            Self::Int(value) => Some(value),
-            _ => None,
+        if let Self::Int(value) = self {
+            Some(value)
+        } else {
+            None
         }
     }
 
     #[cfg(test)]
     pub(super) fn into_generic(self) -> Option<ConstantGenericListValue> {
-        match self {
-            Self::Generic(value) => Some(value),
-            _ => None,
+        if let Self::Generic(value) = self {
+            Some(value)
+        } else {
+            None
         }
     }
 
     pub(super) fn into_string(self) -> Option<ConstantStringListValue> {
-        match self {
-            Self::String(value) => Some(value),
-            _ => None,
+        if let Self::String(value) = self {
+            Some(value)
+        } else {
+            None
         }
     }
 
     pub(super) fn into_bit_array(self) -> Option<ConstantBitArrayListValue> {
-        match self {
-            Self::BitArray(value) => Some(value),
-            _ => None,
+        if let Self::BitArray(value) = self {
+            Some(value)
+        } else {
+            None
         }
     }
 
     pub(super) fn into_float(self) -> Option<ConstantFloatListValue> {
-        match self {
-            Self::Float(value) => Some(value),
-            _ => None,
+        if let Self::Float(value) = self {
+            Some(value)
+        } else {
+            None
         }
     }
 
     pub(super) fn into_bool(self) -> Option<ConstantBoolListValue> {
-        match self {
-            Self::Bool(value) => Some(value),
-            _ => None,
+        if let Self::Bool(value) = self {
+            Some(value)
+        } else {
+            None
         }
     }
 
     pub(super) fn into_nil(self) -> Option<ConstantNilListValue> {
-        match self {
-            Self::Nil(value) => Some(value),
-            _ => None,
+        if let Self::Nil(value) = self {
+            Some(value)
+        } else {
+            None
         }
     }
 

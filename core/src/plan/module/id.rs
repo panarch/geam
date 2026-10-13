@@ -886,77 +886,176 @@ impl FunctionFunctionId {
     pub(crate) fn int(&self) -> Option<IntFunctionFunctionId> {
         match self {
             Self::Int(id) => Some(*id),
-            _ => None,
+            Self::Float(_)
+            | Self::String(_)
+            | Self::BitArray(_)
+            | Self::UtfCodepoint(_)
+            | Self::Custom(_)
+            | Self::Bool(_)
+            | Self::Nil(_)
+            | Self::Tuple(_)
+            | Self::List(_)
+            | Self::Function(_) => None,
         }
     }
 
     pub(crate) fn string(&self) -> Option<StringFunctionFunctionId> {
         match self {
             Self::String(id) => Some(*id),
-            _ => None,
+            Self::Int(_)
+            | Self::Float(_)
+            | Self::BitArray(_)
+            | Self::UtfCodepoint(_)
+            | Self::Custom(_)
+            | Self::Bool(_)
+            | Self::Nil(_)
+            | Self::Tuple(_)
+            | Self::List(_)
+            | Self::Function(_) => None,
         }
     }
 
     pub(crate) fn bit_array(&self) -> Option<BitArrayFunctionFunctionId> {
         match self {
             Self::BitArray(id) => Some(*id),
-            _ => None,
+            Self::Int(_)
+            | Self::Float(_)
+            | Self::String(_)
+            | Self::UtfCodepoint(_)
+            | Self::Custom(_)
+            | Self::Bool(_)
+            | Self::Nil(_)
+            | Self::Tuple(_)
+            | Self::List(_)
+            | Self::Function(_) => None,
         }
     }
 
     pub(crate) fn utf_codepoint(&self) -> Option<UtfCodepointFunctionFunctionId> {
         match self {
             Self::UtfCodepoint(id) => Some(*id),
-            _ => None,
+            Self::Int(_)
+            | Self::Float(_)
+            | Self::String(_)
+            | Self::BitArray(_)
+            | Self::Custom(_)
+            | Self::Bool(_)
+            | Self::Nil(_)
+            | Self::Tuple(_)
+            | Self::List(_)
+            | Self::Function(_) => None,
         }
     }
 
     pub(crate) fn custom(&self) -> Option<CustomFunctionFunctionId> {
         match self {
             Self::Custom(id) => Some(id.clone()),
-            _ => None,
+            Self::Int(_)
+            | Self::Float(_)
+            | Self::String(_)
+            | Self::BitArray(_)
+            | Self::UtfCodepoint(_)
+            | Self::Bool(_)
+            | Self::Nil(_)
+            | Self::Tuple(_)
+            | Self::List(_)
+            | Self::Function(_) => None,
         }
     }
 
     pub(crate) fn float(&self) -> Option<FloatFunctionFunctionId> {
         match self {
             Self::Float(id) => Some(*id),
-            _ => None,
+            Self::Int(_)
+            | Self::String(_)
+            | Self::BitArray(_)
+            | Self::UtfCodepoint(_)
+            | Self::Custom(_)
+            | Self::Bool(_)
+            | Self::Nil(_)
+            | Self::Tuple(_)
+            | Self::List(_)
+            | Self::Function(_) => None,
         }
     }
 
     pub(crate) fn bool(&self) -> Option<BoolFunctionFunctionId> {
         match self {
             Self::Bool(id) => Some(*id),
-            _ => None,
+            Self::Int(_)
+            | Self::Float(_)
+            | Self::String(_)
+            | Self::BitArray(_)
+            | Self::UtfCodepoint(_)
+            | Self::Custom(_)
+            | Self::Nil(_)
+            | Self::Tuple(_)
+            | Self::List(_)
+            | Self::Function(_) => None,
         }
     }
 
     pub(crate) fn nil(&self) -> Option<NilFunctionFunctionId> {
         match self {
             Self::Nil(id) => Some(*id),
-            _ => None,
+            Self::Int(_)
+            | Self::Float(_)
+            | Self::String(_)
+            | Self::BitArray(_)
+            | Self::UtfCodepoint(_)
+            | Self::Custom(_)
+            | Self::Bool(_)
+            | Self::Tuple(_)
+            | Self::List(_)
+            | Self::Function(_) => None,
         }
     }
 
     pub(crate) fn tuple(&self) -> Option<TupleFunctionFunctionId> {
         match self {
             Self::Tuple(id) => Some(*id),
-            _ => None,
+            Self::Int(_)
+            | Self::Float(_)
+            | Self::String(_)
+            | Self::BitArray(_)
+            | Self::UtfCodepoint(_)
+            | Self::Custom(_)
+            | Self::Bool(_)
+            | Self::Nil(_)
+            | Self::List(_)
+            | Self::Function(_) => None,
         }
     }
 
     pub(crate) fn list(&self) -> Option<ListFunctionFunctionId> {
         match self {
             Self::List(id) => Some(id.clone()),
-            _ => None,
+            Self::Int(_)
+            | Self::Float(_)
+            | Self::String(_)
+            | Self::BitArray(_)
+            | Self::UtfCodepoint(_)
+            | Self::Custom(_)
+            | Self::Bool(_)
+            | Self::Nil(_)
+            | Self::Tuple(_)
+            | Self::Function(_) => None,
         }
     }
 
     pub(crate) fn function(&self) -> Option<FunctionFunctionFunctionId> {
         match self {
             Self::Function(id) => Some(id.clone()),
-            _ => None,
+            Self::Int(_)
+            | Self::Float(_)
+            | Self::String(_)
+            | Self::BitArray(_)
+            | Self::UtfCodepoint(_)
+            | Self::Custom(_)
+            | Self::Bool(_)
+            | Self::Nil(_)
+            | Self::Tuple(_)
+            | Self::List(_) => None,
         }
     }
 }

@@ -1104,100 +1104,114 @@ impl ListExpr {
     }
 
     pub(crate) fn into_int(self) -> Option<IntListExpr> {
-        match self {
-            Self::Int(expression) => Some(expression),
-            _ => None,
+        if let Self::Int(expression) = self {
+            Some(expression)
+        } else {
+            None
         }
     }
 
     pub(crate) fn into_generic(self) -> Option<GenericListExpr> {
-        match self {
-            Self::Generic(expression) => Some(expression),
-            _ => None,
+        if let Self::Generic(expression) = self {
+            Some(expression)
+        } else {
+            None
         }
     }
 
     pub(crate) fn into_parameter_list(self) -> Option<ParameterListListExpr> {
-        match self {
-            Self::ParameterList(expression) => Some(expression),
-            _ => None,
+        if let Self::ParameterList(expression) = self {
+            Some(expression)
+        } else {
+            None
         }
     }
 
     pub(crate) fn into_string(self) -> Option<StringListExpr> {
-        match self {
-            Self::String(expression) => Some(expression),
-            _ => None,
+        if let Self::String(expression) = self {
+            Some(expression)
+        } else {
+            None
         }
     }
 
     pub(crate) fn into_bit_array(self) -> Option<BitArrayListExpr> {
-        match self {
-            Self::BitArray(expression) => Some(expression),
-            _ => None,
+        if let Self::BitArray(expression) = self {
+            Some(expression)
+        } else {
+            None
         }
     }
 
     pub(crate) fn into_utf_codepoint(self) -> Option<UtfCodepointListExpr> {
-        match self {
-            Self::UtfCodepoint(expression) => Some(expression),
-            _ => None,
+        if let Self::UtfCodepoint(expression) = self {
+            Some(expression)
+        } else {
+            None
         }
     }
 
     pub(crate) fn into_custom(self) -> Option<CustomListExpr> {
-        match self {
-            Self::Custom(expression) => Some(expression),
-            _ => None,
+        if let Self::Custom(expression) = self {
+            Some(expression)
+        } else {
+            None
         }
     }
 
     pub(crate) fn into_external(self) -> Option<ExternalListExpr> {
-        match self {
-            Self::External(expression) => Some(expression),
-            _ => None,
+        if let Self::External(expression) = self {
+            Some(expression)
+        } else {
+            None
         }
     }
 
     pub(crate) fn into_float(self) -> Option<FloatListExpr> {
-        match self {
-            Self::Float(expression) => Some(expression),
-            _ => None,
+        if let Self::Float(expression) = self {
+            Some(expression)
+        } else {
+            None
         }
     }
 
     pub(crate) fn into_bool(self) -> Option<BoolListExpr> {
-        match self {
-            Self::Bool(expression) => Some(expression),
-            _ => None,
+        if let Self::Bool(expression) = self {
+            Some(expression)
+        } else {
+            None
         }
     }
 
     pub(crate) fn into_nil(self) -> Option<NilListExpr> {
-        match self {
-            Self::Nil(expression) => Some(expression),
-            _ => None,
+        if let Self::Nil(expression) = self {
+            Some(expression)
+        } else {
+            None
         }
     }
 
     pub(crate) fn into_tuple(self) -> Option<TupleListExpr> {
-        match self {
-            Self::Tuple(expression) => Some(expression),
-            _ => None,
+        if let Self::Tuple(expression) = self {
+            Some(expression)
+        } else {
+            None
         }
     }
 
     pub(crate) fn into_list(self) -> Option<ListListExpr> {
-        match self {
-            Self::List(expression) => Some(expression),
-            _ => None,
+        if let Self::List(expression) = self {
+            Some(expression)
+        } else {
+            None
         }
     }
 
     pub(crate) fn into_function(self) -> Option<FunctionListExpr> {
-        match self {
-            Self::Function(expression) => Some(expression),
-            _ => None,
+        if let Self::Function(expression) = self {
+            Some(expression)
+        } else {
+            None
         }
     }
 }

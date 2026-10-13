@@ -188,7 +188,18 @@ impl From<StoredListValueId> for EvaluatedValue {
     fn from(value: StoredListValueId) -> Self {
         match value {
             StoredListValueId::Parameter(value) => Self::ParameterList(value),
-            value => Self::List(value),
+            value @ (StoredListValueId::Int(_)
+            | StoredListValueId::String(_)
+            | StoredListValueId::BitArray(_)
+            | StoredListValueId::UtfCodepoint(_)
+            | StoredListValueId::Custom(_)
+            | StoredListValueId::External(_)
+            | StoredListValueId::Float(_)
+            | StoredListValueId::Bool(_)
+            | StoredListValueId::Nil(_)
+            | StoredListValueId::Tuple(_)
+            | StoredListValueId::List(_)
+            | StoredListValueId::Function(_)) => Self::List(value),
         }
     }
 }

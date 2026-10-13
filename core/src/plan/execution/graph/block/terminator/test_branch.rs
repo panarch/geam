@@ -119,7 +119,17 @@ mod tests {
     fn direct_branch(terminator: &Terminator) -> &TestBranch {
         match terminator {
             Terminator::TestBranch(branch) => branch,
-            _ => panic!("source must produce a direct test"),
+            Terminator::Jump(_)
+            | Terminator::BoolBranch(_)
+            | Terminator::IntSwitch(_)
+            | Terminator::FloatSwitch(_)
+            | Terminator::StringSwitch(_)
+            | Terminator::Match(_)
+            | Terminator::Echo(_)
+            | Terminator::Exit(_)
+            | Terminator::SourceStop(_)
+            | Terminator::LetAssertPanic(_)
+            | Terminator::NeverCall(_) => panic!("source must produce a direct test"),
         }
     }
 

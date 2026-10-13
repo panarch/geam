@@ -671,7 +671,12 @@ fn retained_adapter(
                 quote!(#host: #support::HostRetainedType<Retained = #host>),
             )
         }
-        _ => return None,
+        FunctionInputType::Callback(_)
+        | FunctionInputType::Value(_)
+        | FunctionInputType::Generic(_)
+        | FunctionInputType::External(_)
+        | FunctionInputType::List(_)
+        | FunctionInputType::Future(_) => return None,
     };
     let (output, output_bound) = match &function.return_ {
         FunctionReturnType::Generic(value) if opaque(&value.host) => (
@@ -686,7 +691,12 @@ fn retained_adapter(
                 quote!(#return_type: #support::HostRetainedType<Retained = #return_type>),
             )
         }
-        _ => return None,
+        FunctionReturnType::Callback(_)
+        | FunctionReturnType::Future(_)
+        | FunctionReturnType::Value(_)
+        | FunctionReturnType::Generic(_)
+        | FunctionReturnType::External(_)
+        | FunctionReturnType::List(_) => return None,
     };
     let wrapper = format_ident!("__geam_retained_{}", function.ident);
     let unwrap = function.host_result.then(|| {

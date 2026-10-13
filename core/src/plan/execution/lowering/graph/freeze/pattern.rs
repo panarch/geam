@@ -1193,21 +1193,53 @@ pub fn main() {
     ) {
         match terminator {
             Terminator::Match(matcher) => (matcher.pattern(), matcher.success(), matcher.failure()),
-            _ => panic!("fixture should contain a match terminator"),
+            Terminator::Jump(_)
+            | Terminator::BoolBranch(_)
+            | Terminator::TestBranch(_)
+            | Terminator::IntSwitch(_)
+            | Terminator::FloatSwitch(_)
+            | Terminator::StringSwitch(_)
+            | Terminator::Echo(_)
+            | Terminator::Exit(_)
+            | Terminator::SourceStop(_)
+            | Terminator::LetAssertPanic(_)
+            | Terminator::NeverCall(_) => panic!("fixture should contain a match terminator"),
         }
     }
 
     fn list_pattern(pattern: &MatchPattern) -> &MatchPatternList {
         match pattern {
             MatchPattern::List(pattern) => pattern,
-            _ => panic!("fixture should contain a List pattern"),
+            MatchPattern::Bind(_)
+            | MatchPattern::Discard
+            | MatchPattern::Int(_)
+            | MatchPattern::Float(_)
+            | MatchPattern::String(_)
+            | MatchPattern::Bool(_)
+            | MatchPattern::Nil
+            | MatchPattern::Tuple(_)
+            | MatchPattern::BitArray(_)
+            | MatchPattern::Custom { .. }
+            | MatchPattern::StringPrefix { .. }
+            | MatchPattern::Alias { .. } => panic!("fixture should contain a List pattern"),
         }
     }
 
     fn assert_binding_pattern(pattern: &MatchPattern) {
         match pattern {
             MatchPattern::Bind(_) => {}
-            _ => panic!("fixture should contain a binding pattern"),
+            MatchPattern::Discard
+            | MatchPattern::Int(_)
+            | MatchPattern::Float(_)
+            | MatchPattern::String(_)
+            | MatchPattern::Bool(_)
+            | MatchPattern::Nil
+            | MatchPattern::Tuple(_)
+            | MatchPattern::List(_)
+            | MatchPattern::BitArray(_)
+            | MatchPattern::Custom { .. }
+            | MatchPattern::StringPrefix { .. }
+            | MatchPattern::Alias { .. } => panic!("fixture should contain a binding pattern"),
         }
     }
 
@@ -1221,18 +1253,44 @@ pub fn main() {
     fn list_local(local: &ParamLocal) -> &ListLocal {
         match local {
             ParamLocal::List(local) => local,
-            _ => panic!("fixture should carry a List local"),
+            ParamLocal::Int(_)
+            | ParamLocal::Float(_)
+            | ParamLocal::String(_)
+            | ParamLocal::BitArray(_)
+            | ParamLocal::UtfCodepoint(_)
+            | ParamLocal::Parameter { .. }
+            | ParamLocal::Custom(_)
+            | ParamLocal::External(_)
+            | ParamLocal::Bool(_)
+            | ParamLocal::Nil(_)
+            | ParamLocal::Tuple { .. }
+            | ParamLocal::IntFunction { .. }
+            | ParamLocal::FloatFunction { .. }
+            | ParamLocal::StringFunction { .. }
+            | ParamLocal::BitArrayFunction { .. }
+            | ParamLocal::UtfCodepointFunction { .. }
+            | ParamLocal::ParameterFunction { .. }
+            | ParamLocal::GenericFunction(_)
+            | ParamLocal::NeverFunction(_)
+            | ParamLocal::CustomFunction(_)
+            | ParamLocal::ExternalFunction(_)
+            | ParamLocal::BoolFunction { .. }
+            | ParamLocal::NilFunction { .. }
+            | ParamLocal::TupleFunction { .. }
+            | ParamLocal::ListFunction(_)
+            | ParamLocal::FunctionFunction(_) => panic!("fixture should carry a List local"),
         }
     }
 
     fn int_add_operands(instruction: &Instruction) -> (IntLocalId, IntLocalId) {
-        match instruction.value().unwrap().kind() {
-            InstructionKind::Int(IntInstruction::Add {
-                left: execution_graph::IntegerOperand::Local(left),
-                right: execution_graph::IntegerOperand::Local(right),
-            }) => (*left, *right),
-            _ => panic!("fixture should contain an Int add instruction"),
-        }
+        let InstructionKind::Int(IntInstruction::Add {
+            left: execution_graph::IntegerOperand::Local(left),
+            right: execution_graph::IntegerOperand::Local(right),
+        }) = instruction.value().unwrap().kind()
+        else {
+            panic!("fixture should contain an Int add instruction");
+        };
+        (*left, *right)
     }
 
     fn let_assert_panic(
@@ -1243,14 +1301,34 @@ pub fn main() {
     ) {
         match terminator {
             Terminator::LetAssertPanic(panic) => (panic.subject(), panic.message()),
-            _ => panic!("fixture should contain a let-assert panic"),
+            Terminator::Jump(_)
+            | Terminator::BoolBranch(_)
+            | Terminator::TestBranch(_)
+            | Terminator::IntSwitch(_)
+            | Terminator::FloatSwitch(_)
+            | Terminator::StringSwitch(_)
+            | Terminator::Match(_)
+            | Terminator::Echo(_)
+            | Terminator::Exit(_)
+            | Terminator::SourceStop(_)
+            | Terminator::NeverCall(_) => panic!("fixture should contain a let-assert panic"),
         }
     }
 
     fn exit_id(terminator: &Terminator) -> BlockGraphExitId {
         match terminator {
             Terminator::Exit(exit) => *exit,
-            _ => panic!("fixture should contain an exit terminator"),
+            Terminator::Jump(_)
+            | Terminator::BoolBranch(_)
+            | Terminator::TestBranch(_)
+            | Terminator::IntSwitch(_)
+            | Terminator::FloatSwitch(_)
+            | Terminator::StringSwitch(_)
+            | Terminator::Match(_)
+            | Terminator::Echo(_)
+            | Terminator::SourceStop(_)
+            | Terminator::LetAssertPanic(_)
+            | Terminator::NeverCall(_) => panic!("fixture should contain an exit terminator"),
         }
     }
 

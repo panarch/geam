@@ -237,7 +237,30 @@ fn capture_values(captures: &[EvaluatedCapture]) -> CallbackCaptures {
             EvaluatedCaptureKind::Custom { value, .. } => {
                 values.customs.push(CustomInput(value.clone()))
             }
-            _ => {}
+            EvaluatedCaptureKind::Float { .. }
+            | EvaluatedCaptureKind::String { .. }
+            | EvaluatedCaptureKind::BitArray { .. }
+            | EvaluatedCaptureKind::UtfCodepoint { .. }
+            | EvaluatedCaptureKind::Parameter { .. }
+            | EvaluatedCaptureKind::External { .. }
+            | EvaluatedCaptureKind::Nil { .. }
+            | EvaluatedCaptureKind::Tuple { .. }
+            | EvaluatedCaptureKind::List(_)
+            | EvaluatedCaptureKind::IntFunction { .. }
+            | EvaluatedCaptureKind::FloatFunction { .. }
+            | EvaluatedCaptureKind::StringFunction { .. }
+            | EvaluatedCaptureKind::BitArrayFunction { .. }
+            | EvaluatedCaptureKind::UtfCodepointFunction { .. }
+            | EvaluatedCaptureKind::ParameterFunction { .. }
+            | EvaluatedCaptureKind::CustomFunction { .. }
+            | EvaluatedCaptureKind::ExternalFunction { .. }
+            | EvaluatedCaptureKind::BoolFunction { .. }
+            | EvaluatedCaptureKind::NilFunction { .. }
+            | EvaluatedCaptureKind::TupleFunction { .. }
+            | EvaluatedCaptureKind::ListFunction { .. }
+            | EvaluatedCaptureKind::FunctionFunction { .. }
+            | EvaluatedCaptureKind::GenericFunction { .. }
+            | EvaluatedCaptureKind::NeverFunction { .. } => {}
         }
     }
     values

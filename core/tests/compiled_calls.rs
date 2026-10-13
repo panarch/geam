@@ -87,7 +87,43 @@ impl CallExecution for LimitedBridge {
             CallProgress::Yield(_) => "yield",
             CallProgress::Bool { .. } => "bridge",
             CallProgress::Interpreted { .. } => "canonical",
-            _ => "other",
+            CallProgress::StringNative(_)
+            | CallProgress::CustomNative(_)
+            | CallProgress::TupleNative(_)
+            | CallProgress::Custom { .. }
+            | CallProgress::Tuple { .. }
+            | CallProgress::InterpretedCustom { .. }
+            | CallProgress::InterpretedTuple { .. }
+            | CallProgress::Complete { .. }
+            | CallProgress::Int { .. }
+            | CallProgress::IntScalar { .. }
+            | CallProgress::BoolScalar { .. }
+            | CallProgress::IntFunction { .. }
+            | CallProgress::BoolFunction { .. }
+            | CallProgress::Float { .. }
+            | CallProgress::String { .. }
+            | CallProgress::BitArray { .. }
+            | CallProgress::UtfCodepoint { .. }
+            | CallProgress::Nil { .. }
+            | CallProgress::FloatFunction { .. }
+            | CallProgress::StringFunction { .. }
+            | CallProgress::BitArrayFunction { .. }
+            | CallProgress::UtfCodepointFunction { .. }
+            | CallProgress::NilFunction { .. }
+            | CallProgress::InterpretedInt { .. }
+            | CallProgress::InterpretedBool { .. }
+            | CallProgress::InterpretedIntFunction { .. }
+            | CallProgress::InterpretedBoolFunction { .. }
+            | CallProgress::InterpretedFloat { .. }
+            | CallProgress::InterpretedString { .. }
+            | CallProgress::InterpretedBitArray { .. }
+            | CallProgress::InterpretedUtfCodepoint { .. }
+            | CallProgress::InterpretedNil { .. }
+            | CallProgress::InterpretedFloatFunction { .. }
+            | CallProgress::InterpretedStringFunction { .. }
+            | CallProgress::InterpretedBitArrayFunction { .. }
+            | CallProgress::InterpretedUtfCodepointFunction { .. }
+            | CallProgress::InterpretedNilFunction { .. } => "other",
         };
         BRIDGE_TRACE
             .lock()
@@ -106,7 +142,44 @@ impl CallExecution for LimitedBridge {
                 arguments,
                 resume: Box::new(move |value| Box::new(Self(resume(value)))),
             },
-            progress => progress,
+            progress @ (CallProgress::StringNative(_)
+            | CallProgress::CustomNative(_)
+            | CallProgress::TupleNative(_)
+            | CallProgress::Custom { .. }
+            | CallProgress::Tuple { .. }
+            | CallProgress::InterpretedCustom { .. }
+            | CallProgress::InterpretedTuple { .. }
+            | CallProgress::Complete { .. }
+            | CallProgress::Interpreted { .. }
+            | CallProgress::Int { .. }
+            | CallProgress::IntScalar { .. }
+            | CallProgress::BoolScalar { .. }
+            | CallProgress::IntFunction { .. }
+            | CallProgress::BoolFunction { .. }
+            | CallProgress::Float { .. }
+            | CallProgress::String { .. }
+            | CallProgress::BitArray { .. }
+            | CallProgress::UtfCodepoint { .. }
+            | CallProgress::Nil { .. }
+            | CallProgress::FloatFunction { .. }
+            | CallProgress::StringFunction { .. }
+            | CallProgress::BitArrayFunction { .. }
+            | CallProgress::UtfCodepointFunction { .. }
+            | CallProgress::NilFunction { .. }
+            | CallProgress::InterpretedInt { .. }
+            | CallProgress::InterpretedBool { .. }
+            | CallProgress::InterpretedIntFunction { .. }
+            | CallProgress::InterpretedBoolFunction { .. }
+            | CallProgress::InterpretedFloat { .. }
+            | CallProgress::InterpretedString { .. }
+            | CallProgress::InterpretedBitArray { .. }
+            | CallProgress::InterpretedUtfCodepoint { .. }
+            | CallProgress::InterpretedNil { .. }
+            | CallProgress::InterpretedFloatFunction { .. }
+            | CallProgress::InterpretedStringFunction { .. }
+            | CallProgress::InterpretedBitArrayFunction { .. }
+            | CallProgress::InterpretedUtfCodepointFunction { .. }
+            | CallProgress::InterpretedNilFunction { .. }) => progress,
         }
     }
 }
@@ -289,7 +362,46 @@ impl CallExecution for LimitedCalls {
         match progress {
             CallProgress::Yield(next) => CallProgress::Yield(Box::new(Self(next))),
             complete @ CallProgress::Complete { .. } => complete,
-            _ => panic!("Small capture chains must stay within the actual generated execution"),
+            CallProgress::StringNative(_)
+            | CallProgress::CustomNative(_)
+            | CallProgress::TupleNative(_)
+            | CallProgress::Custom { .. }
+            | CallProgress::Tuple { .. }
+            | CallProgress::InterpretedCustom { .. }
+            | CallProgress::InterpretedTuple { .. }
+            | CallProgress::Interpreted { .. }
+            | CallProgress::Int { .. }
+            | CallProgress::IntScalar { .. }
+            | CallProgress::Bool { .. }
+            | CallProgress::BoolScalar { .. }
+            | CallProgress::IntFunction { .. }
+            | CallProgress::BoolFunction { .. }
+            | CallProgress::Float { .. }
+            | CallProgress::String { .. }
+            | CallProgress::BitArray { .. }
+            | CallProgress::UtfCodepoint { .. }
+            | CallProgress::Nil { .. }
+            | CallProgress::FloatFunction { .. }
+            | CallProgress::StringFunction { .. }
+            | CallProgress::BitArrayFunction { .. }
+            | CallProgress::UtfCodepointFunction { .. }
+            | CallProgress::NilFunction { .. }
+            | CallProgress::InterpretedInt { .. }
+            | CallProgress::InterpretedBool { .. }
+            | CallProgress::InterpretedIntFunction { .. }
+            | CallProgress::InterpretedBoolFunction { .. }
+            | CallProgress::InterpretedFloat { .. }
+            | CallProgress::InterpretedString { .. }
+            | CallProgress::InterpretedBitArray { .. }
+            | CallProgress::InterpretedUtfCodepoint { .. }
+            | CallProgress::InterpretedNil { .. }
+            | CallProgress::InterpretedFloatFunction { .. }
+            | CallProgress::InterpretedStringFunction { .. }
+            | CallProgress::InterpretedBitArrayFunction { .. }
+            | CallProgress::InterpretedUtfCodepointFunction { .. }
+            | CallProgress::InterpretedNilFunction { .. } => {
+                panic!("Small capture chains must stay within the actual generated execution")
+            }
         }
     }
 }

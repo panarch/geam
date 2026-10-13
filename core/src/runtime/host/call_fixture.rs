@@ -515,7 +515,18 @@ impl HostTokenRuntime for TestHostCallRuntime<'_> {
             HostValueFamily::SymbolicFunction => {
                 crate::host::HostFunctionValueToken::Symbolic(value.index)
             }
-            _ => panic!("fixture requires a function token"),
+            HostValueFamily::Parameter
+            | HostValueFamily::Int
+            | HostValueFamily::Float
+            | HostValueFamily::String
+            | HostValueFamily::BitArray
+            | HostValueFamily::UtfCodepoint
+            | HostValueFamily::Bool
+            | HostValueFamily::Nil
+            | HostValueFamily::List
+            | HostValueFamily::Tuple
+            | HostValueFamily::Custom
+            | HostValueFamily::External => panic!("fixture requires a function token"),
         }
     }
 }
@@ -703,7 +714,7 @@ mod tests {
                 ProfiledRuntimeFunctionId::Core(ProfiledCoreRuntimeFunctionId::List(
                     ProfiledListFunctionId::Core(ListFunctionId::Int(id)),
                 )) => Some(id.type_id()),
-                _ => None,
+                ProfiledRuntimeFunctionId::Core(_) | ProfiledRuntimeFunctionId::External(_) => None,
             };
             assert_eq!(list.is_some(), is_list);
             if let Some(list) = list {
@@ -732,7 +743,7 @@ mod tests {
                         .execution()
                         .custom_constructor_id(id.type_id().item_type(), 0),
                 ),
-                _ => None,
+                ProfiledRuntimeFunctionId::Core(_) | ProfiledRuntimeFunctionId::External(_) => None,
             };
             assert_eq!(custom.is_some(), !is_list);
             if let Some(constructor) = custom {

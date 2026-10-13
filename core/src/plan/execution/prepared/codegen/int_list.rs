@@ -97,7 +97,22 @@ impl IntListTest {
                 right: *right,
                 negate: true,
             },
-            _ => return None,
+            BoolTest::Not(_)
+            | BoolTest::EqualInt { .. }
+            | BoolTest::NotEqualInt { .. }
+            | BoolTest::LtInt { .. }
+            | BoolTest::LtEqInt { .. }
+            | BoolTest::GtInt { .. }
+            | BoolTest::GtEqInt { .. }
+            | BoolTest::LtFloat { .. }
+            | BoolTest::LtEqFloat { .. }
+            | BoolTest::GtFloat { .. }
+            | BoolTest::GtEqFloat { .. }
+            | BoolTest::Equal { .. }
+            | BoolTest::NotEqual { .. }
+            | BoolTest::StringStartsWith { .. }
+            | BoolTest::ListLengthEquals { .. }
+            | BoolTest::ListLengthAtLeast { .. } => return None,
         })
     }
 }
@@ -143,7 +158,15 @@ impl<'graph> IntListMatch<'graph> {
                         .push((binding.index(), Some(pattern.elements().len())));
                 }
             }
-            _ => return None,
+            MatchPattern::Int(_)
+            | MatchPattern::Float(_)
+            | MatchPattern::String(_)
+            | MatchPattern::Bool(_)
+            | MatchPattern::Nil
+            | MatchPattern::Tuple(_)
+            | MatchPattern::BitArray(_)
+            | MatchPattern::Custom { .. }
+            | MatchPattern::StringPrefix { .. } => return None,
         }
         Some(())
     }
@@ -168,7 +191,15 @@ impl<'graph> IntListElement<'graph> {
                 self.pattern(pattern)?;
                 self.bindings.push(binding.index());
             }
-            _ => return None,
+            MatchPattern::Float(_)
+            | MatchPattern::String(_)
+            | MatchPattern::Bool(_)
+            | MatchPattern::Nil
+            | MatchPattern::Tuple(_)
+            | MatchPattern::List(_)
+            | MatchPattern::BitArray(_)
+            | MatchPattern::Custom { .. }
+            | MatchPattern::StringPrefix { .. } => return None,
         }
         Some(())
     }

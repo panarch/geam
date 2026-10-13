@@ -181,7 +181,17 @@ pub fn main() { case identity(1.0) { 1.0 -> 1 _ -> 0 } }
             .copied()
             .filter_map(|terminator| match terminator {
                 Terminator::FloatSwitch(switch) => Some(switch),
-                _ => None,
+                Terminator::Jump(_)
+                | Terminator::BoolBranch(_)
+                | Terminator::TestBranch(_)
+                | Terminator::IntSwitch(_)
+                | Terminator::StringSwitch(_)
+                | Terminator::Match(_)
+                | Terminator::Echo(_)
+                | Terminator::Exit(_)
+                | Terminator::SourceStop(_)
+                | Terminator::LetAssertPanic(_)
+                | Terminator::NeverCall(_) => None,
             })
             .collect::<Vec<_>>();
         float_switch_from_nodes(&switches)

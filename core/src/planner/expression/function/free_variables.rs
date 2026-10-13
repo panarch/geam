@@ -1034,7 +1034,10 @@ pub fn main() {
                 Statement::Expression(TypedExpr::Fn {
                     arguments, body, ..
                 }) => Some((arguments, body)),
-                _ => None,
+                Statement::Expression(_)
+                | Statement::Assignment(_)
+                | Statement::Use(_)
+                | Statement::Assert(_) => None,
             })
             .expect("expected anonymous function expression statement");
 

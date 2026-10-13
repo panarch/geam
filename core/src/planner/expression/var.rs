@@ -1201,7 +1201,29 @@ pub fn main() {
                 constructor,
                 ..
             } => (type_, module_name, label, constructor),
-            _ => panic!("expected module select expression"),
+            TypedExpr::Int { .. }
+            | TypedExpr::Float { .. }
+            | TypedExpr::String { .. }
+            | TypedExpr::Block { .. }
+            | TypedExpr::Pipeline { .. }
+            | TypedExpr::Var { .. }
+            | TypedExpr::Fn { .. }
+            | TypedExpr::List { .. }
+            | TypedExpr::Call { .. }
+            | TypedExpr::BinOp { .. }
+            | TypedExpr::Case { .. }
+            | TypedExpr::RecordAccess { .. }
+            | TypedExpr::PositionalAccess { .. }
+            | TypedExpr::Tuple { .. }
+            | TypedExpr::TupleIndex { .. }
+            | TypedExpr::Todo { .. }
+            | TypedExpr::Panic { .. }
+            | TypedExpr::Echo { .. }
+            | TypedExpr::BitArray { .. }
+            | TypedExpr::RecordUpdate { .. }
+            | TypedExpr::NegateBool { .. }
+            | TypedExpr::NegateInt { .. }
+            | TypedExpr::Invalid { .. } => panic!("expected module select expression"),
         }
     }
 
@@ -1210,7 +1232,9 @@ pub fn main() {
     ) -> (&mut u16, &mut std::sync::Arc<type_::Type>) {
         match constructor {
             ModuleValueConstructor::Record { arity, type_, .. } => (arity, type_),
-            _ => panic!("expected module record constructor"),
+            ModuleValueConstructor::Fn { .. } | ModuleValueConstructor::Constant { .. } => {
+                panic!("expected module record constructor")
+            }
         }
     }
 
@@ -1221,14 +1245,18 @@ pub fn main() {
             ModuleValueConstructor::Fn {
                 external_erlang, ..
             } => external_erlang,
-            _ => panic!("expected module function constructor"),
+            ModuleValueConstructor::Record { .. } | ModuleValueConstructor::Constant { .. } => {
+                panic!("expected module function constructor")
+            }
         }
     }
 
     fn module_function_module(constructor: &mut ModuleValueConstructor) -> &mut EcoString {
         match constructor {
             ModuleValueConstructor::Fn { module, .. } => module,
-            _ => panic!("expected module function constructor"),
+            ModuleValueConstructor::Record { .. } | ModuleValueConstructor::Constant { .. } => {
+                panic!("expected module function constructor")
+            }
         }
     }
 

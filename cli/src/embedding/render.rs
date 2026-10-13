@@ -517,7 +517,10 @@ fn service_composition(
         .filter(|component| match component {
             ComponentBinding::Erlang => true,
             ComponentBinding::External(external) => external.composition.execution_service,
-            _ => false,
+            ComponentBinding::Future
+            | ComponentBinding::Stdlib
+            | ComponentBinding::Json
+            | ComponentBinding::Time => false,
         })
         .map(|component| crate::provider::ServiceBinding {
             component: component_type(alias, components, component),

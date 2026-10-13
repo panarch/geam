@@ -1398,7 +1398,19 @@ impl DraftInstruction {
         };
         let region = match self {
             Self::IntegerRegion(region) => region.outputs.as_slice(),
-            _ => &[],
+            Self::Int { .. }
+            | Self::Float { .. }
+            | Self::String { .. }
+            | Self::BitArray { .. }
+            | Self::UtfCodepoint { .. }
+            | Self::Parameter { .. }
+            | Self::Custom { .. }
+            | Self::External { .. }
+            | Self::Bool { .. }
+            | Self::Nil { .. }
+            | Self::Tuple { .. }
+            | Self::List { .. }
+            | Self::Function { .. } => &[],
         };
         single
             .into_iter()

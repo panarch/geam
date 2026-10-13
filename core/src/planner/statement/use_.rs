@@ -96,7 +96,13 @@ fn validate_use_assignment_pattern(
         | Pattern::Assign { .. } => {
             plan_binding_pattern_in_context(pattern.clone(), context).map(|_| ())
         }
-        pattern => Err(non_variable_pattern_error(pattern)),
+        pattern @ (Pattern::Int { .. }
+        | Pattern::Float { .. }
+        | Pattern::String { .. }
+        | Pattern::BitArraySize(_)
+        | Pattern::Discard { .. }
+        | Pattern::StringPrefix { .. }
+        | Pattern::Invalid { .. }) => Err(non_variable_pattern_error(pattern)),
     }
 }
 
@@ -202,7 +208,29 @@ fn normalize_use_callback(
                 })
             }
         },
-        _ => Err(PlanError::InvalidTypedAst {
+        TypedExpr::Int { .. }
+        | TypedExpr::Float { .. }
+        | TypedExpr::String { .. }
+        | TypedExpr::Block { .. }
+        | TypedExpr::Pipeline { .. }
+        | TypedExpr::Var { .. }
+        | TypedExpr::List { .. }
+        | TypedExpr::Call { .. }
+        | TypedExpr::BinOp { .. }
+        | TypedExpr::Case { .. }
+        | TypedExpr::RecordAccess { .. }
+        | TypedExpr::PositionalAccess { .. }
+        | TypedExpr::ModuleSelect { .. }
+        | TypedExpr::Tuple { .. }
+        | TypedExpr::TupleIndex { .. }
+        | TypedExpr::Todo { .. }
+        | TypedExpr::Panic { .. }
+        | TypedExpr::Echo { .. }
+        | TypedExpr::BitArray { .. }
+        | TypedExpr::RecordUpdate { .. }
+        | TypedExpr::NegateBool { .. }
+        | TypedExpr::NegateInt { .. }
+        | TypedExpr::Invalid { .. } => Err(PlanError::InvalidTypedAst {
             reason: InvalidTypedAstReason::UseShape {
                 reason: InvalidUseShapeReason::CallbackNotFunctionLiteral { index },
             },

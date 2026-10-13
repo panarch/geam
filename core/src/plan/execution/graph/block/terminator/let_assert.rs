@@ -137,7 +137,17 @@ pub fn main() {
             .copied()
             .filter_map(|terminator| match terminator {
                 Terminator::LetAssertPanic(panic) => Some(panic),
-                _ => None,
+                Terminator::Jump(_)
+                | Terminator::BoolBranch(_)
+                | Terminator::TestBranch(_)
+                | Terminator::IntSwitch(_)
+                | Terminator::FloatSwitch(_)
+                | Terminator::StringSwitch(_)
+                | Terminator::Match(_)
+                | Terminator::Echo(_)
+                | Terminator::Exit(_)
+                | Terminator::SourceStop(_)
+                | Terminator::NeverCall(_) => None,
             })
             .collect::<Vec<_>>();
         let_assert_panic_from_nodes(&panics)

@@ -161,7 +161,33 @@ impl NativeLoopContract {
                 local: NilFunctionLocalId(0),
                 type_,
             } => (NativeLoopProducer::Nil(NilFunctionLocalId(0)), type_),
-            _ => return None,
+            ParamLocal::Int(_)
+            | ParamLocal::Float(_)
+            | ParamLocal::String(_)
+            | ParamLocal::BitArray(_)
+            | ParamLocal::UtfCodepoint(_)
+            | ParamLocal::Parameter { .. }
+            | ParamLocal::Custom(_)
+            | ParamLocal::External(_)
+            | ParamLocal::Bool(_)
+            | ParamLocal::Nil(_)
+            | ParamLocal::Tuple { .. }
+            | ParamLocal::List(_)
+            | ParamLocal::IntFunction { .. }
+            | ParamLocal::FloatFunction { .. }
+            | ParamLocal::StringFunction { .. }
+            | ParamLocal::BitArrayFunction { .. }
+            | ParamLocal::UtfCodepointFunction { .. }
+            | ParamLocal::ParameterFunction { .. }
+            | ParamLocal::GenericFunction(_)
+            | ParamLocal::NeverFunction(_)
+            | ParamLocal::CustomFunction(_)
+            | ParamLocal::ExternalFunction(_)
+            | ParamLocal::BoolFunction { .. }
+            | ParamLocal::NilFunction { .. }
+            | ParamLocal::TupleFunction { .. }
+            | ParamLocal::ListFunction(_)
+            | ParamLocal::FunctionFunction(_) => return None,
         };
         if !producer_type.arguments.is_empty() {
             return None;
@@ -224,7 +250,21 @@ impl NativeLoopContract {
                 args,
                 site,
             }) => (NativeLoopTarget::Nil(*function), args, site),
-            _ => return None,
+            ProfiledInstructionKind::Int(_)
+            | ProfiledInstructionKind::Float(_)
+            | ProfiledInstructionKind::String(_)
+            | ProfiledInstructionKind::BitArray(_)
+            | ProfiledInstructionKind::UtfCodepoint(_)
+            | ProfiledInstructionKind::Parameter(_)
+            | ProfiledInstructionKind::Custom(_)
+            | ProfiledInstructionKind::External(_)
+            | ProfiledInstructionKind::ExternalList(_)
+            | ProfiledInstructionKind::ExternalFunction(_)
+            | ProfiledInstructionKind::Bool(_)
+            | ProfiledInstructionKind::Nil(_)
+            | ProfiledInstructionKind::Tuple(_)
+            | ProfiledInstructionKind::List(_)
+            | ProfiledInstructionKind::Function(_) => return None,
         };
         if args.as_ref() != [callback.output.local.clone()] {
             return None;

@@ -1805,7 +1805,7 @@ pub fn main() { fn() { key() } }
                     type_: type_.clone(),
                     list_type: *list_type,
                 }),
-                _ => None,
+                Runtime::Core(_) | Runtime::External(_) => None,
             };
             assert_eq!(target.is_some(), family != FunctionTableFamily::IntFunction);
             let Some(target) = target else { continue };
@@ -1904,7 +1904,7 @@ pub fn main() { fn() { key() } }
                 Catalog::admit(&common.function_parameters, &program.functions, &types).unwrap();
             let target = match &common.main {
                 Runtime::Core(Core::List(target)) => Some(target),
-                _ => None,
+                Runtime::Core(_) | Runtime::External(_) => None,
             };
             assert_eq!(target.is_some(), family != FunctionTableFamily::Int);
             let Some(target) = target else { continue };

@@ -1396,8 +1396,9 @@ mod tests {
         ParameterFunctionId, UtfCodepointFunctionId,
     };
     use crate::plan::execution::graph::{
-        BlockId, ExternalInstruction, FunctionInstructionKind, InstructionKind, NilInstruction,
-        ParameterInstruction, ProfiledInstruction, ProfiledInstructionKind,
+        BlockId, CustomInstruction, ExternalInstruction, FunctionInstructionKind, FunctionTarget,
+        InstructionKind, IntInstruction, NilInstruction, ParameterInstruction, ProfiledInstruction,
+        ProfiledInstructionKind, UtfCodepointInstruction,
     };
     use crate::plan::execution::lowering::specialization::{
         SpecializedCustomValueShape, SpecializedExternalValueShape, SpecializedFunctionShape,
@@ -1580,82 +1581,78 @@ mod tests {
     }
 
     fn int_value(instruction: &ProfiledInstruction<HostedExecutionGraph>) -> num_bigint::BigInt {
-        match instruction.value().unwrap().kind() {
-            InstructionKind::Int(crate::plan::execution::graph::IntInstruction::Value(value)) => {
-                value.materialize()
-            }
-            _ => panic!("Int draft instruction should freeze as an Int value"),
-        }
+        let InstructionKind::Int(IntInstruction::Value(value)) =
+            instruction.value().unwrap().kind()
+        else {
+            panic!("Int draft instruction should freeze as an Int value");
+        };
+        value.materialize()
     }
 
     fn utf_codepoint_call(
         instruction: &ProfiledInstruction<HostedExecutionGraph>,
     ) -> (UtfCodepointFunctionId, usize) {
-        match instruction.value().unwrap().kind() {
-            InstructionKind::UtfCodepoint(
-                crate::plan::execution::graph::UtfCodepointInstruction::Call {
-                    function, args, ..
-                },
-            ) => (*function, args.len()),
-            _ => panic!("UtfCodepoint draft instruction should preserve its call"),
-        }
+        let InstructionKind::UtfCodepoint(UtfCodepointInstruction::Call { function, args, .. }) =
+            instruction.value().unwrap().kind()
+        else {
+            panic!("UtfCodepoint draft instruction should preserve its call");
+        };
+        (*function, args.len())
     }
 
     fn parameter_call(
         instruction: &ProfiledInstruction<HostedExecutionGraph>,
     ) -> (ParameterFunctionId, usize) {
-        match instruction.value().unwrap().kind() {
-            InstructionKind::Parameter(ParameterInstruction::Call { function, args, .. }) => {
-                (*function, args.len())
-            }
-            _ => panic!("Parameter draft instruction should preserve its call"),
-        }
+        let InstructionKind::Parameter(ParameterInstruction::Call { function, args, .. }) =
+            instruction.value().unwrap().kind()
+        else {
+            panic!("Parameter draft instruction should preserve its call");
+        };
+        (*function, args.len())
     }
 
     fn custom_construct(
         instruction: &ProfiledInstruction<HostedExecutionGraph>,
     ) -> (CustomConstructorId, usize) {
-        match instruction.value().unwrap().kind() {
-            InstructionKind::Custom(
-                crate::plan::execution::graph::CustomInstruction::Construct {
-                    constructor,
-                    fields,
-                },
-            ) => (*constructor, fields.len()),
-            _ => panic!("Custom draft instruction should preserve construction metadata"),
-        }
+        let InstructionKind::Custom(CustomInstruction::Construct {
+            constructor,
+            fields,
+        }) = instruction.value().unwrap().kind()
+        else {
+            panic!("Custom draft instruction should preserve construction metadata");
+        };
+        (*constructor, fields.len())
     }
 
     fn external_call(
         instruction: &ProfiledInstruction<HostedExecutionGraph>,
     ) -> (ExternalFunctionId, usize) {
-        match instruction.value().unwrap().kind() {
-            InstructionKind::External(ExternalInstruction::Call { function, args, .. }) => {
-                (*function, args.len())
-            }
-            _ => panic!("External draft instruction should preserve its typed call"),
-        }
+        let InstructionKind::External(ExternalInstruction::Call { function, args, .. }) =
+            instruction.value().unwrap().kind()
+        else {
+            panic!("External draft instruction should preserve its typed call");
+        };
+        (*function, args.len())
     }
 
     fn nil_value(instruction: &ProfiledInstruction<HostedExecutionGraph>) {
-        match instruction.value().unwrap().kind() {
-            InstructionKind::Nil(NilInstruction::Value) => {}
-            _ => panic!("Nil draft instruction should freeze as a Nil value"),
-        }
+        let InstructionKind::Nil(NilInstruction::Value) = instruction.value().unwrap().kind()
+        else {
+            panic!("Nil draft instruction should freeze as a Nil value");
+        };
     }
 
     fn int_function_reference(
         instruction: &ProfiledInstruction<HostedExecutionGraph>,
     ) -> IntFunctionId {
-        match instruction.value().unwrap().kind() {
-            InstructionKind::Function(function) => match function.kind() {
-                FunctionInstructionKind::Reference(
-                    crate::plan::execution::graph::FunctionTarget::Int(target),
-                ) => *target,
-                _ => panic!("Function draft instruction should preserve its target"),
-            },
-            _ => panic!("Function draft instruction should preserve its target"),
-        }
+        let InstructionKind::Function(function) = instruction.value().unwrap().kind() else {
+            panic!("Function draft instruction should preserve its target");
+        };
+        let FunctionInstructionKind::Reference(FunctionTarget::Int(target)) = function.kind()
+        else {
+            panic!("Function draft instruction should preserve its target");
+        };
+        *target
     }
 
     fn instruction_family(

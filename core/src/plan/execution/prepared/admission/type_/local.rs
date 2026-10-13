@@ -673,7 +673,29 @@ pub fn main() { #(Box, identity, stop, fn() { fn() { 42 } }, fn() { #(42) }) }
                     *type_ = wrong.clone();
                     checked[4] += 1;
                 }
-                _ => continue,
+                ParamLocal::Int(_)
+                | ParamLocal::Float(_)
+                | ParamLocal::String(_)
+                | ParamLocal::BitArray(_)
+                | ParamLocal::UtfCodepoint(_)
+                | ParamLocal::Parameter { .. }
+                | ParamLocal::Custom(_)
+                | ParamLocal::External(_)
+                | ParamLocal::Bool(_)
+                | ParamLocal::Nil(_)
+                | ParamLocal::Tuple { .. }
+                | ParamLocal::List(_)
+                | ParamLocal::IntFunction { .. }
+                | ParamLocal::FloatFunction { .. }
+                | ParamLocal::StringFunction { .. }
+                | ParamLocal::BitArrayFunction { .. }
+                | ParamLocal::UtfCodepointFunction { .. }
+                | ParamLocal::ParameterFunction { .. }
+                | ParamLocal::ExternalFunction(_)
+                | ParamLocal::BoolFunction { .. }
+                | ParamLocal::NilFunction { .. }
+                | ParamLocal::ListFunction(_)
+                | ParamLocal::FunctionFunction(_) => continue,
             }
             assert_eq!(*types.slot(slot).unwrap(), *slot);
             assert_eq!(types.local_type(&local), Err(TypeError::LocalTypeMismatch));
@@ -925,7 +947,29 @@ pub fn main() {
                         ),
                     ]
                 }
-                _ => continue,
+                ParamLocal::Int(_)
+                | ParamLocal::Float(_)
+                | ParamLocal::String(_)
+                | ParamLocal::BitArray(_)
+                | ParamLocal::UtfCodepoint(_)
+                | ParamLocal::Parameter { .. }
+                | ParamLocal::Custom(_)
+                | ParamLocal::External(_)
+                | ParamLocal::Bool(_)
+                | ParamLocal::Nil(_)
+                | ParamLocal::Tuple { .. }
+                | ParamLocal::List(_)
+                | ParamLocal::IntFunction { .. }
+                | ParamLocal::FloatFunction { .. }
+                | ParamLocal::StringFunction { .. }
+                | ParamLocal::BitArrayFunction { .. }
+                | ParamLocal::UtfCodepointFunction { .. }
+                | ParamLocal::ParameterFunction { .. }
+                | ParamLocal::BoolFunction { .. }
+                | ParamLocal::NilFunction { .. }
+                | ParamLocal::TupleFunction { .. }
+                | ParamLocal::ListFunction(_)
+                | ParamLocal::FunctionFunction(_) => continue,
             };
             assert_eq!(*types.slot(slot).unwrap(), *slot);
             for (local, expected) in cases {
@@ -961,7 +1005,32 @@ pub fn main() {
                     ParamLocal::Custom(local) => {
                         Some((instruction.value().unwrap().output(), local))
                     }
-                    _ => None,
+                    ParamLocal::Int(_)
+                    | ParamLocal::Float(_)
+                    | ParamLocal::String(_)
+                    | ParamLocal::BitArray(_)
+                    | ParamLocal::UtfCodepoint(_)
+                    | ParamLocal::Parameter { .. }
+                    | ParamLocal::External(_)
+                    | ParamLocal::Bool(_)
+                    | ParamLocal::Nil(_)
+                    | ParamLocal::Tuple { .. }
+                    | ParamLocal::List(_)
+                    | ParamLocal::IntFunction { .. }
+                    | ParamLocal::FloatFunction { .. }
+                    | ParamLocal::StringFunction { .. }
+                    | ParamLocal::BitArrayFunction { .. }
+                    | ParamLocal::UtfCodepointFunction { .. }
+                    | ParamLocal::ParameterFunction { .. }
+                    | ParamLocal::GenericFunction(_)
+                    | ParamLocal::NeverFunction(_)
+                    | ParamLocal::CustomFunction(_)
+                    | ParamLocal::ExternalFunction(_)
+                    | ParamLocal::BoolFunction { .. }
+                    | ParamLocal::NilFunction { .. }
+                    | ParamLocal::TupleFunction { .. }
+                    | ParamLocal::ListFunction(_)
+                    | ParamLocal::FunctionFunction(_) => None,
                 },
             )
             .collect();

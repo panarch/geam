@@ -45,7 +45,19 @@ pub(super) fn form_regions<Return: DraftGraphValue, TailCall>(
                             .push(DraftInstruction::Int { output, kind });
                     }
                 }
-                instruction => {
+                instruction @ (DraftInstruction::IntegerRegion(_)
+                | DraftInstruction::Float { .. }
+                | DraftInstruction::String { .. }
+                | DraftInstruction::BitArray { .. }
+                | DraftInstruction::UtfCodepoint { .. }
+                | DraftInstruction::Parameter { .. }
+                | DraftInstruction::Custom { .. }
+                | DraftInstruction::External { .. }
+                | DraftInstruction::Bool { .. }
+                | DraftInstruction::Nil { .. }
+                | DraftInstruction::Tuple { .. }
+                | DraftInstruction::List { .. }
+                | DraftInstruction::Function { .. }) => {
                     flush(&mut run, &mut block.instructions, &uses);
                     block.instructions.push(instruction);
                 }
@@ -82,7 +94,13 @@ impl ArithmeticOperation {
                 Self::Remainder(left.clone(), right.clone())
             }
             DraftIntInstruction::Negate(value) => Self::Negate(value.clone()),
-            _ => return None,
+            DraftIntInstruction::Value(_)
+            | DraftIntInstruction::Constant(_)
+            | DraftIntInstruction::Call { .. }
+            | DraftIntInstruction::FunctionCall { .. }
+            | DraftIntInstruction::TupleIndex { .. }
+            | DraftIntInstruction::CustomField { .. }
+            | DraftIntInstruction::ListIndex { .. } => return None,
         })
     }
 

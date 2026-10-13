@@ -76,7 +76,7 @@ fn inputs(package: &EmbeddingPackage, actual: &Metadata) -> Result<Value, CliErr
     let packages = gleam.packages.into_iter().map(|package| {
         let source = match package.source {
             ManifestPackageSource::Local { .. } => json!({ "source": "local" }),
-            source => json!(source),
+            source @ (ManifestPackageSource::Hex { .. } | ManifestPackageSource::Git { .. }) => json!(source),
         };
         (package.name.to_string(), json!({
             "version": package.version, "source": source, "requirements": package.requirements,
@@ -88,7 +88,9 @@ fn inputs(package: &EmbeddingPackage, actual: &Metadata) -> Result<Value, CliErr
         .map(|(name, requirement)| {
             let requirement = match requirement {
                 Requirement::Path { .. } => json!({ "source": "local" }),
-                requirement => json!(requirement),
+                requirement @ (Requirement::Hex { .. } | Requirement::Git { .. }) => {
+                    json!(requirement)
+                }
             };
             (name.to_string(), requirement)
         })

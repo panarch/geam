@@ -187,7 +187,16 @@ fn collect_total_bits_bindings_with_context(
             names.push(name.clone());
             Ok(())
         }
-        pattern => Err(crate::planner::pattern::unexpected_pattern(
+        pattern @ (Pattern::Int { .. }
+        | Pattern::Float { .. }
+        | Pattern::String { .. }
+        | Pattern::BitArraySize(_)
+        | Pattern::List { .. }
+        | Pattern::Constructor { .. }
+        | Pattern::Tuple { .. }
+        | Pattern::BitArray { .. }
+        | Pattern::StringPrefix { .. }
+        | Pattern::Invalid { .. }) => Err(crate::planner::pattern::unexpected_pattern(
             pattern,
             &crate::plan::ValueShape::BitArray,
             context,

@@ -99,7 +99,10 @@ impl HostedComponents {
                 ComponentBinding::External(component) => {
                     component.package == required && component.composition.execution_service
                 }
-                _ => false,
+                ComponentBinding::Future
+                | ComponentBinding::Stdlib
+                | ComponentBinding::Json
+                | ComponentBinding::Time => false,
             });
             if !owns_service {
                 return Err(provider_error(
@@ -854,7 +857,11 @@ mod tests {
                     component.input_field.as_str(),
                     component.composition.execution_service,
                 )),
-                _ => None,
+                ComponentBinding::Future
+                | ComponentBinding::Stdlib
+                | ComponentBinding::Json
+                | ComponentBinding::Time
+                | ComponentBinding::Erlang => None,
             })
             .collect::<Vec<_>>();
         assert_eq!(

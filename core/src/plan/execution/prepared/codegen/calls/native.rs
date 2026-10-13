@@ -11,7 +11,20 @@ impl CallFamily {
         match self {
             Self::Custom => "custom_native",
             Self::Tuple => "tuple_native",
-            _ => "native",
+            Self::Int
+            | Self::Bool
+            | Self::IntFunction
+            | Self::BoolFunction
+            | Self::Float
+            | Self::String
+            | Self::BitArray
+            | Self::UtfCodepoint
+            | Self::Nil
+            | Self::FloatFunction
+            | Self::StringFunction
+            | Self::BitArrayFunction
+            | Self::UtfCodepointFunction
+            | Self::NilFunction => "native",
         }
     }
 }

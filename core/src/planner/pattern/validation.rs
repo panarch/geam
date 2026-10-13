@@ -74,7 +74,18 @@ fn validate_pattern_in_scope(
                         )?;
                     }
                 }
-                _ => validate_constructor_pattern(
+                ValueShape::Parameter(_)
+                | ValueShape::Int
+                | ValueShape::Float
+                | ValueShape::String
+                | ValueShape::BitArray
+                | ValueShape::UtfCodepoint
+                | ValueShape::Bool
+                | ValueShape::Nil
+                | ValueShape::Tuple(_)
+                | ValueShape::List(_)
+                | ValueShape::Function(_)
+                | ValueShape::External(_) => validate_constructor_pattern(
                     constructor,
                     arguments.len(),
                     spread.is_some(),
@@ -359,7 +370,17 @@ fn validate_list_tail_in_scope(
             validate_pattern_in_scope(pattern, expected, context, parameters)?;
             Ok(ValidatedListTail::Discard)
         }
-        _ => Err(PlanError::InvalidTypedAst {
+        Pattern::Int { .. }
+        | Pattern::Float { .. }
+        | Pattern::String { .. }
+        | Pattern::BitArraySize(_)
+        | Pattern::Assign { .. }
+        | Pattern::List { .. }
+        | Pattern::Constructor { .. }
+        | Pattern::Tuple { .. }
+        | Pattern::BitArray { .. }
+        | Pattern::StringPrefix { .. }
+        | Pattern::Invalid { .. } => Err(PlanError::InvalidTypedAst {
             reason: InvalidTypedAstReason::PatternShape {
                 reason: InvalidPatternShapeReason::ListTailKind {
                     actual: pattern_kind(pattern),

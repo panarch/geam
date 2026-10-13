@@ -517,7 +517,35 @@ pub fn main() {
             .iter()
             .filter_map(|step| match step.kind() {
                 StepKind::AssertPattern { subject, .. } => Some(subject.clone()),
-                _ => None,
+                StepKind::LetGeneric { .. }
+                | StepKind::LetInt { .. }
+                | StepKind::LetFloat { .. }
+                | StepKind::LetString { .. }
+                | StepKind::LetBitArray { .. }
+                | StepKind::LetUtfCodepoint { .. }
+                | StepKind::LetCustom { .. }
+                | StepKind::LetExternal { .. }
+                | StepKind::LetBool { .. }
+                | StepKind::LetNil { .. }
+                | StepKind::LetTuple { .. }
+                | StepKind::LetList { .. }
+                | StepKind::LetIntFunction { .. }
+                | StepKind::LetFloatFunction { .. }
+                | StepKind::LetStringFunction { .. }
+                | StepKind::LetBitArrayFunction { .. }
+                | StepKind::LetUtfCodepointFunction { .. }
+                | StepKind::LetCustomFunction { .. }
+                | StepKind::LetExternalFunction { .. }
+                | StepKind::LetBoolFunction { .. }
+                | StepKind::LetNilFunction { .. }
+                | StepKind::LetTupleFunction { .. }
+                | StepKind::LetListFunction { .. }
+                | StepKind::LetFunctionFunction { .. }
+                | StepKind::LetGenericFunction { .. }
+                | StepKind::Echo(_)
+                | StepKind::BindCustomFields { .. }
+                | StepKind::AssertBool { .. }
+                | StepKind::Evaluate(_) => None,
             })
             .collect::<Vec<_>>();
         let custom_type = CustomType::new(
@@ -595,7 +623,35 @@ pub fn main() {
                     .iter()
                     .filter_map(move |step| match step.kind() {
                         StepKind::BindCustomFields { .. } => Some(*kind),
-                        _ => None,
+                        StepKind::LetGeneric { .. }
+                        | StepKind::LetInt { .. }
+                        | StepKind::LetFloat { .. }
+                        | StepKind::LetString { .. }
+                        | StepKind::LetBitArray { .. }
+                        | StepKind::LetUtfCodepoint { .. }
+                        | StepKind::LetCustom { .. }
+                        | StepKind::LetExternal { .. }
+                        | StepKind::LetBool { .. }
+                        | StepKind::LetNil { .. }
+                        | StepKind::LetTuple { .. }
+                        | StepKind::LetList { .. }
+                        | StepKind::LetIntFunction { .. }
+                        | StepKind::LetFloatFunction { .. }
+                        | StepKind::LetStringFunction { .. }
+                        | StepKind::LetBitArrayFunction { .. }
+                        | StepKind::LetUtfCodepointFunction { .. }
+                        | StepKind::LetCustomFunction { .. }
+                        | StepKind::LetExternalFunction { .. }
+                        | StepKind::LetBoolFunction { .. }
+                        | StepKind::LetNilFunction { .. }
+                        | StepKind::LetTupleFunction { .. }
+                        | StepKind::LetListFunction { .. }
+                        | StepKind::LetFunctionFunction { .. }
+                        | StepKind::LetGenericFunction { .. }
+                        | StepKind::Echo(_)
+                        | StepKind::AssertPattern { .. }
+                        | StepKind::AssertBool { .. }
+                        | StepKind::Evaluate(_) => None,
                     })
             })
             .collect::<Vec<_>>();
@@ -607,7 +663,35 @@ pub fn main() {
                     .iter()
                     .filter_map(move |step| match step.kind() {
                         StepKind::AssertPattern { subject, .. } => Some((*kind, subject.clone())),
-                        _ => None,
+                        StepKind::LetGeneric { .. }
+                        | StepKind::LetInt { .. }
+                        | StepKind::LetFloat { .. }
+                        | StepKind::LetString { .. }
+                        | StepKind::LetBitArray { .. }
+                        | StepKind::LetUtfCodepoint { .. }
+                        | StepKind::LetCustom { .. }
+                        | StepKind::LetExternal { .. }
+                        | StepKind::LetBool { .. }
+                        | StepKind::LetNil { .. }
+                        | StepKind::LetTuple { .. }
+                        | StepKind::LetList { .. }
+                        | StepKind::LetIntFunction { .. }
+                        | StepKind::LetFloatFunction { .. }
+                        | StepKind::LetStringFunction { .. }
+                        | StepKind::LetBitArrayFunction { .. }
+                        | StepKind::LetUtfCodepointFunction { .. }
+                        | StepKind::LetCustomFunction { .. }
+                        | StepKind::LetExternalFunction { .. }
+                        | StepKind::LetBoolFunction { .. }
+                        | StepKind::LetNilFunction { .. }
+                        | StepKind::LetTupleFunction { .. }
+                        | StepKind::LetListFunction { .. }
+                        | StepKind::LetFunctionFunction { .. }
+                        | StepKind::LetGenericFunction { .. }
+                        | StepKind::Echo(_)
+                        | StepKind::BindCustomFields { .. }
+                        | StepKind::AssertBool { .. }
+                        | StepKind::Evaluate(_) => None,
                     })
             })
             .collect::<Vec<_>>();

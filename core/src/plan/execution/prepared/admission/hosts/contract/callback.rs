@@ -157,6 +157,7 @@ impl Callbacks<'_, '_> {
 mod tests {
     use super::{Callbacks, ContractError, HostCustomTypeSchema, HostTypeDescriptor, Types};
     use crate::host::{HostCustomConstructorSchema, HostCustomFieldSchema, HostSchemaType};
+    use crate::plan::execution::type_::ValueType as ExecutionValueType;
 
     #[test]
     fn restoration_targets_keep_invocation_and_storage_contracts_distinct() {
@@ -238,10 +239,21 @@ pub fn main() {
                 .shape_types
                 .iter()
                 .position(|type_| match type_ {
-                    crate::plan::execution::type_::ValueType::Custom(id) => {
+                    ExecutionValueType::Custom(id) => {
                         common.custom_types.types[id.index()].type_.name.as_str() == "Never"
                     }
-                    _ => false,
+                    ExecutionValueType::Parameter(_)
+                    | ExecutionValueType::Int
+                    | ExecutionValueType::Float
+                    | ExecutionValueType::String
+                    | ExecutionValueType::BitArray
+                    | ExecutionValueType::UtfCodepoint
+                    | ExecutionValueType::Bool
+                    | ExecutionValueType::Nil
+                    | ExecutionValueType::Tuple(_)
+                    | ExecutionValueType::List(_)
+                    | ExecutionValueType::Function(_)
+                    | ExecutionValueType::External(_) => false,
                 })
                 .unwrap();
             let arguments = [HostTypeArgument {
@@ -415,10 +427,21 @@ pub fn main() {
             .shape_types
             .iter()
             .position(|type_| match type_ {
-                crate::plan::execution::type_::ValueType::Custom(id) => {
+                ExecutionValueType::Custom(id) => {
                     common.custom_types.types[id.index()].type_.name.as_str() == "Never"
                 }
-                _ => false,
+                ExecutionValueType::Parameter(_)
+                | ExecutionValueType::Int
+                | ExecutionValueType::Float
+                | ExecutionValueType::String
+                | ExecutionValueType::BitArray
+                | ExecutionValueType::UtfCodepoint
+                | ExecutionValueType::Bool
+                | ExecutionValueType::Nil
+                | ExecutionValueType::Tuple(_)
+                | ExecutionValueType::List(_)
+                | ExecutionValueType::Function(_)
+                | ExecutionValueType::External(_) => false,
             })
             .unwrap();
         assert_eq!(
@@ -520,10 +543,21 @@ pub fn main() {
             .shape_types
             .iter()
             .position(|type_| match type_ {
-                crate::plan::execution::type_::ValueType::Custom(id) => {
+                ExecutionValueType::Custom(id) => {
                     common.custom_types.types[id.0].type_.name.as_str() == "Never"
                 }
-                _ => false,
+                ExecutionValueType::Parameter(_)
+                | ExecutionValueType::Int
+                | ExecutionValueType::Float
+                | ExecutionValueType::String
+                | ExecutionValueType::BitArray
+                | ExecutionValueType::UtfCodepoint
+                | ExecutionValueType::Bool
+                | ExecutionValueType::Nil
+                | ExecutionValueType::Tuple(_)
+                | ExecutionValueType::List(_)
+                | ExecutionValueType::Function(_)
+                | ExecutionValueType::External(_) => false,
             })
             .unwrap();
         let arguments = [HostTypeArgument {

@@ -276,7 +276,32 @@ pub fn main() -> String {
                                 if let Some(local) =
                                     locals.iter_mut().flatten().find_map(|local| match local {
                                         ParamLocal::Custom(local) => Some(local),
-                                        _ => None,
+                                        ParamLocal::Int(_)
+                                        | ParamLocal::Float(_)
+                                        | ParamLocal::String(_)
+                                        | ParamLocal::BitArray(_)
+                                        | ParamLocal::UtfCodepoint(_)
+                                        | ParamLocal::Parameter { .. }
+                                        | ParamLocal::External(_)
+                                        | ParamLocal::Bool(_)
+                                        | ParamLocal::Nil(_)
+                                        | ParamLocal::Tuple { .. }
+                                        | ParamLocal::List(_)
+                                        | ParamLocal::IntFunction { .. }
+                                        | ParamLocal::FloatFunction { .. }
+                                        | ParamLocal::StringFunction { .. }
+                                        | ParamLocal::BitArrayFunction { .. }
+                                        | ParamLocal::UtfCodepointFunction { .. }
+                                        | ParamLocal::ParameterFunction { .. }
+                                        | ParamLocal::GenericFunction(_)
+                                        | ParamLocal::NeverFunction(_)
+                                        | ParamLocal::CustomFunction(_)
+                                        | ParamLocal::ExternalFunction(_)
+                                        | ParamLocal::BoolFunction { .. }
+                                        | ParamLocal::NilFunction { .. }
+                                        | ParamLocal::TupleFunction { .. }
+                                        | ParamLocal::ListFunction(_)
+                                        | ParamLocal::FunctionFunction(_) => None,
                                     })
                                 {
                                     local.shape.shape_id = CustomValueShapeId(999);
@@ -344,7 +369,7 @@ pub fn main() -> String {
                                 body.tails = tails.into();
                                 failed_target = Some(target);
                             }
-                            _ => {}
+                            Fault::Unchanged | Fault::TailArguments | Fault::TailSite => {}
                         }
                     }
                     CompiledFunction {
@@ -471,7 +496,33 @@ pub fn main() {
                             ParamLocal::List(ListLocal::Int { local, type_id }) => {
                                 Some((local, type_id))
                             }
-                            _ => None,
+                            ParamLocal::Int(_)
+                            | ParamLocal::Float(_)
+                            | ParamLocal::String(_)
+                            | ParamLocal::BitArray(_)
+                            | ParamLocal::UtfCodepoint(_)
+                            | ParamLocal::Parameter { .. }
+                            | ParamLocal::Custom(_)
+                            | ParamLocal::External(_)
+                            | ParamLocal::Bool(_)
+                            | ParamLocal::Nil(_)
+                            | ParamLocal::Tuple { .. }
+                            | ParamLocal::List(_)
+                            | ParamLocal::IntFunction { .. }
+                            | ParamLocal::FloatFunction { .. }
+                            | ParamLocal::StringFunction { .. }
+                            | ParamLocal::BitArrayFunction { .. }
+                            | ParamLocal::UtfCodepointFunction { .. }
+                            | ParamLocal::ParameterFunction { .. }
+                            | ParamLocal::GenericFunction(_)
+                            | ParamLocal::NeverFunction(_)
+                            | ParamLocal::CustomFunction(_)
+                            | ParamLocal::ExternalFunction(_)
+                            | ParamLocal::BoolFunction { .. }
+                            | ParamLocal::NilFunction { .. }
+                            | ParamLocal::TupleFunction { .. }
+                            | ParamLocal::ListFunction(_)
+                            | ParamLocal::FunctionFunction(_) => None,
                         })
                         .unwrap();
                     if fault == "list type" {

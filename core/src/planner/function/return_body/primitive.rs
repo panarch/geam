@@ -65,7 +65,12 @@ pub(super) fn generic_return(expression: GenericExpr) -> GenericReturn {
         GenericExprKind::Block { steps, return_ } => {
             ReturnBody::block(steps.clone(), generic_return((**return_).clone()))
         }
-        _ => ReturnBody::expr(expression),
+        GenericExprKind::LocalGet { .. }
+        | GenericExprKind::FunctionCall { .. }
+        | GenericExprKind::TupleIndex { .. }
+        | GenericExprKind::CustomField(_)
+        | GenericExprKind::ListIndex { .. }
+        | GenericExprKind::Panic(_) => ReturnBody::expr(expression),
     }
 }
 
@@ -130,7 +135,20 @@ pub(super) fn int_return(expression: IntExpr) -> IntReturn {
         IntExprKind::Block { steps, return_ } => {
             ReturnBody::block(steps.clone(), int_return((**return_).clone()))
         }
-        _ => ReturnBody::expr(expression),
+        IntExprKind::Value(_)
+        | IntExprKind::Constant(_)
+        | IntExprKind::LocalGet { .. }
+        | IntExprKind::FunctionCall { .. }
+        | IntExprKind::TupleIndex { .. }
+        | IntExprKind::CustomField(_)
+        | IntExprKind::ListIndex { .. }
+        | IntExprKind::Panic(_)
+        | IntExprKind::Add { .. }
+        | IntExprKind::Sub { .. }
+        | IntExprKind::Mult { .. }
+        | IntExprKind::Div { .. }
+        | IntExprKind::Remainder { .. }
+        | IntExprKind::Negate(_) => ReturnBody::expr(expression),
     }
 }
 
@@ -192,7 +210,16 @@ pub(super) fn string_return(expression: StringExpr) -> StringReturn {
         StringExprKind::Block { steps, return_ } => {
             ReturnBody::block(steps.clone(), string_return((**return_).clone()))
         }
-        _ => ReturnBody::expr(expression),
+        StringExprKind::Value(_)
+        | StringExprKind::Constant(_)
+        | StringExprKind::LocalGet { .. }
+        | StringExprKind::FunctionCall { .. }
+        | StringExprKind::TupleIndex { .. }
+        | StringExprKind::CustomField(_)
+        | StringExprKind::ListIndex { .. }
+        | StringExprKind::Panic(_)
+        | StringExprKind::Concatenate { .. }
+        | StringExprKind::DropPrefix { .. } => ReturnBody::expr(expression),
     }
 }
 
@@ -254,7 +281,14 @@ pub(super) fn bit_array_return(expression: BitArrayExpr) -> BitArrayReturn {
         BitArrayExprKind::Block { steps, return_ } => {
             ReturnBody::block(steps.clone(), bit_array_return((**return_).clone()))
         }
-        _ => ReturnBody::expr(expression),
+        BitArrayExprKind::Value(_)
+        | BitArrayExprKind::Constant(_)
+        | BitArrayExprKind::LocalGet { .. }
+        | BitArrayExprKind::FunctionCall { .. }
+        | BitArrayExprKind::TupleIndex { .. }
+        | BitArrayExprKind::CustomField(_)
+        | BitArrayExprKind::ListIndex { .. }
+        | BitArrayExprKind::Panic(_) => ReturnBody::expr(expression),
     }
 }
 
@@ -316,7 +350,12 @@ pub(super) fn utf_codepoint_return(expression: UtfCodepointExpr) -> UtfCodepoint
         UtfCodepointExprKind::Block { steps, return_ } => {
             ReturnBody::block(steps.clone(), utf_codepoint_return((**return_).clone()))
         }
-        _ => ReturnBody::expr(expression),
+        UtfCodepointExprKind::LocalGet { .. }
+        | UtfCodepointExprKind::FunctionCall { .. }
+        | UtfCodepointExprKind::TupleIndex { .. }
+        | UtfCodepointExprKind::CustomField(_)
+        | UtfCodepointExprKind::ListIndex { .. }
+        | UtfCodepointExprKind::Panic(_) => ReturnBody::expr(expression),
     }
 }
 
@@ -392,7 +431,18 @@ pub(super) fn float_return(expression: FloatExpr) -> FloatReturn {
         FloatExprKind::Block { steps, return_ } => {
             ReturnBody::block(steps.clone(), float_return((**return_).clone()))
         }
-        _ => ReturnBody::expr(expression),
+        FloatExprKind::Value(_)
+        | FloatExprKind::Constant(_)
+        | FloatExprKind::LocalGet { .. }
+        | FloatExprKind::FunctionCall { .. }
+        | FloatExprKind::TupleIndex { .. }
+        | FloatExprKind::CustomField(_)
+        | FloatExprKind::ListIndex { .. }
+        | FloatExprKind::Panic(_)
+        | FloatExprKind::Add { .. }
+        | FloatExprKind::Sub { .. }
+        | FloatExprKind::Mult { .. }
+        | FloatExprKind::Div { .. } => ReturnBody::expr(expression),
     }
 }
 
@@ -454,7 +504,32 @@ pub(super) fn bool_return(expression: BoolExpr) -> BoolReturn {
         BoolExprKind::Block { steps, return_ } => {
             ReturnBody::block(steps.clone(), bool_return((**return_).clone()))
         }
-        _ => ReturnBody::expr(expression),
+        BoolExprKind::Value(_)
+        | BoolExprKind::Constant(_)
+        | BoolExprKind::LocalGet { .. }
+        | BoolExprKind::FunctionCall { .. }
+        | BoolExprKind::TupleIndex { .. }
+        | BoolExprKind::CustomField(_)
+        | BoolExprKind::ListIndex { .. }
+        | BoolExprKind::Panic(_)
+        | BoolExprKind::Not(_)
+        | BoolExprKind::LtInt { .. }
+        | BoolExprKind::LtEqInt { .. }
+        | BoolExprKind::GtInt { .. }
+        | BoolExprKind::GtEqInt { .. }
+        | BoolExprKind::LtFloat { .. }
+        | BoolExprKind::LtEqFloat { .. }
+        | BoolExprKind::GtFloat { .. }
+        | BoolExprKind::GtEqFloat { .. }
+        | BoolExprKind::Equal { .. }
+        | BoolExprKind::NotEqual { .. }
+        | BoolExprKind::StringStartsWith { .. }
+        | BoolExprKind::ListLengthEquals { .. }
+        | BoolExprKind::ListLengthAtLeast { .. }
+        | BoolExprKind::BitArrayMatches { .. }
+        | BoolExprKind::CustomMatches { .. }
+        | BoolExprKind::And { .. }
+        | BoolExprKind::Or { .. } => ReturnBody::expr(expression),
     }
 }
 
@@ -516,7 +591,14 @@ pub(super) fn nil_return(expression: NilExpr) -> NilReturn {
         NilExprKind::Block { steps, return_ } => {
             ReturnBody::block(steps.clone(), nil_return((**return_).clone()))
         }
-        _ => ReturnBody::expr(expression),
+        NilExprKind::Value
+        | NilExprKind::Constant(_)
+        | NilExprKind::LocalGet { .. }
+        | NilExprKind::FunctionCall { .. }
+        | NilExprKind::TupleIndex { .. }
+        | NilExprKind::CustomField(_)
+        | NilExprKind::ListIndex { .. }
+        | NilExprKind::Panic(_) => ReturnBody::expr(expression),
     }
 }
 
@@ -578,7 +660,14 @@ pub(super) fn tuple_return(expression: TupleExpr) -> TupleReturn {
         TupleExprKind::Block { steps, return_ } => {
             ReturnBody::block(steps.clone(), tuple_return((**return_).clone()))
         }
-        _ => ReturnBody::expr(expression),
+        TupleExprKind::Value(_)
+        | TupleExprKind::Constant(_)
+        | TupleExprKind::LocalGet { .. }
+        | TupleExprKind::FunctionCall { .. }
+        | TupleExprKind::TupleIndex { .. }
+        | TupleExprKind::CustomField(_)
+        | TupleExprKind::ListIndex { .. }
+        | TupleExprKind::Panic(_) => ReturnBody::expr(expression),
     }
 }
 

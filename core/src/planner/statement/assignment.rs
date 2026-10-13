@@ -1184,7 +1184,18 @@ fn plan_total_bit_array_binding_value_pattern(
                 }
             })
         }
-        pattern => Err(non_variable_pattern_error(&pattern)),
+        pattern @ (Pattern::Int { .. }
+        | Pattern::Float { .. }
+        | Pattern::String { .. }
+        | Pattern::Variable { .. }
+        | Pattern::BitArraySize(_)
+        | Pattern::Discard { .. }
+        | Pattern::List { .. }
+        | Pattern::Constructor { .. }
+        | Pattern::Tuple { .. }
+        | Pattern::BitArray { .. }
+        | Pattern::StringPrefix { .. }
+        | Pattern::Invalid { .. }) => Err(non_variable_pattern_error(&pattern)),
     }
 }
 

@@ -1523,7 +1523,7 @@ pub fn main() { native(42) }
                 target.index = 99;
                 Some(index)
             }
-            _ => None,
+            ValueFunctionEntry::Graph(_) | ValueFunctionEntry::Host(_) => None,
         })
         .collect::<Vec<_>>();
         assert_eq!(corrupted.len(), 1);
@@ -1852,7 +1852,56 @@ pub fn main() { let _ = handoff() 42 }
             let return_annotation = match family {
                 FunctionTableFamily::Never => " -> Never",
                 FunctionTableFamily::Parameter => " -> value",
-                _ => "",
+                FunctionTableFamily::Int
+                | FunctionTableFamily::Float
+                | FunctionTableFamily::String
+                | FunctionTableFamily::BitArray
+                | FunctionTableFamily::UtfCodepoint
+                | FunctionTableFamily::Custom
+                | FunctionTableFamily::External
+                | FunctionTableFamily::Bool
+                | FunctionTableFamily::Nil
+                | FunctionTableFamily::Tuple
+                | FunctionTableFamily::ParameterList
+                | FunctionTableFamily::IntList
+                | FunctionTableFamily::StringList
+                | FunctionTableFamily::BitArrayList
+                | FunctionTableFamily::UtfCodepointList
+                | FunctionTableFamily::CustomList
+                | FunctionTableFamily::ExternalList
+                | FunctionTableFamily::FloatList
+                | FunctionTableFamily::BoolList
+                | FunctionTableFamily::NilList
+                | FunctionTableFamily::TupleList
+                | FunctionTableFamily::ListList
+                | FunctionTableFamily::FunctionList
+                | FunctionTableFamily::IntFunction
+                | FunctionTableFamily::FloatFunction
+                | FunctionTableFamily::StringFunction
+                | FunctionTableFamily::BitArrayFunction
+                | FunctionTableFamily::UtfCodepointFunction
+                | FunctionTableFamily::ParameterFunction
+                | FunctionTableFamily::CustomFunction
+                | FunctionTableFamily::ExternalFunction
+                | FunctionTableFamily::BoolFunction
+                | FunctionTableFamily::NilFunction
+                | FunctionTableFamily::TupleFunction
+                | FunctionTableFamily::GenericFunction
+                | FunctionTableFamily::NeverFunction
+                | FunctionTableFamily::ParameterListFunction
+                | FunctionTableFamily::IntListFunction
+                | FunctionTableFamily::StringListFunction
+                | FunctionTableFamily::BitArrayListFunction
+                | FunctionTableFamily::UtfCodepointListFunction
+                | FunctionTableFamily::CustomListFunction
+                | FunctionTableFamily::ExternalListFunction
+                | FunctionTableFamily::FloatListFunction
+                | FunctionTableFamily::BoolListFunction
+                | FunctionTableFamily::NilListFunction
+                | FunctionTableFamily::TupleListFunction
+                | FunctionTableFamily::ListListFunction
+                | FunctionTableFamily::FunctionListFunction
+                | FunctionTableFamily::FunctionFunction => "",
             };
             let source = format!(
                 "pub type Never pub type Box(a) {{ Box(a) }} pub type Key \

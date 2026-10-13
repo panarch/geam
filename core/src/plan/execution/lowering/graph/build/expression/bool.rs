@@ -65,18 +65,43 @@ pub(in crate::plan::execution::lowering) fn bool_paths(
         E::ListLengthAtLeast { value, length } => {
             list_length_paths(value, *length, false, cursor, graph, context)
         }
-        _ => bool_value_instruction(expression, cursor, graph, context).map(|flow| match flow {
-            DraftFlow::Diverged => BoolPaths::Diverged,
-            DraftFlow::Value { cursor, value } => {
-                let scope = cursor.scope().clone();
-                let true_ = graph.empty_block(scope.clone());
-                let false_ = graph.empty_block(scope);
-                let true_id = true_.id();
-                let false_id = false_.id();
-                graph.finish_bool_branch(cursor, value, true_id, false_id);
-                BoolPaths::Both { true_, false_ }
-            }
-        }),
+        E::Constant(_)
+        | E::LocalGet { .. }
+        | E::Call { .. }
+        | E::FunctionCall { .. }
+        | E::TupleIndex { .. }
+        | E::CustomField(_)
+        | E::ListIndex { .. }
+        | E::Panic(_)
+        | E::Not(_)
+        | E::LtInt { .. }
+        | E::LtEqInt { .. }
+        | E::GtInt { .. }
+        | E::GtEqInt { .. }
+        | E::LtFloat { .. }
+        | E::LtEqFloat { .. }
+        | E::GtFloat { .. }
+        | E::GtEqFloat { .. }
+        | E::Equal { .. }
+        | E::NotEqual { .. }
+        | E::StringStartsWith { .. }
+        | E::BoolCase { .. }
+        | E::IntCase { .. }
+        | E::StringCase { .. }
+        | E::FloatCase { .. } => {
+            bool_value_instruction(expression, cursor, graph, context).map(|flow| match flow {
+                DraftFlow::Diverged => BoolPaths::Diverged,
+                DraftFlow::Value { cursor, value } => {
+                    let scope = cursor.scope().clone();
+                    let true_ = graph.empty_block(scope.clone());
+                    let false_ = graph.empty_block(scope);
+                    let true_id = true_.id();
+                    let false_id = false_.id();
+                    graph.finish_bool_branch(cursor, value, true_id, false_id);
+                    BoolPaths::Both { true_, false_ }
+                }
+            })
+        }
     }
 }
 
@@ -810,7 +835,9 @@ mod tests {
             Representability::Inhabited(super::BoolPaths::Both { true_, false_ }) => {
                 [true_, false_]
             }
-            _ => panic!("an unresolved execution list must read its stored length"),
+            Representability::Inhabited(_) | Representability::Uninhabited => {
+                panic!("an unresolved execution list must read its stored length")
+            }
         }
     }
 

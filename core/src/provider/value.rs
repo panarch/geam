@@ -426,7 +426,9 @@ pub fn main() { pure(fn(value: Int) { value + 1 })(41) }
     fn expect_host_failure(error: ExecutionError) -> Box<crate::HostError> {
         match error {
             ExecutionError::Host(error) => error,
-            error => panic!("expected a checked host failure, got {error}"),
+            error @ (ExecutionError::Panic(_) | ExecutionError::Invariant(_)) => {
+                panic!("expected a checked host failure, got {error}")
+            }
         }
     }
 

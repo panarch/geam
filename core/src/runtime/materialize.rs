@@ -817,21 +817,96 @@ mod tests {
     fn custom_function_local(local: &ParamLocal) -> CustomFunctionLocal {
         match local {
             ParamLocal::CustomFunction(local) => local.clone(),
-            _ => panic!("expected a custom-function local"),
+            ParamLocal::Int(_)
+            | ParamLocal::Float(_)
+            | ParamLocal::String(_)
+            | ParamLocal::BitArray(_)
+            | ParamLocal::UtfCodepoint(_)
+            | ParamLocal::Parameter { .. }
+            | ParamLocal::Custom(_)
+            | ParamLocal::External(_)
+            | ParamLocal::Bool(_)
+            | ParamLocal::Nil(_)
+            | ParamLocal::Tuple { .. }
+            | ParamLocal::List(_)
+            | ParamLocal::IntFunction { .. }
+            | ParamLocal::FloatFunction { .. }
+            | ParamLocal::StringFunction { .. }
+            | ParamLocal::BitArrayFunction { .. }
+            | ParamLocal::UtfCodepointFunction { .. }
+            | ParamLocal::ParameterFunction { .. }
+            | ParamLocal::GenericFunction(_)
+            | ParamLocal::NeverFunction(_)
+            | ParamLocal::ExternalFunction(_)
+            | ParamLocal::BoolFunction { .. }
+            | ParamLocal::NilFunction { .. }
+            | ParamLocal::TupleFunction { .. }
+            | ParamLocal::ListFunction(_)
+            | ParamLocal::FunctionFunction(_) => panic!("expected a custom-function local"),
         }
     }
 
     fn function_function_local(local: &ParamLocal) -> FunctionFunctionLocal {
         match local {
             ParamLocal::FunctionFunction(local) => local.clone(),
-            _ => panic!("expected a function-function local"),
+            ParamLocal::Int(_)
+            | ParamLocal::Float(_)
+            | ParamLocal::String(_)
+            | ParamLocal::BitArray(_)
+            | ParamLocal::UtfCodepoint(_)
+            | ParamLocal::Parameter { .. }
+            | ParamLocal::Custom(_)
+            | ParamLocal::External(_)
+            | ParamLocal::Bool(_)
+            | ParamLocal::Nil(_)
+            | ParamLocal::Tuple { .. }
+            | ParamLocal::List(_)
+            | ParamLocal::IntFunction { .. }
+            | ParamLocal::FloatFunction { .. }
+            | ParamLocal::StringFunction { .. }
+            | ParamLocal::BitArrayFunction { .. }
+            | ParamLocal::UtfCodepointFunction { .. }
+            | ParamLocal::ParameterFunction { .. }
+            | ParamLocal::GenericFunction(_)
+            | ParamLocal::NeverFunction(_)
+            | ParamLocal::CustomFunction(_)
+            | ParamLocal::ExternalFunction(_)
+            | ParamLocal::BoolFunction { .. }
+            | ParamLocal::NilFunction { .. }
+            | ParamLocal::TupleFunction { .. }
+            | ParamLocal::ListFunction(_) => panic!("expected a function-function local"),
         }
     }
 
     fn custom_local(local: &ParamLocal) -> CustomLocal {
         match local {
             ParamLocal::Custom(local) => *local,
-            _ => panic!("expected a custom local"),
+            ParamLocal::Int(_)
+            | ParamLocal::Float(_)
+            | ParamLocal::String(_)
+            | ParamLocal::BitArray(_)
+            | ParamLocal::UtfCodepoint(_)
+            | ParamLocal::Parameter { .. }
+            | ParamLocal::External(_)
+            | ParamLocal::Bool(_)
+            | ParamLocal::Nil(_)
+            | ParamLocal::Tuple { .. }
+            | ParamLocal::List(_)
+            | ParamLocal::IntFunction { .. }
+            | ParamLocal::FloatFunction { .. }
+            | ParamLocal::StringFunction { .. }
+            | ParamLocal::BitArrayFunction { .. }
+            | ParamLocal::UtfCodepointFunction { .. }
+            | ParamLocal::ParameterFunction { .. }
+            | ParamLocal::GenericFunction(_)
+            | ParamLocal::NeverFunction(_)
+            | ParamLocal::CustomFunction(_)
+            | ParamLocal::ExternalFunction(_)
+            | ParamLocal::BoolFunction { .. }
+            | ParamLocal::NilFunction { .. }
+            | ParamLocal::TupleFunction { .. }
+            | ParamLocal::ListFunction(_)
+            | ParamLocal::FunctionFunction(_) => panic!("expected a custom local"),
         }
     }
 

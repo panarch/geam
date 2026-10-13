@@ -111,7 +111,30 @@ fn plan_call_expression(
             constructor: ModuleValueConstructor::Constant { literal, .. },
             ..
         } => Some((module_name, label, literal)),
-        _ => None,
+        TypedExpr::Int { .. }
+        | TypedExpr::Float { .. }
+        | TypedExpr::String { .. }
+        | TypedExpr::Block { .. }
+        | TypedExpr::Pipeline { .. }
+        | TypedExpr::Var { .. }
+        | TypedExpr::Fn { .. }
+        | TypedExpr::List { .. }
+        | TypedExpr::Call { .. }
+        | TypedExpr::BinOp { .. }
+        | TypedExpr::Case { .. }
+        | TypedExpr::RecordAccess { .. }
+        | TypedExpr::PositionalAccess { .. }
+        | TypedExpr::ModuleSelect { .. }
+        | TypedExpr::Tuple { .. }
+        | TypedExpr::TupleIndex { .. }
+        | TypedExpr::Todo { .. }
+        | TypedExpr::Panic { .. }
+        | TypedExpr::Echo { .. }
+        | TypedExpr::BitArray { .. }
+        | TypedExpr::RecordUpdate { .. }
+        | TypedExpr::NegateBool { .. }
+        | TypedExpr::NegateInt { .. }
+        | TypedExpr::Invalid { .. } => None,
     };
     if let Some((module, name, literal)) = module_constant {
         let _linked_module = context.resolve_module_reference(module, name)?;
@@ -239,7 +262,9 @@ mod support {
     ) {
         match statement {
             Statement::Expression(expression) => expect_call_expression_mut(expression),
-            _ => panic!("expected call expression statement"),
+            Statement::Assignment(_) | Statement::Use(_) | Statement::Assert(_) => {
+                panic!("expected call expression statement")
+            }
         }
     }
 
@@ -257,14 +282,58 @@ mod support {
                 arguments,
                 ..
             } => (type_, fun.as_mut(), arguments),
-            _ => panic!("expected call expression statement"),
+            TypedExpr::Int { .. }
+            | TypedExpr::Float { .. }
+            | TypedExpr::String { .. }
+            | TypedExpr::Block { .. }
+            | TypedExpr::Pipeline { .. }
+            | TypedExpr::Var { .. }
+            | TypedExpr::Fn { .. }
+            | TypedExpr::List { .. }
+            | TypedExpr::BinOp { .. }
+            | TypedExpr::Case { .. }
+            | TypedExpr::RecordAccess { .. }
+            | TypedExpr::PositionalAccess { .. }
+            | TypedExpr::ModuleSelect { .. }
+            | TypedExpr::Tuple { .. }
+            | TypedExpr::TupleIndex { .. }
+            | TypedExpr::Todo { .. }
+            | TypedExpr::Panic { .. }
+            | TypedExpr::Echo { .. }
+            | TypedExpr::BitArray { .. }
+            | TypedExpr::RecordUpdate { .. }
+            | TypedExpr::NegateBool { .. }
+            | TypedExpr::NegateInt { .. }
+            | TypedExpr::Invalid { .. } => panic!("expected call expression statement"),
         }
     }
 
     pub(super) fn expect_var_constructor_mut(expression: &mut TypedExpr) -> &mut ValueConstructor {
         match expression {
             TypedExpr::Var { constructor, .. } => constructor,
-            _ => panic!("expected variable expression"),
+            TypedExpr::Int { .. }
+            | TypedExpr::Float { .. }
+            | TypedExpr::String { .. }
+            | TypedExpr::Block { .. }
+            | TypedExpr::Pipeline { .. }
+            | TypedExpr::Fn { .. }
+            | TypedExpr::List { .. }
+            | TypedExpr::Call { .. }
+            | TypedExpr::BinOp { .. }
+            | TypedExpr::Case { .. }
+            | TypedExpr::RecordAccess { .. }
+            | TypedExpr::PositionalAccess { .. }
+            | TypedExpr::ModuleSelect { .. }
+            | TypedExpr::Tuple { .. }
+            | TypedExpr::TupleIndex { .. }
+            | TypedExpr::Todo { .. }
+            | TypedExpr::Panic { .. }
+            | TypedExpr::Echo { .. }
+            | TypedExpr::BitArray { .. }
+            | TypedExpr::RecordUpdate { .. }
+            | TypedExpr::NegateBool { .. }
+            | TypedExpr::NegateInt { .. }
+            | TypedExpr::Invalid { .. } => panic!("expected variable expression"),
         }
     }
 
@@ -1138,7 +1207,9 @@ pub fn main() {
         let statement = module_constant_call.definitions.functions[0].body.remove(0);
         let module_constant = match statement {
             Statement::Expression(module_constant) => module_constant,
-            _ => panic!("expected expression statement"),
+            Statement::Assignment(_) | Statement::Use(_) | Statement::Assert(_) => {
+                panic!("expected expression statement")
+            }
         };
         module_constant_call.definitions.functions[0].body =
             vec![Statement::Expression(TypedExpr::Call {
@@ -1170,7 +1241,11 @@ pub fn main() {
         let constructor = expect_var_constructor_mut(fun);
         let module = match &mut constructor.variant {
             ValueConstructorVariant::ModuleFn { module, .. } => module,
-            _ => panic!("expected module function constructor"),
+            ValueConstructorVariant::LocalVariable { .. }
+            | ValueConstructorVariant::ModuleConstant { .. }
+            | ValueConstructorVariant::Record { .. } => {
+                panic!("expected module function constructor")
+            }
         };
         *module = "other".into();
         assert_eq!(

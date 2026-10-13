@@ -47,7 +47,41 @@ mod bounded_native {
             CallProgress::StringNative(_) => "string native",
             CallProgress::CustomNative(_) => "custom native",
             CallProgress::TupleNative(_) => "tuple native",
-            _ => "canonical",
+            CallProgress::Custom { .. }
+            | CallProgress::Tuple { .. }
+            | CallProgress::InterpretedCustom { .. }
+            | CallProgress::InterpretedTuple { .. }
+            | CallProgress::Interpreted { .. }
+            | CallProgress::Int { .. }
+            | CallProgress::IntScalar { .. }
+            | CallProgress::Bool { .. }
+            | CallProgress::BoolScalar { .. }
+            | CallProgress::IntFunction { .. }
+            | CallProgress::BoolFunction { .. }
+            | CallProgress::Float { .. }
+            | CallProgress::String { .. }
+            | CallProgress::BitArray { .. }
+            | CallProgress::UtfCodepoint { .. }
+            | CallProgress::Nil { .. }
+            | CallProgress::FloatFunction { .. }
+            | CallProgress::StringFunction { .. }
+            | CallProgress::BitArrayFunction { .. }
+            | CallProgress::UtfCodepointFunction { .. }
+            | CallProgress::NilFunction { .. }
+            | CallProgress::InterpretedInt { .. }
+            | CallProgress::InterpretedBool { .. }
+            | CallProgress::InterpretedIntFunction { .. }
+            | CallProgress::InterpretedBoolFunction { .. }
+            | CallProgress::InterpretedFloat { .. }
+            | CallProgress::InterpretedString { .. }
+            | CallProgress::InterpretedBitArray { .. }
+            | CallProgress::InterpretedUtfCodepoint { .. }
+            | CallProgress::InterpretedNil { .. }
+            | CallProgress::InterpretedFloatFunction { .. }
+            | CallProgress::InterpretedStringFunction { .. }
+            | CallProgress::InterpretedBitArrayFunction { .. }
+            | CallProgress::InterpretedUtfCodepointFunction { .. }
+            | CallProgress::InterpretedNilFunction { .. } => "canonical",
         };
         OBSERVATIONS
             .lock()
@@ -89,7 +123,40 @@ mod bounded_native {
                 arguments,
                 resume: Box::new(move |value| Box::new(Limited(resume(value)))),
             },
-            progress => progress,
+            progress @ (CallProgress::InterpretedCustom { .. }
+            | CallProgress::InterpretedTuple { .. }
+            | CallProgress::Complete { .. }
+            | CallProgress::Interpreted { .. }
+            | CallProgress::Int { .. }
+            | CallProgress::IntScalar { .. }
+            | CallProgress::Bool { .. }
+            | CallProgress::BoolScalar { .. }
+            | CallProgress::IntFunction { .. }
+            | CallProgress::BoolFunction { .. }
+            | CallProgress::Float { .. }
+            | CallProgress::String { .. }
+            | CallProgress::BitArray { .. }
+            | CallProgress::UtfCodepoint { .. }
+            | CallProgress::Nil { .. }
+            | CallProgress::FloatFunction { .. }
+            | CallProgress::StringFunction { .. }
+            | CallProgress::BitArrayFunction { .. }
+            | CallProgress::UtfCodepointFunction { .. }
+            | CallProgress::NilFunction { .. }
+            | CallProgress::InterpretedInt { .. }
+            | CallProgress::InterpretedBool { .. }
+            | CallProgress::InterpretedIntFunction { .. }
+            | CallProgress::InterpretedBoolFunction { .. }
+            | CallProgress::InterpretedFloat { .. }
+            | CallProgress::InterpretedString { .. }
+            | CallProgress::InterpretedBitArray { .. }
+            | CallProgress::InterpretedUtfCodepoint { .. }
+            | CallProgress::InterpretedNil { .. }
+            | CallProgress::InterpretedFloatFunction { .. }
+            | CallProgress::InterpretedStringFunction { .. }
+            | CallProgress::InterpretedBitArrayFunction { .. }
+            | CallProgress::InterpretedUtfCodepointFunction { .. }
+            | CallProgress::InterpretedNilFunction { .. }) => progress,
         }
     }
     impl CallExecution for Limited {
@@ -171,7 +238,17 @@ mod bounded_native {
             data::type_::TypeMetadata::Tuple(_) => {
                 CallTarget::Tuple(ARTIFACT.module.entries.tuples[export.slot].function)
             }
-            _ => panic!("the observed source entry returns String, Custom, Int or Tuple"),
+            data::type_::TypeMetadata::Parameter(_)
+            | data::type_::TypeMetadata::Float
+            | data::type_::TypeMetadata::BitArray
+            | data::type_::TypeMetadata::UtfCodepoint
+            | data::type_::TypeMetadata::Bool
+            | data::type_::TypeMetadata::Nil
+            | data::type_::TypeMetadata::List(_)
+            | data::type_::TypeMetadata::Function(_)
+            | data::type_::TypeMetadata::External(_) => {
+                panic!("the observed source entry returns String, Custom, Int or Tuple")
+            }
         }
     }
     fn start(
@@ -308,7 +385,14 @@ mod bounded_native {
     fn observed_body(implementation: &CompiledImplementation) -> &FunctionCallsImplementation {
         match implementation {
             CompiledImplementation::FunctionCalls(body) => body,
-            _ => panic!("the observed fixture row must own generated calls"),
+            CompiledImplementation::Numeric(_)
+            | CompiledImplementation::BitArray(_)
+            | CompiledImplementation::IntList(_)
+            | CompiledImplementation::CustomLoop(_)
+            | CompiledImplementation::String(_)
+            | CompiledImplementation::NativeLoop(_) => {
+                panic!("the observed fixture row must own generated calls")
+            }
         }
     }
 
