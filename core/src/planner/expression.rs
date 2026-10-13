@@ -211,7 +211,27 @@ pub(super) fn plan_expr_with_expected_source_stop_shape(
         TypedExpr::Block { statements, .. } => {
             block::plan_with_expected_source_stop_shape(statements, &expected, context)
         }
-        expression => plan_expr(expression, context),
+        expression @ (TypedExpr::Int { .. }
+        | TypedExpr::Float { .. }
+        | TypedExpr::String { .. }
+        | TypedExpr::Pipeline { .. }
+        | TypedExpr::Var { .. }
+        | TypedExpr::Fn { .. }
+        | TypedExpr::List { .. }
+        | TypedExpr::Call { .. }
+        | TypedExpr::BinOp { .. }
+        | TypedExpr::Case { .. }
+        | TypedExpr::RecordAccess { .. }
+        | TypedExpr::PositionalAccess { .. }
+        | TypedExpr::ModuleSelect { .. }
+        | TypedExpr::Tuple { .. }
+        | TypedExpr::TupleIndex { .. }
+        | TypedExpr::Echo { .. }
+        | TypedExpr::BitArray { .. }
+        | TypedExpr::RecordUpdate { .. }
+        | TypedExpr::NegateBool { .. }
+        | TypedExpr::NegateInt { .. }
+        | TypedExpr::Invalid { .. }) => plan_expr(expression, context),
     }
 }
 
@@ -422,7 +442,18 @@ fn plan_tuple(
 ) -> Result<Expr, PlanError> {
     let expected_shape = match context.value_shape(type_.as_ref()) {
         ValueShape::Tuple(shape) => shape,
-        actual => {
+        actual @ (ValueShape::Parameter(_)
+        | ValueShape::Int
+        | ValueShape::Float
+        | ValueShape::String
+        | ValueShape::BitArray
+        | ValueShape::UtfCodepoint
+        | ValueShape::Bool
+        | ValueShape::Nil
+        | ValueShape::List(_)
+        | ValueShape::Function(_)
+        | ValueShape::Custom(_)
+        | ValueShape::External(_)) => {
             return Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::ExpressionShape {
                     kind: InvalidExpressionShapeKind::TupleType {

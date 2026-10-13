@@ -147,7 +147,11 @@ impl Bindings {
                     for (pattern, field) in fields.iter().zip(descriptor.fields.iter()).rev() {
                         let source = match &field.refinement {
                             FieldRefinement::Argument(index) => shape.arguments[*index],
-                            _ => field.shape,
+                            FieldRefinement::Value
+                            | FieldRefinement::Tuple(_)
+                            | FieldRefinement::List(_)
+                            | FieldRefinement::Function { .. }
+                            | FieldRefinement::Custom(_) => field.shape,
                         };
                         pending.push(Visit::Enter(pattern, source));
                     }
@@ -579,7 +583,18 @@ pub fn main() { #(First, Second, Box(First), Box(Second)) }
                     ValueShapeId(index),
                     &common.value_shapes.custom_shapes[custom.0],
                 )),
-                _ => None,
+                ValueShapeDescriptor::Parameter(_)
+                | ValueShapeDescriptor::Int
+                | ValueShapeDescriptor::Float
+                | ValueShapeDescriptor::String
+                | ValueShapeDescriptor::BitArray
+                | ValueShapeDescriptor::UtfCodepoint
+                | ValueShapeDescriptor::Bool
+                | ValueShapeDescriptor::Nil
+                | ValueShapeDescriptor::Tuple(_)
+                | ValueShapeDescriptor::List(_)
+                | ValueShapeDescriptor::Function { .. }
+                | ValueShapeDescriptor::External(_) => None,
             })
             .collect::<std::collections::HashMap<_, _>>();
         assert_eq!(elements.len(), 4);

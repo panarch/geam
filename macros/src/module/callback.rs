@@ -83,7 +83,7 @@ impl InputCodec<'_> {
             )
             .iter()
             .any(|capability| capability.requires_work(customs)),
-            _ => false,
+            Self::Callback(_) | Self::Captures(..) | Self::Declared(_) => false,
         }
     }
 
@@ -478,4 +478,41 @@ pub(super) fn custom_definitions(
         }
     }
     definitions.into_values().collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{InputCodec, codecs};
+    use crate::module::syntax::{FunctionValidationContext, validate_function};
+    use crate::module::{FunctionArguments, InputOwnership, SourceCompletion};
+    use quote::quote;
+
+    #[test]
+    fn callable_capture_codecs_preserve_immediate_owned_and_borrowed_conversion() {
+        let support = quote!(::geam::__macro_support);
+        let context = FunctionValidationContext::new(None, &[], &[], &support);
+        let mut function = syn::parse_quote! {
+            fn captured(#[geam::capture] value: bool) -> bool { value }
+        };
+        let validated = validate_function(
+            &mut function,
+            FunctionArguments {
+                callable: Some(syn::parse_quote!(Captured)),
+                ..FunctionArguments::default()
+            },
+            InputOwnership::Borrowed,
+            SourceCompletion::Ordinary,
+            &mut Vec::new(),
+            &context,
+        )
+        .unwrap();
+        let mut captures = Vec::new();
+        for codec in codecs(&validated.model, &[]) {
+            if let InputCodec::Captures(_, ownership) = codec {
+                assert!(!codec.requires_work(&[]));
+                captures.push(ownership);
+            }
+        }
+        assert!(captures == [InputOwnership::Owned, InputOwnership::Borrowed]);
+    }
 }

@@ -308,7 +308,7 @@ impl CallableParser<'_, '_> {
             .iter()
             .filter_map(|parameter| match parameter {
                 FunctionParameter::Source(source) => Some(source.syntax.ty.as_ref()),
-                _ => None,
+                FunctionParameter::Call(_) | FunctionParameter::Permission(_) => None,
             })
             .collect::<Vec<_>>();
         let mut captured_types = Vec::new();

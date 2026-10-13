@@ -851,7 +851,7 @@ pub fn probe() {{
                     UnitExit::Failed(geam::ExecutionError::Host(error)) => {
                         Some(error.failure().message())
                     }
-                    _ => None,
+                    UnitExit::Completed | UnitExit::Cancelled | UnitExit::Failed(_) => None,
                 })
                 .collect::<Vec<_>>();
             assert_eq!(failures, expected.into_iter().collect::<Vec<_>>());

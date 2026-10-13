@@ -905,7 +905,17 @@ mod tests {
         let block_graph = body.block_graph();
         match block_graph.block(block_graph.entry()).terminator() {
             Terminator::SourceStop(stop) => (stop.kind(), stop.message()),
-            _ => panic!("fixture should contain a source stop"),
+            Terminator::Jump(_)
+            | Terminator::BoolBranch(_)
+            | Terminator::TestBranch(_)
+            | Terminator::IntSwitch(_)
+            | Terminator::FloatSwitch(_)
+            | Terminator::StringSwitch(_)
+            | Terminator::Match(_)
+            | Terminator::Echo(_)
+            | Terminator::Exit(_)
+            | Terminator::LetAssertPanic(_)
+            | Terminator::NeverCall(_) => panic!("fixture should contain a source stop"),
         }
     }
 

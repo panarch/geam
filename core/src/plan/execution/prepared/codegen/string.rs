@@ -74,7 +74,17 @@ impl<'graph> StringMatch<'graph> {
                 }
                 StringMatchPattern::Prefix(prefix.as_str())
             }
-            _ => return None,
+            MatchPattern::Bind(_)
+            | MatchPattern::Discard
+            | MatchPattern::Int(_)
+            | MatchPattern::Float(_)
+            | MatchPattern::Bool(_)
+            | MatchPattern::Nil
+            | MatchPattern::Tuple(_)
+            | MatchPattern::List(_)
+            | MatchPattern::BitArray(_)
+            | MatchPattern::Custom { .. }
+            | MatchPattern::Alias { .. } => return None,
         };
         Some(Self {
             matcher,
@@ -93,7 +103,13 @@ impl<'graph> StringOperation<'graph> {
                 value: *value,
                 bytes: prefix.len(),
             },
-            _ => return None,
+            StringInstruction::Constant(_)
+            | StringInstruction::Call { .. }
+            | StringInstruction::FunctionCall { .. }
+            | StringInstruction::TupleIndex { .. }
+            | StringInstruction::CustomField { .. }
+            | StringInstruction::ListIndex { .. }
+            | StringInstruction::Concatenate { .. } => return None,
         })
     }
 }
@@ -222,7 +238,16 @@ mod tests {
     ) -> &'view StringMatch<'graph> {
         match terminator {
             CompiledTerminator::StringMatch(view) => view,
-            _ => panic!("source should lower one string match"),
+            CompiledTerminator::Jump(_)
+            | CompiledTerminator::Boolean { .. }
+            | CompiledTerminator::Test { .. }
+            | CompiledTerminator::Switch { .. }
+            | CompiledTerminator::StringSwitch { .. }
+            | CompiledTerminator::Exit(_)
+            | CompiledTerminator::BitArray(_)
+            | CompiledTerminator::Match(_)
+            | CompiledTerminator::Custom(_)
+            | CompiledTerminator::Interpreted => panic!("source should lower one string match"),
         }
     }
 
@@ -300,7 +325,17 @@ pub fn main() { read(<<7, 8>>) }
             .blocks()
             .filter_map(|block| match block.terminator() {
                 Terminator::Match(matcher) => Some(matcher),
-                _ => None,
+                Terminator::Jump(_)
+                | Terminator::BoolBranch(_)
+                | Terminator::TestBranch(_)
+                | Terminator::IntSwitch(_)
+                | Terminator::FloatSwitch(_)
+                | Terminator::StringSwitch(_)
+                | Terminator::Echo(_)
+                | Terminator::Exit(_)
+                | Terminator::SourceStop(_)
+                | Terminator::LetAssertPanic(_)
+                | Terminator::NeverCall(_) => None,
             })
             .collect::<Vec<_>>();
         assert_eq!(matches.len(), 1);

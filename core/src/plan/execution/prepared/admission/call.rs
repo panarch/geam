@@ -273,7 +273,21 @@ pub fn main() { echo True double(21) + invoke(fn(x) { x + 2 }) }
                             );
                             indirect_count += 1;
                         }
-                        _ => {}
+                        ProfiledInstructionKind::Int(_)
+                        | ProfiledInstructionKind::Float(_)
+                        | ProfiledInstructionKind::String(_)
+                        | ProfiledInstructionKind::BitArray(_)
+                        | ProfiledInstructionKind::UtfCodepoint(_)
+                        | ProfiledInstructionKind::Parameter(_)
+                        | ProfiledInstructionKind::Custom(_)
+                        | ProfiledInstructionKind::External(_)
+                        | ProfiledInstructionKind::ExternalList(_)
+                        | ProfiledInstructionKind::ExternalFunction(_)
+                        | ProfiledInstructionKind::Bool(_)
+                        | ProfiledInstructionKind::Nil(_)
+                        | ProfiledInstructionKind::Tuple(_)
+                        | ProfiledInstructionKind::List(_)
+                        | ProfiledInstructionKind::Function(_) => {}
                     }
                     locals
                         .define(instruction.value().unwrap().output(), &types)

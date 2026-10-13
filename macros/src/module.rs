@@ -756,7 +756,24 @@ pub(crate) fn expand(arguments: TokenStream, item: TokenStream) -> syn::Result<T
             {
                 Some(item.ident.unraw().to_string())
             }
-            _ => None,
+            // syn::Item is non-exhaustive; the wildcard covers future items.
+            Item::Const(_)
+            | Item::Enum(_)
+            | Item::ExternCrate(_)
+            | Item::Fn(_)
+            | Item::ForeignMod(_)
+            | Item::Impl(_)
+            | Item::Macro(_)
+            | Item::Mod(_)
+            | Item::Static(_)
+            | Item::Struct(_)
+            | Item::Trait(_)
+            | Item::TraitAlias(_)
+            | Item::Type(_)
+            | Item::Union(_)
+            | Item::Use(_)
+            | Item::Verbatim(_)
+            | _ => None,
         })
         .collect::<BTreeSet<_>>();
     let mut externals = Vec::new();
@@ -3614,7 +3631,24 @@ mod tests {
             .iter()
             .find_map(|item| match item {
                 syn::Item::Fn(function) if function.sig.ident == "select" => Some(function),
-                _ => None,
+                // syn::Item is non-exhaustive; the wildcard covers future items.
+                syn::Item::Const(_)
+                | syn::Item::Enum(_)
+                | syn::Item::ExternCrate(_)
+                | syn::Item::Fn(_)
+                | syn::Item::ForeignMod(_)
+                | syn::Item::Impl(_)
+                | syn::Item::Macro(_)
+                | syn::Item::Mod(_)
+                | syn::Item::Static(_)
+                | syn::Item::Struct(_)
+                | syn::Item::Trait(_)
+                | syn::Item::TraitAlias(_)
+                | syn::Item::Type(_)
+                | syn::Item::Union(_)
+                | syn::Item::Use(_)
+                | syn::Item::Verbatim(_)
+                | _ => None,
             })
             .expect("author function should remain in the expanded module");
         let generic_names = function

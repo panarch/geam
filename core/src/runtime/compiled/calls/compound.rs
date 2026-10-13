@@ -77,7 +77,19 @@ impl CompoundField<'_> {
     pub fn tuple_len(&self) -> Option<usize> {
         match self.0 {
             EvaluatedValue::Tuple(values) => Some(values.len()),
-            _ => None,
+            EvaluatedValue::Parameter(_)
+            | EvaluatedValue::Int(_)
+            | EvaluatedValue::Float(_)
+            | EvaluatedValue::String(_)
+            | EvaluatedValue::BitArray(_)
+            | EvaluatedValue::UtfCodepoint(_)
+            | EvaluatedValue::Custom(_)
+            | EvaluatedValue::External(_)
+            | EvaluatedValue::Bool(_)
+            | EvaluatedValue::Nil
+            | EvaluatedValue::ParameterList(_)
+            | EvaluatedValue::List(_)
+            | EvaluatedValue::Function(_) => None,
         }
     }
 
@@ -85,49 +97,132 @@ impl CompoundField<'_> {
         match self.0 {
             EvaluatedValue::Custom(value) => value.fields().get(index).map(CompoundField),
             EvaluatedValue::Tuple(values) => values.get(index).map(CompoundField),
-            _ => None,
+            EvaluatedValue::Parameter(_)
+            | EvaluatedValue::Int(_)
+            | EvaluatedValue::Float(_)
+            | EvaluatedValue::String(_)
+            | EvaluatedValue::BitArray(_)
+            | EvaluatedValue::UtfCodepoint(_)
+            | EvaluatedValue::External(_)
+            | EvaluatedValue::Bool(_)
+            | EvaluatedValue::Nil
+            | EvaluatedValue::ParameterList(_)
+            | EvaluatedValue::List(_)
+            | EvaluatedValue::Function(_) => None,
         }
     }
 
     pub fn integer(&self) -> Option<i128> {
         match self.0 {
             EvaluatedValue::Int(value) => value.small().map(i128::from),
-            _ => None,
+            EvaluatedValue::Parameter(_)
+            | EvaluatedValue::Float(_)
+            | EvaluatedValue::String(_)
+            | EvaluatedValue::BitArray(_)
+            | EvaluatedValue::UtfCodepoint(_)
+            | EvaluatedValue::Custom(_)
+            | EvaluatedValue::External(_)
+            | EvaluatedValue::Bool(_)
+            | EvaluatedValue::Nil
+            | EvaluatedValue::Tuple(_)
+            | EvaluatedValue::ParameterList(_)
+            | EvaluatedValue::List(_)
+            | EvaluatedValue::Function(_) => None,
         }
     }
 
     pub fn boolean(&self) -> Option<bool> {
         match self.0 {
             EvaluatedValue::Bool(value) => Some(*value),
-            _ => None,
+            EvaluatedValue::Parameter(_)
+            | EvaluatedValue::Int(_)
+            | EvaluatedValue::Float(_)
+            | EvaluatedValue::String(_)
+            | EvaluatedValue::BitArray(_)
+            | EvaluatedValue::UtfCodepoint(_)
+            | EvaluatedValue::Custom(_)
+            | EvaluatedValue::External(_)
+            | EvaluatedValue::Nil
+            | EvaluatedValue::Tuple(_)
+            | EvaluatedValue::ParameterList(_)
+            | EvaluatedValue::List(_)
+            | EvaluatedValue::Function(_) => None,
         }
     }
 
     pub fn float(&self) -> Option<f64> {
         match self.0 {
             EvaluatedValue::Float(value) => Some(*value),
-            _ => None,
+            EvaluatedValue::Parameter(_)
+            | EvaluatedValue::Int(_)
+            | EvaluatedValue::String(_)
+            | EvaluatedValue::BitArray(_)
+            | EvaluatedValue::UtfCodepoint(_)
+            | EvaluatedValue::Custom(_)
+            | EvaluatedValue::External(_)
+            | EvaluatedValue::Bool(_)
+            | EvaluatedValue::Nil
+            | EvaluatedValue::Tuple(_)
+            | EvaluatedValue::ParameterList(_)
+            | EvaluatedValue::List(_)
+            | EvaluatedValue::Function(_) => None,
         }
     }
 
     pub fn string(&self) -> Option<StringValue> {
         match self.0 {
             EvaluatedValue::String(value) => Some(value.clone()),
-            _ => None,
+            EvaluatedValue::Parameter(_)
+            | EvaluatedValue::Int(_)
+            | EvaluatedValue::Float(_)
+            | EvaluatedValue::BitArray(_)
+            | EvaluatedValue::UtfCodepoint(_)
+            | EvaluatedValue::Custom(_)
+            | EvaluatedValue::External(_)
+            | EvaluatedValue::Bool(_)
+            | EvaluatedValue::Nil
+            | EvaluatedValue::Tuple(_)
+            | EvaluatedValue::ParameterList(_)
+            | EvaluatedValue::List(_)
+            | EvaluatedValue::Function(_) => None,
         }
     }
 
     pub fn bit_array(&self) -> Option<CallBitArray> {
         match self.0 {
             EvaluatedValue::BitArray(value) => Some(CallBitArray(value.clone())),
-            _ => None,
+            EvaluatedValue::Parameter(_)
+            | EvaluatedValue::Int(_)
+            | EvaluatedValue::Float(_)
+            | EvaluatedValue::String(_)
+            | EvaluatedValue::UtfCodepoint(_)
+            | EvaluatedValue::Custom(_)
+            | EvaluatedValue::External(_)
+            | EvaluatedValue::Bool(_)
+            | EvaluatedValue::Nil
+            | EvaluatedValue::Tuple(_)
+            | EvaluatedValue::ParameterList(_)
+            | EvaluatedValue::List(_)
+            | EvaluatedValue::Function(_) => None,
         }
     }
 
     pub fn utf_codepoint(&self) -> Option<char> {
         match self.0 {
             EvaluatedValue::UtfCodepoint(value) => Some(*value),
-            _ => None,
+            EvaluatedValue::Parameter(_)
+            | EvaluatedValue::Int(_)
+            | EvaluatedValue::Float(_)
+            | EvaluatedValue::String(_)
+            | EvaluatedValue::BitArray(_)
+            | EvaluatedValue::Custom(_)
+            | EvaluatedValue::External(_)
+            | EvaluatedValue::Bool(_)
+            | EvaluatedValue::Nil
+            | EvaluatedValue::Tuple(_)
+            | EvaluatedValue::ParameterList(_)
+            | EvaluatedValue::List(_)
+            | EvaluatedValue::Function(_) => None,
         }
     }
 
@@ -142,21 +237,58 @@ impl CompoundField<'_> {
             {
                 Some(CallNullary::new(value.constructor()))
             }
-            _ => None,
+            EvaluatedValue::Parameter(_)
+            | EvaluatedValue::Int(_)
+            | EvaluatedValue::Float(_)
+            | EvaluatedValue::String(_)
+            | EvaluatedValue::BitArray(_)
+            | EvaluatedValue::UtfCodepoint(_)
+            | EvaluatedValue::Custom(_)
+            | EvaluatedValue::External(_)
+            | EvaluatedValue::Bool(_)
+            | EvaluatedValue::Nil
+            | EvaluatedValue::Tuple(_)
+            | EvaluatedValue::ParameterList(_)
+            | EvaluatedValue::List(_)
+            | EvaluatedValue::Function(_) => None,
         }
     }
 
     pub fn custom(&self) -> Option<CallCustom> {
         match self.0 {
             EvaluatedValue::Custom(value) => Some(CallCustom(value.clone())),
-            _ => None,
+            EvaluatedValue::Parameter(_)
+            | EvaluatedValue::Int(_)
+            | EvaluatedValue::Float(_)
+            | EvaluatedValue::String(_)
+            | EvaluatedValue::BitArray(_)
+            | EvaluatedValue::UtfCodepoint(_)
+            | EvaluatedValue::External(_)
+            | EvaluatedValue::Bool(_)
+            | EvaluatedValue::Nil
+            | EvaluatedValue::Tuple(_)
+            | EvaluatedValue::ParameterList(_)
+            | EvaluatedValue::List(_)
+            | EvaluatedValue::Function(_) => None,
         }
     }
 
     pub fn tuple(&self) -> Option<CallTuple> {
         match self.0 {
             EvaluatedValue::Tuple(values) => Some(CallTuple(values.clone())),
-            _ => None,
+            EvaluatedValue::Parameter(_)
+            | EvaluatedValue::Int(_)
+            | EvaluatedValue::Float(_)
+            | EvaluatedValue::String(_)
+            | EvaluatedValue::BitArray(_)
+            | EvaluatedValue::UtfCodepoint(_)
+            | EvaluatedValue::Custom(_)
+            | EvaluatedValue::External(_)
+            | EvaluatedValue::Bool(_)
+            | EvaluatedValue::Nil
+            | EvaluatedValue::ParameterList(_)
+            | EvaluatedValue::List(_)
+            | EvaluatedValue::Function(_) => None,
         }
     }
 }

@@ -1460,7 +1460,8 @@ fn assert_transfer_fixture(modules: Vec<ModuleSource>) {
                     CallError::Execution(error) => {
                         Some(render_execution_error(&error))
                     }
-                    _ => None,
+                    CallError::Cancelled | CallError::ForeignFunction | CallError::ForeignValue =>
+                        None,
                 }),
                 Some(render_execution_error(&error.into_materialized()))
             );

@@ -217,7 +217,11 @@ pub(super) fn executable(
                     "expected structured Cargo messages",
                 ));
             }
-            _ => {}
+            // Cargo messages are non-exhaustive; the wildcard covers future message kinds.
+            Message::CompilerArtifact(_)
+            | Message::CompilerMessage(_)
+            | Message::BuildScriptExecuted(_)
+            | _ => {}
         }
     }
     if !finished {

@@ -123,7 +123,17 @@ pub fn main() { case identity(1) { 1 -> 1 _ -> 0 } }
             .copied()
             .filter_map(|terminator| match terminator {
                 Terminator::IntSwitch(switch) => Some(switch),
-                _ => None,
+                Terminator::Jump(_)
+                | Terminator::BoolBranch(_)
+                | Terminator::TestBranch(_)
+                | Terminator::FloatSwitch(_)
+                | Terminator::StringSwitch(_)
+                | Terminator::Match(_)
+                | Terminator::Echo(_)
+                | Terminator::Exit(_)
+                | Terminator::SourceStop(_)
+                | Terminator::LetAssertPanic(_)
+                | Terminator::NeverCall(_) => None,
             })
             .collect::<Vec<_>>();
         int_switch_from_nodes(&switches)

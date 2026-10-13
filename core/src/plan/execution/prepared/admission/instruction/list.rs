@@ -80,7 +80,19 @@ impl<'data, Graph: ExecutionGraphProfile> Instructions<'_, 'data, Graph> {
         let admitted = self.types.slot(output).map_err(InstructionError::Type)?;
         match admitted.descriptor {
             ValueShapeDescriptor::List(item) if admitted.type_ == &ValueType::List(id) => Ok(*item),
-            _ => Err(InstructionError::OutputType),
+            ValueShapeDescriptor::Parameter(_)
+            | ValueShapeDescriptor::Int
+            | ValueShapeDescriptor::Float
+            | ValueShapeDescriptor::String
+            | ValueShapeDescriptor::BitArray
+            | ValueShapeDescriptor::UtfCodepoint
+            | ValueShapeDescriptor::Bool
+            | ValueShapeDescriptor::Nil
+            | ValueShapeDescriptor::Tuple(_)
+            | ValueShapeDescriptor::List(_)
+            | ValueShapeDescriptor::Function { .. }
+            | ValueShapeDescriptor::Custom(_)
+            | ValueShapeDescriptor::External(_) => Err(InstructionError::OutputType),
         }
     }
 
@@ -406,7 +418,12 @@ pub fn main() {
                             ParameterListInstruction::TupleIndex { .. } => seen[0] = true,
                             ParameterListInstruction::CustomField { .. } => seen[1] = true,
                             ParameterListInstruction::ListIndex { .. } => seen[2] = true,
-                            _ => {}
+                            ParameterListInstruction::Value(_)
+                            | ParameterListInstruction::Spread { .. }
+                            | ParameterListInstruction::DropFirst { .. }
+                            | ParameterListInstruction::Constant(_)
+                            | ParameterListInstruction::Call { .. }
+                            | ParameterListInstruction::FunctionCall { .. } => {}
                         }
                     }
                     locals
@@ -466,7 +483,21 @@ pub fn main() {
                 ProfiledInstructionKind::List(ListInstruction::Tuple(storage, _)) => {
                     Some((*storage, &instruction.value().unwrap().output))
                 }
-                _ => None,
+                ProfiledInstructionKind::Int(_)
+                | ProfiledInstructionKind::Float(_)
+                | ProfiledInstructionKind::String(_)
+                | ProfiledInstructionKind::BitArray(_)
+                | ProfiledInstructionKind::UtfCodepoint(_)
+                | ProfiledInstructionKind::Parameter(_)
+                | ProfiledInstructionKind::Custom(_)
+                | ProfiledInstructionKind::External(_)
+                | ProfiledInstructionKind::ExternalList(_)
+                | ProfiledInstructionKind::ExternalFunction(_)
+                | ProfiledInstructionKind::Bool(_)
+                | ProfiledInstructionKind::Nil(_)
+                | ProfiledInstructionKind::Tuple(_)
+                | ProfiledInstructionKind::List(_)
+                | ProfiledInstructionKind::Function(_) => None,
             })
             .collect::<Vec<_>>();
         assert_eq!(lists.len(), 2);
@@ -592,7 +623,21 @@ pub fn main() {
                         storage,
                         instruction,
                     )) => Some((&value.output, *storage, instruction)),
-                    _ => None,
+                    ProfiledInstructionKind::Int(_)
+                    | ProfiledInstructionKind::Float(_)
+                    | ProfiledInstructionKind::String(_)
+                    | ProfiledInstructionKind::BitArray(_)
+                    | ProfiledInstructionKind::UtfCodepoint(_)
+                    | ProfiledInstructionKind::Parameter(_)
+                    | ProfiledInstructionKind::Custom(_)
+                    | ProfiledInstructionKind::External(_)
+                    | ProfiledInstructionKind::ExternalList(_)
+                    | ProfiledInstructionKind::ExternalFunction(_)
+                    | ProfiledInstructionKind::Bool(_)
+                    | ProfiledInstructionKind::Nil(_)
+                    | ProfiledInstructionKind::Tuple(_)
+                    | ProfiledInstructionKind::List(_)
+                    | ProfiledInstructionKind::Function(_) => None,
                 }
             })
             .unwrap();
@@ -728,7 +773,21 @@ pub fn main() {
                 ProfiledInstructionKind::List(ListInstruction::Int(id, _)) => {
                     Some((&instruction.value().unwrap().output, *id))
                 }
-                _ => None,
+                ProfiledInstructionKind::Int(_)
+                | ProfiledInstructionKind::Float(_)
+                | ProfiledInstructionKind::String(_)
+                | ProfiledInstructionKind::BitArray(_)
+                | ProfiledInstructionKind::UtfCodepoint(_)
+                | ProfiledInstructionKind::Parameter(_)
+                | ProfiledInstructionKind::Custom(_)
+                | ProfiledInstructionKind::External(_)
+                | ProfiledInstructionKind::ExternalList(_)
+                | ProfiledInstructionKind::ExternalFunction(_)
+                | ProfiledInstructionKind::Bool(_)
+                | ProfiledInstructionKind::Nil(_)
+                | ProfiledInstructionKind::Tuple(_)
+                | ProfiledInstructionKind::List(_)
+                | ProfiledInstructionKind::Function(_) => None,
             })
             .unwrap();
         let tail = IntListLocalId(99);

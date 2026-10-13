@@ -744,81 +744,91 @@ impl Expr {
 
     #[cfg(test)]
     pub(crate) fn into_int(self) -> Option<IntExpr> {
-        match self.kind {
-            ExprKind::Int(expression) => Some(expression),
-            _ => None,
+        if let ExprKind::Int(expression) = self.kind {
+            Some(expression)
+        } else {
+            None
         }
     }
 
     #[cfg(test)]
     pub(crate) fn into_string(self) -> Option<StringExpr> {
-        match self.kind {
-            ExprKind::String(expression) => Some(expression),
-            _ => None,
+        if let ExprKind::String(expression) = self.kind {
+            Some(expression)
+        } else {
+            None
         }
     }
 
     #[cfg(test)]
     pub(crate) fn into_utf_codepoint(self) -> Option<UtfCodepointExpr> {
-        match self.kind {
-            ExprKind::UtfCodepoint(expression) => Some(expression),
-            _ => None,
+        if let ExprKind::UtfCodepoint(expression) = self.kind {
+            Some(expression)
+        } else {
+            None
         }
     }
 
     #[cfg(test)]
     pub(crate) fn into_custom(self) -> Option<CustomExpr> {
-        match self.kind {
-            ExprKind::Custom(expression) => Some(expression),
-            _ => None,
+        if let ExprKind::Custom(expression) = self.kind {
+            Some(expression)
+        } else {
+            None
         }
     }
 
     #[cfg(test)]
     pub(crate) fn into_float(self) -> Option<FloatExpr> {
-        match self.kind {
-            ExprKind::Float(expression) => Some(expression),
-            _ => None,
+        if let ExprKind::Float(expression) = self.kind {
+            Some(expression)
+        } else {
+            None
         }
     }
 
     #[cfg(test)]
     pub(crate) fn into_bool(self) -> Option<BoolExpr> {
-        match self.kind {
-            ExprKind::Bool(expression) => Some(expression),
-            _ => None,
+        if let ExprKind::Bool(expression) = self.kind {
+            Some(expression)
+        } else {
+            None
         }
     }
 
     #[cfg(test)]
     pub(crate) fn into_tuple(self) -> Option<TupleExpr> {
-        match self.kind {
-            ExprKind::Tuple(expression) => Some(expression),
-            _ => None,
+        if let ExprKind::Tuple(expression) = self.kind {
+            Some(expression)
+        } else {
+            None
         }
     }
 
     #[cfg(test)]
     pub(crate) fn into_list(self) -> Option<ListExpr> {
-        match self.kind {
-            ExprKind::List(expression) => Some(expression),
-            _ => None,
+        if let ExprKind::List(expression) = self.kind {
+            Some(expression)
+        } else {
+            None
         }
     }
 
     #[cfg(test)]
     pub(crate) fn into_function(self) -> Option<FunctionExpr> {
-        match self.kind {
-            ExprKind::Function(expression) => Some(expression),
-            _ => None,
+        if let ExprKind::Function(expression) = self.kind {
+            Some(expression)
+        } else {
+            None
         }
     }
 
     #[cfg(test)]
     pub(crate) fn into_nil(self) -> Option<NilExpr> {
-        match self.kind {
-            ExprKind::Nil(expression) => Some(expression),
-            _ => None,
+        if let ExprKind::Nil(expression) = self.kind {
+            Some(expression)
+        } else {
+            None
         }
     }
 

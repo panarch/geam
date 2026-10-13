@@ -438,7 +438,19 @@ impl<'plan, Plan: ExecutableRuntimePlan> Execution<'plan, Plan> {
                                 Activation::Host(invoke) => {
                                     Progress::Host(Plan::map_host(invoke, Self::resumed))
                                 }
-                                active => Progress::Continue(Self { active }),
+                                active @ (Activation::Graph(_)
+                                | Activation::Compiled { .. }
+                                | Activation::CustomLoop(_)
+                                | Activation::NativeLoop(_)
+                                | Activation::NativeCalls(_)
+                                | Activation::FunctionCalls { .. }
+                                | Activation::GeneratedNative { .. }
+                                | Activation::Return(_)
+                                | Activation::Complete(_)
+                                | Activation::CallComplete(_)
+                                | Activation::CallInterpreted { .. }) => {
+                                    Progress::Continue(Self { active })
+                                }
                             },
                         );
                     }
@@ -475,7 +487,17 @@ impl<'plan, Plan: ExecutableRuntimePlan> Execution<'plan, Plan> {
                 point,
                 values,
             }),
-            active => Ok(Progress::Continue(Self { active })),
+            active @ (Activation::Graph(_)
+            | Activation::Compiled { .. }
+            | Activation::CustomLoop(_)
+            | Activation::NativeLoop(_)
+            | Activation::NativeCalls(_)
+            | Activation::FunctionCalls { .. }
+            | Activation::GeneratedNative { .. }
+            | Activation::Host(_)
+            | Activation::Return(_)
+            | Activation::Complete(_)
+            | Activation::CallComplete(_)) => Ok(Progress::Continue(Self { active })),
         }
     }
 
@@ -503,7 +525,16 @@ impl<'plan, Plan: ExecutableRuntimePlan> Execution<'plan, Plan> {
                 point,
                 values,
             },
-            active => Progress::Continue(Self { active }),
+            active @ (Activation::Graph(_)
+            | Activation::Compiled { .. }
+            | Activation::CustomLoop(_)
+            | Activation::NativeLoop(_)
+            | Activation::NativeCalls(_)
+            | Activation::FunctionCalls { .. }
+            | Activation::GeneratedNative { .. }
+            | Activation::Host(_)
+            | Activation::Return(_)
+            | Activation::Complete(_)) => Progress::Continue(Self { active }),
         })
     }
 }
@@ -617,7 +648,18 @@ impl<'plan, Plan: ExecutableRuntimePlan> Frame<'plan, Plan> {
                     *remaining -= 1;
                     frame = next;
                 }
-                active => break active,
+                active @ (Activation::Graph(_)
+                | Activation::Compiled { .. }
+                | Activation::CustomLoop(_)
+                | Activation::NativeLoop(_)
+                | Activation::NativeCalls(_)
+                | Activation::FunctionCalls { .. }
+                | Activation::GeneratedNative { .. }
+                | Activation::Host(_)
+                | Activation::Return(_)
+                | Activation::Complete(_)
+                | Activation::CallComplete(_)
+                | Activation::CallInterpreted { .. }) => break active,
             }
         };
         Ok(active)
@@ -1522,7 +1564,11 @@ mod tests {
                         .unwrap()
                     {
                         Progress::Continue(next) => execution = next,
-                        result => {
+                        result @ (Progress::Host(_)
+                        | Progress::GeneratedHost { .. }
+                        | Progress::Complete(_)
+                        | Progress::CallComplete(_)
+                        | Progress::CallInterpreted { .. }) => {
                             assert_eq!(
                                 returned_int(plan, IntFunctionId(1), completed(result)),
                                 initial + 1
@@ -1540,7 +1586,19 @@ mod tests {
     ) -> (&'run CallFrame<'plan, Plan>, usize) {
         match &execution.active {
             Activation::Compiled { frame, point, .. } => (frame, *point),
-            _ => panic!("a Small yield retains generated execution"),
+            Activation::Graph(_)
+            | Activation::CustomLoop(_)
+            | Activation::NativeLoop(_)
+            | Activation::NativeCalls(_)
+            | Activation::FunctionCalls { .. }
+            | Activation::GeneratedNative { .. }
+            | Activation::Host(_)
+            | Activation::Return(_)
+            | Activation::Complete(_)
+            | Activation::CallComplete(_)
+            | Activation::CallInterpreted { .. } => {
+                panic!("a Small yield retains generated execution")
+            }
         }
     }
 
@@ -2761,7 +2819,17 @@ pub fn main() { head([7], 3) }
     ) -> &'run Frame<'plan, Plan> {
         match &execution.active {
             Activation::Graph(frame) => frame,
-            _ => panic!("fixture activation must be a graph"),
+            Activation::Compiled { .. }
+            | Activation::CustomLoop(_)
+            | Activation::NativeLoop(_)
+            | Activation::NativeCalls(_)
+            | Activation::FunctionCalls { .. }
+            | Activation::GeneratedNative { .. }
+            | Activation::Host(_)
+            | Activation::Return(_)
+            | Activation::Complete(_)
+            | Activation::CallComplete(_)
+            | Activation::CallInterpreted { .. } => panic!("fixture activation must be a graph"),
         }
     }
 
@@ -2785,7 +2853,11 @@ pub fn main() { head([7], 3) }
                 .unwrap()
             {
                 Progress::Continue(next) => execution = next,
-                result => return completed(result),
+                result @ (Progress::Host(_)
+                | Progress::GeneratedHost { .. }
+                | Progress::Complete(_)
+                | Progress::CallComplete(_)
+                | Progress::CallInterpreted { .. }) => return completed(result),
             }
         }
     }

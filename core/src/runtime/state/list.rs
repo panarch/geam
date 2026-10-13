@@ -2080,7 +2080,19 @@ mod tests {
     fn list_lease(value: &StoredRuntimeValue) -> Weak<ListLease<IntegerValue>> {
         let value = match value.value() {
             EvaluatedValue::Custom(custom) => custom.fields().first(),
-            value => Some(value),
+            value @ (EvaluatedValue::Parameter(_)
+            | EvaluatedValue::Int(_)
+            | EvaluatedValue::Float(_)
+            | EvaluatedValue::String(_)
+            | EvaluatedValue::BitArray(_)
+            | EvaluatedValue::UtfCodepoint(_)
+            | EvaluatedValue::External(_)
+            | EvaluatedValue::Bool(_)
+            | EvaluatedValue::Nil
+            | EvaluatedValue::Tuple(_)
+            | EvaluatedValue::ParameterList(_)
+            | EvaluatedValue::List(_)
+            | EvaluatedValue::Function(_)) => Some(value),
         };
         let Some(EvaluatedValue::List(StoredListValueId::Int(value))) = value else {
             panic!("expected an integer list lease");
@@ -3138,12 +3150,63 @@ pub fn main() { build(65) }
                             EvaluatedCaptureKind::List(EvaluatedListCapture::Int {
                                 value, ..
                             }) => Some(Arc::downgrade(&value.lease)),
-                            _ => None,
+                            EvaluatedCaptureKind::Int { .. }
+                            | EvaluatedCaptureKind::Float { .. }
+                            | EvaluatedCaptureKind::String { .. }
+                            | EvaluatedCaptureKind::BitArray { .. }
+                            | EvaluatedCaptureKind::UtfCodepoint { .. }
+                            | EvaluatedCaptureKind::Parameter { .. }
+                            | EvaluatedCaptureKind::Custom { .. }
+                            | EvaluatedCaptureKind::External { .. }
+                            | EvaluatedCaptureKind::Bool { .. }
+                            | EvaluatedCaptureKind::Nil { .. }
+                            | EvaluatedCaptureKind::Tuple { .. }
+                            | EvaluatedCaptureKind::List(_)
+                            | EvaluatedCaptureKind::IntFunction { .. }
+                            | EvaluatedCaptureKind::FloatFunction { .. }
+                            | EvaluatedCaptureKind::StringFunction { .. }
+                            | EvaluatedCaptureKind::BitArrayFunction { .. }
+                            | EvaluatedCaptureKind::UtfCodepointFunction { .. }
+                            | EvaluatedCaptureKind::ParameterFunction { .. }
+                            | EvaluatedCaptureKind::CustomFunction { .. }
+                            | EvaluatedCaptureKind::ExternalFunction { .. }
+                            | EvaluatedCaptureKind::BoolFunction { .. }
+                            | EvaluatedCaptureKind::NilFunction { .. }
+                            | EvaluatedCaptureKind::TupleFunction { .. }
+                            | EvaluatedCaptureKind::ListFunction { .. }
+                            | EvaluatedCaptureKind::FunctionFunction { .. }
+                            | EvaluatedCaptureKind::GenericFunction { .. }
+                            | EvaluatedCaptureKind::NeverFunction { .. } => None,
                         }),
-                    _ => None,
+                    EvaluatedFunctionValueKind::Generic(_)
+                    | EvaluatedFunctionValueKind::Never(_)
+                    | EvaluatedFunctionValueKind::Int(_)
+                    | EvaluatedFunctionValueKind::Float(_)
+                    | EvaluatedFunctionValueKind::String(_)
+                    | EvaluatedFunctionValueKind::BitArray(_)
+                    | EvaluatedFunctionValueKind::UtfCodepoint(_)
+                    | EvaluatedFunctionValueKind::Parameter(_)
+                    | EvaluatedFunctionValueKind::Custom(_)
+                    | EvaluatedFunctionValueKind::External(_)
+                    | EvaluatedFunctionValueKind::Bool(_)
+                    | EvaluatedFunctionValueKind::Nil(_)
+                    | EvaluatedFunctionValueKind::Tuple(_)
+                    | EvaluatedFunctionValueKind::Function(_) => None,
                 }
             }
-            _ => None,
+            EvaluatedValue::Parameter(_)
+            | EvaluatedValue::Int(_)
+            | EvaluatedValue::Float(_)
+            | EvaluatedValue::String(_)
+            | EvaluatedValue::BitArray(_)
+            | EvaluatedValue::UtfCodepoint(_)
+            | EvaluatedValue::Custom(_)
+            | EvaluatedValue::External(_)
+            | EvaluatedValue::Bool(_)
+            | EvaluatedValue::Nil
+            | EvaluatedValue::Tuple(_)
+            | EvaluatedValue::ParameterList(_)
+            | EvaluatedValue::List(_) => None,
         }
     }
 
@@ -3173,7 +3236,18 @@ pub fn main() { build(65) }
     fn nested_list_storage(storage: ListStorageTypeId) -> Option<ListListTypeId> {
         match storage {
             ListStorageTypeId::List(type_id) => Some(type_id),
-            _ => None,
+            ListStorageTypeId::Parameter(_)
+            | ListStorageTypeId::Int(_)
+            | ListStorageTypeId::String(_)
+            | ListStorageTypeId::BitArray(_)
+            | ListStorageTypeId::UtfCodepoint(_)
+            | ListStorageTypeId::Float(_)
+            | ListStorageTypeId::Bool(_)
+            | ListStorageTypeId::Nil(_)
+            | ListStorageTypeId::Tuple(_)
+            | ListStorageTypeId::Function(_)
+            | ListStorageTypeId::Custom(_)
+            | ListStorageTypeId::External(_) => None,
         }
     }
 }

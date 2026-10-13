@@ -667,7 +667,18 @@ pub fn main() {
                     false_,
                     ..
                 }) => Some((*length, false_)),
-                _ => None,
+                Terminator::Jump(_)
+                | Terminator::BoolBranch(_)
+                | Terminator::TestBranch(_)
+                | Terminator::IntSwitch(_)
+                | Terminator::FloatSwitch(_)
+                | Terminator::StringSwitch(_)
+                | Terminator::Match(_)
+                | Terminator::Echo(_)
+                | Terminator::Exit(_)
+                | Terminator::SourceStop(_)
+                | Terminator::LetAssertPanic(_)
+                | Terminator::NeverCall(_) => None,
             })
             .collect::<Vec<_>>();
         assert_eq!(branches[0].0, 0);
@@ -733,7 +744,17 @@ pub fn main() { inspect(Ok(Some(42))) <> inspect(Ok(None)) <> inspect(Error("fai
             .iter_mut()
             .filter_map(|header| match &mut header.terminator {
                 Terminator::Match(matcher) => Some(matcher),
-                _ => None,
+                Terminator::Jump(_)
+                | Terminator::BoolBranch(_)
+                | Terminator::TestBranch(_)
+                | Terminator::IntSwitch(_)
+                | Terminator::FloatSwitch(_)
+                | Terminator::StringSwitch(_)
+                | Terminator::Echo(_)
+                | Terminator::Exit(_)
+                | Terminator::SourceStop(_)
+                | Terminator::LetAssertPanic(_)
+                | Terminator::NeverCall(_) => None,
             });
         let repeated = matches.next().unwrap().pattern.clone();
         matches.next().unwrap().pattern = repeated;
@@ -800,7 +821,17 @@ pub fn main() { inspect(Value(Error("failed"))) }
             .iter_mut()
             .filter_map(|header| match &mut header.terminator {
                 Terminator::Match(matcher) => Some(matcher),
-                _ => None,
+                Terminator::Jump(_)
+                | Terminator::BoolBranch(_)
+                | Terminator::TestBranch(_)
+                | Terminator::IntSwitch(_)
+                | Terminator::FloatSwitch(_)
+                | Terminator::StringSwitch(_)
+                | Terminator::Echo(_)
+                | Terminator::Exit(_)
+                | Terminator::SourceStop(_)
+                | Terminator::LetAssertPanic(_)
+                | Terminator::NeverCall(_) => None,
             });
         // Keep the outer Value binding and replace only the nested None case.
         matches.next().unwrap();
@@ -957,7 +988,21 @@ pub fn main() {
                                         type_id,
                                         TypedListInstruction::Value(items),
                                     )) => Some((index, *type_id, items.to_vec())),
-                                    _ => None,
+                                    ProfiledInstructionKind::Int(_)
+                                    | ProfiledInstructionKind::Float(_)
+                                    | ProfiledInstructionKind::String(_)
+                                    | ProfiledInstructionKind::BitArray(_)
+                                    | ProfiledInstructionKind::UtfCodepoint(_)
+                                    | ProfiledInstructionKind::Parameter(_)
+                                    | ProfiledInstructionKind::Custom(_)
+                                    | ProfiledInstructionKind::External(_)
+                                    | ProfiledInstructionKind::ExternalList(_)
+                                    | ProfiledInstructionKind::ExternalFunction(_)
+                                    | ProfiledInstructionKind::Bool(_)
+                                    | ProfiledInstructionKind::Nil(_)
+                                    | ProfiledInstructionKind::Tuple(_)
+                                    | ProfiledInstructionKind::List(_)
+                                    | ProfiledInstructionKind::Function(_) => None,
                                 }
                             })
                             .collect::<Vec<_>>(),
@@ -979,7 +1024,21 @@ pub fn main() {
                                     ProfiledInstructionKind::Tuple(TupleInstruction::Value(
                                         items,
                                     )) => Some((index, items.to_vec())),
-                                    _ => None,
+                                    ProfiledInstructionKind::Int(_)
+                                    | ProfiledInstructionKind::Float(_)
+                                    | ProfiledInstructionKind::String(_)
+                                    | ProfiledInstructionKind::BitArray(_)
+                                    | ProfiledInstructionKind::UtfCodepoint(_)
+                                    | ProfiledInstructionKind::Parameter(_)
+                                    | ProfiledInstructionKind::Custom(_)
+                                    | ProfiledInstructionKind::External(_)
+                                    | ProfiledInstructionKind::ExternalList(_)
+                                    | ProfiledInstructionKind::ExternalFunction(_)
+                                    | ProfiledInstructionKind::Bool(_)
+                                    | ProfiledInstructionKind::Nil(_)
+                                    | ProfiledInstructionKind::Tuple(_)
+                                    | ProfiledInstructionKind::List(_)
+                                    | ProfiledInstructionKind::Function(_) => None,
                                 }
                             })
                             .collect::<Vec<_>>(),
@@ -1270,7 +1329,17 @@ pub fn main() {
     fn remainder_fixture_matcher(terminator: &mut Terminator) -> &mut Match {
         match terminator {
             Terminator::Match(matcher) => matcher,
-            _ => panic!("expected a constructor remainder match"),
+            Terminator::Jump(_)
+            | Terminator::BoolBranch(_)
+            | Terminator::TestBranch(_)
+            | Terminator::IntSwitch(_)
+            | Terminator::FloatSwitch(_)
+            | Terminator::StringSwitch(_)
+            | Terminator::Echo(_)
+            | Terminator::Exit(_)
+            | Terminator::SourceStop(_)
+            | Terminator::LetAssertPanic(_)
+            | Terminator::NeverCall(_) => panic!("expected a constructor remainder match"),
         }
     }
 
@@ -1286,7 +1355,9 @@ pub fn main() {
                 kind: ProfiledInstructionKind::Custom(CustomInstruction::CustomField { index, .. }),
                 ..
             }) => index,
-            _ => panic!("expected a constructor remainder field"),
+            ProfiledInstruction::Value(_) | ProfiledInstruction::IntegerRegion(_) => {
+                panic!("expected a constructor remainder field")
+            }
         }
     }
 
@@ -1876,7 +1947,17 @@ pub fn main() { let assert 3 = choose(Ok(False)) Nil }
     fn fixture_match_pattern(terminator: &mut Terminator) -> &mut MatchPattern {
         match terminator {
             Terminator::Match(matcher) => &mut matcher.pattern,
-            _ => panic!("the mutated fixture must contain a match"),
+            Terminator::Jump(_)
+            | Terminator::BoolBranch(_)
+            | Terminator::TestBranch(_)
+            | Terminator::IntSwitch(_)
+            | Terminator::FloatSwitch(_)
+            | Terminator::StringSwitch(_)
+            | Terminator::Echo(_)
+            | Terminator::Exit(_)
+            | Terminator::SourceStop(_)
+            | Terminator::LetAssertPanic(_)
+            | Terminator::NeverCall(_) => panic!("the mutated fixture must contain a match"),
         }
     }
 
@@ -2247,7 +2328,12 @@ pub fn main() { let assert 3 = choose(Ok(False)) Nil }
                     }]
                     .into();
                 }
-                _ => {}
+                Change::Format
+                | Change::Span
+                | Change::Exports
+                | Change::Constant
+                | Change::Registration
+                | Change::None => {}
             }
             let providers = if change == Change::Registration {
                 HostProviderSet::new([]).unwrap()

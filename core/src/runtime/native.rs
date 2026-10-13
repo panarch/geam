@@ -199,7 +199,17 @@ impl NativeValue {
             EvaluatedValue::Function(function) => {
                 Self::from_stored(function.native_source()?.clone_retained()).find_source(read)
             }
-            _ => None,
+            EvaluatedValue::Int(_)
+            | EvaluatedValue::Float(_)
+            | EvaluatedValue::String(_)
+            | EvaluatedValue::BitArray(_)
+            | EvaluatedValue::UtfCodepoint(_)
+            | EvaluatedValue::Custom(_)
+            | EvaluatedValue::Bool(_)
+            | EvaluatedValue::Nil
+            | EvaluatedValue::Tuple(_)
+            | EvaluatedValue::ParameterList(_)
+            | EvaluatedValue::List(_) => None,
         }
     }
 
@@ -212,7 +222,15 @@ impl NativeValue {
     pub fn index(&self, index: usize) -> Option<Self> {
         self.with_node(|node| match node {
             Node::Tuple(values) | Node::List(values) => values.item(index).map(Item::retain),
-            _ => None,
+            Node::Int(_)
+            | Node::Float(_)
+            | Node::Binary(_)
+            | Node::Symbol(_)
+            | Node::Map(_)
+            | Node::External(..)
+            | Node::Opaque(..)
+            | Node::Function(..)
+            | Node::Closure(_) => None,
         })
     }
 
@@ -220,7 +238,15 @@ impl NativeValue {
     pub fn len(&self) -> Option<usize> {
         self.with_node(|node| match node {
             Node::Tuple(values) | Node::List(values) => Some(values.len()),
-            _ => None,
+            Node::Int(_)
+            | Node::Float(_)
+            | Node::Binary(_)
+            | Node::Symbol(_)
+            | Node::Map(_)
+            | Node::External(..)
+            | Node::Opaque(..)
+            | Node::Function(..)
+            | Node::Closure(_) => None,
         })
     }
 
@@ -233,7 +259,16 @@ impl NativeValue {
     pub fn as_symbol(&self) -> Option<EcoString> {
         self.with_node(|node| match node {
             Node::Symbol(value) => Some(value.into()),
-            _ => None,
+            Node::Int(_)
+            | Node::Float(_)
+            | Node::Binary(_)
+            | Node::Tuple(_)
+            | Node::List(_)
+            | Node::Map(_)
+            | Node::External(..)
+            | Node::Opaque(..)
+            | Node::Function(..)
+            | Node::Closure(_) => None,
         })
     }
 
@@ -244,7 +279,16 @@ impl NativeValue {
                 Cow::Borrowed(value) => value.bigint().into_owned(),
                 Cow::Owned(value) => value.into_bigint(),
             }),
-            _ => None,
+            Node::Float(_)
+            | Node::Binary(_)
+            | Node::Symbol(_)
+            | Node::Tuple(_)
+            | Node::List(_)
+            | Node::Map(_)
+            | Node::External(..)
+            | Node::Opaque(..)
+            | Node::Function(..)
+            | Node::Closure(_) => None,
         })
     }
 
@@ -252,7 +296,16 @@ impl NativeValue {
     pub fn as_float(&self) -> Option<f64> {
         self.with_node(|node| match node {
             Node::Float(value) => Some(value),
-            _ => None,
+            Node::Int(_)
+            | Node::Binary(_)
+            | Node::Symbol(_)
+            | Node::Tuple(_)
+            | Node::List(_)
+            | Node::Map(_)
+            | Node::External(..)
+            | Node::Opaque(..)
+            | Node::Function(..)
+            | Node::Closure(_) => None,
         })
     }
 
@@ -260,7 +313,16 @@ impl NativeValue {
     pub fn as_map(&self) -> Option<NativeMap> {
         self.with_node(|node| match node {
             Node::Map(value) => Some(value.clone()),
-            _ => None,
+            Node::Int(_)
+            | Node::Float(_)
+            | Node::Binary(_)
+            | Node::Symbol(_)
+            | Node::Tuple(_)
+            | Node::List(_)
+            | Node::External(..)
+            | Node::Opaque(..)
+            | Node::Function(..)
+            | Node::Closure(_) => None,
         })
     }
 
@@ -269,7 +331,16 @@ impl NativeValue {
     pub fn as_string(&self) -> Option<crate::StringValue> {
         self.with_node(|node| match node {
             Node::Binary(value) => value.string(),
-            _ => None,
+            Node::Int(_)
+            | Node::Float(_)
+            | Node::Symbol(_)
+            | Node::Tuple(_)
+            | Node::List(_)
+            | Node::Map(_)
+            | Node::External(..)
+            | Node::Opaque(..)
+            | Node::Function(..)
+            | Node::Closure(_) => None,
         })
     }
 
@@ -279,7 +350,16 @@ impl NativeValue {
             Node::Binary(value) => Some(crate::BitArrayValue::from_evaluated(
                 value.bits().to_bitvec(),
             )),
-            _ => None,
+            Node::Int(_)
+            | Node::Float(_)
+            | Node::Symbol(_)
+            | Node::Tuple(_)
+            | Node::List(_)
+            | Node::Map(_)
+            | Node::External(..)
+            | Node::Opaque(..)
+            | Node::Function(..)
+            | Node::Closure(_) => None,
         })
     }
 
@@ -287,7 +367,16 @@ impl NativeValue {
     pub fn bit_len(&self) -> Option<usize> {
         self.with_node(|node| match node {
             Node::Binary(value) => Some(value.bits().len()),
-            _ => None,
+            Node::Int(_)
+            | Node::Float(_)
+            | Node::Symbol(_)
+            | Node::Tuple(_)
+            | Node::List(_)
+            | Node::Map(_)
+            | Node::External(..)
+            | Node::Opaque(..)
+            | Node::Function(..)
+            | Node::Closure(_) => None,
         })
     }
 
@@ -317,9 +406,25 @@ impl NativeValue {
         match &self.0 {
             Representation::Stored(source) => match source.value() {
                 EvaluatedValue::Parameter(value) => value.native().clone(),
-                _ => self.clone(),
+                EvaluatedValue::Int(_)
+                | EvaluatedValue::Float(_)
+                | EvaluatedValue::String(_)
+                | EvaluatedValue::BitArray(_)
+                | EvaluatedValue::UtfCodepoint(_)
+                | EvaluatedValue::Custom(_)
+                | EvaluatedValue::External(_)
+                | EvaluatedValue::Bool(_)
+                | EvaluatedValue::Nil
+                | EvaluatedValue::Tuple(_)
+                | EvaluatedValue::ParameterList(_)
+                | EvaluatedValue::List(_)
+                | EvaluatedValue::Function(_) => self.clone(),
             },
-            _ => self.clone(),
+            Representation::Symbol(_)
+            | Representation::Tuple(_)
+            | Representation::ListTuple { .. }
+            | Representation::Map(_)
+            | Representation::Closure(_) => self.clone(),
         }
     }
 
@@ -381,7 +486,17 @@ impl NativeValue {
                 .enumerate()
                 .map(|(index, value)| convert(index, value.retain()))
                 .collect(),
-            _ => None,
+            Node::Int(_)
+            | Node::Float(_)
+            | Node::Binary(_)
+            | Node::Symbol(_)
+            | Node::Tuple(_)
+            | Node::List(_)
+            | Node::Map(_)
+            | Node::External(..)
+            | Node::Opaque(..)
+            | Node::Function(..)
+            | Node::Closure(_) => None,
         })
     }
 
@@ -394,7 +509,16 @@ impl NativeValue {
                 .into_items()
                 .map(|value| convert(value.retain()))
                 .collect(),
-            _ => None,
+            Node::Int(_)
+            | Node::Float(_)
+            | Node::Binary(_)
+            | Node::Symbol(_)
+            | Node::Tuple(_)
+            | Node::Map(_)
+            | Node::External(..)
+            | Node::Opaque(..)
+            | Node::Function(..)
+            | Node::Closure(_) => None,
         })
     }
 
@@ -433,7 +557,15 @@ impl NativeValue {
                     Some((constructor.constructor(), fields))
                 })
             }
-            _ => None,
+            Node::Int(_)
+            | Node::Float(_)
+            | Node::Binary(_)
+            | Node::List(_)
+            | Node::Map(_)
+            | Node::External(..)
+            | Node::Opaque(..)
+            | Node::Function(..)
+            | Node::Closure(_) => None,
         })
     }
 }
@@ -809,7 +941,17 @@ fn inspect_node(node: Node<'_>, context: &Inspection<'_, '_>) -> EcoString {
                     Node::Symbol(value) if !matches!(value, "true" | "false" | "nil") => {
                         symbol_constructor(value)
                     }
-                    _ => None,
+                    Node::Int(_)
+                    | Node::Float(_)
+                    | Node::Binary(_)
+                    | Node::Symbol(_)
+                    | Node::Tuple(_)
+                    | Node::List(_)
+                    | Node::Map(_)
+                    | Node::External(..)
+                    | Node::Opaque(..)
+                    | Node::Function(..)
+                    | Node::Closure(_) => None,
                 })
             });
             match constructor {
@@ -883,7 +1025,16 @@ fn inspect_list(values: Sequence<'_>, context: &Inspection<'_, '_>) -> EcoString
             if let Some(characters) = chars.as_mut() {
                 let byte = match &node {
                     Node::Int(value) => value.to_u8(),
-                    _ => None,
+                    Node::Float(_)
+                    | Node::Binary(_)
+                    | Node::Symbol(_)
+                    | Node::Tuple(_)
+                    | Node::List(_)
+                    | Node::Map(_)
+                    | Node::External(..)
+                    | Node::Opaque(..)
+                    | Node::Function(..)
+                    | Node::Closure(_) => None,
                 };
                 match byte {
                     Some(byte @ 32..=126) => characters.push(char::from(byte)),
@@ -1120,7 +1271,19 @@ mod tests {
     fn source_function_list(value: &StoredRuntimeValue) -> &StoredListValueId {
         match value.value() {
             EvaluatedValue::List(list) => list,
-            _ => panic!("source returns a function list"),
+            EvaluatedValue::Parameter(_)
+            | EvaluatedValue::Int(_)
+            | EvaluatedValue::Float(_)
+            | EvaluatedValue::String(_)
+            | EvaluatedValue::BitArray(_)
+            | EvaluatedValue::UtfCodepoint(_)
+            | EvaluatedValue::Custom(_)
+            | EvaluatedValue::External(_)
+            | EvaluatedValue::Bool(_)
+            | EvaluatedValue::Nil
+            | EvaluatedValue::Tuple(_)
+            | EvaluatedValue::ParameterList(_)
+            | EvaluatedValue::Function(_) => panic!("source returns a function list"),
         }
     }
 

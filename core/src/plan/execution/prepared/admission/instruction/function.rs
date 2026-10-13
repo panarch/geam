@@ -259,7 +259,18 @@ pub(super) fn header(
         ParamLocal::TupleFunction { .. } => FunctionReturnFamily::Tuple,
         ParamLocal::ListFunction(_) => FunctionReturnFamily::List,
         ParamLocal::FunctionFunction(_) => FunctionReturnFamily::Function,
-        _ => return Err(InstructionError::OutputType),
+        ParamLocal::Int(_)
+        | ParamLocal::Float(_)
+        | ParamLocal::String(_)
+        | ParamLocal::BitArray(_)
+        | ParamLocal::UtfCodepoint(_)
+        | ParamLocal::Parameter { .. }
+        | ParamLocal::Custom(_)
+        | ParamLocal::External(_)
+        | ParamLocal::Bool(_)
+        | ParamLocal::Nil(_)
+        | ParamLocal::Tuple { .. }
+        | ParamLocal::List(_) => return Err(InstructionError::OutputType),
     };
     if !matches!(admitted.type_, ValueType::Function(actual) if actual == expected) {
         return Err(InstructionError::OutputType);
@@ -542,9 +553,30 @@ pub fn main() {
                     FunctionInstructionKind::Reference(FunctionTarget::Int(target)) => {
                         Some((target, &instruction.value().unwrap().output))
                     }
-                    _ => None,
+                    FunctionInstructionKind::Constant(_)
+                    | FunctionInstructionKind::Reference(_)
+                    | FunctionInstructionKind::Closure { .. }
+                    | FunctionInstructionKind::Constructor(_)
+                    | FunctionInstructionKind::Call { .. }
+                    | FunctionInstructionKind::FunctionCall { .. }
+                    | FunctionInstructionKind::TupleIndex { .. }
+                    | FunctionInstructionKind::CustomField { .. }
+                    | FunctionInstructionKind::ListIndex { .. } => None,
                 },
-                _ => None,
+                ProfiledInstructionKind::Int(_)
+                | ProfiledInstructionKind::Float(_)
+                | ProfiledInstructionKind::String(_)
+                | ProfiledInstructionKind::BitArray(_)
+                | ProfiledInstructionKind::UtfCodepoint(_)
+                | ProfiledInstructionKind::Parameter(_)
+                | ProfiledInstructionKind::Custom(_)
+                | ProfiledInstructionKind::External(_)
+                | ProfiledInstructionKind::ExternalList(_)
+                | ProfiledInstructionKind::ExternalFunction(_)
+                | ProfiledInstructionKind::Bool(_)
+                | ProfiledInstructionKind::Nil(_)
+                | ProfiledInstructionKind::Tuple(_)
+                | ProfiledInstructionKind::List(_) => None,
             })
             .collect::<Vec<_>>();
         let (target, ordinary_output) = references[0];
@@ -759,7 +791,18 @@ pub fn main() {
                     _ if value.type_.argument_types() == [ValueType::String] => {
                         (3, Err(InstructionError::OperandType))
                     }
-                    _ => (4, Ok(())),
+                    ValueType::Parameter(_)
+                    | ValueType::Float
+                    | ValueType::String
+                    | ValueType::BitArray
+                    | ValueType::UtfCodepoint
+                    | ValueType::Bool
+                    | ValueType::Nil
+                    | ValueType::Tuple(_)
+                    | ValueType::List(_)
+                    | ValueType::Function(_)
+                    | ValueType::Custom(_)
+                    | ValueType::External(_) => (4, Ok(())),
                 };
                 assert_eq!(context.constructor_function(constructor, output), expected);
                 if index == 4 {
@@ -816,7 +859,32 @@ pub fn main() { #(Box(First), fn(x: Choice) { Box(x) }, Second) }
                     ParamLocal::Custom(local) => {
                         Some((&instruction.value().unwrap().output, local))
                     }
-                    _ => None,
+                    ParamLocal::Int(_)
+                    | ParamLocal::Float(_)
+                    | ParamLocal::String(_)
+                    | ParamLocal::BitArray(_)
+                    | ParamLocal::UtfCodepoint(_)
+                    | ParamLocal::Parameter { .. }
+                    | ParamLocal::External(_)
+                    | ParamLocal::Bool(_)
+                    | ParamLocal::Nil(_)
+                    | ParamLocal::Tuple { .. }
+                    | ParamLocal::List(_)
+                    | ParamLocal::IntFunction { .. }
+                    | ParamLocal::FloatFunction { .. }
+                    | ParamLocal::StringFunction { .. }
+                    | ParamLocal::BitArrayFunction { .. }
+                    | ParamLocal::UtfCodepointFunction { .. }
+                    | ParamLocal::ParameterFunction { .. }
+                    | ParamLocal::GenericFunction(_)
+                    | ParamLocal::NeverFunction(_)
+                    | ParamLocal::CustomFunction(_)
+                    | ParamLocal::ExternalFunction(_)
+                    | ParamLocal::BoolFunction { .. }
+                    | ParamLocal::NilFunction { .. }
+                    | ParamLocal::TupleFunction { .. }
+                    | ParamLocal::ListFunction(_)
+                    | ParamLocal::FunctionFunction(_) => None,
                 },
             )
             .collect::<Vec<_>>();
@@ -1025,7 +1093,13 @@ pub fn main() {
                             );
                         }
                         FunctionInstructionKind::Constructor(_) => counts[2] += 1,
-                        _ => {}
+                        FunctionInstructionKind::Constant(_)
+                        | FunctionInstructionKind::Closure { .. }
+                        | FunctionInstructionKind::Call { .. }
+                        | FunctionInstructionKind::FunctionCall { .. }
+                        | FunctionInstructionKind::TupleIndex { .. }
+                        | FunctionInstructionKind::CustomField { .. }
+                        | FunctionInstructionKind::ListIndex { .. } => {}
                     }
                 }
                 locals

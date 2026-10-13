@@ -256,19 +256,49 @@ mod tests {
         HostComponentProfile, HostFutureStore, HostProfile, HostProviderModule, HostProviderSet,
         HostWorkProfile,
     };
+    use crate::runtime::evaluated::{EvaluatedFunctionValueKind, EvaluatedValue};
     use crate::work_fixture::{WorkComponent, WorkType};
     use crate::{ModuleSource, PackageSource};
     use num_bigint::BigInt;
 
-    fn never_callable(value: crate::runtime::EvaluatedValue) -> InvocableFunctionValue {
+    fn never_callable(value: EvaluatedValue) -> InvocableFunctionValue {
         match value {
-            crate::runtime::EvaluatedValue::Function(function) => match function.into_kind() {
-                crate::runtime::evaluated::EvaluatedFunctionValueKind::Never(function) => {
+            EvaluatedValue::Function(function) => match function.into_kind() {
+                EvaluatedFunctionValueKind::Never(function) => {
                     InvocableFunctionValue::Never(function)
                 }
-                _ => panic!("the source must return a non-returning callback"),
+                EvaluatedFunctionValueKind::Generic(_)
+                | EvaluatedFunctionValueKind::Int(_)
+                | EvaluatedFunctionValueKind::Float(_)
+                | EvaluatedFunctionValueKind::String(_)
+                | EvaluatedFunctionValueKind::BitArray(_)
+                | EvaluatedFunctionValueKind::UtfCodepoint(_)
+                | EvaluatedFunctionValueKind::Parameter(_)
+                | EvaluatedFunctionValueKind::Custom(_)
+                | EvaluatedFunctionValueKind::External(_)
+                | EvaluatedFunctionValueKind::Bool(_)
+                | EvaluatedFunctionValueKind::Nil(_)
+                | EvaluatedFunctionValueKind::Tuple(_)
+                | EvaluatedFunctionValueKind::List(_)
+                | EvaluatedFunctionValueKind::Function(_) => {
+                    panic!("the source must return a non-returning callback")
+                }
             },
-            _ => panic!("the source must return a callback"),
+            EvaluatedValue::Parameter(_)
+            | EvaluatedValue::Int(_)
+            | EvaluatedValue::Float(_)
+            | EvaluatedValue::String(_)
+            | EvaluatedValue::BitArray(_)
+            | EvaluatedValue::UtfCodepoint(_)
+            | EvaluatedValue::Custom(_)
+            | EvaluatedValue::External(_)
+            | EvaluatedValue::Bool(_)
+            | EvaluatedValue::Nil
+            | EvaluatedValue::Tuple(_)
+            | EvaluatedValue::ParameterList(_)
+            | EvaluatedValue::List(_) => {
+                panic!("the source must return a callback")
+            }
         }
     }
 
@@ -303,7 +333,7 @@ mod tests {
                 plan,
                 &callback,
                 crate::runtime::HostCallOrigin::Entry,
-                Box::new([crate::runtime::EvaluatedValue::Int(42.into())]),
+                Box::new([EvaluatedValue::Int(42.into())]),
             )
             .submit(&context, std::num::NonZeroUsize::MIN),
         )

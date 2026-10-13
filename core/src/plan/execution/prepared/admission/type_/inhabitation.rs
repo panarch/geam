@@ -347,7 +347,18 @@ pub fn main() { #(identity, from_empty, never, add) }
             .map(|instruction| instruction.value().unwrap().output())
             .filter_map(|slot| match types.shape_type(slot.shape).unwrap() {
                 ValueType::Function(function) => Some((slot, function)),
-                _ => None,
+                ValueType::Parameter(_)
+                | ValueType::Int
+                | ValueType::Float
+                | ValueType::String
+                | ValueType::BitArray
+                | ValueType::UtfCodepoint
+                | ValueType::Bool
+                | ValueType::Nil
+                | ValueType::Tuple(_)
+                | ValueType::List(_)
+                | ValueType::Custom(_)
+                | ValueType::External(_) => None,
             })
             .collect::<Vec<_>>();
         assert_eq!(functions.len(), 4);
@@ -357,7 +368,31 @@ pub fn main() { #(identity, from_empty, never, add) }
                 .map(|(slot, _)| match slot.local {
                     ParamLocal::GenericFunction(_) => "symbolic",
                     ParamLocal::NeverFunction(_) => "never",
-                    _ => "callable",
+                    ParamLocal::Int(_)
+                    | ParamLocal::Float(_)
+                    | ParamLocal::String(_)
+                    | ParamLocal::BitArray(_)
+                    | ParamLocal::UtfCodepoint(_)
+                    | ParamLocal::Parameter { .. }
+                    | ParamLocal::Custom(_)
+                    | ParamLocal::External(_)
+                    | ParamLocal::Bool(_)
+                    | ParamLocal::Nil(_)
+                    | ParamLocal::Tuple { .. }
+                    | ParamLocal::List(_)
+                    | ParamLocal::IntFunction { .. }
+                    | ParamLocal::FloatFunction { .. }
+                    | ParamLocal::StringFunction { .. }
+                    | ParamLocal::BitArrayFunction { .. }
+                    | ParamLocal::UtfCodepointFunction { .. }
+                    | ParamLocal::ParameterFunction { .. }
+                    | ParamLocal::CustomFunction(_)
+                    | ParamLocal::ExternalFunction(_)
+                    | ParamLocal::BoolFunction { .. }
+                    | ParamLocal::NilFunction { .. }
+                    | ParamLocal::TupleFunction { .. }
+                    | ParamLocal::ListFunction(_)
+                    | ParamLocal::FunctionFunction(_) => "callable",
                 })
                 .collect::<Vec<_>>(),
             ["symbolic", "symbolic", "never", "callable"]
@@ -529,7 +564,18 @@ pub fn main() {
                         ValueShapeDescriptor::Parameter(_)
                     )
                 }),
-                _ => false,
+                ValueShapeDescriptor::Parameter(_)
+                | ValueShapeDescriptor::Int
+                | ValueShapeDescriptor::Float
+                | ValueShapeDescriptor::String
+                | ValueShapeDescriptor::BitArray
+                | ValueShapeDescriptor::UtfCodepoint
+                | ValueShapeDescriptor::Bool
+                | ValueShapeDescriptor::Nil
+                | ValueShapeDescriptor::List(_)
+                | ValueShapeDescriptor::Function { .. }
+                | ValueShapeDescriptor::Custom(_)
+                | ValueShapeDescriptor::External(_) => false,
             })
             .unwrap();
         assert!(types.inhabited(types.shape(ValueShapeId(symbolic_tuple)).unwrap()));
@@ -542,7 +588,18 @@ pub fn main() {
                     matches!(types.shape_type(*item).unwrap(), ValueType::Custom(custom)
                         if common.custom_types.types[custom.index()].type_.name.as_str() == "Empty")
                 }),
-                _ => false,
+                ValueShapeDescriptor::Parameter(_)
+                | ValueShapeDescriptor::Int
+                | ValueShapeDescriptor::Float
+                | ValueShapeDescriptor::String
+                | ValueShapeDescriptor::BitArray
+                | ValueShapeDescriptor::UtfCodepoint
+                | ValueShapeDescriptor::Bool
+                | ValueShapeDescriptor::Nil
+                | ValueShapeDescriptor::List(_)
+                | ValueShapeDescriptor::Function { .. }
+                | ValueShapeDescriptor::Custom(_)
+                | ValueShapeDescriptor::External(_) => false,
             })
             .unwrap();
         assert!(!types.inhabited(types.shape(ValueShapeId(empty_tuple)).unwrap()));
@@ -561,7 +618,18 @@ pub fn main() {
                             == crate::plan::execution::type_::CustomConstructorRefinement::Exact(1))
                         .then_some(ValueShapeId(index))
                     }
-                    _ => None,
+                    ValueShapeDescriptor::Parameter(_)
+                    | ValueShapeDescriptor::Int
+                    | ValueShapeDescriptor::Float
+                    | ValueShapeDescriptor::String
+                    | ValueShapeDescriptor::BitArray
+                    | ValueShapeDescriptor::UtfCodepoint
+                    | ValueShapeDescriptor::Bool
+                    | ValueShapeDescriptor::Nil
+                    | ValueShapeDescriptor::Tuple(_)
+                    | ValueShapeDescriptor::List(_)
+                    | ValueShapeDescriptor::Function { .. }
+                    | ValueShapeDescriptor::External(_) => None,
                 })
                 .unwrap();
         assert!(types.inhabited(types.shape(last).unwrap()));

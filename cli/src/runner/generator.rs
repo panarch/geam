@@ -10,7 +10,10 @@ pub(super) fn render_application(provider_aliases: &[ProviderBinding]) -> String
         .into_iter()
         .filter_map(|component| match component.initialization {
             ComponentInitialization::Configured { package } => Some(package),
-            _ => None,
+            ComponentInitialization::Stdlib
+            | ComponentInitialization::Unit
+            | ComponentInitialization::SystemTime
+            | ComponentInitialization::PackageResources => None,
         })
         .collect::<Vec<_>>();
     render_host(provider_aliases)

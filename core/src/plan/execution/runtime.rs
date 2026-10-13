@@ -67,7 +67,11 @@ pub(crate) trait RuntimeExecutionPlan: Sized {
         let target = match id {
             NativeLoopTarget::Int(id) => CallTarget::Int(id),
             NativeLoopTarget::Bool(id) => CallTarget::Bool(id),
-            _ => return None,
+            NativeLoopTarget::Float(_)
+            | NativeLoopTarget::String(_)
+            | NativeLoopTarget::BitArray(_)
+            | NativeLoopTarget::UtfCodepoint(_)
+            | NativeLoopTarget::Nil(_) => return None,
         };
         self.program().compiled.root_calls(target)
     }

@@ -67,7 +67,21 @@ impl GraphValue for NilLocalId {
     fn from_call_output(output: CallOutput) -> ExecutionResult<()> {
         match output {
             CallOutput::Nil(value) => Ok(value),
-            output => Err(InvariantError::FunctionReturnFamilyMismatch {
+            output @ (CallOutput::Custom(_)
+            | CallOutput::Tuple(_)
+            | CallOutput::Int(_)
+            | CallOutput::Bool(_)
+            | CallOutput::IntFunction(_)
+            | CallOutput::BoolFunction(_)
+            | CallOutput::Float(_)
+            | CallOutput::String(_)
+            | CallOutput::BitArray(_)
+            | CallOutput::UtfCodepoint(_)
+            | CallOutput::FloatFunction(_)
+            | CallOutput::StringFunction(_)
+            | CallOutput::BitArrayFunction(_)
+            | CallOutput::UtfCodepointFunction(_)
+            | CallOutput::NilFunction(_)) => Err(InvariantError::FunctionReturnFamilyMismatch {
                 expected: Self::RETURN_FAMILY,
                 actual: output.family(),
             }
@@ -277,7 +291,21 @@ impl GraphValue for CustomLocal {
     fn from_call_output(output: CallOutput) -> ExecutionResult<Self::Evaluated> {
         match output {
             CallOutput::Custom(value) => Ok(value.0),
-            output => Err(InvariantError::FunctionReturnFamilyMismatch {
+            output @ (CallOutput::Tuple(_)
+            | CallOutput::Int(_)
+            | CallOutput::Bool(_)
+            | CallOutput::IntFunction(_)
+            | CallOutput::BoolFunction(_)
+            | CallOutput::Float(_)
+            | CallOutput::String(_)
+            | CallOutput::BitArray(_)
+            | CallOutput::UtfCodepoint(_)
+            | CallOutput::Nil(_)
+            | CallOutput::FloatFunction(_)
+            | CallOutput::StringFunction(_)
+            | CallOutput::BitArrayFunction(_)
+            | CallOutput::UtfCodepointFunction(_)
+            | CallOutput::NilFunction(_)) => Err(InvariantError::FunctionReturnFamilyMismatch {
                 expected: Self::RETURN_FAMILY,
                 actual: output.family(),
             }

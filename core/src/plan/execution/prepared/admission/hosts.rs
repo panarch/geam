@@ -1046,7 +1046,7 @@ pub fn main() { echo fn(value) { value } echo fn(value: Empty) { value } echo Tr
                     ValueFunctionEntry::Host(HostedFunctionTarget::Value(target)) => {
                         Some((index, *target))
                     }
-                    _ => None,
+                    ValueFunctionEntry::Graph(_) | ValueFunctionEntry::Host(_) => None,
                 })
                 .collect::<Vec<_>>();
             assert_eq!(targets.len(), 1);
@@ -1065,7 +1065,18 @@ pub fn main() { echo fn(value) { value } echo fn(value: Empty) { value } echo Tr
                             .enumerate()
                             .filter_map(|(index, shape)| match shape {
                                 ValueShapeDescriptor::Parameter(_) => Some(ValueShapeId(index)),
-                                _ => None,
+                                ValueShapeDescriptor::Int
+                                | ValueShapeDescriptor::Float
+                                | ValueShapeDescriptor::String
+                                | ValueShapeDescriptor::BitArray
+                                | ValueShapeDescriptor::UtfCodepoint
+                                | ValueShapeDescriptor::Bool
+                                | ValueShapeDescriptor::Nil
+                                | ValueShapeDescriptor::Tuple(_)
+                                | ValueShapeDescriptor::List(_)
+                                | ValueShapeDescriptor::Function { .. }
+                                | ValueShapeDescriptor::Custom(_)
+                                | ValueShapeDescriptor::External(_) => None,
                             })
                             .collect::<Vec<_>>();
                         assert_eq!(symbolic_shapes.len(), 1);
@@ -1094,7 +1105,18 @@ pub fn main() { echo fn(value) { value } echo fn(value: Empty) { value } echo Tr
                                 ValueShapeDescriptor::Custom(custom) => {
                                     Some((ValueShapeId(index), *custom))
                                 }
-                                _ => None,
+                                ValueShapeDescriptor::Parameter(_)
+                                | ValueShapeDescriptor::Int
+                                | ValueShapeDescriptor::Float
+                                | ValueShapeDescriptor::String
+                                | ValueShapeDescriptor::BitArray
+                                | ValueShapeDescriptor::UtfCodepoint
+                                | ValueShapeDescriptor::Bool
+                                | ValueShapeDescriptor::Nil
+                                | ValueShapeDescriptor::Tuple(_)
+                                | ValueShapeDescriptor::List(_)
+                                | ValueShapeDescriptor::Function { .. }
+                                | ValueShapeDescriptor::External(_) => None,
                             })
                             .collect::<Vec<_>>();
                         assert_eq!(empty_shapes.len(), 1);

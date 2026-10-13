@@ -218,7 +218,10 @@ mod tests {
                         .iter()
                         .filter_map(|input| match input.condition {
                             Condition::String { subject, value } => Some((subject, value)),
-                            _ => None,
+                            Condition::Always
+                            | Condition::Test { .. }
+                            | Condition::Bool { .. }
+                            | Condition::Match { .. } => None,
                         })
                         .collect::<Vec<_>>();
                     assert_eq!(strings, vec![(StringLocalId(0), "selected")]);
@@ -241,7 +244,10 @@ mod tests {
     fn direct_condition(condition: Condition<'_>) -> (&BoolTest, bool) {
         match condition {
             Condition::Test { test, truth } => (test, truth),
-            _ => panic!("fixture should retain a direct test condition"),
+            Condition::Always
+            | Condition::Bool { .. }
+            | Condition::Match { .. }
+            | Condition::String { .. } => panic!("fixture should retain a direct test condition"),
         }
     }
 
@@ -314,7 +320,17 @@ mod tests {
                 .blocks()
                 .filter_map(|block| match block.terminator() {
                     Terminator::Match(value) => Some(value),
-                    _ => None,
+                    Terminator::Jump(_)
+                    | Terminator::BoolBranch(_)
+                    | Terminator::TestBranch(_)
+                    | Terminator::IntSwitch(_)
+                    | Terminator::FloatSwitch(_)
+                    | Terminator::StringSwitch(_)
+                    | Terminator::Echo(_)
+                    | Terminator::Exit(_)
+                    | Terminator::SourceStop(_)
+                    | Terminator::LetAssertPanic(_)
+                    | Terminator::NeverCall(_) => None,
                 })
                 .collect::<Vec<_>>();
             assert_eq!(matchers.len(), 1);

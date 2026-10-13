@@ -257,7 +257,13 @@ impl<Profile: crate::HostProfile> ExecutableRuntimePlan
             GeneratedNativePhase::Progress(CallProgress::TupleNative(request)) => {
                 self.synchronous_tuples.get(request.function).is_none()
             }
-            _ => false,
+            GeneratedNativePhase::Progress(_)
+            | GeneratedNativePhase::TupleInvoke { .. }
+            | GeneratedNativePhase::TupleDeliver { .. }
+            | GeneratedNativePhase::CustomInvoke { .. }
+            | GeneratedNativePhase::CustomDeliver { .. }
+            | GeneratedNativePhase::Invoke { .. }
+            | GeneratedNativePhase::Deliver { .. } => false,
         };
         if unsupported {
             return Err(state);
@@ -1245,7 +1251,9 @@ pub fn run(fails: Bool) {
     fn transfer_host_error(error: &crate::ExecutionError) -> &crate::HostError {
         match error {
             crate::ExecutionError::Host(error) => error,
-            _ => panic!("fixture requires a native host failure"),
+            crate::ExecutionError::Panic(_) | crate::ExecutionError::Invariant(_) => {
+                panic!("fixture requires a native host failure")
+            }
         }
     }
 

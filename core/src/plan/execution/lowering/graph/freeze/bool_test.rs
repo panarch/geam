@@ -211,21 +211,51 @@ mod tests {
     fn direct_branch(terminator: &Terminator) -> &TestBranch {
         match terminator {
             Terminator::TestBranch(branch) => branch,
-            _ => panic!("fixture should contain a direct test branch"),
+            Terminator::Jump(_)
+            | Terminator::BoolBranch(_)
+            | Terminator::IntSwitch(_)
+            | Terminator::FloatSwitch(_)
+            | Terminator::StringSwitch(_)
+            | Terminator::Match(_)
+            | Terminator::Echo(_)
+            | Terminator::Exit(_)
+            | Terminator::SourceStop(_)
+            | Terminator::LetAssertPanic(_)
+            | Terminator::NeverCall(_) => panic!("fixture should contain a direct test branch"),
         }
     }
 
     fn value_branch(terminator: &Terminator) -> &BoolBranch {
         match terminator {
             Terminator::BoolBranch(branch) => branch,
-            _ => panic!("fixture should retain a Bool branch"),
+            Terminator::Jump(_)
+            | Terminator::TestBranch(_)
+            | Terminator::IntSwitch(_)
+            | Terminator::FloatSwitch(_)
+            | Terminator::StringSwitch(_)
+            | Terminator::Match(_)
+            | Terminator::Echo(_)
+            | Terminator::Exit(_)
+            | Terminator::SourceStop(_)
+            | Terminator::LetAssertPanic(_)
+            | Terminator::NeverCall(_) => panic!("fixture should retain a Bool branch"),
         }
     }
 
     fn echo(terminator: &Terminator) -> &Echo {
         match terminator {
             Terminator::Echo(echo) => echo,
-            _ => panic!("fixture should contain an Echo"),
+            Terminator::Jump(_)
+            | Terminator::BoolBranch(_)
+            | Terminator::TestBranch(_)
+            | Terminator::IntSwitch(_)
+            | Terminator::FloatSwitch(_)
+            | Terminator::StringSwitch(_)
+            | Terminator::Match(_)
+            | Terminator::Exit(_)
+            | Terminator::SourceStop(_)
+            | Terminator::LetAssertPanic(_)
+            | Terminator::NeverCall(_) => panic!("fixture should contain an Echo"),
         }
     }
 

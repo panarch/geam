@@ -247,7 +247,17 @@ pub fn main() -> Int {
             .copied()
             .filter_map(|terminator| match terminator {
                 Terminator::NeverCall(call) => Some(call),
-                _ => None,
+                Terminator::Jump(_)
+                | Terminator::BoolBranch(_)
+                | Terminator::TestBranch(_)
+                | Terminator::IntSwitch(_)
+                | Terminator::FloatSwitch(_)
+                | Terminator::StringSwitch(_)
+                | Terminator::Match(_)
+                | Terminator::Echo(_)
+                | Terminator::Exit(_)
+                | Terminator::SourceStop(_)
+                | Terminator::LetAssertPanic(_) => None,
             })
             .collect::<Vec<_>>();
         never_call_from_nodes(&calls)

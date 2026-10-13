@@ -34,7 +34,15 @@ impl NativeLoopCursor {
             NativeLoopPhase::Switch(returned) if self.counter.small() == Some(1) => {
                 ControlFlow::Break(returned)
             }
-            _ => ControlFlow::Continue(self),
+            NativeLoopPhase::ProducerCall
+            | NativeLoopPhase::ProducerLiteral
+            | NativeLoopPhase::ProducerReturn
+            | NativeLoopPhase::NativeCall
+            | NativeLoopPhase::NativeRun
+            | NativeLoopPhase::NativeReturn(_)
+            | NativeLoopPhase::SwitchEntry(_)
+            | NativeLoopPhase::Switch(_)
+            | NativeLoopPhase::Backedge(_) => ControlFlow::Continue(self),
         }
     }
 }

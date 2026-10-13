@@ -438,7 +438,14 @@ pub fn main() {
                         counts[6] += 1;
                         context.utf_codepoint(value, output, &locals)
                     }
-                    _ => Ok(()),
+                    ProfiledInstructionKind::BitArray(_)
+                    | ProfiledInstructionKind::Parameter(_)
+                    | ProfiledInstructionKind::Custom(_)
+                    | ProfiledInstructionKind::External(_)
+                    | ProfiledInstructionKind::ExternalList(_)
+                    | ProfiledInstructionKind::ExternalFunction(_)
+                    | ProfiledInstructionKind::List(_)
+                    | ProfiledInstructionKind::Function(_) => Ok(()),
                 };
                 checked.unwrap();
                 locals.define(output, context.types).unwrap();

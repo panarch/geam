@@ -99,7 +99,18 @@ pub(super) fn validate(
 fn source_custom_type(actual: ValueType) -> Result<CustomType, PlanError> {
     match actual {
         ValueType::Custom(type_) => Ok(type_),
-        actual => Err(PlanError::InvalidTypedAst {
+        actual @ (ValueType::Parameter(_)
+        | ValueType::Int
+        | ValueType::Float
+        | ValueType::String
+        | ValueType::BitArray
+        | ValueType::UtfCodepoint
+        | ValueType::Bool
+        | ValueType::Nil
+        | ValueType::Tuple(_)
+        | ValueType::List(_)
+        | ValueType::Function(_)
+        | ValueType::External(_)) => Err(PlanError::InvalidTypedAst {
             reason: InvalidTypedAstReason::RecordUpdateShape {
                 reason: InvalidRecordUpdateShapeReason::UpdatedSourceFamily { actual },
             },
@@ -239,7 +250,28 @@ fn validate_implicit_argument(
             record,
             ..
         } => (type_, None, index, *record),
-        _ => {
+        TypedExpr::Int { .. }
+        | TypedExpr::Float { .. }
+        | TypedExpr::String { .. }
+        | TypedExpr::Block { .. }
+        | TypedExpr::Pipeline { .. }
+        | TypedExpr::Var { .. }
+        | TypedExpr::Fn { .. }
+        | TypedExpr::List { .. }
+        | TypedExpr::Call { .. }
+        | TypedExpr::BinOp { .. }
+        | TypedExpr::Case { .. }
+        | TypedExpr::ModuleSelect { .. }
+        | TypedExpr::Tuple { .. }
+        | TypedExpr::TupleIndex { .. }
+        | TypedExpr::Todo { .. }
+        | TypedExpr::Panic { .. }
+        | TypedExpr::Echo { .. }
+        | TypedExpr::BitArray { .. }
+        | TypedExpr::RecordUpdate { .. }
+        | TypedExpr::NegateBool { .. }
+        | TypedExpr::NegateInt { .. }
+        | TypedExpr::Invalid { .. } => {
             return Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::RecordUpdateShape {
                     reason: InvalidRecordUpdateShapeReason::ImplicitFieldExpression { argument },
@@ -440,7 +472,28 @@ fn record_constructor(
             }),
             ModuleValueConstructor::Constant { .. } | ModuleValueConstructor::Fn { .. } => None,
         },
-        _ => {
+        TypedExpr::Int { .. }
+        | TypedExpr::Float { .. }
+        | TypedExpr::String { .. }
+        | TypedExpr::Block { .. }
+        | TypedExpr::Pipeline { .. }
+        | TypedExpr::Fn { .. }
+        | TypedExpr::List { .. }
+        | TypedExpr::Call { .. }
+        | TypedExpr::BinOp { .. }
+        | TypedExpr::Case { .. }
+        | TypedExpr::RecordAccess { .. }
+        | TypedExpr::PositionalAccess { .. }
+        | TypedExpr::Tuple { .. }
+        | TypedExpr::TupleIndex { .. }
+        | TypedExpr::Todo { .. }
+        | TypedExpr::Panic { .. }
+        | TypedExpr::Echo { .. }
+        | TypedExpr::BitArray { .. }
+        | TypedExpr::RecordUpdate { .. }
+        | TypedExpr::NegateBool { .. }
+        | TypedExpr::NegateInt { .. }
+        | TypedExpr::Invalid { .. } => {
             return Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::RecordUpdateShape {
                     reason: InvalidRecordUpdateShapeReason::ConstructorExpression,

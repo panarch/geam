@@ -8,6 +8,9 @@ license.workspace = true
 repository.workspace = true
 publish = ["crates-io"]
 
+[lints]
+workspace = true
+
 [[test]]
 name = "prepare_fixtures"
 path = "tests/support/prepare_fixtures.rs"

@@ -451,7 +451,14 @@ pub fn main() {
             function,
             reason,
         } => (package, module, function, reason),
-        other => panic!(
+        other @ (PlanError::SharedCustomTypeProviderLink { .. }
+        | PlanError::ExternalTypeProviderLink { .. }
+        | PlanError::MissingHostProvider { .. }
+        | PlanError::UnsupportedTopLevel { .. }
+        | PlanError::UnsupportedFunction { .. }
+        | PlanError::UnsupportedPattern { .. }
+        | PlanError::UnsupportedBitArraySegment { .. }
+        | PlanError::InvalidTypedAst { .. }) => panic!(
             "generic external mismatch should remain a host provider linkage error: {other:?}"
         ),
     };

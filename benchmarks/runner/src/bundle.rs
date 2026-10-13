@@ -305,16 +305,18 @@ mod tests {
         invalid.schema = 2;
         assert!(manifest.compatible(&invalid).is_err());
         assert!(invalid.compatible(&manifest).is_err());
-        for target in [Target::Erlang, Target::JavaScript] {
+        for (target, entry) in [
+            (
+                Target::Erlang,
+                "erlang/geam_benchmarks/ebin/geam_benchmarks@@main.beam",
+            ),
+            (Target::JavaScript, "javascript/main.mjs"),
+        ] {
             let mut other = manifest.clone();
             other.targets = BTreeSet::from([target]);
             other.runtimes = BTreeMap::from([(target, "runtime".into())]);
             assert!(other.validate().is_err());
-            let name = match target {
-                Target::Erlang => "erlang/geam_benchmarks/ebin/geam_benchmarks@@main.beam",
-                _ => "javascript/main.mjs",
-            };
-            other.files.insert(name.into(), hash(b"entry"));
+            other.files.insert(entry.into(), hash(b"entry"));
             other.validate().unwrap();
             assert_eq!(
                 manifest.compatible(&other).unwrap_err().to_string(),

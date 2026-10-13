@@ -179,7 +179,17 @@ pub fn main() {
             .copied()
             .filter_map(|terminator| match terminator {
                 Terminator::BoolBranch(branch) => Some(branch),
-                _ => None,
+                Terminator::Jump(_)
+                | Terminator::TestBranch(_)
+                | Terminator::IntSwitch(_)
+                | Terminator::FloatSwitch(_)
+                | Terminator::StringSwitch(_)
+                | Terminator::Match(_)
+                | Terminator::Echo(_)
+                | Terminator::Exit(_)
+                | Terminator::SourceStop(_)
+                | Terminator::LetAssertPanic(_)
+                | Terminator::NeverCall(_) => None,
             })
             .collect::<Vec<_>>();
         bool_branch_from_nodes(&branches)

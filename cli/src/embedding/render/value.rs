@@ -153,7 +153,13 @@ impl DataType {
             Self::Option(item) => {
                 TypeExpression::Apply("Option", vec![item.input_type(parameters)])
             }
-            _ => self.rust_type(),
+            Self::Int
+            | Self::Float
+            | Self::String
+            | Self::BitArray
+            | Self::UtfCodepoint
+            | Self::Bool
+            | Self::Nil => self.rust_type(),
         }
     }
 }

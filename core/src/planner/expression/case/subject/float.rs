@@ -187,7 +187,18 @@ fn float_pattern_has_bound_name(pattern: &Pattern<Arc<Type>>) -> bool {
     match pattern {
         Pattern::Variable { type_, .. } if type_.is_float() => true,
         Pattern::Assign { .. } => true,
-        _ => false,
+        Pattern::Int { .. }
+        | Pattern::Float { .. }
+        | Pattern::String { .. }
+        | Pattern::Variable { .. }
+        | Pattern::BitArraySize(_)
+        | Pattern::Discard { .. }
+        | Pattern::List { .. }
+        | Pattern::Constructor { .. }
+        | Pattern::Tuple { .. }
+        | Pattern::BitArray { .. }
+        | Pattern::StringPrefix { .. }
+        | Pattern::Invalid { .. } => false,
     }
 }
 

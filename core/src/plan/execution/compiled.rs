@@ -285,7 +285,13 @@ impl CompiledFunctions {
             CompiledImplementation::FunctionCalls(calls) if calls.root => {
                 Some((implementation, calls))
             }
-            _ => None,
+            CompiledImplementation::Numeric(_)
+            | CompiledImplementation::BitArray(_)
+            | CompiledImplementation::IntList(_)
+            | CompiledImplementation::CustomLoop(_)
+            | CompiledImplementation::String(_)
+            | CompiledImplementation::FunctionCalls(_)
+            | CompiledImplementation::NativeLoop(_) => None,
         }
     }
 

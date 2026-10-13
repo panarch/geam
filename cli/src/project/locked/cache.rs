@@ -56,7 +56,9 @@ impl PackageCache {
                 .git
                 .get(package.name.as_str())
                 .is_some_and(|state| state.commit == commit.as_str() && state.path == *path),
-            _ => self.state.packages.get(package.name.as_str()) == Some(&package.version),
+            ManifestPackageSource::Hex { .. } | ManifestPackageSource::Local { .. } => {
+                self.state.packages.get(package.name.as_str()) == Some(&package.version)
+            }
         }
     }
 
@@ -101,7 +103,7 @@ impl PackageCache {
                         },
                     );
                 }
-                _ => {
+                ManifestPackageSource::Hex { .. } | ManifestPackageSource::Local { .. } => {
                     self.state.git.remove(package.name.as_str());
                 }
             }

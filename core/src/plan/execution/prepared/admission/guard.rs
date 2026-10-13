@@ -83,7 +83,16 @@ impl<'data, Graph: ExecutionGraphProfile> Guards<'_, 'data, Graph> {
                             subject: branch.subject,
                             truth,
                         },
-                        _ => continue,
+                        Terminator::Jump(_)
+                        | Terminator::IntSwitch(_)
+                        | Terminator::FloatSwitch(_)
+                        | Terminator::StringSwitch(_)
+                        | Terminator::Match(_)
+                        | Terminator::Echo(_)
+                        | Terminator::Exit(_)
+                        | Terminator::SourceStop(_)
+                        | Terminator::LetAssertPanic(_)
+                        | Terminator::NeverCall(_) => continue,
                     };
                     let key = (BlockId(index), truth);
                     if !guards.contradictions.contains(&key) && guards.contradicts(key.0, condition)
@@ -124,7 +133,22 @@ impl<'data, Graph: ExecutionGraphProfile> Guards<'_, 'data, Graph> {
                 Address::from(*value),
                 Requirement::Prefix(prefix.as_str().into()),
             ),
-            _ => return false,
+            BoolTest::Not(_)
+            | BoolTest::EqualInt { .. }
+            | BoolTest::NotEqualInt { .. }
+            | BoolTest::LtInt { .. }
+            | BoolTest::LtEqInt { .. }
+            | BoolTest::GtInt { .. }
+            | BoolTest::GtEqInt { .. }
+            | BoolTest::LtFloat { .. }
+            | BoolTest::LtEqFloat { .. }
+            | BoolTest::GtFloat { .. }
+            | BoolTest::GtEqFloat { .. }
+            | BoolTest::Equal { .. }
+            | BoolTest::NotEqual { .. }
+            | BoolTest::StringStartsWith { .. }
+            | BoolTest::ListLengthEquals { .. }
+            | BoolTest::ListLengthAtLeast { .. } => return false,
         };
         self.proves(
             Query {
@@ -143,7 +167,7 @@ impl<'data, Graph: ExecutionGraphProfile> Guards<'_, 'data, Graph> {
             | Condition::Match { success: truth, .. } => {
                 self.contradictions.contains(&(block, truth))
             }
-            _ => false,
+            Condition::Always | Condition::String { .. } => false,
         }
     }
 
@@ -179,10 +203,26 @@ impl<'data, Graph: ExecutionGraphProfile> Guards<'_, 'data, Graph> {
                             return Some((Boolean::Value(*value), truth));
                         }
                         ProfiledInstructionKind::Bool(BoolInstruction::Test(test)) => (test, truth),
-                        _ => return None,
+                        ProfiledInstructionKind::Int(_)
+                        | ProfiledInstructionKind::Float(_)
+                        | ProfiledInstructionKind::String(_)
+                        | ProfiledInstructionKind::BitArray(_)
+                        | ProfiledInstructionKind::UtfCodepoint(_)
+                        | ProfiledInstructionKind::Parameter(_)
+                        | ProfiledInstructionKind::Custom(_)
+                        | ProfiledInstructionKind::External(_)
+                        | ProfiledInstructionKind::ExternalList(_)
+                        | ProfiledInstructionKind::ExternalFunction(_)
+                        | ProfiledInstructionKind::Bool(_)
+                        | ProfiledInstructionKind::Nil(_)
+                        | ProfiledInstructionKind::Tuple(_)
+                        | ProfiledInstructionKind::List(_)
+                        | ProfiledInstructionKind::Function(_) => return None,
                     }
                 }
-                _ => return None,
+                Condition::Always | Condition::Match { .. } | Condition::String { .. } => {
+                    return None;
+                }
             };
             match test {
                 BoolTest::Not(subject) => {
@@ -191,7 +231,21 @@ impl<'data, Graph: ExecutionGraphProfile> Guards<'_, 'data, Graph> {
                         truth: !truth,
                     }
                 }
-                _ => return Some((Boolean::Test(test), truth)),
+                BoolTest::EqualInt { .. }
+                | BoolTest::NotEqualInt { .. }
+                | BoolTest::LtInt { .. }
+                | BoolTest::LtEqInt { .. }
+                | BoolTest::GtInt { .. }
+                | BoolTest::GtEqInt { .. }
+                | BoolTest::LtFloat { .. }
+                | BoolTest::LtEqFloat { .. }
+                | BoolTest::GtFloat { .. }
+                | BoolTest::GtEqFloat { .. }
+                | BoolTest::Equal { .. }
+                | BoolTest::NotEqual { .. }
+                | BoolTest::StringStartsWith { .. }
+                | BoolTest::ListLengthEquals { .. }
+                | BoolTest::ListLengthAtLeast { .. } => return Some((Boolean::Test(test), truth)),
             }
         }
     }
@@ -442,7 +496,19 @@ impl<'data, Graph: ExecutionGraphProfile> Guards<'_, 'data, Graph> {
                     Some(remaining)
                 }
             }
-            _ => Some(required.clone()),
+            BoolTest::Not(_)
+            | BoolTest::EqualInt { .. }
+            | BoolTest::NotEqualInt { .. }
+            | BoolTest::LtInt { .. }
+            | BoolTest::LtEqInt { .. }
+            | BoolTest::GtInt { .. }
+            | BoolTest::GtEqInt { .. }
+            | BoolTest::LtFloat { .. }
+            | BoolTest::LtEqFloat { .. }
+            | BoolTest::GtFloat { .. }
+            | BoolTest::GtEqFloat { .. }
+            | BoolTest::Equal { .. }
+            | BoolTest::NotEqual { .. } => Some(required.clone()),
         }
     }
 
@@ -484,7 +550,11 @@ impl<'data, Graph: ExecutionGraphProfile> Guards<'_, 'data, Graph> {
                     .find(|instruction| Address::of(&instruction.output.local) == left)
                     .and_then(|instruction| match origin::instruction(&instruction.kind) {
                         Origin::Text(value) => Some(value),
-                        _ => None,
+                        Origin::Unknown
+                        | Origin::List { .. }
+                        | Origin::ListDrop { .. }
+                        | Origin::TextDrop { .. }
+                        | Origin::Concatenate { .. } => None,
                     });
                 if let Some(literal) = literal {
                     if literal.starts_with(required.as_ref()) {

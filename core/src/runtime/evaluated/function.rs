@@ -949,7 +949,12 @@ pub fn main() {
                 V::Tuple(value) => shared!(value),
                 V::List(value) => shared!(value),
                 V::Function(super::EvaluatedFunctionFunction::Core(value)) => shared!(value),
-                _ => panic!("expected a plain concrete closure"),
+                V::Generic(_)
+                | V::Never(_)
+                | V::Parameter(_)
+                | V::Custom(_)
+                | V::External(_)
+                | V::Function(_) => panic!("expected a plain concrete closure"),
             }
             family
         };

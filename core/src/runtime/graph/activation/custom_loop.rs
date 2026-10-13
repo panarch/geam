@@ -165,7 +165,17 @@ impl<'plan, Plan: ExecutableRuntimePlan> CustomLoopExecution<'plan, Plan> {
                     Ok(Activation::Graph(self.frame))
                 }
             }
-            active => Ok(active),
+            active @ (Activation::Compiled { .. }
+            | Activation::CustomLoop(_)
+            | Activation::NativeLoop(_)
+            | Activation::NativeCalls(_)
+            | Activation::FunctionCalls { .. }
+            | Activation::GeneratedNative { .. }
+            | Activation::Host(_)
+            | Activation::Return(_)
+            | Activation::Complete(_)
+            | Activation::CallComplete(_)
+            | Activation::CallInterpreted { .. }) => Ok(active),
         }
     }
 

@@ -650,7 +650,31 @@ fn add_slot(point: &mut CompiledCheckpoint, slot: &ParamSlot, kind: KernelKind) 
             point.bool_functions += 1
         }
         ParamLocal::String(_) if kind == KernelKind::String => point.strings += 1,
-        _ => return None,
+        ParamLocal::Float(_)
+        | ParamLocal::String(_)
+        | ParamLocal::BitArray(_)
+        | ParamLocal::UtfCodepoint(_)
+        | ParamLocal::Parameter { .. }
+        | ParamLocal::Custom(_)
+        | ParamLocal::External(_)
+        | ParamLocal::Nil(_)
+        | ParamLocal::Tuple { .. }
+        | ParamLocal::List(_)
+        | ParamLocal::IntFunction { .. }
+        | ParamLocal::FloatFunction { .. }
+        | ParamLocal::StringFunction { .. }
+        | ParamLocal::BitArrayFunction { .. }
+        | ParamLocal::UtfCodepointFunction { .. }
+        | ParamLocal::ParameterFunction { .. }
+        | ParamLocal::GenericFunction(_)
+        | ParamLocal::NeverFunction(_)
+        | ParamLocal::CustomFunction(_)
+        | ParamLocal::ExternalFunction(_)
+        | ParamLocal::BoolFunction { .. }
+        | ParamLocal::NilFunction { .. }
+        | ParamLocal::TupleFunction { .. }
+        | ParamLocal::ListFunction(_)
+        | ParamLocal::FunctionFunction(_) => return None,
     }
     Some(())
 }
@@ -736,7 +760,12 @@ impl<'graph> CompiledInstruction<'graph> {
                         BoolInstruction::Test(test) => {
                             CompiledBoolean::Test(CompiledTest::inspect(test, kind)?)
                         }
-                        _ => return None,
+                        BoolInstruction::Constant(_)
+                        | BoolInstruction::Call { .. }
+                        | BoolInstruction::FunctionCall { .. }
+                        | BoolInstruction::TupleIndex { .. }
+                        | BoolInstruction::CustomField { .. }
+                        | BoolInstruction::ListIndex { .. } => return None,
                     };
                     Some(Self::Boolean(*output, expression))
                 }
@@ -767,7 +796,13 @@ impl<'graph> NumericInteger<'graph> {
             IntInstruction::Div { left, right } => (NumericOperation::Divide, left, right),
             IntInstruction::Remainder { left, right } => (NumericOperation::Remainder, left, right),
             IntInstruction::Negate(value) => return Some(Self::Negate(*value)),
-            _ => return None,
+            IntInstruction::Value(_)
+            | IntInstruction::Constant(_)
+            | IntInstruction::Call { .. }
+            | IntInstruction::FunctionCall { .. }
+            | IntInstruction::TupleIndex { .. }
+            | IntInstruction::CustomField { .. }
+            | IntInstruction::ListIndex { .. } => return None,
         };
         Some(Self::Binary(operation, *left, *right))
     }
@@ -849,7 +884,15 @@ impl<'graph> CompiledTest<'graph> {
                     negate: true,
                 }));
             }
-            _ => {
+            BoolTest::LtFloat { .. }
+            | BoolTest::LtEqFloat { .. }
+            | BoolTest::GtFloat { .. }
+            | BoolTest::GtEqFloat { .. }
+            | BoolTest::Equal { .. }
+            | BoolTest::NotEqual { .. }
+            | BoolTest::StringStartsWith { .. }
+            | BoolTest::ListLengthEquals { .. }
+            | BoolTest::ListLengthAtLeast { .. } => {
                 return match kind {
                     KernelKind::Numeric => IntListTest::inspect(test).map(Self::IntList),
                     KernelKind::String
@@ -912,14 +955,30 @@ impl<'graph> CompiledTerminator<'graph> {
             {
                 Self::Interpreted
             }
-            _ => return None,
+            Terminator::IntSwitch(_)
+            | Terminator::FloatSwitch(_)
+            | Terminator::StringSwitch(_)
+            | Terminator::Match(_)
+            | Terminator::Echo(_)
+            | Terminator::SourceStop(_)
+            | Terminator::LetAssertPanic(_)
+            | Terminator::NeverCall(_) => return None,
         })
     }
 
     fn targets(&self) -> Vec<BlockId> {
         match self {
             Self::BitArray(matcher) => vec![matcher.success.target(), matcher.failure.target()],
-            _ => self.edges().iter().map(|edge| edge.target()).collect(),
+            Self::Jump(_)
+            | Self::Boolean { .. }
+            | Self::Test { .. }
+            | Self::Switch { .. }
+            | Self::StringSwitch { .. }
+            | Self::StringMatch(_)
+            | Self::Exit(_)
+            | Self::Match(_)
+            | Self::Custom(_)
+            | Self::Interpreted => self.edges().iter().map(|edge| edge.target()).collect(),
         }
     }
 

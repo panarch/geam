@@ -2124,7 +2124,23 @@ pub fn main() { selected(1) }
     ) -> BigInt {
         match instruction.value().unwrap().kind() {
             ProfiledInstructionKind::Int(IntInstruction::Value(value)) => value.materialize(),
-            _ => panic!("constant fixture should contain an Int literal"),
+            ProfiledInstructionKind::Int(_)
+            | ProfiledInstructionKind::Float(_)
+            | ProfiledInstructionKind::String(_)
+            | ProfiledInstructionKind::BitArray(_)
+            | ProfiledInstructionKind::UtfCodepoint(_)
+            | ProfiledInstructionKind::Parameter(_)
+            | ProfiledInstructionKind::Custom(_)
+            | ProfiledInstructionKind::External(_)
+            | ProfiledInstructionKind::ExternalList(_)
+            | ProfiledInstructionKind::ExternalFunction(_)
+            | ProfiledInstructionKind::Bool(_)
+            | ProfiledInstructionKind::Nil(_)
+            | ProfiledInstructionKind::Tuple(_)
+            | ProfiledInstructionKind::List(_)
+            | ProfiledInstructionKind::Function(_) => {
+                panic!("constant fixture should contain an Int literal")
+            }
         }
     }
 
@@ -2134,7 +2150,17 @@ pub fn main() { selected(1) }
     ) -> IntLocalId {
         match terminator {
             Terminator::Exit(exit) => *program.return_(*exit),
-            _ => panic!("constant fixture should return an Int local"),
+            Terminator::Jump(_)
+            | Terminator::BoolBranch(_)
+            | Terminator::TestBranch(_)
+            | Terminator::IntSwitch(_)
+            | Terminator::FloatSwitch(_)
+            | Terminator::StringSwitch(_)
+            | Terminator::Match(_)
+            | Terminator::Echo(_)
+            | Terminator::SourceStop(_)
+            | Terminator::LetAssertPanic(_)
+            | Terminator::NeverCall(_) => panic!("constant fixture should return an Int local"),
         }
     }
 
@@ -2147,7 +2173,17 @@ pub fn main() { selected(1) }
     ) -> &'a FunctionLocal {
         match terminator {
             Terminator::Exit(exit) => program.return_(*exit),
-            _ => panic!("constant fixture should return a function local"),
+            Terminator::Jump(_)
+            | Terminator::BoolBranch(_)
+            | Terminator::TestBranch(_)
+            | Terminator::IntSwitch(_)
+            | Terminator::FloatSwitch(_)
+            | Terminator::StringSwitch(_)
+            | Terminator::Match(_)
+            | Terminator::Echo(_)
+            | Terminator::SourceStop(_)
+            | Terminator::LetAssertPanic(_)
+            | Terminator::NeverCall(_) => panic!("constant fixture should return a function local"),
         }
     }
 
@@ -2156,7 +2192,22 @@ pub fn main() { selected(1) }
     ) -> crate::plan::execution::graph::IntFunctionLocalId {
         match returned_function_constant(plan) {
             FunctionLocal::Int(local) => *local,
-            _ => panic!("constant fixture should return an Int function local"),
+            FunctionLocal::Generic(_)
+            | FunctionLocal::Never(_)
+            | FunctionLocal::Float(_)
+            | FunctionLocal::String(_)
+            | FunctionLocal::BitArray(_)
+            | FunctionLocal::UtfCodepoint(_)
+            | FunctionLocal::Parameter(_)
+            | FunctionLocal::Custom(_)
+            | FunctionLocal::External(_)
+            | FunctionLocal::Bool(_)
+            | FunctionLocal::Nil(_)
+            | FunctionLocal::Tuple(_)
+            | FunctionLocal::List(_)
+            | FunctionLocal::Function(_) => {
+                panic!("constant fixture should return an Int function local")
+            }
         }
     }
 
@@ -2165,7 +2216,22 @@ pub fn main() { selected(1) }
     ) -> crate::plan::execution::graph::GenericFunctionLocalId {
         match returned_function_constant(plan) {
             FunctionLocal::Generic(local) => local.id(),
-            _ => panic!("constant fixture should return a generic function local"),
+            FunctionLocal::Never(_)
+            | FunctionLocal::Int(_)
+            | FunctionLocal::Float(_)
+            | FunctionLocal::String(_)
+            | FunctionLocal::BitArray(_)
+            | FunctionLocal::UtfCodepoint(_)
+            | FunctionLocal::Parameter(_)
+            | FunctionLocal::Custom(_)
+            | FunctionLocal::External(_)
+            | FunctionLocal::Bool(_)
+            | FunctionLocal::Nil(_)
+            | FunctionLocal::Tuple(_)
+            | FunctionLocal::List(_)
+            | FunctionLocal::Function(_) => {
+                panic!("constant fixture should return a generic function local")
+            }
         }
     }
 
@@ -2174,7 +2240,22 @@ pub fn main() { selected(1) }
     ) -> crate::plan::execution::graph::NeverFunctionLocalId {
         match returned_function_constant(plan) {
             FunctionLocal::Never(local) => local.id(),
-            _ => panic!("constant fixture should return a never function local"),
+            FunctionLocal::Generic(_)
+            | FunctionLocal::Int(_)
+            | FunctionLocal::Float(_)
+            | FunctionLocal::String(_)
+            | FunctionLocal::BitArray(_)
+            | FunctionLocal::UtfCodepoint(_)
+            | FunctionLocal::Parameter(_)
+            | FunctionLocal::Custom(_)
+            | FunctionLocal::External(_)
+            | FunctionLocal::Bool(_)
+            | FunctionLocal::Nil(_)
+            | FunctionLocal::Tuple(_)
+            | FunctionLocal::List(_)
+            | FunctionLocal::Function(_) => {
+                panic!("constant fixture should return a never function local")
+            }
         }
     }
 
@@ -2187,7 +2268,22 @@ pub fn main() { selected(1) }
     fn external_function_local(local: &FunctionLocal) -> ExternalFunctionLocalId {
         match local {
             FunctionLocal::External(local) => local.id(),
-            _ => panic!("constant fixture should return an external function local"),
+            FunctionLocal::Generic(_)
+            | FunctionLocal::Never(_)
+            | FunctionLocal::Int(_)
+            | FunctionLocal::Float(_)
+            | FunctionLocal::String(_)
+            | FunctionLocal::BitArray(_)
+            | FunctionLocal::UtfCodepoint(_)
+            | FunctionLocal::Parameter(_)
+            | FunctionLocal::Custom(_)
+            | FunctionLocal::Bool(_)
+            | FunctionLocal::Nil(_)
+            | FunctionLocal::Tuple(_)
+            | FunctionLocal::List(_)
+            | FunctionLocal::Function(_) => {
+                panic!("constant fixture should return an external function local")
+            }
         }
     }
 
@@ -2200,10 +2296,30 @@ pub fn main() { selected(1) }
                     ExternalFunctionInstructionKind::Reference(ExternalFunctionTarget::Value(
                         function,
                     )) => *function,
-                    _ => panic!("constant fixture should reference an external function"),
+                    ExternalFunctionInstructionKind::Reference(_)
+                    | ExternalFunctionInstructionKind::Closure { .. }
+                    | ExternalFunctionInstructionKind::Call { .. }
+                    | ExternalFunctionInstructionKind::FunctionCall { .. } => {
+                        panic!("constant fixture should reference an external function")
+                    }
                 }
             }
-            _ => panic!("constant fixture should reference an external function"),
+            ProfiledInstructionKind::Int(_)
+            | ProfiledInstructionKind::Float(_)
+            | ProfiledInstructionKind::String(_)
+            | ProfiledInstructionKind::BitArray(_)
+            | ProfiledInstructionKind::UtfCodepoint(_)
+            | ProfiledInstructionKind::Parameter(_)
+            | ProfiledInstructionKind::Custom(_)
+            | ProfiledInstructionKind::External(_)
+            | ProfiledInstructionKind::ExternalList(_)
+            | ProfiledInstructionKind::Bool(_)
+            | ProfiledInstructionKind::Nil(_)
+            | ProfiledInstructionKind::Tuple(_)
+            | ProfiledInstructionKind::List(_)
+            | ProfiledInstructionKind::Function(_) => {
+                panic!("constant fixture should reference an external function")
+            }
         }
     }
 
@@ -2266,7 +2382,23 @@ pub fn main() { selected(1) }
     ) -> ConstantId<IntLocalId> {
         match instruction.value().unwrap().kind() {
             ProfiledInstructionKind::Int(IntInstruction::Constant(id)) => *id,
-            _ => panic!("constant fixture should reference an Int constant"),
+            ProfiledInstructionKind::Int(_)
+            | ProfiledInstructionKind::Float(_)
+            | ProfiledInstructionKind::String(_)
+            | ProfiledInstructionKind::BitArray(_)
+            | ProfiledInstructionKind::UtfCodepoint(_)
+            | ProfiledInstructionKind::Parameter(_)
+            | ProfiledInstructionKind::Custom(_)
+            | ProfiledInstructionKind::External(_)
+            | ProfiledInstructionKind::ExternalList(_)
+            | ProfiledInstructionKind::ExternalFunction(_)
+            | ProfiledInstructionKind::Bool(_)
+            | ProfiledInstructionKind::Nil(_)
+            | ProfiledInstructionKind::Tuple(_)
+            | ProfiledInstructionKind::List(_)
+            | ProfiledInstructionKind::Function(_) => {
+                panic!("constant fixture should reference an Int constant")
+            }
         }
     }
 
@@ -2277,7 +2409,23 @@ pub fn main() { selected(1) }
             ProfiledInstructionKind::String(
                 crate::plan::execution::graph::StringInstruction::Constant(id),
             ) => *id,
-            _ => panic!("constant fixture should reference a String constant"),
+            ProfiledInstructionKind::Int(_)
+            | ProfiledInstructionKind::Float(_)
+            | ProfiledInstructionKind::String(_)
+            | ProfiledInstructionKind::BitArray(_)
+            | ProfiledInstructionKind::UtfCodepoint(_)
+            | ProfiledInstructionKind::Parameter(_)
+            | ProfiledInstructionKind::Custom(_)
+            | ProfiledInstructionKind::External(_)
+            | ProfiledInstructionKind::ExternalList(_)
+            | ProfiledInstructionKind::ExternalFunction(_)
+            | ProfiledInstructionKind::Bool(_)
+            | ProfiledInstructionKind::Nil(_)
+            | ProfiledInstructionKind::Tuple(_)
+            | ProfiledInstructionKind::List(_)
+            | ProfiledInstructionKind::Function(_) => {
+                panic!("constant fixture should reference a String constant")
+            }
         }
     }
 

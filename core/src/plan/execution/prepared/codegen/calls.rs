@@ -593,7 +593,12 @@ impl<'codegen, 'graph, Graph: ExecutionGraphProfile> CallGroupCodegen<'codegen, 
                 function_name(function.target)
             ));
         }
-        source.push_str("_ => None,\n");
+        let other_targets = return_families()
+            .into_iter()
+            .map(|family| format!("data::compiled::CallTarget::{family}(_)"))
+            .collect::<Vec<_>>()
+            .join("\n| ");
+        source.push_str(&format!("{other_targets} => None,\n"));
         source.close("};\n");
         source.push_str(&format!(
             "let Some(active) = active else {{ return false; }};\nself.active = Some({});\ntrue\n",
@@ -683,7 +688,11 @@ impl<'codegen, 'graph, Graph: ExecutionGraphProfile> CallGroupCodegen<'codegen, 
                         self.direct_callee(function.target, tail.target, &tail.args)
                             .is_none()
                     }
-                    _ => false,
+                    CallPoint::Scalar(_)
+                    | CallPoint::Call(_)
+                    | CallPoint::Create(_)
+                    | CallPoint::Terminator(_)
+                    | CallPoint::Return(_) => false,
                 })
         })
     }
@@ -708,14 +717,20 @@ impl<'codegen, 'graph, Graph: ExecutionGraphProfile> CallGroupCodegen<'codegen, 
                     CallContractTarget::Static(target) => self
                         .direct_callee(function.target, target, &call.args)
                         .is_some(),
-                    _ => self
+                    CallContractTarget::IntValue(_)
+                    | CallContractTarget::BoolValue(_)
+                    | CallContractTarget::FloatValue(_)
+                    | CallContractTarget::StringValue(_)
+                    | CallContractTarget::BitArrayValue(_)
+                    | CallContractTarget::UtfCodepointValue(_)
+                    | CallContractTarget::NilValue(_) => self
                         .functions
                         .iter()
                         .any(|callee| callee.accepts_call(call)),
                 };
                 match kind {
                     StepKind::Call => direct,
-                    _ => {
+                    StepKind::Tail | StepKind::Return | StepKind::Bridge => {
                         (!matches!(call.target, CallContractTarget::Static(_)) || !direct)
                             && Self::native_input(call).is_none()
                     }
@@ -895,7 +910,13 @@ impl<'codegen, 'graph, Graph: ExecutionGraphProfile> CallGroupCodegen<'codegen, 
                         CallContractTarget::Static(_) => None,
                     }
                 }
-                _ => None,
+                CallPoint::Scalar(_)
+                | CallPoint::Call(_)
+                | CallPoint::Create(_)
+                | CallPoint::Terminator(_)
+                | CallPoint::Return(_)
+                | CallPoint::Tail(_)
+                | CallPoint::Interpreted => None,
             };
             let guard = entry_call.map(|(call, getter, local)| {
                 let targets = self
@@ -1039,7 +1060,22 @@ impl<'codegen, 'graph, Graph: ExecutionGraphProfile> CallGroupCodegen<'codegen, 
                         source.push_str(&format!("let {} = result;\nreturn FunctionState::Canonical {{ target: {}, point: {}, values: {} }};\n}};\n", local_name(&call.output), Rust::expression(&function.target), Rust::expression(&function.shape.checkpoints[call.point + 1]), values_with_result(&function.shape.locals[call.point + 1], false, Some(&call.output))));
                         "result".to_owned()
                     }
-                    _ => "result".to_owned(),
+                    CallLocal::Custom(_)
+                    | CallLocal::Tuple { .. }
+                    | CallLocal::Int(_)
+                    | CallLocal::IntList { .. }
+                    | CallLocal::Bool(_)
+                    | CallLocal::BoolList { .. }
+                    | CallLocal::Float(_)
+                    | CallLocal::FloatList { .. }
+                    | CallLocal::String(_)
+                    | CallLocal::StringList { .. }
+                    | CallLocal::BitArray(_)
+                    | CallLocal::BitArrayList { .. }
+                    | CallLocal::UtfCodepoint(_)
+                    | CallLocal::UtfCodepointList { .. }
+                    | CallLocal::Nil(_)
+                    | CallLocal::NilList { .. } => "result".to_owned(),
                 };
                 source.push_str(&format!(
                     "let {} = {value};\n{}\n",
@@ -1311,7 +1347,13 @@ impl<'codegen, 'graph, Graph: ExecutionGraphProfile> CallGroupCodegen<'codegen, 
         };
         let id = match call.target {
             CallContractTarget::Static(target) => target_id(target),
-            _ => "target".to_owned(),
+            CallContractTarget::IntValue(_)
+            | CallContractTarget::BoolValue(_)
+            | CallContractTarget::FloatValue(_)
+            | CallContractTarget::StringValue(_)
+            | CallContractTarget::BitArrayValue(_)
+            | CallContractTarget::UtfCodepointValue(_)
+            | CallContractTarget::NilValue(_) => "target".to_owned(),
         };
         if let Some(input) = Self::native_input(call) {
             let result = format!(
@@ -1599,7 +1641,24 @@ fn primitive_list_family(local: &CallLocal) -> Option<(&'static str, String)> {
         CallLocal::BitArrayList { type_id, .. } => ("bit_array", Rust::expression(type_id)),
         CallLocal::UtfCodepointList { type_id, .. } => ("utf_codepoint", Rust::expression(type_id)),
         CallLocal::NilList { type_id, .. } => ("nil", Rust::expression(type_id)),
-        _ => return None,
+        CallLocal::Nullary(_)
+        | CallLocal::Custom(_)
+        | CallLocal::Tuple { .. }
+        | CallLocal::Int(_)
+        | CallLocal::IntList { .. }
+        | CallLocal::IntFunction { .. }
+        | CallLocal::Bool(_)
+        | CallLocal::BoolFunction { .. }
+        | CallLocal::Float(_)
+        | CallLocal::FloatFunction { .. }
+        | CallLocal::String(_)
+        | CallLocal::StringFunction { .. }
+        | CallLocal::BitArray(_)
+        | CallLocal::BitArrayFunction { .. }
+        | CallLocal::UtfCodepoint(_)
+        | CallLocal::UtfCodepointFunction { .. }
+        | CallLocal::Nil(_)
+        | CallLocal::NilFunction { .. } => return None,
     })
 }
 
@@ -2956,7 +3015,12 @@ pub fn main() { forward(7, True) }
             .iter()
             .filter_map(|point| match point {
                 CallPoint::Terminator(terminator) => Some(terminator),
-                _ => None,
+                CallPoint::Scalar(_)
+                | CallPoint::Call(_)
+                | CallPoint::Create(_)
+                | CallPoint::Return(_)
+                | CallPoint::Tail(_)
+                | CallPoint::Interpreted => None,
             })
             .map(|terminator| {
                 adjust
@@ -2985,7 +3049,12 @@ pub fn main() { forward(7, True) }
             .iter()
             .filter_map(|point| match point {
                 CallPoint::Terminator(terminator) => Some(terminator),
-                _ => None,
+                CallPoint::Scalar(_)
+                | CallPoint::Call(_)
+                | CallPoint::Create(_)
+                | CallPoint::Return(_)
+                | CallPoint::Tail(_)
+                | CallPoint::Interpreted => None,
             })
             .map(|terminator| {
                 let mut source = Code::default();
@@ -3926,7 +3995,13 @@ pub fn main() { let _ = compare_sum(4, 5) Nil }
                     outputs.as_slice(),
                     region.native,
                 )),
-                _ => None,
+                CallPoint::Scalar(_)
+                | CallPoint::Call(_)
+                | CallPoint::Create(_)
+                | CallPoint::Terminator(_)
+                | CallPoint::Return(_)
+                | CallPoint::Tail(_)
+                | CallPoint::Interpreted => None,
             })
             .collect::<Vec<_>>();
         assert_eq!(
@@ -4019,7 +4094,13 @@ pub fn main() { let _ = first_greater([4], 3) Nil }
                     list,
                     index,
                 })) => Some((*output, *list, *index)),
-                _ => None,
+                CallPoint::Scalar(_)
+                | CallPoint::Call(_)
+                | CallPoint::Create(_)
+                | CallPoint::Terminator(_)
+                | CallPoint::Return(_)
+                | CallPoint::Tail(_)
+                | CallPoint::Interpreted => None,
             })
             .collect::<Vec<_>>();
         assert_eq!(indices, [(IntLocalId(1), IntListLocalId(0), 0)]);
@@ -4119,7 +4200,13 @@ pub fn main() { let _ = same([1], [1]) Nil }
                         test: test @ CallTest::IntList(IntListTest::Equal { .. }),
                         ..
                     }) => Some(("guard", test_expression(test))),
-                    _ => None,
+                    CallPoint::Scalar(_)
+                    | CallPoint::Call(_)
+                    | CallPoint::Create(_)
+                    | CallPoint::Terminator(_)
+                    | CallPoint::Return(_)
+                    | CallPoint::Tail(_)
+                    | CallPoint::Interpreted => None,
                 })
                 .collect::<Vec<_>>();
             assert_eq!(

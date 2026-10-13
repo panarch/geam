@@ -484,7 +484,7 @@ pub fn many(children: List(BytesTree)) { Many(children) }
         fn binary_field(tree: service::BytesTreeInput) -> Result<BitArrayValue, ()> {
             match tree.node {
                 Node::Leaf(Leaf::Bytes(bytes)) => Ok(bytes),
-                _ => Err(()),
+                Node::Leaf(_) | Node::Many(_) => Err(()),
             }
         }
     }

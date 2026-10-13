@@ -96,7 +96,45 @@ mod budget_trace {
                     list_lengths: values.int_lists.iter().map(|list| list.len()).collect(),
                     ints: values.ints.iter().map(|value| value.small()).collect(),
                 }),
-                _ => None,
+                CallProgress::StringNative(_)
+                | CallProgress::CustomNative(_)
+                | CallProgress::TupleNative(_)
+                | CallProgress::Custom { .. }
+                | CallProgress::Tuple { .. }
+                | CallProgress::InterpretedCustom { .. }
+                | CallProgress::InterpretedTuple { .. }
+                | CallProgress::Yield(_)
+                | CallProgress::Complete { .. }
+                | CallProgress::Int { .. }
+                | CallProgress::IntScalar { .. }
+                | CallProgress::Bool { .. }
+                | CallProgress::BoolScalar { .. }
+                | CallProgress::IntFunction { .. }
+                | CallProgress::BoolFunction { .. }
+                | CallProgress::Float { .. }
+                | CallProgress::String { .. }
+                | CallProgress::BitArray { .. }
+                | CallProgress::UtfCodepoint { .. }
+                | CallProgress::Nil { .. }
+                | CallProgress::FloatFunction { .. }
+                | CallProgress::StringFunction { .. }
+                | CallProgress::BitArrayFunction { .. }
+                | CallProgress::UtfCodepointFunction { .. }
+                | CallProgress::NilFunction { .. }
+                | CallProgress::InterpretedInt { .. }
+                | CallProgress::InterpretedBool { .. }
+                | CallProgress::InterpretedIntFunction { .. }
+                | CallProgress::InterpretedBoolFunction { .. }
+                | CallProgress::InterpretedFloat { .. }
+                | CallProgress::InterpretedString { .. }
+                | CallProgress::InterpretedBitArray { .. }
+                | CallProgress::InterpretedUtfCodepoint { .. }
+                | CallProgress::InterpretedNil { .. }
+                | CallProgress::InterpretedFloatFunction { .. }
+                | CallProgress::InterpretedStringFunction { .. }
+                | CallProgress::InterpretedBitArrayFunction { .. }
+                | CallProgress::InterpretedUtfCodepointFunction { .. }
+                | CallProgress::InterpretedNilFunction { .. } => None,
             };
             TRACE.lock().unwrap().charges.push(Charge {
                 offered,
@@ -106,7 +144,45 @@ mod budget_trace {
             });
             match progress {
                 CallProgress::Yield(next) => CallProgress::Yield(Box::new(Self(next))),
-                progress => progress,
+                progress @ (CallProgress::StringNative(_)
+                | CallProgress::CustomNative(_)
+                | CallProgress::TupleNative(_)
+                | CallProgress::Custom { .. }
+                | CallProgress::Tuple { .. }
+                | CallProgress::InterpretedCustom { .. }
+                | CallProgress::InterpretedTuple { .. }
+                | CallProgress::Complete { .. }
+                | CallProgress::Interpreted { .. }
+                | CallProgress::Int { .. }
+                | CallProgress::IntScalar { .. }
+                | CallProgress::Bool { .. }
+                | CallProgress::BoolScalar { .. }
+                | CallProgress::IntFunction { .. }
+                | CallProgress::BoolFunction { .. }
+                | CallProgress::Float { .. }
+                | CallProgress::String { .. }
+                | CallProgress::BitArray { .. }
+                | CallProgress::UtfCodepoint { .. }
+                | CallProgress::Nil { .. }
+                | CallProgress::FloatFunction { .. }
+                | CallProgress::StringFunction { .. }
+                | CallProgress::BitArrayFunction { .. }
+                | CallProgress::UtfCodepointFunction { .. }
+                | CallProgress::NilFunction { .. }
+                | CallProgress::InterpretedInt { .. }
+                | CallProgress::InterpretedBool { .. }
+                | CallProgress::InterpretedIntFunction { .. }
+                | CallProgress::InterpretedBoolFunction { .. }
+                | CallProgress::InterpretedFloat { .. }
+                | CallProgress::InterpretedString { .. }
+                | CallProgress::InterpretedBitArray { .. }
+                | CallProgress::InterpretedUtfCodepoint { .. }
+                | CallProgress::InterpretedNil { .. }
+                | CallProgress::InterpretedFloatFunction { .. }
+                | CallProgress::InterpretedStringFunction { .. }
+                | CallProgress::InterpretedBitArrayFunction { .. }
+                | CallProgress::InterpretedUtfCodepointFunction { .. }
+                | CallProgress::InterpretedNilFunction { .. }) => progress,
             }
         }
     }

@@ -1257,14 +1257,36 @@ pub fn main() -> Grow(Int) {
     ) -> (&[ValueShapeId], ValueShapeId) {
         match table.get(shape) {
             ValueShapeDescriptor::Function { arguments, return_ } => (arguments, *return_),
-            _ => panic!("expected a function value shape"),
+            ValueShapeDescriptor::Parameter(_)
+            | ValueShapeDescriptor::Int
+            | ValueShapeDescriptor::Float
+            | ValueShapeDescriptor::String
+            | ValueShapeDescriptor::BitArray
+            | ValueShapeDescriptor::UtfCodepoint
+            | ValueShapeDescriptor::Bool
+            | ValueShapeDescriptor::Nil
+            | ValueShapeDescriptor::Tuple(_)
+            | ValueShapeDescriptor::List(_)
+            | ValueShapeDescriptor::Custom(_)
+            | ValueShapeDescriptor::External(_) => panic!("expected a function value shape"),
         }
     }
 
     fn custom_shape(table: &ValueShapeTable, shape: ValueShapeId) -> CustomValueShapeId {
         match table.get(shape) {
             ValueShapeDescriptor::Custom(custom) => *custom,
-            _ => panic!("expected a custom value shape"),
+            ValueShapeDescriptor::Parameter(_)
+            | ValueShapeDescriptor::Int
+            | ValueShapeDescriptor::Float
+            | ValueShapeDescriptor::String
+            | ValueShapeDescriptor::BitArray
+            | ValueShapeDescriptor::UtfCodepoint
+            | ValueShapeDescriptor::Bool
+            | ValueShapeDescriptor::Nil
+            | ValueShapeDescriptor::Tuple(_)
+            | ValueShapeDescriptor::List(_)
+            | ValueShapeDescriptor::Function { .. }
+            | ValueShapeDescriptor::External(_) => panic!("expected a custom value shape"),
         }
     }
 }

@@ -739,7 +739,12 @@ fn {name}(
             KernelKind::Callback => format!(
                 "data::compiled::custom_loop::CallbackProgress::Stopped(data::compiled::custom_loop::CallbackStop::{variant}({argument}))"
             ),
-            _ => format!("data::compiled::CompiledProgress::{variant}({argument})"),
+            KernelKind::Numeric
+            | KernelKind::IntList
+            | KernelKind::BitArray
+            | KernelKind::String => {
+                format!("data::compiled::CompiledProgress::{variant}({argument})")
+            }
         }
     }
 
@@ -972,7 +977,10 @@ fn {name}(
         let (family, prefix, count) = match self.shape.kind {
             KernelKind::IntList => (StorageFamily::IntList, "l", point.int_lists),
             KernelKind::Callback => (StorageFamily::Custom, "c", point.customs),
-            _ => {
+            KernelKind::Numeric
+            | KernelKind::BitArray
+            | KernelKind::CustomLoop
+            | KernelKind::String => {
                 let bits = inputs
                     .iter()
                     .filter(|(family, _)| *family == StorageFamily::BitArray)
@@ -1067,7 +1075,10 @@ fn {name}(
         let owner = match self.shape.kind {
             KernelKind::IntList => Some(("int_lists", "l", point.int_lists)),
             KernelKind::Callback => Some(("customs", "c", point.customs)),
-            _ => None,
+            KernelKind::Numeric
+            | KernelKind::BitArray
+            | KernelKind::CustomLoop
+            | KernelKind::String => None,
         };
         if let Some((field, prefix, count)) = owner {
             let owners = (0..count)
@@ -1403,7 +1414,13 @@ values.strings.extend_from_slice(&[{strings}]);
             CompiledInstruction::CustomField(field) => {
                 self.custom_preflight(source, index, field, output)
             }
-            _ => self.list_preflight(source, index, instruction, output),
+            CompiledInstruction::Integer(..)
+            | CompiledInstruction::Boolean(..)
+            | CompiledInstruction::String(..)
+            | CompiledInstruction::Region { .. }
+            | CompiledInstruction::IntList(_) => {
+                self.list_preflight(source, index, instruction, output)
+            }
         }
     }
 
@@ -1417,7 +1434,18 @@ values.strings.extend_from_slice(&[{strings}]);
             CompiledTerminator::Custom(view) => {
                 self.custom_preflight_terminator(source, self.shape.checkpoints[index], view)
             }
-            _ => self.list_preflight_terminator(source, index, terminator),
+            CompiledTerminator::Jump(_)
+            | CompiledTerminator::Boolean { .. }
+            | CompiledTerminator::Test { .. }
+            | CompiledTerminator::Switch { .. }
+            | CompiledTerminator::StringSwitch { .. }
+            | CompiledTerminator::StringMatch(_)
+            | CompiledTerminator::Exit(_)
+            | CompiledTerminator::BitArray(_)
+            | CompiledTerminator::Match(_)
+            | CompiledTerminator::Interpreted => {
+                self.list_preflight_terminator(source, index, terminator)
+            }
         }
     }
 
@@ -1645,7 +1673,26 @@ fn local_expression(block: BlockId, local: &ParamLocal) -> Option<(StorageFamily
             StorageFamily::BoolFunction,
             format!("b{}_g{}", block.0, local.0),
         ),
-        _ => return None,
+        ParamLocal::Float(_)
+        | ParamLocal::UtfCodepoint(_)
+        | ParamLocal::Parameter { .. }
+        | ParamLocal::External(_)
+        | ParamLocal::Nil(_)
+        | ParamLocal::Tuple { .. }
+        | ParamLocal::List(_)
+        | ParamLocal::FloatFunction { .. }
+        | ParamLocal::StringFunction { .. }
+        | ParamLocal::BitArrayFunction { .. }
+        | ParamLocal::UtfCodepointFunction { .. }
+        | ParamLocal::ParameterFunction { .. }
+        | ParamLocal::GenericFunction(_)
+        | ParamLocal::NeverFunction(_)
+        | ParamLocal::CustomFunction(_)
+        | ParamLocal::ExternalFunction(_)
+        | ParamLocal::NilFunction { .. }
+        | ParamLocal::TupleFunction { .. }
+        | ParamLocal::ListFunction(_)
+        | ParamLocal::FunctionFunction(_) => return None,
     })
 }
 
@@ -2126,7 +2173,33 @@ pub fn main() { walk([7], [2], 1) }
                                 type_id: *type_id,
                             })
                         }
-                        local => local.clone(),
+                        local @ (ParamLocal::Int(_)
+                        | ParamLocal::Float(_)
+                        | ParamLocal::String(_)
+                        | ParamLocal::BitArray(_)
+                        | ParamLocal::UtfCodepoint(_)
+                        | ParamLocal::Parameter { .. }
+                        | ParamLocal::Custom(_)
+                        | ParamLocal::External(_)
+                        | ParamLocal::Bool(_)
+                        | ParamLocal::Nil(_)
+                        | ParamLocal::Tuple { .. }
+                        | ParamLocal::List(_)
+                        | ParamLocal::IntFunction { .. }
+                        | ParamLocal::FloatFunction { .. }
+                        | ParamLocal::StringFunction { .. }
+                        | ParamLocal::BitArrayFunction { .. }
+                        | ParamLocal::UtfCodepointFunction { .. }
+                        | ParamLocal::ParameterFunction { .. }
+                        | ParamLocal::GenericFunction(_)
+                        | ParamLocal::NeverFunction(_)
+                        | ParamLocal::CustomFunction(_)
+                        | ParamLocal::ExternalFunction(_)
+                        | ParamLocal::BoolFunction { .. }
+                        | ParamLocal::NilFunction { .. }
+                        | ParamLocal::TupleFunction { .. }
+                        | ParamLocal::ListFunction(_)
+                        | ParamLocal::FunctionFunction(_)) => local.clone(),
                     })
                     .collect(),
                 transfer: Transfer {
@@ -2172,7 +2245,16 @@ pub fn main() { same([7]) }
             .iter()
             .filter_map(|(block, view)| match &view.terminator {
                 CompiledTerminator::Match(view) => Some((BlockId(*block), view)),
-                _ => None,
+                CompiledTerminator::Jump(_)
+                | CompiledTerminator::Boolean { .. }
+                | CompiledTerminator::Test { .. }
+                | CompiledTerminator::Switch { .. }
+                | CompiledTerminator::StringSwitch { .. }
+                | CompiledTerminator::StringMatch(_)
+                | CompiledTerminator::Exit(_)
+                | CompiledTerminator::BitArray(_)
+                | CompiledTerminator::Custom(_)
+                | CompiledTerminator::Interpreted => None,
             })
             .collect::<Vec<_>>();
         assert_eq!(matches.len(), 1);

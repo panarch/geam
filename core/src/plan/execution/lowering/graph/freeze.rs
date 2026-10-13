@@ -969,21 +969,51 @@ pub fn main() { loop(1) }
     fn bool_branch(terminator: &Terminator) -> (BoolLocalId, &Edge, &Edge) {
         match terminator {
             Terminator::BoolBranch(branch) => (branch.subject(), branch.true_(), branch.false_()),
-            _ => panic!("fixture should contain a Bool branch"),
+            Terminator::Jump(_)
+            | Terminator::TestBranch(_)
+            | Terminator::IntSwitch(_)
+            | Terminator::FloatSwitch(_)
+            | Terminator::StringSwitch(_)
+            | Terminator::Match(_)
+            | Terminator::Echo(_)
+            | Terminator::Exit(_)
+            | Terminator::SourceStop(_)
+            | Terminator::LetAssertPanic(_)
+            | Terminator::NeverCall(_) => panic!("fixture should contain a Bool branch"),
         }
     }
 
     fn jump(terminator: &Terminator) -> &Edge {
         match terminator {
             Terminator::Jump(jump) => jump.edge(),
-            _ => panic!("fixture should contain a jump terminator"),
+            Terminator::BoolBranch(_)
+            | Terminator::TestBranch(_)
+            | Terminator::IntSwitch(_)
+            | Terminator::FloatSwitch(_)
+            | Terminator::StringSwitch(_)
+            | Terminator::Match(_)
+            | Terminator::Echo(_)
+            | Terminator::Exit(_)
+            | Terminator::SourceStop(_)
+            | Terminator::LetAssertPanic(_)
+            | Terminator::NeverCall(_) => panic!("fixture should contain a jump terminator"),
         }
     }
 
     fn exit_id(terminator: &Terminator) -> BlockGraphExitId {
         match terminator {
             Terminator::Exit(exit) => *exit,
-            _ => panic!("fixture should contain an exit terminator"),
+            Terminator::Jump(_)
+            | Terminator::BoolBranch(_)
+            | Terminator::TestBranch(_)
+            | Terminator::IntSwitch(_)
+            | Terminator::FloatSwitch(_)
+            | Terminator::StringSwitch(_)
+            | Terminator::Match(_)
+            | Terminator::Echo(_)
+            | Terminator::SourceStop(_)
+            | Terminator::LetAssertPanic(_)
+            | Terminator::NeverCall(_) => panic!("fixture should contain an exit terminator"),
         }
     }
 
@@ -1013,7 +1043,17 @@ pub fn main() { loop(1) }
                 FunctionExit::Return(value) => *value,
                 FunctionExit::TailCall { .. } => panic!("fixture should return an Int local"),
             },
-            _ => panic!("fixture should return an Int local"),
+            Terminator::Jump(_)
+            | Terminator::BoolBranch(_)
+            | Terminator::TestBranch(_)
+            | Terminator::IntSwitch(_)
+            | Terminator::FloatSwitch(_)
+            | Terminator::StringSwitch(_)
+            | Terminator::Match(_)
+            | Terminator::Echo(_)
+            | Terminator::SourceStop(_)
+            | Terminator::LetAssertPanic(_)
+            | Terminator::NeverCall(_) => panic!("fixture should return an Int local"),
         }
     }
 

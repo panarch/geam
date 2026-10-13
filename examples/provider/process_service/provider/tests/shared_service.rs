@@ -259,7 +259,7 @@ fn request_propagates_a_deadline_outside_the_hosts_clock_range() {
             error.function().to_string(),
             error.failure().message().to_string(),
         )),
-        _ => None,
+        Poll::Ready(_) | Poll::Pending => None,
     };
     assert_eq!(
         failure,

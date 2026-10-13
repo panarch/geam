@@ -122,7 +122,10 @@ pub(super) fn suite(filter: Option<Workload>) -> Vec<Case> {
             | Workload::SlicePrefix
             | Workload::SliceSuffix => &[100, 1_000, 10_000],
             Workload::BitChecksum | Workload::ParseSum => &[100, 1_000, 4_000],
-            _ => &[100, 1_000],
+            Workload::Arithmetic
+            | Workload::CapturingFold
+            | Workload::CustomMatch
+            | Workload::StringFields => &[100, 1_000],
         };
         cases.extend(sizes.iter().map(|&size| Case { workload, size }));
     }

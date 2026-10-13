@@ -348,7 +348,18 @@ pub(in crate::planner) fn plan_custom_subject_pattern(
             type_,
             ..
         } => (arguments, constructor, type_),
-        pattern => {
+        pattern @ (Pattern::Int { .. }
+        | Pattern::Float { .. }
+        | Pattern::String { .. }
+        | Pattern::Variable { .. }
+        | Pattern::BitArraySize(_)
+        | Pattern::Assign { .. }
+        | Pattern::Discard { .. }
+        | Pattern::List { .. }
+        | Pattern::Tuple { .. }
+        | Pattern::BitArray { .. }
+        | Pattern::StringPrefix { .. }
+        | Pattern::Invalid { .. }) => {
             return Err(super::unexpected_pattern(
                 &pattern,
                 &ValueShape::Custom(source_shape),

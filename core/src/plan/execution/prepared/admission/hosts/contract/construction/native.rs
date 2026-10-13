@@ -776,7 +776,20 @@ pub fn main() { ready(42) }
             .iter()
             .filter_map(|node| match &node.kind {
                 NativeConversionKind::Custom(constructors) => Some(constructors.clone()),
-                _ => None,
+                NativeConversionKind::Exact
+                | NativeConversionKind::Parameter(_)
+                | NativeConversionKind::Int
+                | NativeConversionKind::Float
+                | NativeConversionKind::String
+                | NativeConversionKind::BitArray
+                | NativeConversionKind::UtfCodepoint
+                | NativeConversionKind::Bool
+                | NativeConversionKind::Nil
+                | NativeConversionKind::Tuple(_)
+                | NativeConversionKind::List { .. }
+                | NativeConversionKind::Function(_)
+                | NativeConversionKind::CustomView(_)
+                | NativeConversionKind::External { .. } => None,
             })
             .collect::<Vec<_>>();
         assert_eq!(constructor_tables.len(), 1);
@@ -1034,7 +1047,20 @@ pub fn main() {
             .enumerate()
             .find_map(|(index, node)| match &node.kind {
                 NativeConversionKind::Function(views) => Some((index, views.to_vec())),
-                _ => None,
+                NativeConversionKind::Exact
+                | NativeConversionKind::Parameter(_)
+                | NativeConversionKind::Int
+                | NativeConversionKind::Float
+                | NativeConversionKind::String
+                | NativeConversionKind::BitArray
+                | NativeConversionKind::UtfCodepoint
+                | NativeConversionKind::Bool
+                | NativeConversionKind::Nil
+                | NativeConversionKind::Tuple(_)
+                | NativeConversionKind::List { .. }
+                | NativeConversionKind::Custom(_)
+                | NativeConversionKind::CustomView(_)
+                | NativeConversionKind::External { .. } => None,
             })
             .unwrap();
         let (custom_index, custom_views) = conversions
@@ -1043,7 +1069,20 @@ pub fn main() {
             .enumerate()
             .find_map(|(index, node)| match &node.kind {
                 NativeConversionKind::CustomView(views) => Some((index, views.to_vec())),
-                _ => None,
+                NativeConversionKind::Exact
+                | NativeConversionKind::Parameter(_)
+                | NativeConversionKind::Int
+                | NativeConversionKind::Float
+                | NativeConversionKind::String
+                | NativeConversionKind::BitArray
+                | NativeConversionKind::UtfCodepoint
+                | NativeConversionKind::Bool
+                | NativeConversionKind::Nil
+                | NativeConversionKind::Tuple(_)
+                | NativeConversionKind::List { .. }
+                | NativeConversionKind::Custom(_)
+                | NativeConversionKind::Function(_)
+                | NativeConversionKind::External { .. } => None,
             })
             .unwrap();
         let mut changed = conversions.clone();

@@ -576,7 +576,18 @@ fn expect_module_constant_custom_shape(shape: ValueShape) -> Result<CustomValueS
     let actual = shape.value_type();
     match shape {
         ValueShape::Custom(shape) => Ok(shape),
-        _ => Err(PlanError::InvalidTypedAst {
+        ValueShape::Parameter(_)
+        | ValueShape::Int
+        | ValueShape::Float
+        | ValueShape::String
+        | ValueShape::BitArray
+        | ValueShape::UtfCodepoint
+        | ValueShape::Bool
+        | ValueShape::Nil
+        | ValueShape::Tuple(_)
+        | ValueShape::List(_)
+        | ValueShape::Function(_)
+        | ValueShape::External(_) => Err(PlanError::InvalidTypedAst {
             reason: InvalidTypedAstReason::ExpressionShape {
                 kind: InvalidExpressionShapeKind::ModuleConstantRecordCustomShape { actual },
             },
@@ -588,7 +599,18 @@ fn expect_module_constant_function_shape(shape: ValueShape) -> Result<FunctionSh
     let actual = shape.value_type();
     match shape {
         ValueShape::Function(shape) => Ok(*shape),
-        _ => Err(PlanError::InvalidTypedAst {
+        ValueShape::Parameter(_)
+        | ValueShape::Int
+        | ValueShape::Float
+        | ValueShape::String
+        | ValueShape::BitArray
+        | ValueShape::UtfCodepoint
+        | ValueShape::Bool
+        | ValueShape::Nil
+        | ValueShape::Tuple(_)
+        | ValueShape::List(_)
+        | ValueShape::Custom(_)
+        | ValueShape::External(_) => Err(PlanError::InvalidTypedAst {
             reason: InvalidTypedAstReason::ExpressionShape {
                 kind: InvalidExpressionShapeKind::ModuleConstantRecordFunctionShape { actual },
             },
@@ -616,7 +638,17 @@ fn plan_bit_array_segment(
         None => match value.shape().value_type() {
             ValueType::Int => StaticSegmentKind::Int,
             ValueType::Float => StaticSegmentKind::Float,
-            actual => {
+            actual @ (ValueType::Parameter(_)
+            | ValueType::String
+            | ValueType::BitArray
+            | ValueType::UtfCodepoint
+            | ValueType::Bool
+            | ValueType::Nil
+            | ValueType::Tuple(_)
+            | ValueType::List(_)
+            | ValueType::Function(_)
+            | ValueType::Custom(_)
+            | ValueType::External(_)) => {
                 return Err(PlanError::InvalidTypedAst {
                     reason: InvalidTypedAstReason::ExpressionShape {
                         kind: InvalidExpressionShapeKind::ModuleConstantBitArrayImplicitKind {
@@ -2201,7 +2233,17 @@ pub fn main() { value }
     fn constant_var_constructor(value: &Constant<Arc<type_::Type>>) -> Option<ValueConstructor> {
         match value {
             Constant::Var { constructor, .. } => constructor.as_deref().cloned(),
-            _ => None,
+            Constant::Int { .. }
+            | Constant::Float { .. }
+            | Constant::String { .. }
+            | Constant::Tuple { .. }
+            | Constant::List { .. }
+            | Constant::Record { .. }
+            | Constant::RecordUpdate { .. }
+            | Constant::BitArray { .. }
+            | Constant::StringConcatenation { .. }
+            | Constant::Invalid { .. }
+            | Constant::Todo { .. } => None,
         }
     }
 

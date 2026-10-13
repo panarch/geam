@@ -458,37 +458,42 @@ impl<Graph: ExecutionGraphProfile> ProfiledListFunctionFunctionId<Graph, std::co
 #[cfg(test)]
 impl<Graph: ExecutionGraphProfile> ProfiledFunctionFunctionId<Graph> {
     pub(crate) fn generic(&self) -> Option<GenericFunctionFunctionId> {
-        match self {
-            Self::Generic(id) => Some(id.clone()),
-            _ => None,
+        if let Self::Generic(id) = self {
+            Some(id.clone())
+        } else {
+            None
         }
     }
 
     pub(crate) fn never(&self) -> Option<NeverFunctionFunctionId> {
-        match self {
-            Self::Never(id) => Some(id.clone()),
-            _ => None,
+        if let Self::Never(id) = self {
+            Some(id.clone())
+        } else {
+            None
         }
     }
 
     pub(crate) fn bit_array(&self) -> Option<BitArrayFunctionFunctionId> {
-        match self {
-            Self::BitArray(id) => Some(*id),
-            _ => None,
+        if let Self::BitArray(id) = self {
+            Some(*id)
+        } else {
+            None
         }
     }
 
     pub(crate) fn utf_codepoint(&self) -> Option<UtfCodepointFunctionFunctionId> {
-        match self {
-            Self::UtfCodepoint(id) => Some(*id),
-            _ => None,
+        if let Self::UtfCodepoint(id) = self {
+            Some(*id)
+        } else {
+            None
         }
     }
 
     pub(crate) fn custom(&self) -> Option<CustomFunctionFunctionId> {
-        match self {
-            Self::Custom(id) => Some(id.clone()),
-            _ => None,
+        if let Self::Custom(id) = self {
+            Some(id.clone())
+        } else {
+            None
         }
     }
 }

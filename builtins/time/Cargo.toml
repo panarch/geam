@@ -8,6 +8,9 @@ license.workspace = true
 repository.workspace = true
 publish = ["crates-io"]
 
+[lints]
+workspace = true
+
 [dependencies]
 geam-core.workspace = true
 geam-macros.workspace = true

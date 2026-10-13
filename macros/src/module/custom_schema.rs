@@ -167,7 +167,13 @@ fn source_field(
                 GenericArgument::Type(type_) => {
                     source_field(type_, parameters, support, customs, externals)
                 }
-                _ => Err(syn::Error::new_spanned(
+                // syn::GenericArgument is non-exhaustive; the wildcard covers future arguments.
+                GenericArgument::Lifetime(_)
+                | GenericArgument::Const(_)
+                | GenericArgument::AssocType(_)
+                | GenericArgument::AssocConst(_)
+                | GenericArgument::Constraint(_)
+                | _ => Err(syn::Error::new_spanned(
                     argument,
                     "nominal source arguments must be types",
                 )),

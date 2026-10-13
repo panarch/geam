@@ -271,7 +271,15 @@ impl<Item: ListItem> TypedListExpr<Item> {
                 steps,
                 return_: Self::from_shape_item_and_kind(item_shape, item, *return_),
             },
-            kind => {
+            kind @ (TypedListExprKind::Value(_)
+            | TypedListExprKind::Spread { .. }
+            | TypedListExprKind::LocalGet { .. }
+            | TypedListExprKind::FunctionCall { .. }
+            | TypedListExprKind::TupleIndex { .. }
+            | TypedListExprKind::CustomField(_)
+            | TypedListExprKind::ListIndex(_)
+            | TypedListExprKind::DropFirst { .. }
+            | TypedListExprKind::Panic(_)) => {
                 TypedListReturnKind::Expr(Self::from_shape_item_and_kind(item_shape, item, kind))
             }
         }

@@ -43,7 +43,43 @@ mod bounded_native {
             CallProgress::Yield(_) => "yield",
             CallProgress::Complete { .. } => "complete",
             CallProgress::StringNative(_) => "native",
-            _ => "canonical",
+            CallProgress::CustomNative(_)
+            | CallProgress::TupleNative(_)
+            | CallProgress::Custom { .. }
+            | CallProgress::Tuple { .. }
+            | CallProgress::InterpretedCustom { .. }
+            | CallProgress::InterpretedTuple { .. }
+            | CallProgress::Interpreted { .. }
+            | CallProgress::Int { .. }
+            | CallProgress::IntScalar { .. }
+            | CallProgress::Bool { .. }
+            | CallProgress::BoolScalar { .. }
+            | CallProgress::IntFunction { .. }
+            | CallProgress::BoolFunction { .. }
+            | CallProgress::Float { .. }
+            | CallProgress::String { .. }
+            | CallProgress::BitArray { .. }
+            | CallProgress::UtfCodepoint { .. }
+            | CallProgress::Nil { .. }
+            | CallProgress::FloatFunction { .. }
+            | CallProgress::StringFunction { .. }
+            | CallProgress::BitArrayFunction { .. }
+            | CallProgress::UtfCodepointFunction { .. }
+            | CallProgress::NilFunction { .. }
+            | CallProgress::InterpretedInt { .. }
+            | CallProgress::InterpretedBool { .. }
+            | CallProgress::InterpretedIntFunction { .. }
+            | CallProgress::InterpretedBoolFunction { .. }
+            | CallProgress::InterpretedFloat { .. }
+            | CallProgress::InterpretedString { .. }
+            | CallProgress::InterpretedBitArray { .. }
+            | CallProgress::InterpretedUtfCodepoint { .. }
+            | CallProgress::InterpretedNil { .. }
+            | CallProgress::InterpretedFloatFunction { .. }
+            | CallProgress::InterpretedStringFunction { .. }
+            | CallProgress::InterpretedBitArrayFunction { .. }
+            | CallProgress::InterpretedUtfCodepointFunction { .. }
+            | CallProgress::InterpretedNilFunction { .. } => "canonical",
         };
         OBSERVATIONS
             .lock()
@@ -79,7 +115,42 @@ mod bounded_native {
                 values,
                 resume: Box::new(move |value| Box::new(Limited(resume(value)))),
             },
-            progress => progress,
+            progress @ (CallProgress::CustomNative(_)
+            | CallProgress::TupleNative(_)
+            | CallProgress::Custom { .. }
+            | CallProgress::Tuple { .. }
+            | CallProgress::InterpretedCustom { .. }
+            | CallProgress::InterpretedTuple { .. }
+            | CallProgress::Complete { .. }
+            | CallProgress::Interpreted { .. }
+            | CallProgress::Int { .. }
+            | CallProgress::IntScalar { .. }
+            | CallProgress::Bool { .. }
+            | CallProgress::BoolScalar { .. }
+            | CallProgress::IntFunction { .. }
+            | CallProgress::BoolFunction { .. }
+            | CallProgress::Float { .. }
+            | CallProgress::BitArray { .. }
+            | CallProgress::UtfCodepoint { .. }
+            | CallProgress::Nil { .. }
+            | CallProgress::FloatFunction { .. }
+            | CallProgress::StringFunction { .. }
+            | CallProgress::BitArrayFunction { .. }
+            | CallProgress::UtfCodepointFunction { .. }
+            | CallProgress::NilFunction { .. }
+            | CallProgress::InterpretedInt { .. }
+            | CallProgress::InterpretedBool { .. }
+            | CallProgress::InterpretedIntFunction { .. }
+            | CallProgress::InterpretedBoolFunction { .. }
+            | CallProgress::InterpretedFloat { .. }
+            | CallProgress::InterpretedBitArray { .. }
+            | CallProgress::InterpretedUtfCodepoint { .. }
+            | CallProgress::InterpretedNil { .. }
+            | CallProgress::InterpretedFloatFunction { .. }
+            | CallProgress::InterpretedStringFunction { .. }
+            | CallProgress::InterpretedBitArrayFunction { .. }
+            | CallProgress::InterpretedUtfCodepointFunction { .. }
+            | CallProgress::InterpretedNilFunction { .. }) => progress,
         }
     }
     impl CallExecution for Limited {
@@ -474,7 +545,43 @@ fn a_generated_native_completion_keeps_the_callers_return_family_boundary() {
                     request.execution = Box::new(NativeDelivery(request.execution));
                     CallProgress::StringNative(request)
                 }
-                progress => progress,
+                progress @ (CallProgress::CustomNative(_)
+                | CallProgress::TupleNative(_)
+                | CallProgress::Custom { .. }
+                | CallProgress::Tuple { .. }
+                | CallProgress::InterpretedCustom { .. }
+                | CallProgress::InterpretedTuple { .. }
+                | CallProgress::Interpreted { .. }
+                | CallProgress::Int { .. }
+                | CallProgress::IntScalar { .. }
+                | CallProgress::Bool { .. }
+                | CallProgress::BoolScalar { .. }
+                | CallProgress::IntFunction { .. }
+                | CallProgress::BoolFunction { .. }
+                | CallProgress::Float { .. }
+                | CallProgress::String { .. }
+                | CallProgress::BitArray { .. }
+                | CallProgress::UtfCodepoint { .. }
+                | CallProgress::Nil { .. }
+                | CallProgress::FloatFunction { .. }
+                | CallProgress::StringFunction { .. }
+                | CallProgress::BitArrayFunction { .. }
+                | CallProgress::UtfCodepointFunction { .. }
+                | CallProgress::NilFunction { .. }
+                | CallProgress::InterpretedInt { .. }
+                | CallProgress::InterpretedBool { .. }
+                | CallProgress::InterpretedIntFunction { .. }
+                | CallProgress::InterpretedBoolFunction { .. }
+                | CallProgress::InterpretedFloat { .. }
+                | CallProgress::InterpretedString { .. }
+                | CallProgress::InterpretedBitArray { .. }
+                | CallProgress::InterpretedUtfCodepoint { .. }
+                | CallProgress::InterpretedNil { .. }
+                | CallProgress::InterpretedFloatFunction { .. }
+                | CallProgress::InterpretedStringFunction { .. }
+                | CallProgress::InterpretedBitArrayFunction { .. }
+                | CallProgress::InterpretedUtfCodepointFunction { .. }
+                | CallProgress::InterpretedNilFunction { .. }) => progress,
             }
         }
     }

@@ -150,13 +150,14 @@ where
                 args,
                 captures: Some(captures),
             };
-            match function {
-                RuntimeListFunctionId::Core(ListFunctionId::Parameter(function)) => V::Call {
+            if let RuntimeListFunctionId::Core(ListFunctionId::Parameter(function)) = function {
+                V::Call {
                     function,
                     site,
                     inputs,
-                },
-                _ => V::Error(list_function_mismatch().into()),
+                }
+            } else {
+                V::Error(list_function_mismatch().into())
             }
         }
         I::TupleIndex { tuple, index } => tuple_projection(
@@ -167,7 +168,19 @@ where
             expected,
             |value| match value {
                 EvaluatedValue::ParameterList(value) => Some(value.clone()),
-                _ => None,
+                EvaluatedValue::Parameter(_)
+                | EvaluatedValue::Int(_)
+                | EvaluatedValue::Float(_)
+                | EvaluatedValue::String(_)
+                | EvaluatedValue::BitArray(_)
+                | EvaluatedValue::UtfCodepoint(_)
+                | EvaluatedValue::Custom(_)
+                | EvaluatedValue::External(_)
+                | EvaluatedValue::Bool(_)
+                | EvaluatedValue::Nil
+                | EvaluatedValue::Tuple(_)
+                | EvaluatedValue::List(_)
+                | EvaluatedValue::Function(_) => None,
             },
         )
         .map_or_else(V::Error, V::Ready),
@@ -179,7 +192,19 @@ where
             expected,
             |value| match value {
                 EvaluatedValue::ParameterList(value) => Some(value.clone()),
-                _ => None,
+                EvaluatedValue::Parameter(_)
+                | EvaluatedValue::Int(_)
+                | EvaluatedValue::Float(_)
+                | EvaluatedValue::String(_)
+                | EvaluatedValue::BitArray(_)
+                | EvaluatedValue::UtfCodepoint(_)
+                | EvaluatedValue::Custom(_)
+                | EvaluatedValue::External(_)
+                | EvaluatedValue::Bool(_)
+                | EvaluatedValue::Nil
+                | EvaluatedValue::Tuple(_)
+                | EvaluatedValue::List(_)
+                | EvaluatedValue::Function(_) => None,
             },
         )
         .map_or_else(V::Error, V::Ready),
@@ -322,7 +347,19 @@ where
             expected,
             |value| match value {
                 EvaluatedValue::List(value) => Family::projected(value),
-                _ => None,
+                EvaluatedValue::Parameter(_)
+                | EvaluatedValue::Int(_)
+                | EvaluatedValue::Float(_)
+                | EvaluatedValue::String(_)
+                | EvaluatedValue::BitArray(_)
+                | EvaluatedValue::UtfCodepoint(_)
+                | EvaluatedValue::Custom(_)
+                | EvaluatedValue::External(_)
+                | EvaluatedValue::Bool(_)
+                | EvaluatedValue::Nil
+                | EvaluatedValue::Tuple(_)
+                | EvaluatedValue::ParameterList(_)
+                | EvaluatedValue::Function(_) => None,
             },
         )
         .map_or_else(V::Error, V::Ready),
@@ -334,7 +371,19 @@ where
             expected,
             |value| match value {
                 EvaluatedValue::List(value) => Family::projected(value),
-                _ => None,
+                EvaluatedValue::Parameter(_)
+                | EvaluatedValue::Int(_)
+                | EvaluatedValue::Float(_)
+                | EvaluatedValue::String(_)
+                | EvaluatedValue::BitArray(_)
+                | EvaluatedValue::UtfCodepoint(_)
+                | EvaluatedValue::Custom(_)
+                | EvaluatedValue::External(_)
+                | EvaluatedValue::Bool(_)
+                | EvaluatedValue::Nil
+                | EvaluatedValue::Tuple(_)
+                | EvaluatedValue::ParameterList(_)
+                | EvaluatedValue::Function(_) => None,
             },
         )
         .map_or_else(V::Error, V::Ready),
@@ -421,11 +470,12 @@ macro_rules! vector_family {
             fn function_id(
                 function: Self::FunctionTarget,
             ) -> Result<Self::Function, InvariantError> {
-                match function {
-                    RuntimeListFunctionId::Core(ListFunctionId::$function_variant(function)) => {
-                        Ok(function)
-                    }
-                    _ => Err(list_function_mismatch()),
+                if let RuntimeListFunctionId::Core(ListFunctionId::$function_variant(function)) =
+                    function
+                {
+                    Ok(function)
+                } else {
+                    Err(list_function_mismatch())
                 }
             }
 
@@ -587,9 +637,10 @@ impl RuntimeTypedList for TupleFamily {
     }
 
     fn function_id(function: Self::FunctionTarget) -> Result<Self::Function, InvariantError> {
-        match function {
-            RuntimeListFunctionId::Core(ListFunctionId::Tuple(function)) => Ok(function),
-            _ => Err(list_function_mismatch()),
+        if let RuntimeListFunctionId::Core(ListFunctionId::Tuple(function)) = function {
+            Ok(function)
+        } else {
+            Err(list_function_mismatch())
         }
     }
 
@@ -622,7 +673,18 @@ impl RuntimeTypedList for TupleFamily {
     fn projected(value: &StoredListValueId) -> Option<Self::Handle> {
         match value {
             StoredListValueId::Tuple(value) => Some(value.clone()),
-            _ => None,
+            StoredListValueId::Parameter(_)
+            | StoredListValueId::Int(_)
+            | StoredListValueId::String(_)
+            | StoredListValueId::BitArray(_)
+            | StoredListValueId::UtfCodepoint(_)
+            | StoredListValueId::Custom(_)
+            | StoredListValueId::External(_)
+            | StoredListValueId::Float(_)
+            | StoredListValueId::Bool(_)
+            | StoredListValueId::Nil(_)
+            | StoredListValueId::List(_)
+            | StoredListValueId::Function(_) => None,
         }
     }
 }
@@ -658,9 +720,10 @@ impl RuntimeTypedList for CustomFamily {
     }
 
     fn function_id(function: Self::FunctionTarget) -> Result<Self::Function, InvariantError> {
-        match function {
-            RuntimeListFunctionId::Core(ListFunctionId::Custom(function)) => Ok(function),
-            _ => Err(list_function_mismatch()),
+        if let RuntimeListFunctionId::Core(ListFunctionId::Custom(function)) = function {
+            Ok(function)
+        } else {
+            Err(list_function_mismatch())
         }
     }
 
@@ -695,7 +758,18 @@ impl RuntimeTypedList for CustomFamily {
     fn projected(value: &StoredListValueId) -> Option<Self::Handle> {
         match value {
             StoredListValueId::Custom(value) => Some(value.clone()),
-            _ => None,
+            StoredListValueId::Parameter(_)
+            | StoredListValueId::Int(_)
+            | StoredListValueId::String(_)
+            | StoredListValueId::BitArray(_)
+            | StoredListValueId::UtfCodepoint(_)
+            | StoredListValueId::External(_)
+            | StoredListValueId::Float(_)
+            | StoredListValueId::Bool(_)
+            | StoredListValueId::Nil(_)
+            | StoredListValueId::Tuple(_)
+            | StoredListValueId::List(_)
+            | StoredListValueId::Function(_) => None,
         }
     }
 }
@@ -766,7 +840,18 @@ impl RuntimeTypedList for ExternalFamily {
     fn projected(value: &StoredListValueId) -> Option<Self::Handle> {
         match value {
             StoredListValueId::External(value) => Some(value.clone()),
-            _ => None,
+            StoredListValueId::Parameter(_)
+            | StoredListValueId::Int(_)
+            | StoredListValueId::String(_)
+            | StoredListValueId::BitArray(_)
+            | StoredListValueId::UtfCodepoint(_)
+            | StoredListValueId::Custom(_)
+            | StoredListValueId::Float(_)
+            | StoredListValueId::Bool(_)
+            | StoredListValueId::Nil(_)
+            | StoredListValueId::Tuple(_)
+            | StoredListValueId::List(_)
+            | StoredListValueId::Function(_) => None,
         }
     }
 }
@@ -799,9 +884,10 @@ impl RuntimeTypedList for NilFamily {
     }
 
     fn function_id(function: Self::FunctionTarget) -> Result<Self::Function, InvariantError> {
-        match function {
-            RuntimeListFunctionId::Core(ListFunctionId::Nil(function)) => Ok(function),
-            _ => Err(list_function_mismatch()),
+        if let RuntimeListFunctionId::Core(ListFunctionId::Nil(function)) = function {
+            Ok(function)
+        } else {
+            Err(list_function_mismatch())
         }
     }
 
@@ -834,7 +920,18 @@ impl RuntimeTypedList for NilFamily {
     fn projected(value: &StoredListValueId) -> Option<Self::Handle> {
         match value {
             StoredListValueId::Nil(value) => Some(value.clone()),
-            _ => None,
+            StoredListValueId::Parameter(_)
+            | StoredListValueId::Int(_)
+            | StoredListValueId::String(_)
+            | StoredListValueId::BitArray(_)
+            | StoredListValueId::UtfCodepoint(_)
+            | StoredListValueId::Custom(_)
+            | StoredListValueId::External(_)
+            | StoredListValueId::Float(_)
+            | StoredListValueId::Bool(_)
+            | StoredListValueId::Tuple(_)
+            | StoredListValueId::List(_)
+            | StoredListValueId::Function(_) => None,
         }
     }
 }
@@ -870,9 +967,10 @@ impl RuntimeTypedList for ListFamily {
     }
 
     fn function_id(function: Self::FunctionTarget) -> Result<Self::Function, InvariantError> {
-        match function {
-            RuntimeListFunctionId::Core(ListFunctionId::List(function)) => Ok(function),
-            _ => Err(list_function_mismatch()),
+        if let RuntimeListFunctionId::Core(ListFunctionId::List(function)) = function {
+            Ok(function)
+        } else {
+            Err(list_function_mismatch())
         }
     }
 
@@ -905,7 +1003,18 @@ impl RuntimeTypedList for ListFamily {
     fn projected(value: &StoredListValueId) -> Option<Self::Handle> {
         match value {
             StoredListValueId::List(value) => Some(value.clone()),
-            _ => None,
+            StoredListValueId::Parameter(_)
+            | StoredListValueId::Int(_)
+            | StoredListValueId::String(_)
+            | StoredListValueId::BitArray(_)
+            | StoredListValueId::UtfCodepoint(_)
+            | StoredListValueId::Custom(_)
+            | StoredListValueId::External(_)
+            | StoredListValueId::Float(_)
+            | StoredListValueId::Bool(_)
+            | StoredListValueId::Nil(_)
+            | StoredListValueId::Tuple(_)
+            | StoredListValueId::Function(_) => None,
         }
     }
 }
@@ -941,9 +1050,10 @@ impl RuntimeTypedList for FunctionFamily {
     }
 
     fn function_id(function: Self::FunctionTarget) -> Result<Self::Function, InvariantError> {
-        match function {
-            RuntimeListFunctionId::Core(ListFunctionId::Function(function)) => Ok(function),
-            _ => Err(list_function_mismatch()),
+        if let RuntimeListFunctionId::Core(ListFunctionId::Function(function)) = function {
+            Ok(function)
+        } else {
+            Err(list_function_mismatch())
         }
     }
 
@@ -976,7 +1086,18 @@ impl RuntimeTypedList for FunctionFamily {
     fn projected(value: &StoredListValueId) -> Option<Self::Handle> {
         match value {
             StoredListValueId::Function(value) => Some(value.clone()),
-            _ => None,
+            StoredListValueId::Parameter(_)
+            | StoredListValueId::Int(_)
+            | StoredListValueId::String(_)
+            | StoredListValueId::BitArray(_)
+            | StoredListValueId::UtfCodepoint(_)
+            | StoredListValueId::Custom(_)
+            | StoredListValueId::External(_)
+            | StoredListValueId::Float(_)
+            | StoredListValueId::Bool(_)
+            | StoredListValueId::Nil(_)
+            | StoredListValueId::Tuple(_)
+            | StoredListValueId::List(_) => None,
         }
     }
 }
@@ -1047,7 +1168,10 @@ pub fn main() {
     ) -> ExecutionError {
         let error = match outcome {
             ListInstructionOutcome::Error(error) => Some(error),
-            _ => None,
+            ListInstructionOutcome::Ready(_)
+            | ListInstructionOutcome::Projected(_)
+            | ListInstructionOutcome::Constant(_)
+            | ListInstructionOutcome::Call { .. } => None,
         };
         error.expect(message)
     }

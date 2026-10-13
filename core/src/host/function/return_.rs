@@ -466,7 +466,14 @@ impl<Profile: HostProfile> SynchronousValueFunction<Profile> {
             SynchronousValueFunctionKind::Retained(callbacks) => {
                 Some(Arc::clone(&callbacks.retained))
             }
-            _ => None,
+            SynchronousValueFunctionKind::Int(_)
+            | SynchronousValueFunctionKind::Float(_)
+            | SynchronousValueFunctionKind::String(_)
+            | SynchronousValueFunctionKind::BitArray(_)
+            | SynchronousValueFunctionKind::UtfCodepoint(_)
+            | SynchronousValueFunctionKind::Bool(_)
+            | SynchronousValueFunctionKind::Nil(_)
+            | SynchronousValueFunctionKind::Scoped(_) => None,
         }
     }
 

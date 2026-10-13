@@ -718,7 +718,17 @@ mod tests {
     fn test_branch_targets(terminator: &Terminator) -> (BlockId, BlockId) {
         match terminator {
             Terminator::TestBranch(branch) => (branch.true_.target(), branch.false_.target()),
-            _ => panic!("fixture should contain a direct test branch"),
+            Terminator::Jump(_)
+            | Terminator::BoolBranch(_)
+            | Terminator::IntSwitch(_)
+            | Terminator::FloatSwitch(_)
+            | Terminator::StringSwitch(_)
+            | Terminator::Match(_)
+            | Terminator::Echo(_)
+            | Terminator::Exit(_)
+            | Terminator::SourceStop(_)
+            | Terminator::LetAssertPanic(_)
+            | Terminator::NeverCall(_) => panic!("fixture should contain a direct test branch"),
         }
     }
 
@@ -1293,7 +1303,17 @@ mod tests {
     fn source_stop_kind(terminator: &Terminator) -> SourceStopKind {
         match terminator {
             Terminator::SourceStop(stop) => stop.kind(),
-            _ => panic!("fixture should contain a source stop"),
+            Terminator::Jump(_)
+            | Terminator::BoolBranch(_)
+            | Terminator::TestBranch(_)
+            | Terminator::IntSwitch(_)
+            | Terminator::FloatSwitch(_)
+            | Terminator::StringSwitch(_)
+            | Terminator::Match(_)
+            | Terminator::Echo(_)
+            | Terminator::Exit(_)
+            | Terminator::LetAssertPanic(_)
+            | Terminator::NeverCall(_) => panic!("fixture should contain a source stop"),
         }
     }
 }

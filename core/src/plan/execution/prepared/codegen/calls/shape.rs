@@ -583,7 +583,20 @@ impl<'graph, Graph: ExecutionGraphProfile> CallProgram<'graph, Graph> {
                 functions.value_returns.tuple_functions[id.0].as_ref(),
                 ExecutionFunctionRef::Host(_)
             ),
-            _ => false,
+            CallTarget::Int(_)
+            | CallTarget::Bool(_)
+            | CallTarget::IntFunction(_)
+            | CallTarget::BoolFunction(_)
+            | CallTarget::Float(_)
+            | CallTarget::String(_)
+            | CallTarget::BitArray(_)
+            | CallTarget::UtfCodepoint(_)
+            | CallTarget::Nil(_)
+            | CallTarget::FloatFunction(_)
+            | CallTarget::StringFunction(_)
+            | CallTarget::BitArrayFunction(_)
+            | CallTarget::UtfCodepointFunction(_)
+            | CallTarget::NilFunction(_) => false,
         };
         for function in &mut selected {
             function.shape.root |= function.shape.tails.iter().any(|tail| {
@@ -613,7 +626,14 @@ impl<'graph, Graph: ExecutionGraphProfile> CallProgram<'graph, Graph> {
                     functions.value_returns.bool_functions[target.0].as_ref(),
                     ExecutionFunctionRef::Host(_)
                 ),
-                _ => false,
+                CallContractTarget::Static(_)
+                | CallContractTarget::IntValue(_)
+                | CallContractTarget::BoolValue(_)
+                | CallContractTarget::FloatValue(_)
+                | CallContractTarget::StringValue(_)
+                | CallContractTarget::BitArrayValue(_)
+                | CallContractTarget::UtfCodepointValue(_)
+                | CallContractTarget::NilValue(_) => false,
             }
         };
         // A scalar wrapper is not useful when every call immediately leaves
@@ -634,7 +654,7 @@ impl<'graph, Graph: ExecutionGraphProfile> CallProgram<'graph, Graph> {
                             selected.iter().any(|callee| {
                                 let target_matches = match call.target {
                                     CallContractTarget::Static(target) => callee.target == target,
-                                    _ => true,
+                                    CallContractTarget::IntValue(_) | CallContractTarget::BoolValue(_) | CallContractTarget::FloatValue(_) | CallContractTarget::StringValue(_) | CallContractTarget::BitArrayValue(_) | CallContractTarget::UtfCodepointValue(_) | CallContractTarget::NilValue(_) => true,
                                 };
                                 target_matches && callee.accepts_call(call)
                             }) || matches!(call.target, CallContractTarget::Static(CallTarget::String(target))
@@ -672,7 +692,12 @@ impl<'graph, Graph: ExecutionGraphProfile> CallProgram<'graph, Graph> {
                             matches!(call.target, CallContractTarget::Static(_))
                                 || selected.iter().any(|callee| callee.accepts_call(call))
                         }
-                        _ => true,
+                        CallPoint::Scalar(_)
+                        | CallPoint::Create(_)
+                        | CallPoint::Terminator(_)
+                        | CallPoint::Return(_)
+                        | CallPoint::Tail(_)
+                        | CallPoint::Interpreted => true,
                     }
             })
             .collect::<Vec<_>>();
@@ -964,7 +989,18 @@ impl CallLocal {
                 local: *local,
                 type_: type_.clone(),
             },
-            _ => return None,
+            ParamLocal::Parameter { .. }
+            | ParamLocal::Custom(_)
+            | ParamLocal::External(_)
+            | ParamLocal::List(_)
+            | ParamLocal::ParameterFunction { .. }
+            | ParamLocal::GenericFunction(_)
+            | ParamLocal::NeverFunction(_)
+            | ParamLocal::CustomFunction(_)
+            | ParamLocal::ExternalFunction(_)
+            | ParamLocal::TupleFunction { .. }
+            | ParamLocal::ListFunction(_)
+            | ParamLocal::FunctionFunction(_) => return None,
         })
     }
 
@@ -1250,7 +1286,24 @@ impl Capture {
                 target: *target,
                 source: *source,
             },
-            _ => return None,
+            FunctionCapture::Parameter { .. }
+            | FunctionCapture::Custom { .. }
+            | FunctionCapture::External { .. }
+            | FunctionCapture::Tuple { .. }
+            | FunctionCapture::ParameterList { .. }
+            | FunctionCapture::CustomList { .. }
+            | FunctionCapture::ExternalList { .. }
+            | FunctionCapture::TupleList { .. }
+            | FunctionCapture::ListList { .. }
+            | FunctionCapture::FunctionList { .. }
+            | FunctionCapture::ParameterFunction { .. }
+            | FunctionCapture::GenericFunction { .. }
+            | FunctionCapture::NeverFunction { .. }
+            | FunctionCapture::CustomFunction { .. }
+            | FunctionCapture::ExternalFunction { .. }
+            | FunctionCapture::TupleFunction { .. }
+            | FunctionCapture::ListFunction { .. }
+            | FunctionCapture::FunctionFunction { .. } => return None,
         })
     }
 
@@ -1641,7 +1694,16 @@ impl<'graph> CallShape<'graph> {
                     )
                     .map(|matcher| CallPoint::Terminator(CallTerminator::Match(Box::new(matcher))))
                     .unwrap_or(CallPoint::Interpreted),
-                    terminator => CallTerminator::inspect(terminator)
+                    terminator @ (Terminator::Jump(_)
+                    | Terminator::BoolBranch(_)
+                    | Terminator::TestBranch(_)
+                    | Terminator::IntSwitch(_)
+                    | Terminator::FloatSwitch(_)
+                    | Terminator::StringSwitch(_)
+                    | Terminator::Echo(_)
+                    | Terminator::SourceStop(_)
+                    | Terminator::LetAssertPanic(_)
+                    | Terminator::NeverCall(_)) => CallTerminator::inspect(terminator)
                         .map(CallPoint::Terminator)
                         .unwrap_or(CallPoint::Interpreted),
                 };
@@ -1884,7 +1946,12 @@ impl FloatOperation {
             FloatInstruction::Sub { left, right } => Self::Subtract(*left, *right),
             FloatInstruction::Mult { left, right } => Self::Multiply(*left, *right),
             FloatInstruction::Div { left, right } => Self::Divide(*left, *right),
-            _ => return None,
+            FloatInstruction::Constant(_)
+            | FloatInstruction::Call { .. }
+            | FloatInstruction::FunctionCall { .. }
+            | FloatInstruction::TupleIndex { .. }
+            | FloatInstruction::CustomField { .. }
+            | FloatInstruction::ListIndex { .. } => return None,
         })
     }
 }
@@ -1921,7 +1988,12 @@ impl PrimitiveListOperation {
                 list: local(*list),
                 count: *count,
             },
-            _ => return None,
+            TypedListInstruction::Constant(_)
+            | TypedListInstruction::Call { .. }
+            | TypedListInstruction::FunctionCall { .. }
+            | TypedListInstruction::TupleIndex { .. }
+            | TypedListInstruction::CustomField { .. }
+            | TypedListInstruction::ListIndex { .. } => return None,
         })
     }
 }
@@ -2296,7 +2368,15 @@ impl<'graph> CallTerminator<'graph> {
                     fallback: &switch.fallback,
                 }
             }
-            _ => return None,
+            Terminator::IntSwitch(_)
+            | Terminator::FloatSwitch(_)
+            | Terminator::StringSwitch(_)
+            | Terminator::Match(_)
+            | Terminator::Echo(_)
+            | Terminator::Exit(_)
+            | Terminator::SourceStop(_)
+            | Terminator::LetAssertPanic(_)
+            | Terminator::NeverCall(_) => return None,
         })
     }
 }
@@ -2405,7 +2485,21 @@ fn inspect_instruction<'graph, Graph: ExecutionGraphProfile>(
                     read,
                 }));
             }
-            _ => {}
+            ProfiledInstructionKind::Int(_)
+            | ProfiledInstructionKind::Float(_)
+            | ProfiledInstructionKind::String(_)
+            | ProfiledInstructionKind::BitArray(_)
+            | ProfiledInstructionKind::UtfCodepoint(_)
+            | ProfiledInstructionKind::Parameter(_)
+            | ProfiledInstructionKind::Custom(_)
+            | ProfiledInstructionKind::External(_)
+            | ProfiledInstructionKind::ExternalList(_)
+            | ProfiledInstructionKind::ExternalFunction(_)
+            | ProfiledInstructionKind::Bool(_)
+            | ProfiledInstructionKind::Nil(_)
+            | ProfiledInstructionKind::Tuple(_)
+            | ProfiledInstructionKind::List(_)
+            | ProfiledInstructionKind::Function(_) => {}
         }
     }
     match instruction.kind() {
@@ -2417,7 +2511,30 @@ fn inspect_instruction<'graph, Graph: ExecutionGraphProfile>(
                         type_id: *type_id,
                     })
                 }
-                _ => None,
+                CallLocal::Nullary(_)
+                | CallLocal::Custom(_)
+                | CallLocal::Tuple { .. }
+                | CallLocal::Int(_)
+                | CallLocal::IntList { .. }
+                | CallLocal::IntFunction { .. }
+                | CallLocal::Bool(_)
+                | CallLocal::BoolList { .. }
+                | CallLocal::BoolFunction { .. }
+                | CallLocal::Float(_)
+                | CallLocal::FloatList { .. }
+                | CallLocal::FloatFunction { .. }
+                | CallLocal::String(_)
+                | CallLocal::StringList { .. }
+                | CallLocal::StringFunction { .. }
+                | CallLocal::BitArray(_)
+                | CallLocal::BitArrayList { .. }
+                | CallLocal::BitArrayFunction { .. }
+                | CallLocal::UtfCodepoint(_)
+                | CallLocal::UtfCodepointList { .. }
+                | CallLocal::UtfCodepointFunction { .. }
+                | CallLocal::Nil(_)
+                | CallLocal::NilList { .. }
+                | CallLocal::NilFunction { .. } => None,
             })?;
             return Some(CallPoint::Scalar(CallScalar::Index {
                 output,
@@ -2433,7 +2550,30 @@ fn inspect_instruction<'graph, Graph: ExecutionGraphProfile>(
                         type_id: *type_id,
                     })
                 }
-                _ => None,
+                CallLocal::Nullary(_)
+                | CallLocal::Custom(_)
+                | CallLocal::Tuple { .. }
+                | CallLocal::Int(_)
+                | CallLocal::IntList { .. }
+                | CallLocal::IntFunction { .. }
+                | CallLocal::Bool(_)
+                | CallLocal::BoolList { .. }
+                | CallLocal::BoolFunction { .. }
+                | CallLocal::Float(_)
+                | CallLocal::FloatList { .. }
+                | CallLocal::FloatFunction { .. }
+                | CallLocal::String(_)
+                | CallLocal::StringList { .. }
+                | CallLocal::StringFunction { .. }
+                | CallLocal::BitArray(_)
+                | CallLocal::BitArrayList { .. }
+                | CallLocal::BitArrayFunction { .. }
+                | CallLocal::UtfCodepoint(_)
+                | CallLocal::UtfCodepointList { .. }
+                | CallLocal::UtfCodepointFunction { .. }
+                | CallLocal::Nil(_)
+                | CallLocal::NilList { .. }
+                | CallLocal::NilFunction { .. } => None,
             })?;
             return Some(CallPoint::Scalar(CallScalar::Index {
                 output,
@@ -2449,7 +2589,30 @@ fn inspect_instruction<'graph, Graph: ExecutionGraphProfile>(
                         type_id: *type_id,
                     })
                 }
-                _ => None,
+                CallLocal::Nullary(_)
+                | CallLocal::Custom(_)
+                | CallLocal::Tuple { .. }
+                | CallLocal::Int(_)
+                | CallLocal::IntList { .. }
+                | CallLocal::IntFunction { .. }
+                | CallLocal::Bool(_)
+                | CallLocal::BoolList { .. }
+                | CallLocal::BoolFunction { .. }
+                | CallLocal::Float(_)
+                | CallLocal::FloatList { .. }
+                | CallLocal::FloatFunction { .. }
+                | CallLocal::String(_)
+                | CallLocal::StringList { .. }
+                | CallLocal::StringFunction { .. }
+                | CallLocal::BitArray(_)
+                | CallLocal::BitArrayList { .. }
+                | CallLocal::BitArrayFunction { .. }
+                | CallLocal::UtfCodepoint(_)
+                | CallLocal::UtfCodepointList { .. }
+                | CallLocal::UtfCodepointFunction { .. }
+                | CallLocal::Nil(_)
+                | CallLocal::NilList { .. }
+                | CallLocal::NilFunction { .. } => None,
             })?;
             return Some(CallPoint::Scalar(CallScalar::Index {
                 output,
@@ -2465,7 +2628,30 @@ fn inspect_instruction<'graph, Graph: ExecutionGraphProfile>(
                         type_id: *type_id,
                     })
                 }
-                _ => None,
+                CallLocal::Nullary(_)
+                | CallLocal::Custom(_)
+                | CallLocal::Tuple { .. }
+                | CallLocal::Int(_)
+                | CallLocal::IntList { .. }
+                | CallLocal::IntFunction { .. }
+                | CallLocal::Bool(_)
+                | CallLocal::BoolList { .. }
+                | CallLocal::BoolFunction { .. }
+                | CallLocal::Float(_)
+                | CallLocal::FloatList { .. }
+                | CallLocal::FloatFunction { .. }
+                | CallLocal::String(_)
+                | CallLocal::StringList { .. }
+                | CallLocal::StringFunction { .. }
+                | CallLocal::BitArray(_)
+                | CallLocal::BitArrayList { .. }
+                | CallLocal::BitArrayFunction { .. }
+                | CallLocal::UtfCodepoint(_)
+                | CallLocal::UtfCodepointList { .. }
+                | CallLocal::UtfCodepointFunction { .. }
+                | CallLocal::Nil(_)
+                | CallLocal::NilList { .. }
+                | CallLocal::NilFunction { .. } => None,
             })?;
             return Some(CallPoint::Scalar(CallScalar::Index {
                 output,
@@ -2484,7 +2670,30 @@ fn inspect_instruction<'graph, Graph: ExecutionGraphProfile>(
                         type_id: *type_id,
                     })
                 }
-                _ => None,
+                CallLocal::Nullary(_)
+                | CallLocal::Custom(_)
+                | CallLocal::Tuple { .. }
+                | CallLocal::Int(_)
+                | CallLocal::IntList { .. }
+                | CallLocal::IntFunction { .. }
+                | CallLocal::Bool(_)
+                | CallLocal::BoolList { .. }
+                | CallLocal::BoolFunction { .. }
+                | CallLocal::Float(_)
+                | CallLocal::FloatList { .. }
+                | CallLocal::FloatFunction { .. }
+                | CallLocal::String(_)
+                | CallLocal::StringList { .. }
+                | CallLocal::StringFunction { .. }
+                | CallLocal::BitArray(_)
+                | CallLocal::BitArrayList { .. }
+                | CallLocal::BitArrayFunction { .. }
+                | CallLocal::UtfCodepoint(_)
+                | CallLocal::UtfCodepointList { .. }
+                | CallLocal::UtfCodepointFunction { .. }
+                | CallLocal::Nil(_)
+                | CallLocal::NilList { .. }
+                | CallLocal::NilFunction { .. } => None,
             })?;
             return Some(CallPoint::Scalar(CallScalar::Index {
                 output,
@@ -2500,7 +2709,30 @@ fn inspect_instruction<'graph, Graph: ExecutionGraphProfile>(
                         type_id: *type_id,
                     })
                 }
-                _ => None,
+                CallLocal::Nullary(_)
+                | CallLocal::Custom(_)
+                | CallLocal::Tuple { .. }
+                | CallLocal::Int(_)
+                | CallLocal::IntList { .. }
+                | CallLocal::IntFunction { .. }
+                | CallLocal::Bool(_)
+                | CallLocal::BoolList { .. }
+                | CallLocal::BoolFunction { .. }
+                | CallLocal::Float(_)
+                | CallLocal::FloatList { .. }
+                | CallLocal::FloatFunction { .. }
+                | CallLocal::String(_)
+                | CallLocal::StringList { .. }
+                | CallLocal::StringFunction { .. }
+                | CallLocal::BitArray(_)
+                | CallLocal::BitArrayList { .. }
+                | CallLocal::BitArrayFunction { .. }
+                | CallLocal::UtfCodepoint(_)
+                | CallLocal::UtfCodepointList { .. }
+                | CallLocal::UtfCodepointFunction { .. }
+                | CallLocal::Nil(_)
+                | CallLocal::NilList { .. }
+                | CallLocal::NilFunction { .. } => None,
             })?;
             return Some(CallPoint::Scalar(CallScalar::Index {
                 output,
@@ -2508,7 +2740,21 @@ fn inspect_instruction<'graph, Graph: ExecutionGraphProfile>(
                 index: *index,
             }));
         }
-        _ => {}
+        ProfiledInstructionKind::Int(_)
+        | ProfiledInstructionKind::Float(_)
+        | ProfiledInstructionKind::String(_)
+        | ProfiledInstructionKind::BitArray(_)
+        | ProfiledInstructionKind::UtfCodepoint(_)
+        | ProfiledInstructionKind::Parameter(_)
+        | ProfiledInstructionKind::Custom(_)
+        | ProfiledInstructionKind::External(_)
+        | ProfiledInstructionKind::ExternalList(_)
+        | ProfiledInstructionKind::ExternalFunction(_)
+        | ProfiledInstructionKind::Bool(_)
+        | ProfiledInstructionKind::Nil(_)
+        | ProfiledInstructionKind::Tuple(_)
+        | ProfiledInstructionKind::List(_)
+        | ProfiledInstructionKind::Function(_) => {}
     }
     let (target, args, site) = match instruction.kind() {
         ProfiledInstructionKind::Custom(CustomInstruction::Call {
@@ -2691,7 +2937,15 @@ fn inspect_instruction<'graph, Graph: ExecutionGraphProfile>(
                 args,
                 site,
             ),
-            kind => {
+            kind @ (FunctionInstructionKind::Constant(_)
+            | FunctionInstructionKind::Reference(_)
+            | FunctionInstructionKind::Closure { .. }
+            | FunctionInstructionKind::Constructor(_)
+            | FunctionInstructionKind::Call { .. }
+            | FunctionInstructionKind::FunctionCall { .. }
+            | FunctionInstructionKind::TupleIndex { .. }
+            | FunctionInstructionKind::CustomField { .. }
+            | FunctionInstructionKind::ListIndex { .. }) => {
                 let target = match kind {
                     FunctionInstructionKind::Reference(FunctionTarget::Int(id))
                     | FunctionInstructionKind::Closure {
@@ -2728,14 +2982,29 @@ fn inspect_instruction<'graph, Graph: ExecutionGraphProfile>(
                         target: FunctionTarget::Nil(id),
                         ..
                     } => CallableTarget::Nil(*id),
-                    _ => return None,
+                    FunctionInstructionKind::Constant(_)
+                    | FunctionInstructionKind::Reference(_)
+                    | FunctionInstructionKind::Closure { .. }
+                    | FunctionInstructionKind::Constructor(_)
+                    | FunctionInstructionKind::Call { .. }
+                    | FunctionInstructionKind::FunctionCall { .. }
+                    | FunctionInstructionKind::TupleIndex { .. }
+                    | FunctionInstructionKind::CustomField { .. }
+                    | FunctionInstructionKind::ListIndex { .. } => return None,
                 };
                 let captures = match function.kind() {
                     FunctionInstructionKind::Closure { captures, .. } => captures
                         .iter()
                         .map(Capture::inspect)
                         .collect::<Option<Vec<_>>>()?,
-                    _ => Vec::new(),
+                    FunctionInstructionKind::Constant(_)
+                    | FunctionInstructionKind::Reference(_)
+                    | FunctionInstructionKind::Constructor(_)
+                    | FunctionInstructionKind::Call { .. }
+                    | FunctionInstructionKind::FunctionCall { .. }
+                    | FunctionInstructionKind::TupleIndex { .. }
+                    | FunctionInstructionKind::CustomField { .. }
+                    | FunctionInstructionKind::ListIndex { .. } => Vec::new(),
                 };
                 let index = shape.creations.len();
                 shape.creations.push(CallCreation {
@@ -2750,7 +3019,20 @@ fn inspect_instruction<'graph, Graph: ExecutionGraphProfile>(
                 return Some(CallPoint::Create(index));
             }
         },
-        _ => return None,
+        ProfiledInstructionKind::Int(_)
+        | ProfiledInstructionKind::Float(_)
+        | ProfiledInstructionKind::String(_)
+        | ProfiledInstructionKind::BitArray(_)
+        | ProfiledInstructionKind::UtfCodepoint(_)
+        | ProfiledInstructionKind::Parameter(_)
+        | ProfiledInstructionKind::Custom(_)
+        | ProfiledInstructionKind::External(_)
+        | ProfiledInstructionKind::ExternalList(_)
+        | ProfiledInstructionKind::ExternalFunction(_)
+        | ProfiledInstructionKind::Bool(_)
+        | ProfiledInstructionKind::Nil(_)
+        | ProfiledInstructionKind::Tuple(_)
+        | ProfiledInstructionKind::List(_) => return None,
     };
     // All inputs belong to the already classified parameters or preceding
     // outputs of this block, just as for a tail call above.
@@ -3078,7 +3360,13 @@ pub fn main() {
                     custom,
                     ..
                 }) => Some((point, source.canonical(), *index, *custom)),
-                _ => None,
+                CallPoint::Scalar(_)
+                | CallPoint::Call(_)
+                | CallPoint::Create(_)
+                | CallPoint::Terminator(_)
+                | CallPoint::Return(_)
+                | CallPoint::Tail(_)
+                | CallPoint::Interpreted => None,
             })
             .collect::<Vec<_>>();
         assert_eq!(
@@ -3979,7 +4267,13 @@ pub fn main() {{ read_two([], []) }}
                     {
                         Some((point, list.canonical()))
                     }
-                    _ => None,
+                    CallPoint::Scalar(_)
+                    | CallPoint::Call(_)
+                    | CallPoint::Create(_)
+                    | CallPoint::Terminator(_)
+                    | CallPoint::Return(_)
+                    | CallPoint::Tail(_)
+                    | CallPoint::Interpreted => None,
                 })
                 .unwrap();
             let checkpoint = function.shape.checkpoints[point];
@@ -4694,7 +4988,12 @@ pub fn main() {
             .zip(&main.shape.checkpoints)
             .filter_map(|(point, checkpoint)| match point {
                 CallPoint::Interpreted => Some((checkpoint.block, checkpoint.instruction)),
-                _ => None,
+                CallPoint::Scalar(_)
+                | CallPoint::Call(_)
+                | CallPoint::Create(_)
+                | CallPoint::Terminator(_)
+                | CallPoint::Return(_)
+                | CallPoint::Tail(_) => None,
             })
             .collect::<Vec<_>>();
         let constructions = graph
@@ -5213,7 +5512,9 @@ pub fn main() { calculate(<<1, 2, 3>>) }
     fn source_panic(error: crate::ExecutionError) -> crate::Panic<crate::PanicValue> {
         match error {
             crate::ExecutionError::Panic(panic) => panic,
-            _ => panic!("fixture execution must preserve the source panic"),
+            crate::ExecutionError::Invariant(_) | crate::ExecutionError::Host(_) => {
+                panic!("fixture execution must preserve the source panic")
+            }
         }
     }
 
@@ -5252,14 +5553,25 @@ pub fn main() { calculate(<<1, 2, 3>>) }
     fn indexed_list(point: CallPoint<'_>) -> super::PrimitiveListLocal {
         match point {
             CallPoint::Scalar(CallScalar::Index { list, .. }) => list,
-            _ => panic!("fixture instruction must index a primitive list"),
+            CallPoint::Scalar(_)
+            | CallPoint::Call(_)
+            | CallPoint::Create(_)
+            | CallPoint::Terminator(_)
+            | CallPoint::Return(_)
+            | CallPoint::Tail(_)
+            | CallPoint::Interpreted => panic!("fixture instruction must index a primitive list"),
         }
     }
 
     fn int_callable_target(target: &CallableTarget) -> IntFunctionId {
         match target {
             CallableTarget::Int(target) => *target,
-            _ => panic!("fixture closure must return Int"),
+            CallableTarget::Bool(_)
+            | CallableTarget::Float(_)
+            | CallableTarget::String(_)
+            | CallableTarget::BitArray(_)
+            | CallableTarget::UtfCodepoint(_)
+            | CallableTarget::Nil(_) => panic!("fixture closure must return Int"),
         }
     }
 

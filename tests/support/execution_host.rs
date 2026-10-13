@@ -214,7 +214,9 @@ where
         })
         .map_err(|error| match error {
             RunError::Execution(error) => error,
-            other => panic!("the controlled test host failed: {other}"),
+            other @ (RunError::Cancelled | RunError::Driver(_)) => {
+                panic!("the controlled test host failed: {other}")
+            }
         })
 }
 

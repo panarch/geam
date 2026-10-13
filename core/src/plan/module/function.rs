@@ -495,7 +495,20 @@ impl ListReturn {
                         item_parameter: branch_parameter,
                         body,
                     } if branch_parameter == item_parameter => Some(body),
-                    _ => None,
+                    Self::Generic { .. }
+                    | Self::Int(_)
+                    | Self::Float(_)
+                    | Self::String(_)
+                    | Self::BitArray(_)
+                    | Self::UtfCodepoint(_)
+                    | Self::Custom { .. }
+                    | Self::External { .. }
+                    | Self::Bool(_)
+                    | Self::Nil(_)
+                    | Self::Tuple { .. }
+                    | Self::ParameterList { .. }
+                    | Self::List { .. }
+                    | Self::Function { .. } => None,
                 })?;
                 Some(Self::Generic {
                     item_parameter,
@@ -506,7 +519,19 @@ impl ListReturn {
                 subject,
                 into_list_return_clauses(clauses, |branch| match branch {
                     Self::Int(branch) => Some(branch),
-                    _ => None,
+                    Self::Generic { .. }
+                    | Self::Float(_)
+                    | Self::String(_)
+                    | Self::BitArray(_)
+                    | Self::UtfCodepoint(_)
+                    | Self::Custom { .. }
+                    | Self::External { .. }
+                    | Self::Bool(_)
+                    | Self::Nil(_)
+                    | Self::Tuple { .. }
+                    | Self::ParameterList { .. }
+                    | Self::List { .. }
+                    | Self::Function { .. } => None,
                 })?,
                 fallback,
             ))),
@@ -514,7 +539,19 @@ impl ListReturn {
                 subject,
                 into_list_return_clauses(clauses, |branch| match branch {
                     Self::Float(branch) => Some(branch),
-                    _ => None,
+                    Self::Generic { .. }
+                    | Self::Int(_)
+                    | Self::String(_)
+                    | Self::BitArray(_)
+                    | Self::UtfCodepoint(_)
+                    | Self::Custom { .. }
+                    | Self::External { .. }
+                    | Self::Bool(_)
+                    | Self::Nil(_)
+                    | Self::Tuple { .. }
+                    | Self::ParameterList { .. }
+                    | Self::List { .. }
+                    | Self::Function { .. } => None,
                 })?,
                 fallback,
             ))),
@@ -522,7 +559,19 @@ impl ListReturn {
                 subject,
                 into_list_return_clauses(clauses, |branch| match branch {
                     Self::String(branch) => Some(branch),
-                    _ => None,
+                    Self::Generic { .. }
+                    | Self::Int(_)
+                    | Self::Float(_)
+                    | Self::BitArray(_)
+                    | Self::UtfCodepoint(_)
+                    | Self::Custom { .. }
+                    | Self::External { .. }
+                    | Self::Bool(_)
+                    | Self::Nil(_)
+                    | Self::Tuple { .. }
+                    | Self::ParameterList { .. }
+                    | Self::List { .. }
+                    | Self::Function { .. } => None,
                 })?,
                 fallback,
             ))),
@@ -530,7 +579,19 @@ impl ListReturn {
                 subject,
                 into_list_return_clauses(clauses, |branch| match branch {
                     Self::BitArray(branch) => Some(branch),
-                    _ => None,
+                    Self::Generic { .. }
+                    | Self::Int(_)
+                    | Self::Float(_)
+                    | Self::String(_)
+                    | Self::UtfCodepoint(_)
+                    | Self::Custom { .. }
+                    | Self::External { .. }
+                    | Self::Bool(_)
+                    | Self::Nil(_)
+                    | Self::Tuple { .. }
+                    | Self::ParameterList { .. }
+                    | Self::List { .. }
+                    | Self::Function { .. } => None,
                 })?,
                 fallback,
             ))),
@@ -539,7 +600,19 @@ impl ListReturn {
                     subject,
                     into_list_return_clauses(clauses, |branch| match branch {
                         Self::UtfCodepoint(branch) => Some(branch),
-                        _ => None,
+                        Self::Generic { .. }
+                        | Self::Int(_)
+                        | Self::Float(_)
+                        | Self::String(_)
+                        | Self::BitArray(_)
+                        | Self::Custom { .. }
+                        | Self::External { .. }
+                        | Self::Bool(_)
+                        | Self::Nil(_)
+                        | Self::Tuple { .. }
+                        | Self::ParameterList { .. }
+                        | Self::List { .. }
+                        | Self::Function { .. } => None,
                     })?,
                     fallback,
                 )))
@@ -553,7 +626,20 @@ impl ListReturn {
                         item_type: branch_type,
                         body,
                     } if branch_type == item_type => Some(body),
-                    _ => None,
+                    Self::Generic { .. }
+                    | Self::Int(_)
+                    | Self::Float(_)
+                    | Self::String(_)
+                    | Self::BitArray(_)
+                    | Self::UtfCodepoint(_)
+                    | Self::Custom { .. }
+                    | Self::External { .. }
+                    | Self::Bool(_)
+                    | Self::Nil(_)
+                    | Self::Tuple { .. }
+                    | Self::ParameterList { .. }
+                    | Self::List { .. }
+                    | Self::Function { .. } => None,
                 })?;
                 Some(Self::Custom {
                     item_type,
@@ -569,7 +655,20 @@ impl ListReturn {
                         item_type: branch_type,
                         body,
                     } if branch_type == item_type => Some(body),
-                    _ => None,
+                    Self::Generic { .. }
+                    | Self::Int(_)
+                    | Self::Float(_)
+                    | Self::String(_)
+                    | Self::BitArray(_)
+                    | Self::UtfCodepoint(_)
+                    | Self::Custom { .. }
+                    | Self::External { .. }
+                    | Self::Bool(_)
+                    | Self::Nil(_)
+                    | Self::Tuple { .. }
+                    | Self::ParameterList { .. }
+                    | Self::List { .. }
+                    | Self::Function { .. } => None,
                 })?;
                 Some(Self::External {
                     item_type,
@@ -580,7 +679,19 @@ impl ListReturn {
                 subject,
                 into_list_return_clauses(clauses, |branch| match branch {
                     Self::Bool(branch) => Some(branch),
-                    _ => None,
+                    Self::Generic { .. }
+                    | Self::Int(_)
+                    | Self::Float(_)
+                    | Self::String(_)
+                    | Self::BitArray(_)
+                    | Self::UtfCodepoint(_)
+                    | Self::Custom { .. }
+                    | Self::External { .. }
+                    | Self::Nil(_)
+                    | Self::Tuple { .. }
+                    | Self::ParameterList { .. }
+                    | Self::List { .. }
+                    | Self::Function { .. } => None,
                 })?,
                 fallback,
             ))),
@@ -588,7 +699,19 @@ impl ListReturn {
                 subject,
                 into_list_return_clauses(clauses, |branch| match branch {
                     Self::Nil(branch) => Some(branch),
-                    _ => None,
+                    Self::Generic { .. }
+                    | Self::Int(_)
+                    | Self::Float(_)
+                    | Self::String(_)
+                    | Self::BitArray(_)
+                    | Self::UtfCodepoint(_)
+                    | Self::Custom { .. }
+                    | Self::External { .. }
+                    | Self::Bool(_)
+                    | Self::Tuple { .. }
+                    | Self::ParameterList { .. }
+                    | Self::List { .. }
+                    | Self::Function { .. } => None,
                 })?,
                 fallback,
             ))),
@@ -601,7 +724,20 @@ impl ListReturn {
                         item_type: branch_type,
                         body,
                     } if branch_type == item_type => Some(body),
-                    _ => None,
+                    Self::Generic { .. }
+                    | Self::Int(_)
+                    | Self::Float(_)
+                    | Self::String(_)
+                    | Self::BitArray(_)
+                    | Self::UtfCodepoint(_)
+                    | Self::Custom { .. }
+                    | Self::External { .. }
+                    | Self::Bool(_)
+                    | Self::Nil(_)
+                    | Self::Tuple { .. }
+                    | Self::ParameterList { .. }
+                    | Self::List { .. }
+                    | Self::Function { .. } => None,
                 })?;
                 Some(Self::Tuple {
                     item_type,
@@ -617,7 +753,20 @@ impl ListReturn {
                         item_parameter: branch_parameter,
                         body,
                     } if branch_parameter == item_parameter => Some(body),
-                    _ => None,
+                    Self::Generic { .. }
+                    | Self::Int(_)
+                    | Self::Float(_)
+                    | Self::String(_)
+                    | Self::BitArray(_)
+                    | Self::UtfCodepoint(_)
+                    | Self::Custom { .. }
+                    | Self::External { .. }
+                    | Self::Bool(_)
+                    | Self::Nil(_)
+                    | Self::Tuple { .. }
+                    | Self::ParameterList { .. }
+                    | Self::List { .. }
+                    | Self::Function { .. } => None,
                 })?;
                 Some(Self::ParameterList {
                     item_parameter,
@@ -633,7 +782,20 @@ impl ListReturn {
                         item_shape: branch_shape,
                         body,
                     } if branch_shape == item_shape => Some(body),
-                    _ => None,
+                    Self::Generic { .. }
+                    | Self::Int(_)
+                    | Self::Float(_)
+                    | Self::String(_)
+                    | Self::BitArray(_)
+                    | Self::UtfCodepoint(_)
+                    | Self::Custom { .. }
+                    | Self::External { .. }
+                    | Self::Bool(_)
+                    | Self::Nil(_)
+                    | Self::Tuple { .. }
+                    | Self::ParameterList { .. }
+                    | Self::List { .. }
+                    | Self::Function { .. } => None,
                 })?;
                 Some(Self::List {
                     item_shape,
@@ -649,7 +811,20 @@ impl ListReturn {
                         item_type: branch_type,
                         body,
                     } if branch_type == item_type => Some(body),
-                    _ => None,
+                    Self::Generic { .. }
+                    | Self::Int(_)
+                    | Self::Float(_)
+                    | Self::String(_)
+                    | Self::BitArray(_)
+                    | Self::UtfCodepoint(_)
+                    | Self::Custom { .. }
+                    | Self::External { .. }
+                    | Self::Bool(_)
+                    | Self::Nil(_)
+                    | Self::Tuple { .. }
+                    | Self::ParameterList { .. }
+                    | Self::List { .. }
+                    | Self::Function { .. } => None,
                 })?;
                 Some(Self::Function {
                     item_type,
@@ -674,7 +849,20 @@ impl ListReturn {
                         item_parameter: branch_parameter,
                         body,
                     } if branch_parameter == item_parameter => Some(body),
-                    _ => None,
+                    Self::Generic { .. }
+                    | Self::Int(_)
+                    | Self::Float(_)
+                    | Self::String(_)
+                    | Self::BitArray(_)
+                    | Self::UtfCodepoint(_)
+                    | Self::Custom { .. }
+                    | Self::External { .. }
+                    | Self::Bool(_)
+                    | Self::Nil(_)
+                    | Self::Tuple { .. }
+                    | Self::ParameterList { .. }
+                    | Self::List { .. }
+                    | Self::Function { .. } => None,
                 })?;
                 Some(Self::Generic {
                     item_parameter,
@@ -685,7 +873,19 @@ impl ListReturn {
                 subject,
                 into_list_return_clauses(clauses, |branch| match branch {
                     Self::Int(branch) => Some(branch),
-                    _ => None,
+                    Self::Generic { .. }
+                    | Self::Float(_)
+                    | Self::String(_)
+                    | Self::BitArray(_)
+                    | Self::UtfCodepoint(_)
+                    | Self::Custom { .. }
+                    | Self::External { .. }
+                    | Self::Bool(_)
+                    | Self::Nil(_)
+                    | Self::Tuple { .. }
+                    | Self::ParameterList { .. }
+                    | Self::List { .. }
+                    | Self::Function { .. } => None,
                 })?,
                 fallback,
             ))),
@@ -693,7 +893,19 @@ impl ListReturn {
                 subject,
                 into_list_return_clauses(clauses, |branch| match branch {
                     Self::Float(branch) => Some(branch),
-                    _ => None,
+                    Self::Generic { .. }
+                    | Self::Int(_)
+                    | Self::String(_)
+                    | Self::BitArray(_)
+                    | Self::UtfCodepoint(_)
+                    | Self::Custom { .. }
+                    | Self::External { .. }
+                    | Self::Bool(_)
+                    | Self::Nil(_)
+                    | Self::Tuple { .. }
+                    | Self::ParameterList { .. }
+                    | Self::List { .. }
+                    | Self::Function { .. } => None,
                 })?,
                 fallback,
             ))),
@@ -701,7 +913,19 @@ impl ListReturn {
                 subject,
                 into_list_return_clauses(clauses, |branch| match branch {
                     Self::String(branch) => Some(branch),
-                    _ => None,
+                    Self::Generic { .. }
+                    | Self::Int(_)
+                    | Self::Float(_)
+                    | Self::BitArray(_)
+                    | Self::UtfCodepoint(_)
+                    | Self::Custom { .. }
+                    | Self::External { .. }
+                    | Self::Bool(_)
+                    | Self::Nil(_)
+                    | Self::Tuple { .. }
+                    | Self::ParameterList { .. }
+                    | Self::List { .. }
+                    | Self::Function { .. } => None,
                 })?,
                 fallback,
             ))),
@@ -709,7 +933,19 @@ impl ListReturn {
                 subject,
                 into_list_return_clauses(clauses, |branch| match branch {
                     Self::BitArray(branch) => Some(branch),
-                    _ => None,
+                    Self::Generic { .. }
+                    | Self::Int(_)
+                    | Self::Float(_)
+                    | Self::String(_)
+                    | Self::UtfCodepoint(_)
+                    | Self::Custom { .. }
+                    | Self::External { .. }
+                    | Self::Bool(_)
+                    | Self::Nil(_)
+                    | Self::Tuple { .. }
+                    | Self::ParameterList { .. }
+                    | Self::List { .. }
+                    | Self::Function { .. } => None,
                 })?,
                 fallback,
             ))),
@@ -718,7 +954,19 @@ impl ListReturn {
                     subject,
                     into_list_return_clauses(clauses, |branch| match branch {
                         Self::UtfCodepoint(branch) => Some(branch),
-                        _ => None,
+                        Self::Generic { .. }
+                        | Self::Int(_)
+                        | Self::Float(_)
+                        | Self::String(_)
+                        | Self::BitArray(_)
+                        | Self::Custom { .. }
+                        | Self::External { .. }
+                        | Self::Bool(_)
+                        | Self::Nil(_)
+                        | Self::Tuple { .. }
+                        | Self::ParameterList { .. }
+                        | Self::List { .. }
+                        | Self::Function { .. } => None,
                     })?,
                     fallback,
                 )))
@@ -732,7 +980,20 @@ impl ListReturn {
                         item_type: branch_type,
                         body,
                     } if branch_type == item_type => Some(body),
-                    _ => None,
+                    Self::Generic { .. }
+                    | Self::Int(_)
+                    | Self::Float(_)
+                    | Self::String(_)
+                    | Self::BitArray(_)
+                    | Self::UtfCodepoint(_)
+                    | Self::Custom { .. }
+                    | Self::External { .. }
+                    | Self::Bool(_)
+                    | Self::Nil(_)
+                    | Self::Tuple { .. }
+                    | Self::ParameterList { .. }
+                    | Self::List { .. }
+                    | Self::Function { .. } => None,
                 })?;
                 Some(Self::Custom {
                     item_type,
@@ -748,7 +1009,20 @@ impl ListReturn {
                         item_type: branch_type,
                         body,
                     } if branch_type == item_type => Some(body),
-                    _ => None,
+                    Self::Generic { .. }
+                    | Self::Int(_)
+                    | Self::Float(_)
+                    | Self::String(_)
+                    | Self::BitArray(_)
+                    | Self::UtfCodepoint(_)
+                    | Self::Custom { .. }
+                    | Self::External { .. }
+                    | Self::Bool(_)
+                    | Self::Nil(_)
+                    | Self::Tuple { .. }
+                    | Self::ParameterList { .. }
+                    | Self::List { .. }
+                    | Self::Function { .. } => None,
                 })?;
                 Some(Self::External {
                     item_type,
@@ -759,7 +1033,19 @@ impl ListReturn {
                 subject,
                 into_list_return_clauses(clauses, |branch| match branch {
                     Self::Bool(branch) => Some(branch),
-                    _ => None,
+                    Self::Generic { .. }
+                    | Self::Int(_)
+                    | Self::Float(_)
+                    | Self::String(_)
+                    | Self::BitArray(_)
+                    | Self::UtfCodepoint(_)
+                    | Self::Custom { .. }
+                    | Self::External { .. }
+                    | Self::Nil(_)
+                    | Self::Tuple { .. }
+                    | Self::ParameterList { .. }
+                    | Self::List { .. }
+                    | Self::Function { .. } => None,
                 })?,
                 fallback,
             ))),
@@ -767,7 +1053,19 @@ impl ListReturn {
                 subject,
                 into_list_return_clauses(clauses, |branch| match branch {
                     Self::Nil(branch) => Some(branch),
-                    _ => None,
+                    Self::Generic { .. }
+                    | Self::Int(_)
+                    | Self::Float(_)
+                    | Self::String(_)
+                    | Self::BitArray(_)
+                    | Self::UtfCodepoint(_)
+                    | Self::Custom { .. }
+                    | Self::External { .. }
+                    | Self::Bool(_)
+                    | Self::Tuple { .. }
+                    | Self::ParameterList { .. }
+                    | Self::List { .. }
+                    | Self::Function { .. } => None,
                 })?,
                 fallback,
             ))),
@@ -780,7 +1078,20 @@ impl ListReturn {
                         item_type: branch_type,
                         body,
                     } if branch_type == item_type => Some(body),
-                    _ => None,
+                    Self::Generic { .. }
+                    | Self::Int(_)
+                    | Self::Float(_)
+                    | Self::String(_)
+                    | Self::BitArray(_)
+                    | Self::UtfCodepoint(_)
+                    | Self::Custom { .. }
+                    | Self::External { .. }
+                    | Self::Bool(_)
+                    | Self::Nil(_)
+                    | Self::Tuple { .. }
+                    | Self::ParameterList { .. }
+                    | Self::List { .. }
+                    | Self::Function { .. } => None,
                 })?;
                 Some(Self::Tuple {
                     item_type,
@@ -796,7 +1107,20 @@ impl ListReturn {
                         item_parameter: branch_parameter,
                         body,
                     } if branch_parameter == item_parameter => Some(body),
-                    _ => None,
+                    Self::Generic { .. }
+                    | Self::Int(_)
+                    | Self::Float(_)
+                    | Self::String(_)
+                    | Self::BitArray(_)
+                    | Self::UtfCodepoint(_)
+                    | Self::Custom { .. }
+                    | Self::External { .. }
+                    | Self::Bool(_)
+                    | Self::Nil(_)
+                    | Self::Tuple { .. }
+                    | Self::ParameterList { .. }
+                    | Self::List { .. }
+                    | Self::Function { .. } => None,
                 })?;
                 Some(Self::ParameterList {
                     item_parameter,
@@ -812,7 +1136,20 @@ impl ListReturn {
                         item_shape: branch_shape,
                         body,
                     } if branch_shape == item_shape => Some(body),
-                    _ => None,
+                    Self::Generic { .. }
+                    | Self::Int(_)
+                    | Self::Float(_)
+                    | Self::String(_)
+                    | Self::BitArray(_)
+                    | Self::UtfCodepoint(_)
+                    | Self::Custom { .. }
+                    | Self::External { .. }
+                    | Self::Bool(_)
+                    | Self::Nil(_)
+                    | Self::Tuple { .. }
+                    | Self::ParameterList { .. }
+                    | Self::List { .. }
+                    | Self::Function { .. } => None,
                 })?;
                 Some(Self::List {
                     item_shape,
@@ -828,7 +1165,20 @@ impl ListReturn {
                         item_type: branch_type,
                         body,
                     } if branch_type == item_type => Some(body),
-                    _ => None,
+                    Self::Generic { .. }
+                    | Self::Int(_)
+                    | Self::Float(_)
+                    | Self::String(_)
+                    | Self::BitArray(_)
+                    | Self::UtfCodepoint(_)
+                    | Self::Custom { .. }
+                    | Self::External { .. }
+                    | Self::Bool(_)
+                    | Self::Nil(_)
+                    | Self::Tuple { .. }
+                    | Self::ParameterList { .. }
+                    | Self::List { .. }
+                    | Self::Function { .. } => None,
                 })?;
                 Some(Self::Function {
                     item_type,
@@ -853,7 +1203,20 @@ impl ListReturn {
                         item_parameter: branch_parameter,
                         body,
                     } if branch_parameter == item_parameter => Some(body),
-                    _ => None,
+                    Self::Generic { .. }
+                    | Self::Int(_)
+                    | Self::Float(_)
+                    | Self::String(_)
+                    | Self::BitArray(_)
+                    | Self::UtfCodepoint(_)
+                    | Self::Custom { .. }
+                    | Self::External { .. }
+                    | Self::Bool(_)
+                    | Self::Nil(_)
+                    | Self::Tuple { .. }
+                    | Self::ParameterList { .. }
+                    | Self::List { .. }
+                    | Self::Function { .. } => None,
                 })?;
                 Some(Self::Generic {
                     item_parameter,
@@ -864,7 +1227,19 @@ impl ListReturn {
                 subject,
                 into_list_return_clauses(clauses, |branch| match branch {
                     Self::Int(branch) => Some(branch),
-                    _ => None,
+                    Self::Generic { .. }
+                    | Self::Float(_)
+                    | Self::String(_)
+                    | Self::BitArray(_)
+                    | Self::UtfCodepoint(_)
+                    | Self::Custom { .. }
+                    | Self::External { .. }
+                    | Self::Bool(_)
+                    | Self::Nil(_)
+                    | Self::Tuple { .. }
+                    | Self::ParameterList { .. }
+                    | Self::List { .. }
+                    | Self::Function { .. } => None,
                 })?,
                 fallback,
             ))),
@@ -872,7 +1247,19 @@ impl ListReturn {
                 subject,
                 into_list_return_clauses(clauses, |branch| match branch {
                     Self::Float(branch) => Some(branch),
-                    _ => None,
+                    Self::Generic { .. }
+                    | Self::Int(_)
+                    | Self::String(_)
+                    | Self::BitArray(_)
+                    | Self::UtfCodepoint(_)
+                    | Self::Custom { .. }
+                    | Self::External { .. }
+                    | Self::Bool(_)
+                    | Self::Nil(_)
+                    | Self::Tuple { .. }
+                    | Self::ParameterList { .. }
+                    | Self::List { .. }
+                    | Self::Function { .. } => None,
                 })?,
                 fallback,
             ))),
@@ -880,7 +1267,19 @@ impl ListReturn {
                 subject,
                 into_list_return_clauses(clauses, |branch| match branch {
                     Self::String(branch) => Some(branch),
-                    _ => None,
+                    Self::Generic { .. }
+                    | Self::Int(_)
+                    | Self::Float(_)
+                    | Self::BitArray(_)
+                    | Self::UtfCodepoint(_)
+                    | Self::Custom { .. }
+                    | Self::External { .. }
+                    | Self::Bool(_)
+                    | Self::Nil(_)
+                    | Self::Tuple { .. }
+                    | Self::ParameterList { .. }
+                    | Self::List { .. }
+                    | Self::Function { .. } => None,
                 })?,
                 fallback,
             ))),
@@ -888,7 +1287,19 @@ impl ListReturn {
                 subject,
                 into_list_return_clauses(clauses, |branch| match branch {
                     Self::BitArray(branch) => Some(branch),
-                    _ => None,
+                    Self::Generic { .. }
+                    | Self::Int(_)
+                    | Self::Float(_)
+                    | Self::String(_)
+                    | Self::UtfCodepoint(_)
+                    | Self::Custom { .. }
+                    | Self::External { .. }
+                    | Self::Bool(_)
+                    | Self::Nil(_)
+                    | Self::Tuple { .. }
+                    | Self::ParameterList { .. }
+                    | Self::List { .. }
+                    | Self::Function { .. } => None,
                 })?,
                 fallback,
             ))),
@@ -897,7 +1308,19 @@ impl ListReturn {
                     subject,
                     into_list_return_clauses(clauses, |branch| match branch {
                         Self::UtfCodepoint(branch) => Some(branch),
-                        _ => None,
+                        Self::Generic { .. }
+                        | Self::Int(_)
+                        | Self::Float(_)
+                        | Self::String(_)
+                        | Self::BitArray(_)
+                        | Self::Custom { .. }
+                        | Self::External { .. }
+                        | Self::Bool(_)
+                        | Self::Nil(_)
+                        | Self::Tuple { .. }
+                        | Self::ParameterList { .. }
+                        | Self::List { .. }
+                        | Self::Function { .. } => None,
                     })?,
                     fallback,
                 )))
@@ -911,7 +1334,20 @@ impl ListReturn {
                         item_type: branch_type,
                         body,
                     } if branch_type == item_type => Some(body),
-                    _ => None,
+                    Self::Generic { .. }
+                    | Self::Int(_)
+                    | Self::Float(_)
+                    | Self::String(_)
+                    | Self::BitArray(_)
+                    | Self::UtfCodepoint(_)
+                    | Self::Custom { .. }
+                    | Self::External { .. }
+                    | Self::Bool(_)
+                    | Self::Nil(_)
+                    | Self::Tuple { .. }
+                    | Self::ParameterList { .. }
+                    | Self::List { .. }
+                    | Self::Function { .. } => None,
                 })?;
                 Some(Self::Custom {
                     item_type,
@@ -927,7 +1363,20 @@ impl ListReturn {
                         item_type: branch_type,
                         body,
                     } if branch_type == item_type => Some(body),
-                    _ => None,
+                    Self::Generic { .. }
+                    | Self::Int(_)
+                    | Self::Float(_)
+                    | Self::String(_)
+                    | Self::BitArray(_)
+                    | Self::UtfCodepoint(_)
+                    | Self::Custom { .. }
+                    | Self::External { .. }
+                    | Self::Bool(_)
+                    | Self::Nil(_)
+                    | Self::Tuple { .. }
+                    | Self::ParameterList { .. }
+                    | Self::List { .. }
+                    | Self::Function { .. } => None,
                 })?;
                 Some(Self::External {
                     item_type,
@@ -938,7 +1387,19 @@ impl ListReturn {
                 subject,
                 into_list_return_clauses(clauses, |branch| match branch {
                     Self::Bool(branch) => Some(branch),
-                    _ => None,
+                    Self::Generic { .. }
+                    | Self::Int(_)
+                    | Self::Float(_)
+                    | Self::String(_)
+                    | Self::BitArray(_)
+                    | Self::UtfCodepoint(_)
+                    | Self::Custom { .. }
+                    | Self::External { .. }
+                    | Self::Nil(_)
+                    | Self::Tuple { .. }
+                    | Self::ParameterList { .. }
+                    | Self::List { .. }
+                    | Self::Function { .. } => None,
                 })?,
                 fallback,
             ))),
@@ -946,7 +1407,19 @@ impl ListReturn {
                 subject,
                 into_list_return_clauses(clauses, |branch| match branch {
                     Self::Nil(branch) => Some(branch),
-                    _ => None,
+                    Self::Generic { .. }
+                    | Self::Int(_)
+                    | Self::Float(_)
+                    | Self::String(_)
+                    | Self::BitArray(_)
+                    | Self::UtfCodepoint(_)
+                    | Self::Custom { .. }
+                    | Self::External { .. }
+                    | Self::Bool(_)
+                    | Self::Tuple { .. }
+                    | Self::ParameterList { .. }
+                    | Self::List { .. }
+                    | Self::Function { .. } => None,
                 })?,
                 fallback,
             ))),
@@ -959,7 +1432,20 @@ impl ListReturn {
                         item_type: branch_type,
                         body,
                     } if branch_type == item_type => Some(body),
-                    _ => None,
+                    Self::Generic { .. }
+                    | Self::Int(_)
+                    | Self::Float(_)
+                    | Self::String(_)
+                    | Self::BitArray(_)
+                    | Self::UtfCodepoint(_)
+                    | Self::Custom { .. }
+                    | Self::External { .. }
+                    | Self::Bool(_)
+                    | Self::Nil(_)
+                    | Self::Tuple { .. }
+                    | Self::ParameterList { .. }
+                    | Self::List { .. }
+                    | Self::Function { .. } => None,
                 })?;
                 Some(Self::Tuple {
                     item_type,
@@ -975,7 +1461,20 @@ impl ListReturn {
                         item_parameter: branch_parameter,
                         body,
                     } if branch_parameter == item_parameter => Some(body),
-                    _ => None,
+                    Self::Generic { .. }
+                    | Self::Int(_)
+                    | Self::Float(_)
+                    | Self::String(_)
+                    | Self::BitArray(_)
+                    | Self::UtfCodepoint(_)
+                    | Self::Custom { .. }
+                    | Self::External { .. }
+                    | Self::Bool(_)
+                    | Self::Nil(_)
+                    | Self::Tuple { .. }
+                    | Self::ParameterList { .. }
+                    | Self::List { .. }
+                    | Self::Function { .. } => None,
                 })?;
                 Some(Self::ParameterList {
                     item_parameter,
@@ -991,7 +1490,20 @@ impl ListReturn {
                         item_shape: branch_shape,
                         body,
                     } if branch_shape == item_shape => Some(body),
-                    _ => None,
+                    Self::Generic { .. }
+                    | Self::Int(_)
+                    | Self::Float(_)
+                    | Self::String(_)
+                    | Self::BitArray(_)
+                    | Self::UtfCodepoint(_)
+                    | Self::Custom { .. }
+                    | Self::External { .. }
+                    | Self::Bool(_)
+                    | Self::Nil(_)
+                    | Self::Tuple { .. }
+                    | Self::ParameterList { .. }
+                    | Self::List { .. }
+                    | Self::Function { .. } => None,
                 })?;
                 Some(Self::List {
                     item_shape,
@@ -1007,7 +1519,20 @@ impl ListReturn {
                         item_type: branch_type,
                         body,
                     } if branch_type == item_type => Some(body),
-                    _ => None,
+                    Self::Generic { .. }
+                    | Self::Int(_)
+                    | Self::Float(_)
+                    | Self::String(_)
+                    | Self::BitArray(_)
+                    | Self::UtfCodepoint(_)
+                    | Self::Custom { .. }
+                    | Self::External { .. }
+                    | Self::Bool(_)
+                    | Self::Nil(_)
+                    | Self::Tuple { .. }
+                    | Self::ParameterList { .. }
+                    | Self::List { .. }
+                    | Self::Function { .. } => None,
                 })?;
                 Some(Self::Function {
                     item_type,
@@ -1802,7 +2327,14 @@ fn custom_return_body(
             custom_return_body(*fallback),
         ),
         K::Block { steps, return_ } => ReturnBody::block(steps, custom_return_body(*return_)),
-        kind => ReturnBody::expr(kind),
+        kind @ (K::Constructor(_)
+        | K::Constant(_)
+        | K::LocalGet { .. }
+        | K::FunctionCall(_)
+        | K::TupleIndex { .. }
+        | K::CustomField(_)
+        | K::ListIndex { .. }
+        | K::Panic(_)) => ReturnBody::expr(kind),
     }
 }
 
@@ -1894,7 +2426,12 @@ fn external_return_body(
         K::Block { steps, return_ } => {
             ReturnBody::block(steps, external_return_expression(*return_))
         }
-        kind => ReturnBody::expr(kind),
+        kind @ (K::LocalGet { .. }
+        | K::FunctionCall(_)
+        | K::TupleIndex { .. }
+        | K::CustomField(_)
+        | K::ListIndex { .. }
+        | K::Panic(_)) => ReturnBody::expr(kind),
     }
 }
 
@@ -1988,7 +2525,16 @@ fn custom_function_return_body(
         K::Block { steps, return_ } => {
             ReturnBody::block(steps, custom_function_return_body(*return_))
         }
-        kind => ReturnBody::expr(kind),
+        kind @ (K::Constant(_)
+        | K::Constructor(_)
+        | K::Reference(_)
+        | K::Closure { .. }
+        | K::LocalGet { .. }
+        | K::FunctionCall { .. }
+        | K::TupleIndex { .. }
+        | K::CustomField(_)
+        | K::ListIndex { .. }
+        | K::Panic(_)) => ReturnBody::expr(kind),
     }
 }
 
@@ -2077,7 +2623,15 @@ fn external_function_return_body(
         K::Block { steps, return_ } => {
             ReturnBody::block(steps, external_function_return_body(*return_))
         }
-        kind => ReturnBody::expr(kind),
+        kind @ (K::Constant(_)
+        | K::Reference(_)
+        | K::Closure { .. }
+        | K::LocalGet { .. }
+        | K::FunctionCall { .. }
+        | K::TupleIndex { .. }
+        | K::CustomField(_)
+        | K::ListIndex { .. }
+        | K::Panic(_)) => ReturnBody::expr(kind),
     }
 }
 
@@ -2202,7 +2756,15 @@ fn function_function_return_body(
         K::Block { steps, return_ } => {
             ReturnBody::block(steps, function_function_return_body(*return_))
         }
-        kind => ReturnBody::expr(kind),
+        kind @ (K::Constant(_)
+        | K::Reference(_)
+        | K::Closure { .. }
+        | K::LocalGet { .. }
+        | K::FunctionCall { .. }
+        | K::TupleIndex { .. }
+        | K::CustomField(_)
+        | K::ListIndex { .. }
+        | K::Panic(_)) => ReturnBody::expr(kind),
     }
 }
 
@@ -2553,7 +3115,27 @@ impl ParamLocal {
             Self::GenericFunction(local) => {
                 crate::plan::ValueShape::Function(Box::new(local.type_().shape()))
             }
-            _ => crate::plan::ValueShape::from_value_type(self.value_type()),
+            Self::Int(_)
+            | Self::Float(_)
+            | Self::String(_)
+            | Self::BitArray(_)
+            | Self::UtfCodepoint(_)
+            | Self::Bool(_)
+            | Self::Nil(_)
+            | Self::Tuple { .. }
+            | Self::List(_)
+            | Self::IntFunction { .. }
+            | Self::FloatFunction { .. }
+            | Self::StringFunction { .. }
+            | Self::BitArrayFunction { .. }
+            | Self::UtfCodepointFunction { .. }
+            | Self::BoolFunction { .. }
+            | Self::NilFunction { .. }
+            | Self::TupleFunction { .. }
+            | Self::ListFunction(_)
+            | Self::FunctionFunction(_) => {
+                crate::plan::ValueShape::from_value_type(self.value_type())
+            }
         }
     }
 }

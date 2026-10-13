@@ -328,7 +328,7 @@ mod tests {
                     )
                     .unwrap(),
                 )),
-                _ => None,
+                ProfiledRuntimeFunctionId::Core(_) | ProfiledRuntimeFunctionId::External(_) => None,
             };
             let actual = value.map(|value| {
                 let retained = EvaluatedValueRef::from(&value).retain();

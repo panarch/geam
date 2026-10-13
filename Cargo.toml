@@ -20,6 +20,9 @@ include = [
     "/README.md",
 ]
 
+[lints]
+workspace = true
+
 [workspace]
 members = [
     ".",
@@ -104,6 +107,9 @@ trybuild = "1"
 syn = { version = "2", features = ["full", "visit-mut"] }
 unicode-segmentation = "1.13"
 vec1 = "1"
+
+[workspace.lints.clippy]
+wildcard_enum_match_arm = "deny"
 
 [features]
 default = ["full"]

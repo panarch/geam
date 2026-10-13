@@ -383,7 +383,18 @@ pub fn main() {
             .iter()
             .map(|value| match value {
                 Value::External(value) => value.inspection().as_str(),
-                _ => panic!("list item should be external"),
+                Value::Parameter(_)
+                | Value::Int(_)
+                | Value::Float(_)
+                | Value::String(_)
+                | Value::BitArray(_)
+                | Value::UtfCodepoint(_)
+                | Value::Custom(_)
+                | Value::Bool(_)
+                | Value::Nil
+                | Value::Tuple(_)
+                | Value::List(_)
+                | Value::Function(_) => panic!("list item should be external"),
             })
             .collect::<Vec<_>>(),
         ["Counter(10)", "Counter(20)"],
@@ -409,7 +420,18 @@ pub fn main() {
             .iter()
             .map(|value| match value {
                 Value::External(value) => value.inspection().as_str(),
-                _ => panic!("remaining list item should be external"),
+                Value::Parameter(_)
+                | Value::Int(_)
+                | Value::Float(_)
+                | Value::String(_)
+                | Value::BitArray(_)
+                | Value::UtfCodepoint(_)
+                | Value::Custom(_)
+                | Value::Bool(_)
+                | Value::Nil
+                | Value::Tuple(_)
+                | Value::List(_)
+                | Value::Function(_) => panic!("remaining list item should be external"),
             })
             .collect::<Vec<_>>(),
         ["Counter(10)", "Counter(20)"],
@@ -442,7 +464,18 @@ pub fn main() {
             .iter()
             .map(|value| match value {
                 Value::External(value) => value.inspection().as_str(),
-                _ => panic!("duplicated list item should be external"),
+                Value::Parameter(_)
+                | Value::Int(_)
+                | Value::Float(_)
+                | Value::String(_)
+                | Value::BitArray(_)
+                | Value::UtfCodepoint(_)
+                | Value::Custom(_)
+                | Value::Bool(_)
+                | Value::Nil
+                | Value::Tuple(_)
+                | Value::List(_)
+                | Value::Function(_) => panic!("duplicated list item should be external"),
             })
             .collect::<Vec<_>>(),
         ["Counter(10)", "Counter(10)"],

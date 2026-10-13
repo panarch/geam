@@ -116,7 +116,19 @@ where
             expected,
             |value| match value {
                 EvaluatedValue::Function(value) => Some(value.clone()),
-                _ => None,
+                EvaluatedValue::Parameter(_)
+                | EvaluatedValue::Int(_)
+                | EvaluatedValue::Float(_)
+                | EvaluatedValue::String(_)
+                | EvaluatedValue::BitArray(_)
+                | EvaluatedValue::UtfCodepoint(_)
+                | EvaluatedValue::Custom(_)
+                | EvaluatedValue::External(_)
+                | EvaluatedValue::Bool(_)
+                | EvaluatedValue::Nil
+                | EvaluatedValue::Tuple(_)
+                | EvaluatedValue::ParameterList(_)
+                | EvaluatedValue::List(_) => None,
             },
         )
         .map_or_else(V::Error, V::Ready),
@@ -128,7 +140,19 @@ where
             expected,
             |value| match value {
                 EvaluatedValue::Function(value) => Some(value.clone()),
-                _ => None,
+                EvaluatedValue::Parameter(_)
+                | EvaluatedValue::Int(_)
+                | EvaluatedValue::Float(_)
+                | EvaluatedValue::String(_)
+                | EvaluatedValue::BitArray(_)
+                | EvaluatedValue::UtfCodepoint(_)
+                | EvaluatedValue::Custom(_)
+                | EvaluatedValue::External(_)
+                | EvaluatedValue::Bool(_)
+                | EvaluatedValue::Nil
+                | EvaluatedValue::Tuple(_)
+                | EvaluatedValue::ParameterList(_)
+                | EvaluatedValue::List(_) => None,
             },
         )
         .map_or_else(V::Error, V::Ready),
@@ -147,7 +171,7 @@ where
             validate_return_family(value, instruction.family(), instruction.type_().clone())
                 .map_or_else(V::Error, V::Ready)
         }
-        value => value,
+        value @ (V::Error(_) | V::Constant(_) | V::Call { .. }) => value,
     }
 }
 
@@ -559,10 +583,10 @@ mod tests {
     fn reference_function(
         value: CoreFunctionInstructionOutcome<'_, ExecutionError>,
     ) -> EvaluatedFunctionValue {
-        match value {
-            InstructionOutcome::Ready(value) => value,
-            _ => panic!("the source reference is immediate"),
-        }
+        let InstructionOutcome::Ready(value) = value else {
+            panic!("the source reference is immediate");
+        };
+        value
     }
 
     #[test]
@@ -581,13 +605,13 @@ pub fn main() { #(42, fn(value: Int) { value }, make()) }
         let function = graph
             .blocks()
             .flat_map(|block| block.instructions())
-            .find_map(|instruction| match instruction.value().unwrap().kind() {
-                InstructionKind::Function(function)
-                    if matches!(function.kind(), FunctionInstructionKind::Call { .. }) =>
-                {
-                    Some(function)
-                }
-                _ => None,
+            .find_map(|instruction| {
+                let InstructionKind::Function(function) = instruction.value().unwrap().kind()
+                else {
+                    return None;
+                };
+                (matches!(function.kind(), FunctionInstructionKind::Call { .. }))
+                    .then_some(function)
             })
             .expect("source calls its function constructor");
         let expected = ExecutionValueType::Function(function.type_().clone());
@@ -606,9 +630,10 @@ pub fn main() { #(42, fn(value: Int) { value }, make()) }
     fn instruction_error(
         value: CoreFunctionInstructionOutcome<'_, ExecutionError>,
     ) -> Option<ExecutionError> {
-        match value {
-            InstructionOutcome::Error(error) => Some(error),
-            _ => None,
+        if let InstructionOutcome::Error(error) = value {
+            Some(error)
+        } else {
+            None
         }
     }
 
@@ -639,24 +664,29 @@ pub fn main() {
         let function_list_type = graph
             .blocks()
             .flat_map(|block| block.instructions())
-            .find_map(|instruction| match instruction.value().unwrap().kind() {
-                InstructionKind::List(ListInstruction::Function(type_id, _)) => Some(*type_id),
-                _ => None,
+            .find_map(|instruction| {
+                if let InstructionKind::List(ListInstruction::Function(type_id, _)) =
+                    instruction.value().unwrap().kind()
+                {
+                    Some(*type_id)
+                } else {
+                    None
+                }
             })
             .expect("tuple main should allocate its function list");
         let float_reference = graph
             .blocks()
             .flat_map(|block| block.instructions())
-            .find_map(|instruction| match instruction.value().unwrap().kind() {
-                InstructionKind::Function(function)
-                    if matches!(
-                        function.kind(),
-                        FunctionInstructionKind::Reference(FunctionTarget::Float(_))
-                    ) =>
-                {
-                    Some(function)
-                }
-                _ => None,
+            .find_map(|instruction| {
+                let InstructionKind::Function(function) = instruction.value().unwrap().kind()
+                else {
+                    return None;
+                };
+                (matches!(
+                    function.kind(),
+                    FunctionInstructionKind::Reference(FunctionTarget::Float(_))
+                ))
+                .then_some(function)
             })
             .expect("tuple main should contain its Float function reference");
         let mut echo = Vec::new();
@@ -800,7 +830,12 @@ pub fn main() {
                         );
                         list_projection_checked = true;
                     }
-                    _ => {}
+                    FunctionInstructionKind::Constant(_)
+                    | FunctionInstructionKind::Reference(_)
+                    | FunctionInstructionKind::Closure { .. }
+                    | FunctionInstructionKind::Constructor(_)
+                    | FunctionInstructionKind::Call { .. }
+                    | FunctionInstructionKind::FunctionCall { .. } => {}
                 }
             }
         }
@@ -811,10 +846,11 @@ pub fn main() {
     }
 
     fn tuple_main_id(plan: &crate::ExecutionPlan) -> TupleFunctionId {
-        match plan.main_runtime() {
-            RuntimeFunctionId::Core(CoreRuntimeFunctionId::Tuple { id, .. }) => id,
-            _ => panic!("expected main in the Tuple function table"),
-        }
+        let RuntimeFunctionId::Core(CoreRuntimeFunctionId::Tuple { id, .. }) = plan.main_runtime()
+        else {
+            panic!("expected main in the Tuple function table");
+        };
+        id
     }
 
     #[test]

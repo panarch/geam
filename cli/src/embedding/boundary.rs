@@ -202,7 +202,13 @@ impl DataType {
             Self::Tuple(items) => items.iter().any(Self::needs_scope),
             Self::Result(ok, error) => ok.needs_scope() || error.needs_scope(),
             Self::Option(item) | Self::List(item) => item.needs_scope(),
-            _ => false,
+            Self::Int
+            | Self::Float
+            | Self::String
+            | Self::BitArray
+            | Self::UtfCodepoint
+            | Self::Bool
+            | Self::Nil => false,
         }
     }
 

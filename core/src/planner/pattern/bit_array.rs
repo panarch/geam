@@ -5,7 +5,7 @@ use crate::plan::{
     UtfCodepointLocalId, ValueType,
 };
 use crate::planner::bit_array::validate_supported_endianness_option;
-use crate::planner::context::PlanContext;
+use crate::planner::context::{PlanContext, ResolvedLocal};
 use crate::planner::error::{
     InvalidBitArraySegmentOptionsReason, InvalidPatternShapeReason, InvalidTypedAstReason,
     PlanError,
@@ -335,10 +335,17 @@ fn plan_size_variable(
             let binding = context.resolve_local(&name)?;
             let actual = binding.value_type();
             match binding {
-                crate::planner::context::ResolvedLocal::Primitive(LocalId::Int(local)) => {
+                ResolvedLocal::Primitive(LocalId::Int(local)) => {
                     Some(BitArraySizeSource::Local(local))
                 }
-                _ => return Err(super::pattern_type_mismatch(ValueType::Int, actual)),
+                ResolvedLocal::Primitive(_)
+                | ResolvedLocal::Custom(_)
+                | ResolvedLocal::External(_)
+                | ResolvedLocal::Tuple { .. }
+                | ResolvedLocal::List { .. }
+                | ResolvedLocal::Function { .. } => {
+                    return Err(super::pattern_type_mismatch(ValueType::Int, actual));
+                }
             }
         }
         ValueConstructorVariant::ModuleConstant {
@@ -354,7 +361,7 @@ fn plan_size_variable(
             )?;
             Some(BitArraySizeSource::Constant(literal))
         }
-        _ => None,
+        ValueConstructorVariant::ModuleFn { .. } | ValueConstructorVariant::Record { .. } => None,
     };
     let Some(source) = source else {
         return Err(PlanError::InvalidTypedAst {
@@ -386,7 +393,16 @@ fn plan_size_constant(
             let constructor = resolved_size_constructor(&name, constructor.map(|value| *value))?;
             plan_size_variable(name, constructor, context)
         }
-        _ => Err(PlanError::InvalidTypedAst {
+        Constant::Float { .. }
+        | Constant::String { .. }
+        | Constant::Tuple { .. }
+        | Constant::List { .. }
+        | Constant::Record { .. }
+        | Constant::RecordUpdate { .. }
+        | Constant::BitArray { .. }
+        | Constant::StringConcatenation { .. }
+        | Constant::Invalid { .. }
+        | Constant::Todo { .. } => Err(PlanError::InvalidTypedAst {
             reason: InvalidTypedAstReason::PatternShape {
                 reason: InvalidPatternShapeReason::BitArraySizeConstant,
             },
@@ -428,7 +444,17 @@ fn plan_int_pattern(
                 binding: PatternBinding::new(local, name),
             })
         }
-        pattern => Err(super::unexpected_pattern(
+        pattern @ (Pattern::Float { .. }
+        | Pattern::String { .. }
+        | Pattern::Variable { .. }
+        | Pattern::BitArraySize(_)
+        | Pattern::Discard { .. }
+        | Pattern::List { .. }
+        | Pattern::Constructor { .. }
+        | Pattern::Tuple { .. }
+        | Pattern::BitArray { .. }
+        | Pattern::StringPrefix { .. }
+        | Pattern::Invalid { .. }) => Err(super::unexpected_pattern(
             &pattern,
             &crate::plan::ValueShape::Int,
             context,
@@ -457,7 +483,17 @@ fn plan_float_pattern(
                 binding: PatternBinding::new(local, name),
             })
         }
-        pattern => Err(super::unexpected_pattern(
+        pattern @ (Pattern::Int { .. }
+        | Pattern::String { .. }
+        | Pattern::Variable { .. }
+        | Pattern::BitArraySize(_)
+        | Pattern::Discard { .. }
+        | Pattern::List { .. }
+        | Pattern::Constructor { .. }
+        | Pattern::Tuple { .. }
+        | Pattern::BitArray { .. }
+        | Pattern::StringPrefix { .. }
+        | Pattern::Invalid { .. }) => Err(super::unexpected_pattern(
             &pattern,
             &crate::plan::ValueShape::Float,
             context,
@@ -487,7 +523,18 @@ fn plan_bits_pattern(
                 binding: PatternBinding::new(local, name),
             })
         }
-        pattern => Err(super::unexpected_pattern(
+        pattern @ (Pattern::Int { .. }
+        | Pattern::Float { .. }
+        | Pattern::String { .. }
+        | Pattern::Variable { .. }
+        | Pattern::BitArraySize(_)
+        | Pattern::Discard { .. }
+        | Pattern::List { .. }
+        | Pattern::Constructor { .. }
+        | Pattern::Tuple { .. }
+        | Pattern::BitArray { .. }
+        | Pattern::StringPrefix { .. }
+        | Pattern::Invalid { .. }) => Err(super::unexpected_pattern(
             &pattern,
             &crate::plan::ValueShape::BitArray,
             context,
@@ -504,7 +551,18 @@ fn plan_string_pattern(
             convert_string_escape_chars(&value),
         )),
         Pattern::Discard { type_, .. } if type_.is_string() => Ok(BitArrayStringPattern::Discard),
-        pattern => Err(super::unexpected_pattern(
+        pattern @ (Pattern::Int { .. }
+        | Pattern::Float { .. }
+        | Pattern::Variable { .. }
+        | Pattern::BitArraySize(_)
+        | Pattern::Assign { .. }
+        | Pattern::Discard { .. }
+        | Pattern::List { .. }
+        | Pattern::Constructor { .. }
+        | Pattern::Tuple { .. }
+        | Pattern::BitArray { .. }
+        | Pattern::StringPrefix { .. }
+        | Pattern::Invalid { .. }) => Err(super::unexpected_pattern(
             &pattern,
             &crate::plan::ValueShape::String,
             context,
@@ -534,7 +592,18 @@ fn plan_utf_codepoint_pattern(
                 binding: PatternBinding::new(local, name),
             })
         }
-        pattern => Err(super::unexpected_pattern(
+        pattern @ (Pattern::Int { .. }
+        | Pattern::Float { .. }
+        | Pattern::String { .. }
+        | Pattern::Variable { .. }
+        | Pattern::BitArraySize(_)
+        | Pattern::Discard { .. }
+        | Pattern::List { .. }
+        | Pattern::Constructor { .. }
+        | Pattern::Tuple { .. }
+        | Pattern::BitArray { .. }
+        | Pattern::StringPrefix { .. }
+        | Pattern::Invalid { .. }) => Err(super::unexpected_pattern(
             &pattern,
             &crate::plan::ValueShape::UtfCodepoint,
             context,
