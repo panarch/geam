@@ -807,6 +807,7 @@ pub fn main() { let result = classify("tag:x") result + 1 }
 
     #[test]
     fn interpreted_block_entries_have_local_handoff_without_unused_global_states() {
+        use super::ExecutionGraphProfile;
         let source = r#"
 fn inspect(value: Int) -> Int {
   let callback = fn(value) { value }
@@ -817,6 +818,14 @@ fn inspect(value: Int) -> Int {
 }
 pub fn main() { inspect(41) }
 "#;
+        let module = crate::compile_typed_module("example", "src/example.gleam", source).unwrap();
+        let plan = crate::ExecutionPlan::from_module_plan(crate::plan_module(module).unwrap());
+        let program = CallProgram::inspect(
+            &plan.program.functions,
+            &plan.program.common.custom_types,
+            &plan.program.common.value_shapes,
+        );
+        assert_handoff(program);
         let typed = crate::compile_typed_host_program(
             "example",
             "example",
@@ -837,21 +846,58 @@ pub fn main() { inspect(41) }
             &plan.program.common.custom_types,
             &plan.program.common.value_shapes,
         );
-        let mut interpreted_starts = Vec::new();
-        for function in &program.functions {
-            let group = CallGroupCodegen::new(vec![function], Vec::new(), BTreeSet::new());
-            let external =
-                CallGroupCodegen::new(vec![function], vec![function.target], BTreeSet::new());
-            for &point in function.shape.starts.values() {
-                if matches!(function.shape.points[point], CallPoint::Interpreted) {
-                    interpreted_starts.push(point);
-                    assert!(group.local_point(function, point));
-                    assert!(!group.global_point(function, point));
-                    assert!(external.global_point(function, point));
+        assert_handoff(program);
+
+        fn assert_handoff<Graph: ExecutionGraphProfile>(program: CallProgram<'_, Graph>) {
+            let mut interpreted_starts = Vec::new();
+            let mut signatures = Vec::new();
+            for function in &program.functions {
+                let mut group = CallGroupCodegen::new(vec![function], Vec::new(), BTreeSet::new());
+                let external =
+                    CallGroupCodegen::new(vec![function], vec![function.target], BTreeSet::new());
+                for &point in function.shape.starts.values() {
+                    if matches!(function.shape.points[point], CallPoint::Interpreted) {
+                        interpreted_starts.push(point);
+                        assert!(group.local_point(function, point));
+                        assert!(!group.global_point(function, point));
+                        assert!(external.global_point(function, point));
+                        // Keep every checkpoint in a valid segment and isolate the
+                        // interpreted handoff from the closure's operation segment.
+                        group.body_segments.insert(
+                            function.target.key(),
+                            (0..function.shape.points.len())
+                                .map(|point| (point, point))
+                                .collect(),
+                        );
+                        let mut emitted = Code::default();
+                        group.write_body(&mut emitted, function);
+                        signatures.extend(
+                            emitted
+                                .as_str()
+                                .lines()
+                                .filter(|line| {
+                                    line.starts_with("fn ") && line.contains("_segment_")
+                                })
+                                .map(str::to_owned),
+                        );
+                    }
                 }
             }
+            assert_eq!(interpreted_starts.len(), 1);
+            assert_eq!(
+                signatures,
+                [
+                    "fn calls_int_1_segment_0(active: Int1Segment0State, ops: &mut CallOps<'_>, budget: &mut usize) -> ControlFlow<FunctionStep, Int1State> {",
+                    "fn calls_int_1_segment_1(active: Int1Segment1State, _ops: &mut CallOps<'_>, budget: &mut usize) -> ControlFlow<FunctionStep, Int1State> {",
+                    "fn calls_int_1_segment_2(active: Int1Segment2State, _ops: &mut CallOps<'_>, _budget: &mut usize) -> ControlFlow<FunctionStep, Int1State> {",
+                    "fn calls_int_1_segment_3(active: Int1Segment3State, ops: &mut CallOps<'_>, budget: &mut usize) -> ControlFlow<FunctionStep, Int1State> {",
+                    "fn calls_int_1_segment_4(active: Int1Segment4State, _ops: &mut CallOps<'_>, budget: &mut usize) -> ControlFlow<FunctionStep, Int1State> {",
+                    "fn calls_int_1_segment_5(active: Int1Segment5State, _ops: &mut CallOps<'_>, budget: &mut usize) -> ControlFlow<FunctionStep, Int1State> {",
+                    "fn calls_int_1_segment_6(active: Int1Segment6State, ops: &mut CallOps<'_>, budget: &mut usize) -> ControlFlow<FunctionStep, Int1State> {",
+                    "fn calls_int_1_segment_7(active: Int1Segment7State, _ops: &mut CallOps<'_>, budget: &mut usize) -> ControlFlow<FunctionStep, Int1State> {",
+                ],
+            );
         }
-        assert_eq!(interpreted_starts.len(), 1);
     }
 
     #[test]

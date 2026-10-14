@@ -39,7 +39,8 @@ fn run_without_nested_cargo_instrumentation(test: &str) {
     let target = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .expect("the macros package should be inside the workspace")
-        .join("target/trybuild-uninstrumented");
+        .join("target/trybuild-uninstrumented")
+        .join(test);
     let mut command = Command::new(
         std::env::current_exe().expect("the UI test executable path should be available"),
     );

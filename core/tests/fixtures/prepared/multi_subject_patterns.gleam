@@ -76,7 +76,27 @@ fn single_subject(default: Option(String)) -> String {
   }
 }
 
+pub type Selector {
+  All(List(Selector))
+  Type(namespace: String, tag: String)
+  HasAttribute(name: String, value: String)
+}
+
+fn same_namespace(a: Selector, b: Selector) -> Bool {
+  case a, b {
+    All(..), _ | _, All(..) -> False
+    Type(..), Type(..) -> a.namespace == b.namespace
+    _, _ -> False
+  }
+}
+
 pub fn main() -> String {
+  let assert False = same_namespace(All([]), Type("svg", "a"))
+  let assert False = same_namespace(Type("svg", "a"), All([]))
+  let assert True = same_namespace(Type("svg", "a"), Type("svg", "b"))
+  let assert False = same_namespace(Type("svg", "a"), Type("html", "b"))
+  let assert False = same_namespace(Type("svg", "a"), HasAttribute("id", "b"))
+
   let assert "many" = label(ManyRepeat, None)
   let assert "many1" = label(Many1Repeat, Some("value"))
   let assert "required" = label(NoRepeat, None)

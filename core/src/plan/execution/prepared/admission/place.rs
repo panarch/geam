@@ -4,7 +4,10 @@ pub(super) use projection::instruction as projected_input;
 use super::block::Blocks;
 use super::local::Address;
 use crate::plan::execution::function::ExecutionGraphProfile;
-use crate::plan::execution::graph::{BlockId, BlockView, MatchPattern, MatchPatternListTail};
+use crate::plan::execution::graph::{
+    BlockId, BlockView, MatchPattern, MatchPatternListTail, ProfiledInstructionKind,
+    TupleInstruction,
+};
 use std::collections::HashSet;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -62,6 +65,15 @@ impl Place {
             else {
                 return Some(self);
             };
+            if let (
+                ProfiledInstructionKind::Tuple(TupleInstruction::Value(fields)),
+                Some(Projection::Tuple(index)),
+            ) = (&instruction.kind, self.path.first())
+            {
+                self.root = Address::of(fields.get(*index)?);
+                self.path.remove(0);
+                continue;
+            }
             let Some((root, field)) = projection::instruction(&instruction.kind) else {
                 return Some(self);
             };

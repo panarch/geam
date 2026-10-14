@@ -44,9 +44,9 @@ struct Assumption {
     constructor: usize,
 }
 
-enum Visit {
-    Enter(Query),
-    Leave(Query),
+enum Visit<Value> {
+    Enter(Value),
+    Leave(Value),
 }
 
 enum PatternVisit<'data> {
@@ -456,7 +456,10 @@ impl<'data, Graph: ExecutionGraphProfile> Control<'_, 'data, Graph> {
         {
             return Place::local(Address::from(subject))
                 .normalize(block, self.blocks)
-                .is_some_and(|place| place == *source && value == expected)
+                .is_some_and(|place| {
+                    value == expected
+                        && (place == *source || self.same_value(block, source.clone(), place))
+                })
                 .then(Vec::new);
         }
         self.match_condition(block, condition, source, fact, assumptions)
@@ -559,7 +562,9 @@ impl<'data, Graph: ExecutionGraphProfile> Control<'_, 'data, Graph> {
         };
         let subject = Place::local(Address::of(&matcher.subject)).normalize(block, self.blocks)?;
         if source.root != subject.root {
-            return None;
+            return (self.same_value(block, source.clone(), subject)
+                && match_proves(&matcher.pattern, success, fact))
+            .then(Vec::new);
         }
         let path = source.path.strip_prefix(subject.path.as_slice())?;
         if success {
@@ -592,6 +597,84 @@ impl<'data, Graph: ExecutionGraphProfile> Control<'_, 'data, Graph> {
             pattern_requirements(block, field, field_place, &assumptions, &mut requirements)?;
         }
         Some(requirements)
+    }
+
+    // Compare both values along the same incoming edge. A tuple built from a
+    // parameter preserves that parameter's identity, independently of its type.
+    fn same_value(&self, block: BlockId, left: Place, right: Place) -> bool {
+        let mut pending = vec![Visit::Enter((block, left, right))];
+        let mut active = HashSet::new();
+        let mut complete = HashSet::new();
+        while let Some(visit) = pending.pop() {
+            let (block, current, left, right) = match visit {
+                Visit::Enter((block, left, right)) => {
+                    let Some(current) = self.blocks.find_block(block) else {
+                        return false;
+                    };
+                    let Some(left) = left.in_block(current) else {
+                        return false;
+                    };
+                    let Some(right) = right.in_block(current) else {
+                        return false;
+                    };
+                    (block, current, left, right)
+                }
+                Visit::Leave((block, left, right)) => {
+                    active.remove(&(block, left.root, right.root));
+                    complete.insert((block, left, right));
+                    continue;
+                }
+            };
+            if left == right || complete.contains(&(block, left.clone(), right.clone())) {
+                continue;
+            }
+            if !active.insert((block, left.root, right.root)) {
+                return false;
+            }
+            pending.push(Visit::Leave((block, left.clone(), right.clone())));
+            let parameter = |place: &Place| {
+                current
+                    .params()
+                    .iter()
+                    .position(|slot| Address::of(&slot.local) == place.root)
+            };
+            let Some(left_index) = parameter(&left) else {
+                return false;
+            };
+            let Some(right_index) = parameter(&right) else {
+                return false;
+            };
+            let Some(left_inputs) = incoming::parameter(self.blocks, block, left_index) else {
+                return false;
+            };
+            let Some(right_inputs) = incoming::parameter(self.blocks, block, right_index) else {
+                return false;
+            };
+            if left_inputs.is_empty() {
+                return false;
+            }
+            // Both parameter queries enumerate the same edges in source order.
+            for (left_input, right_input) in left_inputs.into_iter().zip(right_inputs) {
+                if self.guards.excludes(left_input.block, left_input.condition) {
+                    continue;
+                }
+                let map = |place: Place, input: Input<'_>| match input {
+                    Input::Local(local) => Some(place.with_root(Address::of(local))),
+                    Input::Binding { index, matcher } => Some(Place {
+                        root: Address::of(&matcher.subject),
+                        path: place::binding_path(&matcher.pattern, index, &place.path)?,
+                    }),
+                };
+                let Some(left) = map(left.clone(), left_input.value) else {
+                    return false;
+                };
+                let Some(right) = map(right.clone(), right_input.value) else {
+                    return false;
+                };
+                pending.push(Visit::Enter((left_input.block, left, right)));
+            }
+        }
+        true
     }
 }
 
@@ -872,6 +955,378 @@ mod tests {
     use crate::plan::execution::storage::{Node, Table};
     use crate::plan::execution::type_::CustomConstructorId;
     use std::convert::Infallible;
+
+    #[test]
+    fn constructed_tuple_checks_refine_original_variables_but_not_other_elements() {
+        use crate::plan::execution::graph::{
+            ProfiledInstruction, ProfiledInstructionKind, StringInstruction, TupleInstruction,
+        };
+        let source = r#"
+pub type Selector {
+  All(List(Selector))
+  Type(namespace: String, tag: String)
+  HasAttribute(name: String, value: String)
+}
+fn same_namespace(a: Selector, b: Selector) -> Bool {
+  case a, b {
+    All(..), _ | _, All(..) -> panic as "all must be flattened"
+    Type(..), Type(..) -> a.namespace == b.namespace
+    _, _ -> False
+  }
+}
+pub fn main() { same_namespace(Type("svg", "a"), Type("svg", "b")) }
+"#;
+        let typed = crate::compile_typed_module("example", "src/example.gleam", source).unwrap();
+        let plan = crate::ExecutionPlan::from_module_plan(crate::plan_module(typed).unwrap());
+        let common = &plan.program.common;
+        let types = Types::admit(
+            &common.list_types,
+            &common.custom_types,
+            &common.external_types,
+            &common.value_shapes,
+        )
+        .unwrap();
+        let original = plan
+            .program
+            .functions
+            .value_returns
+            .bool_functions
+            .iter()
+            .find(|function| function.entry().parameter_count == 2)
+            .unwrap()
+            .body()
+            .block_graph();
+        for (duplicate_first, expected) in [(false, vec![true, true]), (true, vec![true, false])] {
+            let mut instructions = original.instructions.to_vec();
+            if duplicate_first {
+                let mut changed = false;
+                for instruction in &mut instructions {
+                    if let ProfiledInstruction::Value(value) = instruction
+                        && let ProfiledInstructionKind::Tuple(TupleInstruction::Value(fields)) =
+                            &mut value.kind
+                    {
+                        let mut elements = fields.to_vec();
+                        assert_eq!(elements.len(), 2);
+                        elements[1] = elements[0].clone();
+                        *fields = elements.into();
+                        changed = true;
+                    }
+                }
+                assert!(changed);
+            }
+            let mut raw: ProfiledBlockGraph<Infallible> = ProfiledBlockGraph::from_parts(
+                original.entry,
+                original
+                    .blocks()
+                    .map(|block| {
+                        ProfiledBlock::new(
+                            block.params().to_vec(),
+                            block.instructions().to_vec(),
+                            block.terminator().clone(),
+                        )
+                    })
+                    .collect(),
+            );
+            raw.instructions = instructions.into();
+            let blocks = Blocks::admit(&raw).unwrap();
+            let control = Control::new(&blocks, &types);
+            let mut observed = Vec::new();
+            for (index, block) in blocks.iter().enumerate() {
+                for instruction in block.instructions() {
+                    if let Some(value) = instruction.value()
+                        && let ProfiledInstructionKind::String(StringInstruction::CustomField {
+                            source,
+                            ..
+                        }) = &value.kind
+                    {
+                        observed.push(control.proves(
+                            BlockId(index),
+                            &ParamLocal::Custom(*source),
+                            Fact::Is(1),
+                        ));
+                    }
+                }
+            }
+            assert_eq!(observed, expected);
+        }
+    }
+
+    #[test]
+    fn value_identity_requires_every_incoming_and_reuses_converging_paths_without_cycles() {
+        use super::{Address, Place};
+        use crate::plan::execution::graph::{BoolBranch, BoolLocalId, IntLocalId};
+
+        let source = "fn inspect(left: Int, right: Int, selected: Bool) { #(left, right, selected) } pub fn main() { inspect(1, 2, True) }";
+        let typed = crate::compile_typed_module("example", "src/example.gleam", source).unwrap();
+        let plan = crate::ExecutionPlan::from_module_plan(crate::plan_module(typed).unwrap());
+        let common = &plan.program.common;
+        let types = Types::admit(
+            &common.list_types,
+            &common.custom_types,
+            &common.external_types,
+            &common.value_shapes,
+        )
+        .unwrap();
+        let entry = plan
+            .program
+            .functions
+            .value_returns
+            .tuple_functions
+            .iter()
+            .find(|function| function.entry().parameter_count == 3)
+            .unwrap()
+            .body()
+            .block_graph();
+        assert_eq!(entry.params.len(), 3);
+        let parameters = vec![
+            entry.params[0].clone(),
+            ParamSlot::new(ParamLocal::Int(IntLocalId(2)), entry.params[0].shape),
+            entry.params[1].clone(),
+            entry.params[2].clone(),
+        ];
+        let forwarded = parameters
+            .iter()
+            .map(|slot| slot.local.clone())
+            .collect::<Vec<_>>();
+        for (different_edge, cycle, expected) in [
+            (false, false, true),
+            (true, false, false),
+            (false, true, false),
+        ] {
+            let mut other = forwarded.clone();
+            if different_edge {
+                other[1] = parameters[2].local.clone();
+            }
+            let mut bodies = vec![
+                ProfiledBlock::new(
+                    entry.params.to_vec(),
+                    vec![],
+                    Terminator::Jump(Jump {
+                        edge: Edge::new(
+                            BlockId(1),
+                            vec![
+                                entry.params[0].local.clone(),
+                                entry.params[0].local.clone(),
+                                entry.params[1].local.clone(),
+                                entry.params[2].local.clone(),
+                            ],
+                            Transfer {
+                                families: Table::Static(&[]),
+                            },
+                        ),
+                    }),
+                ),
+                ProfiledBlock::new(
+                    parameters.clone(),
+                    vec![],
+                    Terminator::BoolBranch(BoolBranch {
+                        subject: BoolLocalId(0),
+                        true_: Edge::new(
+                            BlockId(2),
+                            forwarded.clone(),
+                            Transfer {
+                                families: Table::Static(&[]),
+                            },
+                        ),
+                        false_: Edge::new(
+                            BlockId(3),
+                            other,
+                            Transfer {
+                                families: Table::Static(&[]),
+                            },
+                        ),
+                    }),
+                ),
+            ];
+            for index in 2..=4 {
+                let terminator = if index < 4 || cycle {
+                    Terminator::Jump(Jump {
+                        edge: Edge::new(
+                            BlockId(if index < 4 { 4 } else { 3 }),
+                            forwarded.clone(),
+                            Transfer {
+                                families: Table::Static(&[]),
+                            },
+                        ),
+                    })
+                } else {
+                    Terminator::Exit(BlockGraphExitId(0))
+                };
+                bodies.push(ProfiledBlock::new(parameters.clone(), vec![], terminator));
+            }
+            let graph: ProfiledBlockGraph<Infallible> =
+                ProfiledBlockGraph::from_parts(BlockId(0), bodies);
+            let blocks = Blocks::admit(&graph).unwrap();
+            let control = Control::new(&blocks, &types);
+            assert_eq!(
+                control.same_value(
+                    BlockId(4),
+                    Place::local(Address::of(&parameters[0].local)),
+                    Place::local(Address::of(&parameters[1].local)),
+                ),
+                expected,
+            );
+        }
+    }
+
+    #[test]
+    fn value_identity_rejects_missing_blocks_unrelated_outputs_and_invalid_projections() {
+        use super::{Address, Place, Projection};
+        use crate::plan::execution::graph::{
+            IntInstruction, ProfiledInstructionKind, TupleInstruction,
+        };
+        let source = "fn inspect(left: Int, right: Int) { #(42, left, right) } pub fn main() { inspect(1, 2) }";
+        let typed = crate::compile_typed_module("example", "src/example.gleam", source).unwrap();
+        let plan = crate::ExecutionPlan::from_module_plan(crate::plan_module(typed).unwrap());
+        let common = &plan.program.common;
+        let types = Types::admit(
+            &common.list_types,
+            &common.custom_types,
+            &common.external_types,
+            &common.value_shapes,
+        )
+        .unwrap();
+        let graph = plan
+            .program
+            .functions
+            .value_returns
+            .tuple_functions
+            .iter()
+            .find(|function| function.entry().parameter_count == 2)
+            .unwrap()
+            .body()
+            .block_graph();
+        assert_eq!(graph.blocks.len(), 1);
+        let blocks = Blocks::admit(graph).unwrap();
+        let control = Control::new(&blocks, &types);
+        let left = Place::local(Address::of(&graph.params[0].local));
+        let right = Place::local(Address::of(&graph.params[1].local));
+        let literals = graph
+            .instructions
+            .iter()
+            .filter_map(|instruction| instruction.value())
+            .filter(|value| {
+                matches!(
+                    &value.kind,
+                    ProfiledInstructionKind::Int(IntInstruction::Value(_))
+                )
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(literals.len(), 1);
+        let literal = literals[0];
+        let tuple = graph
+            .instructions
+            .iter()
+            .filter_map(|instruction| instruction.value())
+            .find(|value| {
+                matches!(
+                    &value.kind,
+                    ProfiledInstructionKind::Tuple(TupleInstruction::Value(_))
+                )
+            })
+            .unwrap();
+        let invalid = Place {
+            root: Address::of(&tuple.output.local),
+            path: vec![Projection::Tuple(3)],
+        };
+        assert!(!control.same_value(BlockId(1), left.clone(), right.clone()));
+        assert!(!control.same_value(BlockId(0), left.clone(), right));
+        for unrelated in [Place::local(Address::of(&literal.output.local)), invalid] {
+            assert!(!control.same_value(BlockId(0), unrelated.clone(), left.clone()));
+            assert!(!control.same_value(BlockId(0), left.clone(), unrelated));
+        }
+    }
+
+    #[test]
+    fn value_identity_follows_match_bindings_and_rejects_incomplete_arguments() {
+        use super::{Address, Place};
+        let source =
+            "fn inspect(left: Int, right: Int) { #(left, right) } pub fn main() { inspect(1, 2) }";
+        let typed = crate::compile_typed_module("example", "src/example.gleam", source).unwrap();
+        let plan = crate::ExecutionPlan::from_module_plan(crate::plan_module(typed).unwrap());
+        let common = &plan.program.common;
+        let types = Types::admit(
+            &common.list_types,
+            &common.custom_types,
+            &common.external_types,
+            &common.value_shapes,
+        )
+        .unwrap();
+        let graph = plan
+            .program
+            .functions
+            .value_returns
+            .tuple_functions
+            .iter()
+            .find(|function| function.entry().parameter_count == 2)
+            .unwrap()
+            .body()
+            .block_graph();
+        let parameters = graph.params.to_vec();
+        assert_eq!(parameters.len(), 2);
+        let left = parameters[0].local.clone();
+        let right = parameters[1].local.clone();
+        for (length, binding_first, binding_index, expected) in [
+            (2, true, 0, true),
+            (2, false, 0, true),
+            (2, true, 3, false),
+            (2, false, 3, false),
+            (0, true, 0, false),
+            (1, true, 0, false),
+        ] {
+            let mut arguments = vec![
+                MatchEdgeArgument::Binding(binding_index),
+                MatchEdgeArgument::Value(left.clone()),
+            ];
+            if !binding_first {
+                arguments.reverse();
+            }
+            arguments.truncate(length);
+            let raw: ProfiledBlockGraph<Infallible> = ProfiledBlockGraph::from_parts(
+                BlockId(0),
+                vec![
+                    ProfiledBlock::new(
+                        parameters.clone(),
+                        vec![],
+                        Terminator::Match(Match {
+                            subject: left.clone(),
+                            pattern: MatchPattern::Bind(MatchPatternBinding::new(0)),
+                            success: MatchEdge::new(
+                                BlockId(1),
+                                arguments,
+                                Vec::new(),
+                                Transfer {
+                                    families: Table::Static(&[]),
+                                },
+                            ),
+                            failure: Edge::new(
+                                BlockId(1),
+                                vec![left.clone(), right.clone()],
+                                Transfer {
+                                    families: Table::Static(&[]),
+                                },
+                            ),
+                        }),
+                    ),
+                    ProfiledBlock::new(
+                        parameters.clone(),
+                        vec![],
+                        Terminator::Exit(BlockGraphExitId(0)),
+                    ),
+                ],
+            );
+            let blocks = Blocks::admit(&raw).unwrap();
+            let control = Control::new(&blocks, &types);
+            assert_eq!(
+                control.same_value(
+                    BlockId(1),
+                    Place::local(Address::of(&left)),
+                    Place::local(Address::of(&right))
+                ),
+                expected
+            );
+        }
+    }
 
     #[test]
     fn branch_exclusions_require_facts_about_the_same_tuple_projection() {
